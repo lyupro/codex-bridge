@@ -27,6 +27,31 @@ function check(key, status, value) {
   return { key, status, value };
 }
 
+/**
+ * The runner asks git for the repository root before it picks a runs folder, so doctor has to
+ * ask the same question: run from `src/runner`, a plain cwd would name the folder `runner` and
+ * report a location no run will ever use.
+ */
+function repoRoot(cwd) {
+  const top = spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd, encoding: 'utf8' });
+  return top.status === 0 && top.stdout.trim() ? top.stdout.trim() : cwd;
+}
+
+/**
+ * A marker that cannot be read is exactly what doctor exists to report, so it is caught here.
+ * Left to propagate it would kill the whole diagnosis and hide the seven checks around it.
+ */
+function projectRunsCheck() {
+  let resolved;
+  try {
+    resolved = resolveProjectRunsDir(runsRoot(), repoRoot(process.cwd()), { create: false });
+  } catch (err) {
+    return check('projectRuns', 'fail', err.message);
+  }
+  const note = resolved.reason === 'created' ? 'not created yet' : resolved.reason;
+  return check('projectRuns', 'ok', `${path.resolve(resolved.dir)} (${note})`);
+}
+
 function hookCommands(value) {
   if (Array.isArray(value)) return value.flatMap(hookCommands);
   if (value && typeof value === 'object') {
@@ -114,11 +139,11 @@ export async function diagnose({ host, codexProbe = probeCodex, currentPackage }
   const nodeMajor = Number.parseInt(process.versions.node.split('.')[0], 10);
   checks.push(check('node', nodeMajor >= 24 ? 'ok' : 'fail', `${process.versions.node} (requires >=24)`));
   checks.push(check('runsRoot', 'ok', path.resolve(runsRoot())));
-  const projectRuns = resolveProjectRunsDir(runsRoot(), process.cwd(), { create: false });
-  checks.push(check('projectRuns', 'ok', `${path.resolve(projectRuns.dir)} (${projectRuns.reason})`));
+  const projectRuns = projectRunsCheck();
+  checks.push(projectRuns);
 
   return {
-    exitCode: !record || recordBroken || missingFiles.length ? 1 : 0,
+    exitCode: !record || recordBroken || missingFiles.length || projectRuns.status === 'fail' ? 1 : 0,
     checks,
     record,
     missingFiles,
