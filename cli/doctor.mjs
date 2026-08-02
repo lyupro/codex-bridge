@@ -4,6 +4,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { readInstallRecord, packageInfo } from './manifest.mjs';
 import { runsRoot } from '../src/runner/runs-root.mjs';
+import { resolveProjectRunsDir } from '../src/runner/project-dir.mjs';
 
 async function exists(target) {
   try {
@@ -113,6 +114,8 @@ export async function diagnose({ host, codexProbe = probeCodex, currentPackage }
   const nodeMajor = Number.parseInt(process.versions.node.split('.')[0], 10);
   checks.push(check('node', nodeMajor >= 24 ? 'ok' : 'fail', `${process.versions.node} (requires >=24)`));
   checks.push(check('runsRoot', 'ok', path.resolve(runsRoot())));
+  const projectRuns = resolveProjectRunsDir(runsRoot(), process.cwd(), { create: false });
+  checks.push(check('projectRuns', 'ok', `${path.resolve(projectRuns.dir)} (${projectRuns.reason})`));
 
   return {
     exitCode: !record || recordBroken || missingFiles.length ? 1 : 0,

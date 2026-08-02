@@ -17,7 +17,6 @@ import { fileURLToPath } from 'node:url';
 import {
   exitCodeFor,
   writeFailure,
-  projectFolder,
   parseQuestions,
   writeStatus,
   markAbandoned,
@@ -34,6 +33,7 @@ import { INSTRUCTIONS } from './prompts.mjs';
 import { git, headSha, worktreeSnapshot, reviewScope } from './git-state.mjs';
 import { codexArgs, requireCodex, unsafeForCmd } from './codex-cmd.mjs';
 import { runsRoot } from './runs-root.mjs';
+import { resolveProjectRunsDir } from './project-dir.mjs';
 
 // How often the launcher looks for the worker's reply. A run lasts 20-25 minutes, so the
 // interval only decides how promptly the caller is released at the end of it.
@@ -110,7 +110,7 @@ export async function launcher() {
   const topLevel = git(opts.repo, ['rev-parse', '--show-toplevel']);
   const isGitRepo = topLevel.status === 0;
   const repoRoot = isGitRepo ? topLevel.stdout.trim() : opts.repo;
-  const projectRunsRoot = path.join(runsRoot(), projectFolder(repoRoot));
+  const projectRunsRoot = resolveProjectRunsDir(runsRoot(), repoRoot).dir;
 
   // Folders left behind by a runner that was killed mid-run get an explicit state before
   // anything else happens. One order produced four of them, and without this pass an
