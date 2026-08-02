@@ -21,6 +21,11 @@ Codex, не на стороне Claude.
 `codex exec review` расход не печатает вовсе, поэтому такие прогоны попадают в строку
 «без учёта». Считать их нулём нельзя — это молча занизило бы итог.
 
+Папка проекта помечена файлом `.project.json` с путём репозитория. Два разных репозитория с
+одинаковым именем каталога получают `api` и `api-2`, поэтому под строкой проекта печатается путь
+репозитория — но только когда имя папки и имя каталога репозитория разошлись. Иначе строка
+`api-2` в отчёте о расходе не сказала бы, чей это расход.
+
 Выполни ровно эту команду и ничего не пересчитывай руками:
 
 ```bash
@@ -32,6 +37,8 @@ const runs=[],unknown=[];
 for(const proj of fs.readdirSync(root)){
   const pdir=path.join(root,proj);
   if(!fs.statSync(pdir).isDirectory())continue;
+  let repo=null;
+  try{repo=JSON.parse(fs.readFileSync(path.join(pdir,'.project.json'),'utf8')).repo||null}catch{}
   for(const run of fs.readdirSync(pdir)){
     const dir=path.join(pdir,run),meta=path.join(dir,'meta.json'),log=path.join(dir,'raw.log');
     let tokens=null,agent=null,sandbox=null;
@@ -41,7 +48,7 @@ for(const proj of fs.readdirSync(root)){
       const hit=[...fs.readFileSync(log,'utf8').matchAll(/tokens used[\r\n]+([^\r\n]+)/g)].pop();
       tokens=hit?parseInt(hit[1].replace(/\D/g,''),10)||null:null;
     } else continue;
-    const entry={proj,run,day:run.slice(0,10),agent:agent||(/review/.test(run)?'codex-review':/build/.test(run)?'codex-build':'codex-scout'),sandbox};
+    const entry={proj,repo,run,day:run.slice(0,10),agent:agent||(/review/.test(run)?'codex-review':/build/.test(run)?'codex-build':'codex-scout'),sandbox};
     if(tokens===null){unknown.push(entry);continue}
     runs.push({...entry,tokens});
   }
@@ -59,7 +66,11 @@ if(runs.length){
   console.log('');console.log('По дням:');
   Object.entries(group('day')).sort().forEach(([d,rs])=>console.log(row(d,rs)));
   console.log('');console.log('По проектам:');
-  Object.entries(group('proj')).sort((a,b)=>sum(b[1])-sum(a[1])).forEach(([p,rs])=>console.log(row(p,rs)));
+  Object.entries(group('proj')).sort((a,b)=>sum(b[1])-sum(a[1])).forEach(([p,rs])=>{
+    console.log(row(p,rs));
+    const repo=rs.find(r=>r.repo)?.repo;
+    if(repo&&path.basename(repo)!==p)console.log('      '+repo);
+  });
   console.log('');console.log('По агентам:');
   Object.entries(group('agent')).sort((a,b)=>sum(b[1])-sum(a[1])).forEach(([k,rs])=>console.log(row(k,rs)));
   console.log('');console.log('Самые дорогие прогоны:');

@@ -26,6 +26,11 @@ second run does nothing. `--dry-run` prints the plan and touches nothing.
 `uninstall` removes only what the install recorded: a file you put in `agents/codex/` yourself
 stays, and `codex-runs/` is never touched — those are your run artifacts, not the package.
 
+Run artifacts live in `codex-runs/<project>/`, one folder per repository, marked with a
+`.project.json` holding that repository's path. Two checkouts that share a directory name — two
+different `api` — therefore get `api` and `api-2` instead of one mixed history. `doctor` prints
+which folder the current repository writes to.
+
 ## What it gives you
 
 - **Three dispatcher agents** for Claude Code — reconnaissance (read-only), implementation
