@@ -37,6 +37,21 @@ export async function fileFingerprint(absolutePath) {
   }
 }
 
+/**
+ * Whether the recorded installation is exactly what this package would install right now. Install
+ * and update both decide "nothing to do" by this question, so it is answered in one place: two
+ * copies of the condition would drift the first time a field is added to the record.
+ */
+export function recordMatchesPackage(record, plan, currentPackage, fingerprints) {
+  return Boolean(record)
+    && record.name === currentPackage.name
+    && record.version === currentPackage.version
+    && record.files.length === plan.length
+    && record.files.every((file, index) => file === plan[index].relativeToHost)
+    && Boolean(record.fingerprints)
+    && plan.every((item) => record.fingerprints[item.relativeToHost] === fingerprints.get(item.relativeToHost));
+}
+
 export function validateInstallRecord(record) {
   if (!record || typeof record !== 'object' || Array.isArray(record)) {
     throw new Error('installation record must be an object');
@@ -55,6 +70,11 @@ export function validateInstallRecord(record) {
   }
   if (new Set(record.files).size !== record.files.length) {
     throw new Error('installation record files must not contain duplicates');
+  }
+  // Run artifacts are the user's data, not ours. Refusing them here means neither uninstall nor
+  // update needs its own guard against deleting a run folder someone listed as an installed file.
+  if (record.files.some((file) => file === 'codex-runs' || file.split(/[\\/]/)[0] === 'codex-runs')) {
+    throw new Error('installation record files must not name run artifacts under codex-runs');
   }
   if (record.fingerprints !== undefined) {
     if (!record.fingerprints || typeof record.fingerprints !== 'object' || Array.isArray(record.fingerprints)) {

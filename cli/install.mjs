@@ -1,7 +1,14 @@
 /** Installs codex-bridge files and its host hook with conflict-safe idempotency. */
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { buildInstallPlan, fileFingerprint, packageInfo, readInstallRecord, writeInstallRecord } from './manifest.mjs';
+import {
+  buildInstallPlan,
+  fileFingerprint,
+  packageInfo,
+  readInstallRecord,
+  recordMatchesPackage,
+  writeInstallRecord,
+} from './manifest.mjs';
 import { copyPlannedFile, targetMatches } from './copy.mjs';
 import { inspectHook, mergeHook } from './settings-merge.mjs';
 
@@ -40,13 +47,8 @@ export async function install({ host, dryRun = false, force = false, packageRoot
   }
 
   const changedFiles = states.filter((state) => !state.matches);
-  const sameRecord = record
-    && record.name === currentPackage.name
-    && record.version === currentPackage.version
-    && record.files.length === plan.length
-    && record.files.every((file, index) => file === plan[index].relativeToHost)
-    && record.fingerprints
-    && states.every((state) => record.fingerprints[state.item.relativeToHost] === state.fingerprint);
+  const sameRecord = recordMatchesPackage(record, plan, currentPackage,
+    new Map(states.map((state) => [state.item.relativeToHost, state.fingerprint])));
   if (!changedFiles.length && inspectedHook.present && sameRecord) {
     return { exitCode: 0, output: 'codex-bridge is already installed; nothing to do.' };
   }

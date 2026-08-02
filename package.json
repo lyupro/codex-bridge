@@ -38,6 +38,7 @@
     "CHANGELOG.md"
   ],
   "scripts": {
+    "dev:install": "node bin/codex-bridge.mjs update --force",
     "test": "node --test \"tests/**/*.test.mjs\"",
     "check:size": "node scripts/check-file-size.mjs"
   },

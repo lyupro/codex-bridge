@@ -24,7 +24,7 @@ test('--help and -h print the command list', () => {
   for (const flag of ['--help', '-h']) {
     const result = run([flag]);
     assert.equal(result.status, 0);
-    assert.match(result.stdout, /Commands:[\s\S]*install[\s\S]*uninstall[\s\S]*doctor/);
+    assert.match(result.stdout, /Commands:[\s\S]*install[\s\S]*update[\s\S]*uninstall[\s\S]*doctor/);
   }
 });
 
@@ -51,6 +51,18 @@ test('shared option parser rejects flags outside each command contract', () => {
   const uninstall = run(['uninstall', '--force']);
   assert.equal(uninstall.status, 2);
   assert.match(uninstall.stderr, /unknown uninstall option/);
+  const update = run(['update', '--unknown']);
+  assert.equal(update.status, 2);
+  assert.match(update.stderr, /unknown update option/);
+});
+
+test('update flags reach the command handler', async (t) => {
+  const host = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-bin-update-'));
+  t.after(() => fs.rm(host, { recursive: true, force: true }));
+  const result = run(['update', '--host', host, '--scope', 'project', '--dry-run', '--force']);
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /not installed/);
+  assert.doesNotMatch(result.stderr, /unknown update option/);
 });
 
 test('doctor subcommand diagnoses only the explicit temporary host', async (t) => {

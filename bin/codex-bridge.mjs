@@ -7,11 +7,13 @@ import { resolveHost } from '../cli/hosts.mjs';
 import { install } from '../cli/install.mjs';
 import { packageInfo } from '../cli/manifest.mjs';
 import { uninstall } from '../cli/uninstall.mjs';
+import { update } from '../cli/update.mjs';
 
 export const HELP = `codex-bridge — Claude Code dispatchers for Codex
 
 Usage:
   codex-bridge install [--scope user|project] [--host <path>] [--dry-run] [--force]
+  codex-bridge update [--scope user|project] [--host <path>] [--dry-run] [--force]
   codex-bridge uninstall [--scope user|project] [--host <path>] [--dry-run]
   codex-bridge doctor [--scope user|project] [--host <path>]
   codex-bridge --help
@@ -19,17 +21,22 @@ Usage:
 
 Commands:
   install   Install codex-bridge into the selected Claude Code host
+  update    Update a recorded codex-bridge installation
   uninstall Remove installed files while preserving run artifacts
   doctor    Diagnose the selected Claude Code host`;
 
 function commandOptions(command, argv) {
   const options = {};
-  const booleanFlags = command === 'install' ? new Set(['--dry-run', '--force'])
+  const booleanFlags = command === 'install' || command === 'update' ? new Set(['--dry-run', '--force'])
     : command === 'uninstall' ? new Set(['--dry-run']) : new Set();
+  const flagNames = new Map([
+    ['--dry-run', 'dryRun'],
+    ['--force', 'force'],
+  ]);
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (booleanFlags.has(arg)) {
-      options[arg === '--dry-run' ? 'dryRun' : 'force'] = true;
+      options[flagNames.get(arg)] = true;
       continue;
     }
     if (arg !== '--scope' && arg !== '--host') throw new Error(`unknown ${command} option "${arg}"`);
@@ -57,12 +64,15 @@ export async function main(argv, io = console) {
     io.log(renderDoctor(result));
     return result.exitCode;
   }
-  if (command === 'install' || command === 'uninstall') {
+  if (command === 'install' || command === 'update' || command === 'uninstall') {
     const options = commandOptions(command, rest);
     const host = resolveHost(options);
-    const result = command === 'install'
-      ? await install({ host, dryRun: options.dryRun, force: options.force })
-      : await uninstall({ host, dryRun: options.dryRun });
+    const handlers = {
+      install: () => install({ host, dryRun: options.dryRun, force: options.force }),
+      update: () => update({ host, dryRun: options.dryRun, force: options.force }),
+      uninstall: () => uninstall({ host, dryRun: options.dryRun }),
+    };
+    const result = await handlers[command]();
     io.log(result.output);
     return result.exitCode;
   }
