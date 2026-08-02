@@ -24,7 +24,7 @@ test('--help and -h print the command list', () => {
   for (const flag of ['--help', '-h']) {
     const result = run([flag]);
     assert.equal(result.status, 0);
-    assert.match(result.stdout, /Commands:\s+doctor/);
+    assert.match(result.stdout, /Commands:[\s\S]*install[\s\S]*uninstall[\s\S]*doctor/);
   }
 });
 
@@ -38,10 +38,19 @@ test('--version and -v print package.json version', async () => {
 });
 
 test('unknown command exits 2 with a useful error', () => {
-  const result = run(['install']);
+  const result = run(['unknown']);
   assert.equal(result.status, 2);
-  assert.match(result.stderr, /unknown command "install"/);
+  assert.match(result.stderr, /unknown command "unknown"/);
   assert.match(result.stderr, /--help/);
+});
+
+test('shared option parser rejects flags outside each command contract', () => {
+  const doctor = run(['doctor', '--dry-run']);
+  assert.equal(doctor.status, 2);
+  assert.match(doctor.stderr, /unknown doctor option/);
+  const uninstall = run(['uninstall', '--force']);
+  assert.equal(uninstall.status, 2);
+  assert.match(uninstall.stderr, /unknown uninstall option/);
 });
 
 test('doctor subcommand diagnoses only the explicit temporary host', async (t) => {

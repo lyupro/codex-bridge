@@ -4,23 +4,35 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { diagnose, renderDoctor } from '../cli/doctor.mjs';
 import { resolveHost } from '../cli/hosts.mjs';
+import { install } from '../cli/install.mjs';
 import { packageInfo } from '../cli/manifest.mjs';
+import { uninstall } from '../cli/uninstall.mjs';
 
 export const HELP = `codex-bridge — Claude Code dispatchers for Codex
 
 Usage:
+  codex-bridge install [--scope user|project] [--host <path>] [--dry-run] [--force]
+  codex-bridge uninstall [--scope user|project] [--host <path>] [--dry-run]
   codex-bridge doctor [--scope user|project] [--host <path>]
   codex-bridge --help
   codex-bridge --version
 
 Commands:
+  install   Install codex-bridge into the selected Claude Code host
+  uninstall Remove installed files while preserving run artifacts
   doctor    Diagnose the selected Claude Code host`;
 
-function doctorOptions(argv) {
+function commandOptions(command, argv) {
   const options = {};
+  const booleanFlags = command === 'install' ? new Set(['--dry-run', '--force'])
+    : command === 'uninstall' ? new Set(['--dry-run']) : new Set();
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
-    if (arg !== '--scope' && arg !== '--host') throw new Error(`unknown doctor option "${arg}"`);
+    if (booleanFlags.has(arg)) {
+      options[arg === '--dry-run' ? 'dryRun' : 'force'] = true;
+      continue;
+    }
+    if (arg !== '--scope' && arg !== '--host') throw new Error(`unknown ${command} option "${arg}"`);
     const value = argv[index + 1];
     if (!value || value.startsWith('-')) throw new Error(`${arg} requires a value`);
     options[arg === '--scope' ? 'scope' : 'host'] = value;
@@ -40,9 +52,18 @@ export async function main(argv, io = console) {
     return 0;
   }
   if (command === 'doctor') {
-    const host = resolveHost(doctorOptions(rest));
+    const host = resolveHost(commandOptions(command, rest));
     const result = await diagnose({ host });
     io.log(renderDoctor(result));
+    return result.exitCode;
+  }
+  if (command === 'install' || command === 'uninstall') {
+    const options = commandOptions(command, rest);
+    const host = resolveHost(options);
+    const result = command === 'install'
+      ? await install({ host, dryRun: options.dryRun, force: options.force })
+      : await uninstall({ host, dryRun: options.dryRun });
+    io.log(result.output);
     return result.exitCode;
   }
   io.error(`codex-bridge: unknown command "${command}"\nRun codex-bridge --help for usage.`);
