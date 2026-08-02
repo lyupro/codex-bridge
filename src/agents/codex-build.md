@@ -34,7 +34,7 @@ diff, не рассуждай о задаче.
 ## Единственное, что ты делаешь
 
 ```bash
-node "$HOME/.claude/agents/codex/run-codex.mjs" --agent codex-build \
+node "{{CODEX_BRIDGE_DIR}}/run-codex.mjs" --agent codex-build \
   --repo "<путь-репо или .>" --scope "<glob,glob из входа>" --slug "<slug>" \
   --effort "<effort, по умолчанию medium>" --verify "<команда проверки, если дана>" <<'TASK'
 <формулировка задачи оператора вместе с критерием готовности, дословно>

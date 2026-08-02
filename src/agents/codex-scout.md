@@ -27,7 +27,7 @@ grep, не пересказывай отчёт, не рассуждай о за�
 ## Единственное, что ты делаешь
 
 ```bash
-node "$HOME/.claude/agents/codex/run-codex.mjs" --agent codex-scout \
+node "{{CODEX_BRIDGE_DIR}}/run-codex.mjs" --agent codex-scout \
   --repo "<путь-репо или .>" --slug "<slug>" --effort "<effort, по умолчанию medium>" <<'TASK'
 <формулировка задачи оператора, дословно, без твоих переформулировок>
 TASK

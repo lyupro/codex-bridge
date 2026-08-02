@@ -19,7 +19,7 @@ argument-hint: "[hooks|plugins on|off] | [reset]"
 дословно. Ничего не дописывай и не пересчитывай:
 
 ```bash
-node "$HOME/.claude/agents/codex/run-config.mjs" $ARGUMENTS
+node "{{CODEX_BRIDGE_DIR}}/run-config.mjs" $ARGUMENTS
 ```
 
 Формы вызова:

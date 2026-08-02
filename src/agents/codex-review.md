@@ -25,7 +25,7 @@ tools: Bash
 ## Единственное, что ты делаешь
 
 ```bash
-node "$HOME/.claude/agents/codex/run-codex.mjs" --agent codex-review \
+node "{{CODEX_BRIDGE_DIR}}/run-codex.mjs" --agent codex-review \
   --repo "<путь-репо или .>" --mode "<uncommitted|base:<branch>|commit:<sha>>" \
   --slug "<slug>" --effort "<effort, по умолчанию medium>" <<'TASK'
 <фокус ревью из задачи дословно; если фокуса нет — «Фокуса нет, смотри по приоритетам.»>
