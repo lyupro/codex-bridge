@@ -1,6 +1,7 @@
 /** Defines install mappings and validates the persisted installation record. */
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -27,6 +28,15 @@ export function installRecordPath(host) {
   return path.join(host.agentsDir, INSTALL_RECORD_NAME);
 }
 
+export async function fileFingerprint(absolutePath) {
+  try {
+    return createHash('sha256').update(await fs.readFile(absolutePath)).digest('hex');
+  } catch (err) {
+    if (err.code === 'ENOENT') return null;
+    throw err;
+  }
+}
+
 export function validateInstallRecord(record) {
   if (!record || typeof record !== 'object' || Array.isArray(record)) {
     throw new Error('installation record must be an object');
@@ -45,6 +55,19 @@ export function validateInstallRecord(record) {
   }
   if (new Set(record.files).size !== record.files.length) {
     throw new Error('installation record files must not contain duplicates');
+  }
+  if (record.fingerprints !== undefined) {
+    if (!record.fingerprints || typeof record.fingerprints !== 'object' || Array.isArray(record.fingerprints)) {
+      throw new Error('installation record fingerprints must be an object');
+    }
+    const fingerprintKeys = Object.keys(record.fingerprints);
+    if (fingerprintKeys.length !== record.files.length || fingerprintKeys.some((file) => !record.files.includes(file))) {
+      throw new Error('installation record fingerprints keys must exactly match files');
+    }
+    if (Object.values(record.fingerprints).some((fingerprint) =>
+      typeof fingerprint !== 'string' || !/^[a-f0-9]{64}$/i.test(fingerprint))) {
+      throw new Error('installation record fingerprints must be 64-character hexadecimal SHA256 strings');
+    }
   }
   if (!record.hook || typeof record.hook !== 'object' || Array.isArray(record.hook)) {
     throw new Error('installation record hook must be an object');

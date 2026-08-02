@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { resolveHost } from '../../cli/hosts.mjs';
 import { install } from '../../cli/install.mjs';
 import { buildInstallPlan, readInstallRecord } from '../../cli/manifest.mjs';
@@ -36,6 +37,16 @@ async function backups(host) {
   }
 }
 
+test('a rendered file is fingerprinted as written, not as shipped', async (t) => {
+  const { host } = await fixture(t);
+  await install({ host });
+  const record = await readInstallRecord(host);
+  const relative = record.files.find((file) => file.endsWith('codex-build.md'));
+  const hash = async (target) => createHash('sha256').update(await fs.readFile(target)).digest('hex');
+  assert.equal(record.fingerprints[relative], await hash(path.join(host.root, relative)));
+  assert.notEqual(record.fingerprints[relative], await hash('src/agents/codex-build.md'));
+});
+
 test('install copies the exact plan, expands placeholders, and writes a valid record', async (t) => {
   const { host } = await fixture(t);
   const plan = await buildInstallPlan(host);
@@ -43,6 +54,7 @@ test('install copies the exact plan, expands placeholders, and writes a valid re
   assert.equal(result.exitCode, 0);
   const record = await readInstallRecord(host);
   assert.deepEqual(record.files, plan.map((item) => item.relativeToHost));
+  assert.deepEqual(Object.keys(record.fingerprints), record.files);
   const installed = await allFiles(host.root);
   for (const file of record.files) assert.ok(installed.includes(file), file);
   await fs.access(path.join(host.agentsDir, '.codex-bridge-install.json'));
@@ -50,10 +62,30 @@ test('install copies the exact plan, expands placeholders, and writes a valid re
   for (const item of plan.filter((entry) => entry.processing === 'placeholders')) {
     const content = await fs.readFile(item.target, 'utf8');
     const source = await fs.readFile(item.source, 'utf8');
+    assert.equal(record.fingerprints[item.relativeToHost], createHash('sha256').update(content).digest('hex'));
     assert.doesNotMatch(content, /\{\{CODEX_BRIDGE_DIR\}\}/);
     if (source.includes('{{CODEX_BRIDGE_DIR}}')) {
       assert.ok(content.includes(host.agentsDir.replaceAll('\\', '/')));
+      assert.notEqual(record.fingerprints[item.relativeToHost], createHash('sha256').update(source).digest('hex'));
     }
+  }
+});
+
+test('install upgrades a legacy record with host fingerprints', async (t) => {
+  const { host } = await fixture(t);
+  await install({ host });
+  const recordPath = path.join(host.agentsDir, '.codex-bridge-install.json');
+  const legacy = JSON.parse(await fs.readFile(recordPath, 'utf8'));
+  delete legacy.fingerprints;
+  await fs.writeFile(recordPath, `${JSON.stringify(legacy, null, 2)}\n`);
+  const result = await install({ host });
+  assert.equal(result.exitCode, 0);
+  assert.doesNotMatch(result.output, /nothing to do/);
+  const upgraded = await readInstallRecord(host);
+  assert.deepEqual(Object.keys(upgraded.fingerprints), upgraded.files);
+  for (const file of upgraded.files) {
+    const content = await fs.readFile(path.join(host.root, file));
+    assert.equal(upgraded.fingerprints[file], createHash('sha256').update(content).digest('hex'));
   }
 });
 
@@ -98,6 +130,18 @@ test('unrecorded conflict fails untouched and --force overwrites it', async (t) 
   assert.equal(await readInstallRecord(host), null);
   assert.equal((await install({ host, force: true })).exitCode, 0);
   assert.notEqual(await fs.readFile(conflict.target, 'utf8'), 'foreign');
+});
+
+test('recorded manual changes conflict instead of being overwritten', async (t) => {
+  const { host } = await fixture(t);
+  const plan = await buildInstallPlan(host);
+  await install({ host });
+  const changed = plan[0];
+  await fs.writeFile(changed.target, 'manual change');
+  const refused = await install({ host });
+  assert.equal(refused.exitCode, 1);
+  assert.match(refused.output, /Conflicting files/);
+  assert.equal(await fs.readFile(changed.target, 'utf8'), 'manual change');
 });
 
 test('invalid settings aborts before copying any package file', async (t) => {

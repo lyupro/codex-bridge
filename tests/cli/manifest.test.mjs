@@ -8,6 +8,7 @@ import { resolveHost } from '../../cli/hosts.mjs';
 import {
   INSTALL_TABLE,
   buildInstallPlan,
+  fileFingerprint,
   readInstallRecord,
   replacePlaceholders,
   validateInstallRecord,
@@ -70,6 +71,35 @@ test('installation record writes and reads after validation', async (t) => {
   await fs.mkdir(host.agentsDir, { recursive: true });
   await writeInstallRecord(host, record);
   assert.deepEqual(await readInstallRecord(host), record);
+});
+
+test('file fingerprint hashes bytes and returns null for a missing file', async (t) => {
+  const { root } = await fixture(t);
+  const target = path.join(root, 'fingerprint.txt');
+  await fs.writeFile(target, 'host content');
+  assert.equal(await fileFingerprint(target), 'c7356824c7966d281232a8fb0b0bc8c056a3c6d666b55b3db1efc5db4588f98c');
+  assert.equal(await fileFingerprint(path.join(root, 'missing.txt')), null);
+});
+
+test('installation record without fingerprints remains valid', () => {
+  assert.equal(validateInstallRecord(record), record);
+});
+
+test('installation record rejects an extra fingerprint key', () => {
+  const fingerprints = Object.fromEntries(record.files.map((file) => [file, 'a'.repeat(64)]));
+  fingerprints['agents/codex/extra.mjs'] = 'b'.repeat(64);
+  assert.throws(() => validateInstallRecord({ ...record, fingerprints }), /fingerprints keys must exactly match files/);
+});
+
+test('installation record rejects a missing fingerprint key', () => {
+  const fingerprints = { [record.files[0]]: 'a'.repeat(64) };
+  assert.throws(() => validateInstallRecord({ ...record, fingerprints }), /fingerprints keys must exactly match files/);
+});
+
+test('installation record rejects malformed fingerprint values', () => {
+  const fingerprints = Object.fromEntries(record.files.map((file) => [file, 'a'.repeat(64)]));
+  assert.throws(() => validateInstallRecord({ ...record, fingerprints: { ...fingerprints, [record.files[0]]: 'not-hex' } }), /64-character hexadecimal/);
+  assert.throws(() => validateInstallRecord({ ...record, fingerprints: { ...fingerprints, [record.files[0]]: 'a'.repeat(63) } }), /64-character hexadecimal/);
 });
 
 test('missing record reads as not installed', async (t) => {

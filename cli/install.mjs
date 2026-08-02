@@ -1,7 +1,7 @@
 /** Installs codex-bridge files and its host hook with conflict-safe idempotency. */
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { buildInstallPlan, packageInfo, readInstallRecord, writeInstallRecord } from './manifest.mjs';
+import { buildInstallPlan, fileFingerprint, packageInfo, readInstallRecord, writeInstallRecord } from './manifest.mjs';
 import { copyPlannedFile, targetMatches } from './copy.mjs';
 import { inspectHook, mergeHook } from './settings-merge.mjs';
 
@@ -27,8 +27,10 @@ export async function install({ host, dryRun = false, force = false, packageRoot
     item,
     exists: await targetExists(item.target),
     matches: await targetMatches(item, host.agentsDir),
+    fingerprint: await fileFingerprint(item.target),
   })));
-  const conflicts = !record ? states.filter((state) => state.exists && !state.matches) : [];
+  const conflicts = states.filter((state) => state.exists && !state.matches
+    && (!record || (record.fingerprints && record.fingerprints[state.item.relativeToHost] !== state.fingerprint)));
   if (conflicts.length && !force) {
     const files = conflicts.map(({ item }) => `  ${item.relativeToHost}`).join('\n');
     return {
@@ -42,7 +44,9 @@ export async function install({ host, dryRun = false, force = false, packageRoot
     && record.name === currentPackage.name
     && record.version === currentPackage.version
     && record.files.length === plan.length
-    && record.files.every((file, index) => file === plan[index].relativeToHost);
+    && record.files.every((file, index) => file === plan[index].relativeToHost)
+    && record.fingerprints
+    && states.every((state) => record.fingerprints[state.item.relativeToHost] === state.fingerprint);
   if (!changedFiles.length && inspectedHook.present && sameRecord) {
     return { exitCode: 0, output: 'codex-bridge is already installed; nothing to do.' };
   }
@@ -63,11 +67,14 @@ export async function install({ host, dryRun = false, force = false, packageRoot
   );
   const hookRelative = plan.find((item) => path.basename(item.target) === 'reply-guard.mjs')?.relativeToHost;
   if (!hookRelative) throw new Error('install plan does not contain hooks/reply-guard.mjs');
+  const fingerprints = Object.fromEntries(await Promise.all(plan.map(async (item) =>
+    [item.relativeToHost, await fileFingerprint(item.target)])));
   await writeInstallRecord(host, {
     ...currentPackage,
     installedAt: new Date().toISOString(),
     mode: 'copy',
     files: plan.map((item) => item.relativeToHost),
+    fingerprints,
     hook: { event: 'SubagentStop', path: hookRelative, createdGroup: hookResult.createdGroup || record?.hook?.createdGroup || false },
   });
   return { exitCode: 0, output: `Installed ${plan.length} files and registered the SubagentStop hook.` };
