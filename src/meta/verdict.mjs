@@ -32,7 +32,7 @@ const LIMIT_RE = /rate.?limit|usage limit|usage_limit|quota exceeded|quota exhau
 const ERROR_RE = /\bERROR\b|error[:=]|stream error|"status"\s*:\s*429|rejected|refused|failed/i;
 
 // How much prose an answer must carry once coordinates and paths are subtracted. Measured
-// on the scout run of 2026-07-30 that replied with a table of `файл.ts:60-79` rows: every
+// on the scout run of 2026-07-30 that replied with a table of `file.ts:60-79` rows: every
 // one of its six sub-answers scored under 30, while the shortest honest explanation of a
 // single mechanism in the same report scored above 120. 80 is one full sentence; 200 is
 // the single-question mode, where one question means the whole answer is the essay.
@@ -83,7 +83,7 @@ export function outOfScope(touchedPaths, patterns) {
 }
 
 /** Reserved for verdicts where the work really was the wrong work, not for check artefacts. */
-const WRONG_WORK = 'сделана не та работа: ';
+const WRONG_WORK = 'wrong work was done: ';
 
 /**
  * Does the report describe the work that actually happened? A schema cannot answer this:
@@ -112,7 +112,7 @@ export function reportVersusWork(runDir, result, ctx) {
   if (!declared.length && !touched.length) return agreed();
   if (!declared.length) {
     return broken(
-      `${WRONG_WORK}дерево изменено (${touched.length}: ${show(touched)}), но отчёт не называет ни одной правки`,
+      `${WRONG_WORK}tree changed (${touched.length}: ${show(touched)}), but the report names no changes`,
     );
   }
   if (declared.some((d) => declaredHits(d, touched))) return agreed();
@@ -123,7 +123,7 @@ export function reportVersusWork(runDir, result, ctx) {
   const service = declared.filter((f) => SERVICE_RE.test(f));
   if (service.length) {
     return broken(
-      `${WRONG_WORK}отчёт о работе в служебных каталогах (${show(service)}), файлов задачи это не касается`,
+      `${WRONG_WORK}report describes work in service directories (${show(service)}), not task files`,
     );
   }
 
@@ -135,8 +135,8 @@ export function reportVersusWork(runDir, result, ctx) {
 
   return broken(
     touched.length
-      ? `${WRONG_WORK}отчёт называет ${show(declared)}, а изменилось ${show(touched)}`
-      : 'прогон дерева не менял, и в предыдущих заходах этой задачи заявленных файлов тоже нет',
+      ? `${WRONG_WORK}report names ${show(declared)}, but ${show(touched)} changed`
+      : 'run did not change the tree, and earlier runs of this task do not contain the declared files',
   );
 }
 
@@ -159,13 +159,13 @@ const chainContextOf = (runDir) => {
 /**
  * How much of an answer is prose rather than a map. Coordinates (`path/to/file.ts:12-40`,
  * `foo.ts:88`) and bare paths are subtracted first, then punctuation and spacing, because a
- * "разведка" that returns nothing but a coordinate table is the exact failure this measures
+ * "scout" that returns nothing but a coordinate table is the exact failure this measures
  * — and by character count that table is long.
  */
 function substanceLength(text) {
   return String(text ?? '')
     .replace(/`+/g, ' ')
-    .replace(/\S*\.[A-Za-z0-9]+:\d+(?:\s*[-–—]\s*\d+)?/g, ' ')
+    .replace(/\S*\.[A-Za-z0-9]+:\d+(?:\s*[-– — ]\s*\d+)?/g, ' ')
     .replace(/\S*[\\/]\S*/g, ' ')
     .replace(/[^\p{L}\p{N}]+/gu, '').length;
 }
@@ -197,7 +197,8 @@ function scoutCoverageGap(runDir, result) {
   if (!questions.length) {
     const chars = substanceLength(result?.answer);
     if (chars < MIN_SINGLE_SUBSTANCE_CHARS) {
-      return `ответ без разбора: содержательного текста ${chars} знаков при минимуме ${MIN_SINGLE_SUBSTANCE_CHARS} (координаты и пути не в счёт)`;
+      return `response without analysis: ${chars} substantive characters, minimum ` +
+        `${MIN_SINGLE_SUBSTANCE_CHARS} (coordinates and paths excluded)`;
     }
     return null;
   }
@@ -207,29 +208,29 @@ function scoutCoverageGap(runDir, result) {
     .filter((q) => !String(byId.get(q.id)?.answer || '').trim())
     .map((q) => q.id);
   if (missing.length) {
-    return `разведка не ответила на ${missing.length} подвопросов: ${show(missing)}`;
+    return `scout did not answer ${missing.length} sub-questions: ${show(missing)}`;
   }
 
   const thin = questions
     .filter((q) => substanceLength(byId.get(q.id).answer) < MIN_SUBSTANCE_CHARS)
     .map((q) => q.id);
-  if (thin.length) return `ответ на ${show(thin)} — координаты без разбора`;
+  if (thin.length) return `response to ${show(thin)} contains coordinates without analysis`;
 
   const unsourced = questions
     .filter((q) => !(byId.get(q.id).evidence || []).some((e) => String(e || '').trim()))
     .map((q) => q.id);
-  if (unsourced.length) return `ответы без единой ссылки на код: ${show(unsourced)}`;
+  if (unsourced.length) return `responses without a single code reference: ${show(unsourced)}`;
 
   return null;
 }
 
-/** `6/6 подвопросов`, or null when the order asked one question and coverage means nothing. */
+/** `6/6 sub-questions`, or null when the order asked one question and coverage means nothing. */
 export function scoutCoverage(runDir, result) {
   const questions = questionsOf(runDir);
   if (!questions.length) return null;
   const byId = answersById(result);
   const answered = questions.filter((q) => String(byId.get(q.id)?.answer || '').trim()).length;
-  return `${answered}/${questions.length} подвопросов`;
+  return `${answered}/${questions.length} sub-questions`;
 }
 
 /**
@@ -241,7 +242,7 @@ function commitDuringRun(runDir) {
   const before = readText(path.join(runDir, 'head-before.txt')).trim();
   const after = readText(path.join(runDir, 'head-after.txt')).trim();
   if (!before || !after || before === after) return null;
-  return `сделан коммит при запрете: ${before.slice(0, 12)} → ${after.slice(0, 12)}`;
+  return `commit made despite prohibition: ${before.slice(0, 12)} → ${after.slice(0, 12)}`;
 }
 
 /**
@@ -253,7 +254,7 @@ export function resolveStatus({ log, logBytes, resultOk, exit, agent, result, ru
   if (!logBytes) {
     return {
       status: 'FAIL',
-      reason: 'прогон брошен на старте: raw.log пуст, Codex не отработал',
+      reason: 'run abandoned at startup: raw.log is empty, Codex did not run',
     };
   }
   // Ahead of everything else, including LIMIT: a commit under an explicit ban is a broken
@@ -266,17 +267,17 @@ export function resolveStatus({ log, logBytes, resultOk, exit, agent, result, ru
   if (!resultOk) {
     const limit = limitSignal(log);
     if (limit) return { status: 'LIMIT', reason: limit };
-    return { status: 'FAIL', reason: reasonFrom(log) || `результат пуст, exit=${exit}` };
+    return { status: 'FAIL', reason: reasonFrom(log) || `result is empty, exit=${exit}` };
   }
   if (exit !== 0) {
-    return { status: 'FAIL', reason: `результат есть, но exit=${exit}: ${reasonFrom(log)}` };
+    return { status: 'FAIL', reason: `result exists, but exit=${exit}: ${reasonFrom(log)}` };
   }
   // A red verification is a failed job, not an OK with a footnote. The orchestrator
   // reads the first word; burying "fail" in line three is how a broken build passes.
   if (agent === 'codex-build' && result?.verify_passed === false) {
     return {
       status: 'FAIL',
-      reason: `проверка «${line(result.verify_command || 'без команды', 60)}» не прошла, правки остались в дереве`,
+      reason: `verification “${line(result.verify_command || 'no command', 60)}” failed; changes remain in the tree`,
     };
   }
   // Answers that never arrived, or arrived as coordinates. Scout-only, and per-question
@@ -297,7 +298,7 @@ export function resolveStatus({ log, logBytes, resultOk, exit, agent, result, ru
     if (patterns.length) {
       // Environment writes are subtracted first: attributing them to the run failed an honest
       // pass for a file it never opened. What was subtracted is reported, not swallowed —
-      // see the "Среда" line in reply.mjs and environment_changes in meta.json.
+      // see the "Environment" line in reply.mjs and environment_changes in meta.json.
       const { work } = splitRunChanges(
         runDir,
         changedPaths(
@@ -309,7 +310,7 @@ export function resolveStatus({ log, logBytes, resultOk, exit, agent, result, ru
       if (strays.length) {
         return {
           status: 'FAIL',
-          reason: `правки вне объёма (${strays.length}): ${strays.slice(0, 3).join(', ')}`,
+          reason: `out-of-scope changes (${strays.length}): ${strays.slice(0, 3).join(', ')}`,
         };
       }
     }
@@ -323,7 +324,7 @@ export function resolveStatus({ log, logBytes, resultOk, exit, agent, result, ru
       // Hooks on is the known cause of this exact failure, so the reason says so instead
       // of leaving the operator to rediscover it from the log.
       const hooks = readJson(path.join(runDir, 'env.json'))?.hooks
-        ? ' (хуки включены в run-config.json — вероятная причина)'
+        ? ' (hooks are enabled in run-config.json — a likely cause)'
         : '';
       return { status: 'FAIL', reason: `${verdict.reason}${hooks}` };
     }

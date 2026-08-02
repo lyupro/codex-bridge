@@ -6,63 +6,63 @@
  * schema in schemas.mjs — one lookup picks both halves of an agent's strategy.
  */
 export const INSTRUCTIONS = {
-  'codex-scout': (opts, scope, questions = []) => `Правила ответа:
-- Ты работаешь в read-only режиме: не пытайся ничего писать или править.
-- Ответ — это разбор, а не карта. Объясняй прозой: как устроено, какие поля, сигнатуры и
-  контракты участвуют, чем зоны отличаются друг от друга, что из этого следует. Список
-  координат вместо разбора ответом НЕ считается и будет отклонён как пустой.
-- Координаты \`путь:строка\` идут в evidence, а не вместо ответа: на каждый ответ минимум
-  одна ссылка. Если после вычета путей и координат в ответе не осталось нескольких
-  предложений связного текста — ответа нет.
+  'codex-scout': (opts, scope, questions = []) => `Response rules:
+- You are working in read-only mode: do not try to write or edit anything.
+- The response is an analysis, not a map. Explain in prose: how it works, which fields,
+  signatures, and contracts are involved, how the areas differ, and what follows from this.
+  A list of coordinates instead of an analysis does NOT count and will be rejected as empty.
+- Coordinates in \`path:line\` form belong in evidence, not in place of the response: each
+  response needs at least one reference. If removing paths and coordinates leaves no several
+  sentences of coherent text, there is no response.
 ${
   questions.length
-    ? `- Подвопросы перечислены выше. На каждый Q1..Q${questions.length} нужен свой объект в
-  answers: question_id, отдельный разбор в answer, свои ссылки в evidence. Один общий ответ
-  на все подвопросы не годится — пропущенный подвопрос проваливает прогон.
-- answer верхнего уровня — сводка по задаче целиком, 2-4 предложения, поверх разборов.`
-    : `- В answers положи один объект с question_id "Q1": разбор в answer, ссылки в evidence.
-- answer верхнего уровня — тот же ответ сводкой, 2-4 предложения.`
+    ? `- The sub-questions are listed above. Each Q1..Q${questions.length} needs its own object in
+  answers: question_id, a separate analysis in answer, and its own references in evidence.
+  One common response to all sub-questions is not acceptable — a missed sub-question fails the run.
+- The top-level answer is a 2-4 sentence summary of the whole task, on top of the analyses.`
+    : `- Put one object in answers with question_id "Q1": analysis in answer, references in evidence.
+- The top-level answer is the same response summarized in 2-4 sentences.`
 }
-- Опирайся на прочитанное; каждый факт подкрепляй ссылкой \`путь:строка\` в поле where.
-- Если фактов не хватает — перечисли их в unknowns, не додумывай.
-- report_markdown — полный отчёт в markdown с разделами: «Ответ» (2-4 предложения),
-  «Как устроено» (обязательный: разбор ${questions.length ? 'по каждому подвопросу' : 'механики'} прозой,
-  с опорой на код), «Находки» (таблица факт / где / уверенность), «Чего не хватает».`,
-  'codex-build': (opts) => `Критерий готовности: из задачи выше, дословно.
+- Base the response on what you read; support every fact with a \`path:line\` reference in where.
+- If facts are missing, list them in unknowns; do not make them up.
+- report_markdown is a full markdown report with sections: “Response” (2-4 sentences),
+  “How it works” (required: prose analysis ${questions.length ? 'for each sub-question' : 'of the mechanism'},
+  grounded in the code), “Findings” (fact / location / confidence table), “Missing information”.`,
+  'codex-build': (opts) => `Definition of done: exactly as stated in the task above.
 
-Правила работы:
-- Меняй только то, что требует задача. Не рефактори соседний код, не переформатируй файлы.
-- Работай строго внутри объёма правок из раздела выше. Файл вне списка не трогай ни при
-  каких обстоятельствах — даже если он мешает, выглядит сломанным или «правка на одну
-  строку». Помеха идёт строкой в leftovers. Тронутые файлы сверяются с объёмом по дереву
-  после прогона, и правка вне списка проваливает прогон целиком.
-- Не коммить и не готовь коммит: \`git commit\`, \`git add\`, \`git stash\`, новые ветки и теги,
-  любые правки внутри \`.git/\` — запрещены. Приёмку и коммит делает оркестратор, он должен
-  увидеть твои правки незакоммиченными. Если кажется, что без коммита не обойтись — это
-  строка в leftovers, а не команда. Изменившийся HEAD проваливает прогон.
-- Не оставляй заглушек, TODO, \`test.skip\`/\`.only\` и нереализованных веток. Если что-то
-  сделать нельзя — не имитируй, а перечисли это в leftovers.
-- После правок запусти проверку: ${opts.verify || 'определи команду сам по проекту'}.
-  В verify_command укажи фактически запущенную команду, в verify_passed — прошла ли она.
-- summary и changes описывают только правки в этом репозитории по этой задаче. Ничего
-  постороннего в них не приписывай.
-- Каждая правка — отдельная запись в changes[], ровно один файл на запись. В поле file —
-  один путь относительно корня репозитория в том виде, в каком его печатает git. Маски
-  (\`*\`, \`?\`), скобочные раскрытия (\`dir/{a,b}.ts\`) и перечисления через \`;\` или \`,\`
-  запрещены: свёрнутая строка не совпадёт ни с одним файлом при сверке отчёта с деревом и
-  провалит прогон, даже если работа сделана честно.
-- Не чини окружение. Служебные каталоги (\`.omx/\`, \`.claude/\`, \`.codex/\`, \`.git/\`,
-  \`node_modules/\`) и чужие сессии — не твоя задача, даже если что-то из этого мешает тебе
-  работать или завершиться. Помеха идёт строкой в leftovers, а не правкой.
-- report_markdown — полный отчёт в markdown с разделами: «Что сделано», «Изменения»
-  (таблица файл / что изменилось / зачем), «Проверка» (команда и её реальный вывод),
-  «Осталось / риски».`,
+Working rules:
+- Change only what the task requires. Do not refactor adjacent code or reformat files.
+- Work strictly within the scope from the section above. Do not touch a file outside the list
+  under any circumstances — even if it blocks you, looks broken, or is a “one-line fix”. Put the
+  obstacle in leftovers. Touched files are checked against the worktree scope after the run,
+  and an out-of-scope change fails the entire run.
+- Do not commit or prepare a commit: \`git commit\`, \`git add\`, \`git stash\`, new branches and
+  tags, and any changes inside \`.git/\` are prohibited. The orchestrator performs acceptance
+  and commits; it must see your changes uncommitted. If a commit seems unavoidable, put that
+  in leftovers instead of running a command. A changed HEAD fails the run.
+- Do not leave stubs, TODOs, \`test.skip\`/\`.only\`, or unimplemented branches. If something
+  cannot be done, do not pretend it is done; list it in leftovers.
+- After making changes, run verification: ${opts.verify || 'determine the command from the project'}.
+  Put the command actually run in verify_command and whether it passed in verify_passed.
+- summary and changes describe only changes in this repository for this task. Do not include
+  anything unrelated in them.
+- Each change is a separate changes[] entry, exactly one file per entry. The file field contains
+  one repository-root-relative path exactly as git prints it. Globs (\`*\`, \`?\`), brace expansion
+  (\`dir/{a,b}.ts\`), and lists separated by \`;\` or \`,\` are prohibited: a collapsed entry will
+  match no file when the report is checked against the worktree and will fail the run even if
+  the work was done honestly.
+- Do not fix the environment. Service directories (\`.omx/\`, \`.claude/\`, \`.codex/\`, \`.git/\`,
+  \`node_modules/\`) and other sessions are not your task, even if they prevent you from working
+  or finishing. Put the obstacle in leftovers instead of changing them.
+- report_markdown is a full markdown report with sections: “What was done”, “Changes”
+  (file / what changed / why table), “Verification” (command and its actual output),
+  “Remaining work / risks”.`,
   'codex-review': (opts, scope) => `Review the changes as an independent second opinion. The author is another AI model.
 
-Область ревью: ${scope.label}
-Точный diff получи командой: ${scope.diffCommand}
-Затронутые файлы:
-${scope.files.length ? scope.files.map((f) => `- ${f}`).join('\n') : '- (пусто: git не показал изменений в этой области)'}
+Review scope: ${scope.label}
+Get the exact diff with: ${scope.diffCommand}
+Affected files:
+${scope.files.length ? scope.files.map((f) => `- ${f}`).join('\n') : '- (empty: git showed no changes in this scope)'}
 
 Priorities, in order: correctness bugs, security holes, data loss, broken error handling,
 race conditions, silently swallowed failures, unimplemented branches left as stubs.

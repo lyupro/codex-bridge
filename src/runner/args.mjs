@@ -15,7 +15,7 @@ export function die(message) {
 
 // Flags that carry no value. A value is accepted only in its explicit yes/no spellings;
 // anything else stops the run. The permissive reading this replaces — "not 0/false/no means
-// yes" — turned the prompt's own placeholder text (`--continue "<только если оркестратор дал
+// yes" — turned the prompt's own placeholder text (`--continue "<only if the orchestrator provided
 // continue>"`) into a silent opt-in, and a real run started on someone else's quota. A flag
 // whose whole point is that a human decided it must never be switched on by a leftover
 // template.

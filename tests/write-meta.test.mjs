@@ -49,21 +49,23 @@ import { makeChainRoot, makeRun } from './meta/test-fixtures.mjs';
 // substanceLength ≈ 227 — clears MIN_SINGLE_SUBSTANCE_CHARS (200), so a scout run below
 // clears the bar collect() judges it by, independent of the build mismatch check.
 const LONG_PROSE_ANSWER =
-  'Модуль читает файл построчно, разбирает поля по формату и проверяет корректность значений, прежде чем передать их дальше по конвейеру обработки данных без побочных эффектов и лишних исключений в рантайме. Отдельно описан контракт ошибок и порядок вызова зависимостей.';
+  'The module reads the file line by line, parses fields according to the format, and validates ' +
+  'values before passing them through the processing pipeline without side effects or needless ' +
+  'runtime exceptions. The error contract and dependency call order are described separately.';
 
 const build = (changes, extra = {}) => ({
-  summary: 'сделано',
+  summary: 'done',
   changes,
   verify_command: 'npm test',
   verify_passed: true,
   leftovers: [],
-  report_markdown: '# отчёт',
+  report_markdown: '# report',
   ...extra,
 });
 
 test('report matching the tree stays OK', () => {
   const dir = makeRun({
-    result: build([{ file: 'src/a.ts', what: 'правка', why: 'задача' }]),
+    result: build([{ file: 'src/a.ts', what: 'change', why: 'task' }]),
     before: '1\t0\tsrc/a.ts\n',
     after: '4\t2\tsrc/a.ts\n',
   });
@@ -74,30 +76,30 @@ test('report matching the tree stays OK', () => {
 test('service-directory work with an untouched tree fails', () => {
   // Run 2026-07-30_172914: snapshots byte-identical, changes[] pointing at .omx/.
   const dir = makeRun({
-    result: build([{ file: '.omx/state/session.json', what: 'карантин', why: 'мешал хук' }]),
+    result: build([{ file: '.omx/state/session.json', what: 'quarantine', why: 'hook interfered' }]),
     before: '1\t0\tsrc/a.ts\n',
     after: '1\t0\tsrc/a.ts\n',
   });
   const { meta } = collect(dir, 'codex-build', 0);
   assert.equal(meta.status, 'FAIL');
-  assert.match(meta.reason, /служебных каталогах/);
+  assert.match(meta.reason, /service directories/);
 });
 
 test('service-directory work while the tree moved elsewhere fails', () => {
   // Run 2026-07-30_171926: task files changed, report talks about .omx/ only.
   const dir = makeRun({
-    result: build([{ file: '.omx/state/session.json', what: 'карантин', why: 'мешал хук' }]),
+    result: build([{ file: '.omx/state/session.json', what: 'quarantine', why: 'hook interfered' }]),
     before: 'U\t5437\tpackages/agent-sdk/src/cost/spend-gateway.ts\n',
     after: 'U\t5566\tpackages/agent-sdk/src/cost/spend-gateway.ts\n',
   });
   const { meta } = collect(dir, 'codex-build', 0);
   assert.equal(meta.status, 'FAIL');
-  assert.match(meta.reason, /служебных каталогах/);
+  assert.match(meta.reason, /service directories/);
 });
 
 test('declared edits with an untouched tree fail', () => {
   const dir = makeRun({
-    result: build([{ file: 'src/a.ts', what: 'правка', why: 'задача' }]),
+    result: build([{ file: 'src/a.ts', what: 'change', why: 'task' }]),
     before: '1\t0\tsrc/a.ts\n',
     after: '1\t0\tsrc/a.ts\n',
   });
@@ -105,10 +107,10 @@ test('declared edits with an untouched tree fail', () => {
   assert.equal(meta.status, 'FAIL');
   // The run folder sits on its own with no status.json, so there is no task to look up and
   // no earlier pass to fall back on — both halves of the reason have to be said out loud.
-  assert.match(meta.reason, /прогон дерева не менял/);
-  assert.match(meta.reason, /в предыдущих заходах этой задачи заявленных файлов тоже нет/);
+  assert.match(meta.reason, /run did not change the tree/);
+  assert.match(meta.reason, /earlier runs of this task do not contain the declared files/);
   // Not an accusation: this shape is explained by how the check works, not by wrong work.
-  assert.doesNotMatch(meta.reason, /сделана не та работа/);
+  assert.doesNotMatch(meta.reason, /wrong work was done/);
   assert.equal(meta.carried_from_earlier_run, false);
 });
 
@@ -123,13 +125,13 @@ test('declared edits with an untouched tree are OK when an earlier pass made the
       at: '2026-07-31T12:00:00Z',
       before: 'U\t10\tsrc/a.ts\n',
       after: 'U\t10\tsrc/a.ts\n',
-      result: build([{ file: 'src/a.ts', what: 'правка', why: 'задача' }]),
+      result: build([{ file: 'src/a.ts', what: 'change', why: 'task' }]),
     },
   ]);
   const { meta, reply } = collect(path.join(root, 'b-second'), 'codex-build', 0);
   assert.equal(meta.status, 'OK');
   assert.equal(meta.carried_from_earlier_run, true);
-  assert.match(reply, /правки сделаны предыдущим заходом этой задачи/);
+  assert.match(reply, /changes were made by an earlier run of this task/);
 });
 
 test('a changed tree with an empty change list fails', () => {
@@ -140,7 +142,7 @@ test('a changed tree with an empty change list fails', () => {
   });
   const { meta } = collect(dir, 'codex-build', 0);
   assert.equal(meta.status, 'FAIL');
-  assert.match(meta.reason, /не называет ни одной правки/);
+  assert.match(meta.reason, /names no changes/);
 });
 
 test('nothing declared and nothing changed is a legitimate OK', () => {
@@ -152,8 +154,8 @@ test('nothing declared and nothing changed is a legitimate OK', () => {
 test('paths match across separators, ./ prefixes and absolute form', () => {
   const dir = makeRun({
     result: build([
-      { file: 'C:\\repo\\src\\a.ts', what: 'правка', why: 'задача' },
-      { file: './src/b.ts', what: 'правка', why: 'задача' },
+      { file: 'C:\\repo\\src\\a.ts', what: 'change', why: 'task' },
+      { file: './src/b.ts', what: 'change', why: 'task' },
     ]),
     before: '',
     after: 'U\t10\tsrc/a.ts\n',
@@ -164,7 +166,7 @@ test('paths match across separators, ./ prefixes and absolute form', () => {
 
 test('a file restored to its committed state counts as touched', () => {
   const dir = makeRun({
-    result: build([{ file: 'src/a.ts', what: 'откат', why: 'задача' }]),
+    result: build([{ file: 'src/a.ts', what: 'revert', why: 'task' }]),
     before: '3\t1\tsrc/a.ts\n',
     after: '',
   });
@@ -174,7 +176,7 @@ test('a file restored to its committed state counts as touched', () => {
 
 test('a red verification still outranks the mismatch check', () => {
   const dir = makeRun({
-    result: build([{ file: '.omx/state/session.json', what: 'карантин', why: 'мешал хук' }], {
+    result: build([{ file: '.omx/state/session.json', what: 'quarantine', why: 'hook interfered' }], {
       verify_passed: false,
     }),
     before: '',
@@ -182,7 +184,7 @@ test('a red verification still outranks the mismatch check', () => {
   });
   const { meta } = collect(dir, 'codex-build', 0);
   assert.equal(meta.status, 'FAIL');
-  assert.match(meta.reason, /не прошла/);
+  assert.match(meta.reason, /failed/);
 });
 
 test('a quota signal stays LIMIT rather than becoming a mismatch', () => {
@@ -199,7 +201,7 @@ test('a quota signal stays LIMIT rather than becoming a mismatch', () => {
 test('a non-zero exit stays FAIL for its own reason', () => {
   const dir = makeRun({
     log: 'ERROR: unexpected shutdown\n',
-    result: build([{ file: 'src/a.ts', what: 'правка', why: 'задача' }]),
+    result: build([{ file: 'src/a.ts', what: 'change', why: 'task' }]),
     before: '',
     after: 'U\t10\tsrc/a.ts\n',
   });
@@ -214,7 +216,7 @@ test('scout is not subject to the build mismatch check', () => {
   // substance bar on its own merits, so a scout run is judged as a scout run, not as a build
   // with a missing report.
   const dir = makeRun({
-    result: { answer: LONG_PROSE_ANSWER, findings: [], unknowns: [], report_markdown: '# отчёт' },
+    result: { answer: LONG_PROSE_ANSWER, findings: [], unknowns: [], report_markdown: '# report' },
     before: '',
     after: 'U\t10\tsrc/a.ts\n',
   });
@@ -231,7 +233,7 @@ test('a dotted repo folder does not become a hidden run folder', () => {
 
 test('review is not subject to the build mismatch check', () => {
   const dir = makeRun({
-    result: { verdict: 'approve', summary: 'ок', findings: [], next_steps: [] },
+    result: { verdict: 'approve', summary: 'ok', findings: [], next_steps: [] },
     file: 'review.json',
   });
   const { meta } = collect(dir, 'codex-review', 0);
@@ -242,7 +244,7 @@ test('review is not subject to the build mismatch check', () => {
 
 test('an edit inside the declared scope is OK', () => {
   const dir = makeRun({
-    result: build([{ file: 'packages/agent-sdk/src/x.ts', what: 'правка', why: 'задача' }]),
+    result: build([{ file: 'packages/agent-sdk/src/x.ts', what: 'change', why: 'task' }]),
     before: '',
     after: 'U\t10\tpackages/agent-sdk/src/x.ts\n',
     scope: 'packages/**\n',
@@ -253,14 +255,14 @@ test('an edit inside the declared scope is OK', () => {
 
 test('an extra file outside the scope pattern fails', () => {
   const dir = makeRun({
-    result: build([{ file: 'packages/agent-sdk/src/x.ts', what: 'правка', why: 'задача' }]),
+    result: build([{ file: 'packages/agent-sdk/src/x.ts', what: 'change', why: 'task' }]),
     before: '',
     after: 'U\t10\tpackages/agent-sdk/src/x.ts\nU\t5\t!Plans/Plan_X.md\n',
     scope: 'packages/**\n',
   });
   const { meta } = collect(dir, 'codex-build', 0);
   assert.equal(meta.status, 'FAIL');
-  assert.match(meta.reason, /правки вне объёма/);
+  assert.match(meta.reason, /out-of-scope changes/);
   assert.match(meta.reason, /!plans\/plan_x\.md/);
 });
 
@@ -269,7 +271,7 @@ test('a file the environment wrote during the run is reported, not charged to th
   // OMC alongside it. The verdict must not charge the run for it, and the reply must still
   // say it happened — a pattern that silences a path would hide a real edit next time.
   const dir = makeRun({
-    result: build([{ file: 'packages/agent-sdk/src/x.ts', what: 'правка', why: 'задача' }]),
+    result: build([{ file: 'packages/agent-sdk/src/x.ts', what: 'change', why: 'task' }]),
     before: '',
     after: 'U\t10\tpackages/agent-sdk/src/x.ts\nU\t7\t.omc/project-memory.json\n',
     scope: 'packages/**\n',
@@ -278,32 +280,32 @@ test('a file the environment wrote during the run is reported, not charged to th
   const { meta, reply } = collect(dir, 'codex-build', 0);
   assert.equal(meta.status, 'OK');
   assert.deepEqual(meta.environment_changes, ['.omc/project-memory.json']);
-  assert.match(reply, /Файлы: 1 изменено/);
-  assert.match(reply, /Среда: 1 изменено не прогоном — \.omc\/project-memory\.json/);
+  assert.match(reply, /Files: 1 changed/);
+  assert.match(reply, /Environment: 1 changed outside the run — \.omc\/project-memory\.json/);
 });
 
 test('without a recorded environment the same tree still fails, as it did before', () => {
   const dir = makeRun({
-    result: build([{ file: 'packages/agent-sdk/src/x.ts', what: 'правка', why: 'задача' }]),
+    result: build([{ file: 'packages/agent-sdk/src/x.ts', what: 'change', why: 'task' }]),
     before: '',
     after: 'U\t10\tpackages/agent-sdk/src/x.ts\nU\t7\t.omc/project-memory.json\n',
     scope: 'packages/**\n',
   });
   const { meta } = collect(dir, 'codex-build', 0);
   assert.equal(meta.status, 'FAIL');
-  assert.match(meta.reason, /правки вне объёма/);
+  assert.match(meta.reason, /out-of-scope changes/);
 });
 
 test('a pattern that explicitly allows .git/** still fails on a .git edit', () => {
   const dir = makeRun({
-    result: build([{ file: '.git/config', what: 'правка', why: 'задача' }]),
+    result: build([{ file: '.git/config', what: 'change', why: 'task' }]),
     before: '',
     after: 'U\t10\t.git/config\n',
     scope: '.git/**\n',
   });
   const { meta } = collect(dir, 'codex-build', 0);
   assert.equal(meta.status, 'FAIL');
-  assert.match(meta.reason, /правки вне объёма/);
+  assert.match(meta.reason, /out-of-scope changes/);
   assert.match(meta.reason, /\.git\/config/);
 });
 
@@ -311,7 +313,7 @@ test('a run with no scope.txt (an older run) is not scope-checked', () => {
   // Same shape as a scope violation — a second, unrelated file changed — but with no
   // scope.txt on disk the check has to stay off, exactly as it behaved before scope existed.
   const dir = makeRun({
-    result: build([{ file: 'packages/x.ts', what: 'правка', why: 'задача' }]),
+    result: build([{ file: 'packages/x.ts', what: 'change', why: 'task' }]),
     before: '',
     after: 'U\t10\tpackages/x.ts\nU\t3\trandom/other.ts\n',
   });
@@ -323,7 +325,7 @@ test('a run with no scope.txt (an older run) is not scope-checked', () => {
 
 test('a HEAD that moved during the run fails, however clean the report', () => {
   const dir = makeRun({
-    result: build([{ file: 'src/a.ts', what: 'правка', why: 'задача' }]),
+    result: build([{ file: 'src/a.ts', what: 'change', why: 'task' }]),
     before: '',
     after: 'U\t10\tsrc/a.ts\n',
     headBefore: 'abcdef1234567890\n',
@@ -331,7 +333,7 @@ test('a HEAD that moved during the run fails, however clean the report', () => {
   });
   const { meta } = collect(dir, 'codex-build', 0);
   assert.equal(meta.status, 'FAIL');
-  assert.match(meta.reason, /сделан коммит при запрете/);
+  assert.match(meta.reason, /commit made despite prohibition/);
 });
 
 test('a moved HEAD outranks a LIMIT signal in the same log', () => {
@@ -345,12 +347,12 @@ test('a moved HEAD outranks a LIMIT signal in the same log', () => {
   });
   const { meta } = collect(dir, 'codex-build', 0);
   assert.equal(meta.status, 'FAIL');
-  assert.match(meta.reason, /сделан коммит при запрете/);
+  assert.match(meta.reason, /commit made despite prohibition/);
 });
 
 test('identical HEAD before and after is not a commit violation', () => {
   const dir = makeRun({
-    result: build([{ file: 'src/a.ts', what: 'правка', why: 'задача' }]),
+    result: build([{ file: 'src/a.ts', what: 'change', why: 'task' }]),
     before: '',
     after: 'U\t10\tsrc/a.ts\n',
     headBefore: 'abcdef1234567890\n',
@@ -362,7 +364,7 @@ test('identical HEAD before and after is not a commit violation', () => {
 
 test('missing head-before/after files (an older run) is not a commit violation', () => {
   const dir = makeRun({
-    result: build([{ file: 'src/a.ts', what: 'правка', why: 'задача' }]),
+    result: build([{ file: 'src/a.ts', what: 'change', why: 'task' }]),
     before: '',
     after: 'U\t10\tsrc/a.ts\n',
   });
@@ -374,7 +376,7 @@ test('missing head-before/after files (an older run) is not a commit violation',
 
 test('collect() moves status.json to finished with the same status as meta.json', () => {
   const dir = makeRun({
-    result: build([{ file: 'src/a.ts', what: 'правка', why: 'задача' }]),
+    result: build([{ file: 'src/a.ts', what: 'change', why: 'task' }]),
     before: '',
     after: 'U\t10\tsrc/a.ts\n',
   });

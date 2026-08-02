@@ -20,7 +20,7 @@ export const git = (repo, args) =>
 /**
  * Prefix of the run folders as seen from inside the repository, or null when they live
  * outside it. ~/.claude hosts both the dispatchers and every run folder, so a run against
- * ~/.claude sees the runner's own artifacts as work: one failed with «правки вне объёма»
+ * ~/.claude sees the runner's own artifacts as work: one failed with “out-of-scope changes”
  * listing its own git-after.txt. The snapshot has to skip them — they are the measuring
  * instrument, not the measurement.
  */
@@ -74,7 +74,7 @@ const FAKE_DONE_RE =
 
 /**
  * Traces of fake completion. `git diff` carries nothing for untracked files, so a brand
- * new file full of TODOs would otherwise pass as "Флаги: нет" — the one case the check
+ * new file full of TODOs would otherwise pass as "Flags: none" — the one case the check
  * exists for.
  */
 export function findFakeDone(repo) {
@@ -86,7 +86,7 @@ export function findFakeDone(repo) {
     .split(/\r?\n/)
     .filter(Boolean)
     // Same reason as in worktreeSnapshot: inside ~/.claude the run folder is part of the
-    // worktree, and task.md spells out the very words this scans for ("не оставляй TODO,
+    // worktree, and task.md spells out the very words this scans for ("do not leave TODOs,
     // test.skip"). A run flagged itself for quoting its own instructions.
     .filter((file) => !(skip && `${file}/`.startsWith(skip)))) {
     const full = path.join(repo, file);
@@ -109,7 +109,7 @@ export function reviewScope(repo, mode) {
   if (mode.startsWith('base:')) {
     const base = mode.slice(5);
     return {
-      label: `изменения ветки против базы ${base}`,
+      label: `branch changes against base ${base}`,
       diffCommand: `git diff ${base}...HEAD`,
       files: (git(repo, ['diff', '--name-only', `${base}...HEAD`]).stdout || '')
         .split(/\r?\n/)
@@ -119,7 +119,7 @@ export function reviewScope(repo, mode) {
   if (mode.startsWith('commit:')) {
     const sha = mode.slice(7);
     return {
-      label: `коммит ${sha}`,
+      label: `commit ${sha}`,
       diffCommand: `git show ${sha}`,
       files: (git(repo, ['show', '--name-only', '--format=', sha]).stdout || '')
         .split(/\r?\n/)
@@ -127,7 +127,7 @@ export function reviewScope(repo, mode) {
     };
   }
   return {
-    label: 'незакоммиченные правки (staged, unstaged, untracked)',
+    label: 'uncommitted changes (staged, unstaged, untracked)',
     diffCommand: 'git status --porcelain && git diff HEAD',
     files: (git(repo, ['status', '--porcelain']).stdout || '')
       .split(/\r?\n/)

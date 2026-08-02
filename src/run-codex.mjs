@@ -85,8 +85,8 @@ if (invokedDirectly) {
     if (currentRun) {
       try {
         fs.appendFileSync(path.join(currentRun, 'raw.log'), `\nrun-codex crash: ${err.stack}\n`);
-        const { reply } = writeFailure(currentRun, currentAgent, `раннер Codex упал: ${err.message}`, [
-          `Лог: ${path.join(currentRun, 'raw.log')}`,
+        const { reply } = writeFailure(currentRun, currentAgent, `Codex runner crashed: ${err.message}`, [
+          `Log: ${path.join(currentRun, 'raw.log')}`,
         ]);
         emitReply(reply);
         process.exit(1);
@@ -96,8 +96,8 @@ if (invokedDirectly) {
     }
     emitReply(
       [
-        `FAIL — раннер Codex упал до создания папки прогона: ${String(err.message).replace(/\s+/g, ' ').slice(0, 150)}`,
-        'Артефактов нет, проверять нечего',
+        `FAIL — Codex runner crashed before creating the run folder: ${String(err.message).replace(/\s+/g, ' ').slice(0, 150)}`,
+        'No artifacts; nothing to inspect',
       ].join('\n'),
     );
     process.exit(1);

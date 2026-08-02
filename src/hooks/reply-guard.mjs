@@ -54,7 +54,7 @@ const MAX_FORM_BLOCKS = 3;
  * malformed replies must not spend the budget that protects a live worktree, and a live
  * worktree is not something the model can answer its way out of. Exhausting this one does
  * NOT step aside — see the stopReason path below. What went through the shared budget was
- * "Жду завершения прогона Codex... Monitor запущен в фоне. Буду ждать уведомления",
+ * "Waiting for the Codex run to finish... Monitor started in background. Awaiting notification",
  * promised over a run whose runner was already dead (counter a662d99e0c67d3a8a => 3): the
  * orchestrator got a promise from a process that no longer existed and never learned the
  * worktree was busy.
@@ -167,10 +167,10 @@ const runDir = runMatch ? runMatch[1].trim().replace(/[`"'*]+$/g, '') : null;
 
 if (!runDir || !fs.existsSync(runDir)) {
   blockForm(
-    'Контракт нарушен: в ответе нет строки RUN= с существующей папкой прогона, то есть ' +
-      'делегирование в Codex не подтверждено. Запусти run-codex.mjs и верни его stdout ' +
-      'дословно — строку RUN=<путь> и блок статуса под ней. Если прогон не состоялся, ' +
-      'доложи это статусом раннера: собственный анализ вместо Codex запрещён при любом исходе.',
+    'Contract violated: the response has no RUN= line with an existing run folder, so ' +
+      'delegation to Codex is not confirmed. Run run-codex.mjs and return its stdout ' +
+      'verbatim — the RUN=<path> line and the status block below it. If no run occurred, ' +
+      'report the runner status: your own analysis instead of Codex is prohibited in all outcomes.',
   );
 }
 
@@ -195,22 +195,22 @@ const isPidAlive = (pid) => {
  * from status.json — the operator is being told to stop, and a stop justified by guesswork
  * is a stop he learns to ignore. `fact` names the missing field instead of inventing one.
  */
-const fact = (value) => (value === undefined || value === null || value === '' ? 'не записан' : String(value));
+const fact = (value) => (value === undefined || value === null || value === '' ? 'not recorded' : String(value));
 
 const stopText = (headline, observed, runStatus) =>
   [
     headline,
-    `Прогон: слаг ${fact(runStatus?.slug)}, агент ${fact(runStatus?.agent)}, репозиторий ` +
-      `${fact(runStatus?.repo)}, старт ${fact(runStatus?.started_at)}.`,
-    `Папка прогона: ${runDir}. Состояние читать в ${path.join(runDir, 'status.json')}, вердикт ` +
-      'появится в meta.json рядом с ним.',
+    `Run: slug ${fact(runStatus?.slug)}, agent ${fact(runStatus?.agent)}, repository ` +
+      `${fact(runStatus?.repo)}, started ${fact(runStatus?.started_at)}.`,
+    `Run folder: ${runDir}. Read state from ${path.join(runDir, 'status.json')}; the verdict ` +
+      'will appear in the adjacent meta.json.',
     observed,
-    `Рабочее дерево ${fact(runStatus?.repo)} занято этим прогоном: не собирать, не запускать ` +
-      'тесты и не коммитить, пока status.json не сменит state на finished или failed. Раннер ' +
-      'снимает дерево до и после прогона и засчитает себе любые правки, сделанные в это окно.',
-    'Прогон закроется сам: раннер переживает обрыв вызова Bash и дописывает meta.json и ' +
-      'status.json без диспетчера. Дождись смены state и перечитай status.json — вердикт будет ' +
-      'там, переспрашивать диспетчера незачем.',
+    `Worktree ${fact(runStatus?.repo)} is busy with this run: do not build, test, or commit until ` +
+      'status.json changes state to finished or failed. The runner snapshots the tree before ' +
+      'and after the run and will claim any changes made during this window.',
+    'The run will close itself: the runner survives an interrupted Bash call and completes ' +
+      'meta.json and status.json without the dispatcher. Wait for state to change and reread ' +
+      'status.json — the verdict will be there; there is no need to ask the dispatcher again.',
   ].join(' ');
 
 /**
@@ -230,46 +230,47 @@ if (fs.existsSync(statusPath)) {
   if (runStatus?.state === 'running') {
     if (isPidAlive(runStatus.pid)) {
       blockState(
-        'Контракт нарушен: status.json говорит state=running и процесс ещё жив — прогон не ' +
-          'завершён, а ты уже отвечаешь. Запускай run-codex.mjs синхронно, одним вызовом Bash ' +
-          'с timeout 1800000, а не в фоне: уведомления после твоего выхода не будет, и ответ ' +
-          'до завершения прогона не подтверждён ничем.',
+        'Contract violated: status.json says state=running and the process is alive — the run is ' +
+          'not finished, but you are already responding. Run run-codex.mjs synchronously in one ' +
+          'Bash call with timeout 1800000, not in the background: no notification will arrive ' +
+          'after you exit, and a response before the run finishes is unsupported.',
         stopText(
-          `Сторож остановил сессию: диспетчер ${MAX_STATE_BLOCKS} раза отвечал поверх прогона ` +
-            'Codex, который ещё идёт.',
-          `Сейчас status.json говорит state=running, процесс pid ${fact(runStatus.pid)} жив.`,
+          `The reply guard stopped the session: the dispatcher responded ${MAX_STATE_BLOCKS} ` +
+            'times while the Codex run was still in progress.',
+          `status.json currently says state=running; process pid ${fact(runStatus.pid)} is alive.`,
           runStatus,
         ),
       );
     }
     if (!fs.existsSync(path.join(runDir, 'meta.json'))) {
       blockState(
-        'Контракт нарушен: status.json говорит state=running, но процесс с этим pid мёртв и ' +
-          'meta.json нет — прогон брошен, скорее всего вызов оборвался по таймауту в 2 минуты, ' +
-          'а честный прогон длится 20-25 минут. Повтори run-codex.mjs с timeout не меньше ' +
-          '1800000 и верни его stdout дословно.',
+        'Contract violated: status.json says state=running, but the process with this pid is dead ' +
+          'and meta.json is missing — the run is abandoned, likely because the call hit a 2-minute ' +
+          'timeout, while a genuine run takes 20-25 minutes. Repeat run-codex.mjs with timeout ' +
+          'of at least 1800000 and return its stdout verbatim.',
         stopText(
-          `Сторож остановил сессию: диспетчер ${MAX_STATE_BLOCKS} раза отвечал за прогон, ` +
-            'который он не довёл.',
-          `Сейчас status.json говорит state=running, но процесс pid ${fact(runStatus.pid)} мёртв ` +
-            'и meta.json нет: раннер убит обрывом вызова Bash. Сам Codex смерть раннера ' +
-            'переживает и правит дерево дальше — в прогоне 2026-07-31_114736 так уцелели правки ' +
-            'в 11+ файлах, при том что raw.log и meta.json не записаны вовсе.',
+          `The reply guard stopped the session: the dispatcher responded ${MAX_STATE_BLOCKS} ` +
+            'times for a run it did not complete.',
+          `status.json currently says state=running, but process pid ${fact(runStatus.pid)} is ` +
+            'dead and meta.json is missing: an interrupted Bash call killed the runner. Codex ' +
+            'survives the runner and keeps editing the tree — in run 2026-07-31_114736, changes ' +
+            'in 11+ files survived while raw.log and meta.json were never recorded.',
           runStatus,
         ),
       );
     }
   } else if (runStatus?.state === 'abandoned') {
     blockState(
-      'Контракт нарушен: status.json говорит state=abandoned — прогон брошен, скорее всего ' +
-        'вызов оборвался по таймауту в 2 минуты, а честный прогон длится 20-25 минут. Повтори ' +
-        'run-codex.mjs с timeout не меньше 1800000 и верни его stdout дословно.',
+      'Contract violated: status.json says state=abandoned — the run is abandoned, likely because ' +
+        'the call hit a 2-minute timeout, while a genuine run takes 20-25 minutes. Repeat ' +
+        'run-codex.mjs with timeout of at least 1800000 and return its stdout verbatim.',
       stopText(
-        `Сторож остановил сессию: диспетчер ${MAX_STATE_BLOCKS} раза отвечал за брошенный прогон.`,
-        `Сейчас status.json говорит state=abandoned (${fact(runStatus.abandoned_reason)}, ` +
-          `${fact(runStatus.abandoned_at)}): раннер умер, не записав вердикт. Сам Codex смерть ` +
-          'раннера переживает и правит дерево дальше — в прогоне 2026-07-31_114736 так уцелели ' +
-          'правки в 11+ файлах, при том что raw.log и meta.json не записаны вовсе.',
+        `The reply guard stopped the session: the dispatcher responded ${MAX_STATE_BLOCKS} ` +
+          'times for an abandoned run.',
+        `status.json currently says state=abandoned (${fact(runStatus.abandoned_reason)}, ` +
+          `${fact(runStatus.abandoned_at)}): the runner died without recording a verdict. Codex ` +
+          'survives the runner and keeps editing the tree — in run 2026-07-31_114736, changes in ' +
+          '11+ files survived while raw.log and meta.json were never recorded.',
         runStatus,
       ),
     );
@@ -279,8 +280,8 @@ if (fs.existsSync(statusPath)) {
 const metaPath = path.join(runDir, 'meta.json');
 if (!fs.existsSync(metaPath)) {
   blockForm(
-    `Контракт нарушен: в папке прогона ${runDir} нет meta.json, ответ ничем не подтверждён. ` +
-      'Прогони run-codex.mjs заново и верни его stdout дословно.',
+    `Contract violated: run folder ${runDir} has no meta.json; nothing supports the response. ` +
+      'Run run-codex.mjs again and return its stdout verbatim.',
   );
 }
 
@@ -294,9 +295,9 @@ try {
 const claimed = STATUSES.find((status) => new RegExp(`(^|\\n)\\s*\`*${status}\\b`).test(reply));
 if (claimed && meta.status && claimed !== meta.status) {
   blockForm(
-    `Контракт нарушен: ты доложил ${claimed}, а meta.json прогона говорит ${meta.status} ` +
-      `(${meta.reason || 'без причины'}). Статус считает раннер по артефактам — верни его вывод ` +
-      'дословно, не подменяя своим суждением.',
+    `Contract violated: you reported ${claimed}, but the run's meta.json says ${meta.status} ` +
+      `(${meta.reason || 'no reason given'}). The runner calculates status from artifacts — return ` +
+      'its output verbatim without substituting your own judgment.',
   );
 }
 

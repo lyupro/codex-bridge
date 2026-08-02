@@ -135,13 +135,13 @@ export async function launcher() {
     die(
       `--continue is required: ${
         renamed
-          ? `эта же задача уже запускалась в этом репозитории под именем «${lastSlug}»`
-          : `по задаче «${opts.slug}» в этом репозитории уже есть прогоны`
-      } (${chain.length}), последний — ${path.join(projectRunsRoot, last)}. ` +
-        'Повторный заход разрешён, но решает его оркестратор, а не раннер: он читал прошлый ' +
-        'ответ и знает, осталась ли работа. Добавь --continue, если доделываешь ту же задачу; ' +
-        'смена --slug при том же тексте задачи повтором быть не перестаёт. ' +
-        'Папка прогона не создана, квота не потрачена.',
+          ? `this task already ran in this repository under the name “${lastSlug}”`
+          : `runs for task “${opts.slug}” already exist in this repository`
+      } (${chain.length}), latest: ${path.join(projectRunsRoot, last)}. ` +
+        'A repeat run is allowed, but the orchestrator decides, not the runner: it read the ' +
+        'previous response and knows whether work remains. Add --continue if you are finishing ' +
+        'the same task; changing --slug with the same task text does not stop it being a repeat. ' +
+        'The run folder was not created; quota was not spent.',
     );
   }
 
@@ -186,8 +186,8 @@ export async function launcher() {
     const { reply } = writeFailure(
       runDir,
       opts.agent,
-      `по этому репозиторию уже идёт прогон ${busy}, два пишущих прогона в одно дерево запрещены`,
-      [`Идущий прогон: ${path.join(projectRunsRoot, busy)}`, 'Codex не запускался, квота не потрачена'],
+      `run ${busy} is already active for this repository; two writing runs in one tree are prohibited`,
+      [`Active run: ${path.join(projectRunsRoot, busy)}`, 'Codex was not started; quota was not spent'],
     );
     console.log(reply);
     process.exit(1);
@@ -223,33 +223,33 @@ export async function launcher() {
   // The extra sections carry the two things prose could not enforce: what has to be answered,
   // and what may be edited. Both also go to disk as questions.json / scope.txt, so the verdict
   // is computed from the same list Codex was handed, not from a second reading of the wording.
-  const sections = [`## Задача оператора (дословно)\n\n${taskText}`];
+  const sections = [`## Operator task (verbatim)\n\n${taskText}`];
   if (questions.length) {
     sections.push(
       [
-        '## Подвопросы, на каждый нужен отдельный ответ',
+        '## Sub-questions, each requires a separate response',
         '',
         questions.map((q) => `${q.id}: ${q.text}`).join('\n'),
         '',
-        'Пропущенный подвопрос проваливает прогон; ответ из одних координат считается пропуском.',
+        'A missed sub-question fails the run; a response containing only coordinates counts as missed.',
       ].join('\n'),
     );
   }
   if (opts.agent === 'codex-build') {
     sections.push(
       [
-        '## Объём правок (жёсткая граница)',
+        '## Scope (hard boundary)',
         '',
-        'Менять разрешено только это:',
+        'Only these may be changed:',
         opts.scopePatterns.map((p) => `- ${p}`).join('\n'),
         '',
-        'Любой файл вне списка трогать запрещено — даже если он мешает работать или выглядит',
-        'сломанным. Помеха идёт строкой в leftovers, а не правкой. Тронутое дерево сверяется',
-        'с этим списком после прогона.',
+        'Do not touch any file outside this list — even if it blocks the work or looks broken.',
+        'Put the obstacle in leftovers instead of changing the file. The touched worktree is',
+        'checked against this list after the run.',
       ].join('\n'),
     );
   }
-  sections.push(`## Инструкции для Codex\n\n${INSTRUCTIONS[opts.agent](opts, scope, questions)}`);
+  sections.push(`## Instructions for Codex\n\n${INSTRUCTIONS[opts.agent](opts, scope, questions)}`);
   fs.writeFileSync(path.join(runDir, 'task.md'), `${sections.join('\n\n')}\n`);
   fs.writeFileSync(
     path.join(runDir, 'schema.json'),
@@ -271,8 +271,8 @@ export async function launcher() {
     const { reply } = writeFailure(
       runDir,
       opts.agent,
-      `аргумент нельзя передать через cmd.exe (содержит % или "): ${unsafe}`,
-      ['Codex не запускался, квота не потрачена'],
+      `argument cannot be passed through cmd.exe (contains % or "): ${unsafe}`,
+      ['Codex was not started; quota was not spent'],
     );
     console.log(reply);
     process.exit(1);
@@ -303,8 +303,8 @@ export async function launcher() {
     cwd: repoRoot,
   });
   worker.on('error', (err) => {
-    const { reply } = writeFailure(runDir, opts.agent, `рабочий процесс прогона не запустился: ${err.message}`, [
-      'Codex не запускался, квота не потрачена',
+    const { reply } = writeFailure(runDir, opts.agent, `run worker process failed to start: ${err.message}`, [
+      'Codex was not started; quota was not spent',
     ]);
     console.log(reply);
     process.exit(1);
@@ -325,15 +325,15 @@ export async function launcher() {
   if (meta) {
     console.log(
       [
-        `${meta.status} — ${meta.reason || 'вердикт записан, ответ рабочего процесса не сохранён'}`,
-        `Прогон: ${runDir}`,
+        `${meta.status} — ${meta.reason || 'verdict recorded, worker process response not saved'}`,
+        `Run: ${runDir}`,
       ].join('\n'),
     );
     process.exit(exitCodeFor(meta.status));
   }
-  const { reply } = writeFailure(runDir, opts.agent, 'рабочий процесс прогона умер, не записав вердикт', [
-    `Лог: ${path.join(runDir, 'raw.log')}`,
-    'Правки Codex, если они были, остались в дереве — сверять по git status',
+  const { reply } = writeFailure(runDir, opts.agent, 'run worker process died without recording a verdict', [
+    `Log: ${path.join(runDir, 'raw.log')}`,
+    'Any Codex changes remain in the tree — check them with git status',
   ]);
   console.log(reply);
   process.exit(1);

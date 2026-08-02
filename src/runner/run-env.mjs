@@ -32,7 +32,7 @@ export function loadRunEnv() {
     RUN_ENV = readRunConfig();
     CLEAN_ENV = disableFlags(RUN_ENV);
   } catch (err) {
-    console.log(`FAIL — ${err.message}\nПрогон не запускался, квота не потрачена`);
+    console.log(`FAIL — ${err.message}\nRun was not started; quota was not spent`);
     process.exit(1);
   }
 }

@@ -50,8 +50,8 @@ test('an empty environment list is a decision, not a default', () => {
 });
 
 test('an environment list that is not a list of strings is an error', () => {
-  assert.throws(() => readRunConfig(tempFile('{"environmentPaths": ".omc/**"}')), /списком строк/);
-  assert.throws(() => readRunConfig(tempFile('{"environmentPaths": [1]}')), /списком строк/);
+  assert.throws(() => readRunConfig(tempFile('{"environmentPaths": ".omc/**"}')), /list of string patterns/);
+  assert.throws(() => readRunConfig(tempFile('{"environmentPaths": [1]}')), /list of string patterns/);
 });
 
 test('a switch turned on drops its --disable flag', () => {
@@ -66,17 +66,17 @@ test('a partial file leaves the unnamed key at its default', () => {
 
 test('malformed JSON stops the run instead of falling back', () => {
   const file = tempFile('{"hooks": tru');
-  assert.throws(() => readRunConfig(file), /не разбирается как JSON/);
+  assert.throws(() => readRunConfig(file), /cannot be parsed as JSON/);
 });
 
 test('an unknown key is an error, so a typo cannot pass as a setting', () => {
   const file = tempFile('{"hook": true}');
-  assert.throws(() => readRunConfig(file), /неизвестный ключ/);
+  assert.throws(() => readRunConfig(file), /unknown key/);
 });
 
 test('a non-boolean value is an error', () => {
   const file = tempFile('{"hooks": "on"}');
-  assert.throws(() => readRunConfig(file), /true или false/);
+  assert.throws(() => readRunConfig(file), /true or false/);
 });
 
 test('a written config reads back unchanged', () => {

@@ -46,7 +46,7 @@ export function runCodex(args, taskText, logPath) {
     if (written >= MAX_LOG) {
       if (!cut) {
         cut = true;
-        log.write(`\nrun-codex: лог обрезан на ${MAX_LOG} байт, дальнейший вывод не сохраняется\n`);
+        log.write(`\nrun-codex: log truncated at ${MAX_LOG} bytes; further output is not saved\n`);
       }
       return;
     }
@@ -102,9 +102,9 @@ export function requireCodex(runDir, agent) {
     { encoding: 'utf8' },
   );
   if (probe.error || probe.status !== 0) {
-    const why = (probe.stderr || probe.error?.message || 'codex --version не отвечает').trim();
-    const { reply } = writeFailure(runDir, agent, `Codex CLI недоступен: ${why}`, [
-      'Проверка оператором: codex --version (и codex login при отказе авторизации)',
+    const why = (probe.stderr || probe.error?.message || 'codex --version is not responding').trim();
+    const { reply } = writeFailure(runDir, agent, `Codex CLI unavailable: ${why}`, [
+      'Operator check: codex --version (and codex login if authorization is rejected)',
     ]);
     console.log(reply);
     process.exit(1);

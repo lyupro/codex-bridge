@@ -37,7 +37,7 @@ test('an empty task context finds no chain rather than every run in the folder',
 test('a repeat that renamed its slug is still the same task', () => {
   // 2026-08-02: a dispatcher that lost its launcher restarted the identical order as
   // `<slug>-v2`, and the slug-only lookup found no chain — 46k spent on an unasked repeat.
-  const hash = taskFingerprint('Закрепить тестами две гарантии environment.mjs.');
+  const hash = taskFingerprint('Lock down two environment.mjs guarantees with tests.');
   const root = makeChainRoot([
     { name: 'a-first', at: '2026-08-02T01:42:00Z', taskHash: hash },
     { name: 'b-renamed', at: '2026-08-02T01:45:00Z', slug: `${CHAIN_SLUG}-v2`, taskHash: hash },
@@ -49,20 +49,20 @@ test('a repeat that renamed its slug is still the same task', () => {
 
 test('a different task under the same slug is not chained by fingerprint', () => {
   const root = makeChainRoot([
-    { name: 'a-first', at: '2026-08-02T01:42:00Z', taskHash: taskFingerprint('одна задача') },
+    { name: 'a-first', at: '2026-08-02T01:42:00Z', taskHash: taskFingerprint('one task') },
   ]);
-  assert.deepEqual(chainRuns(root, CHAIN_REPO, 'other-slug', taskFingerprint('другая задача')), []);
+  assert.deepEqual(chainRuns(root, CHAIN_REPO, 'other-slug', taskFingerprint('another task')), []);
 });
 
 test('the fingerprint ignores rewrapping but not rewording', () => {
-  assert.equal(taskFingerprint('Сделай  X\n\nи Y'), taskFingerprint('сделай x и y'));
-  assert.notEqual(taskFingerprint('сделай x'), taskFingerprint('сделай z'));
+  assert.equal(taskFingerprint('Do  X\n\nand Y'), taskFingerprint('do x and y'));
+  assert.notEqual(taskFingerprint('do x'), taskFingerprint('do z'));
   assert.equal(taskFingerprint('   '), '');
 });
 
 test('runs from before the fingerprint existed still chain by slug', () => {
   const root = makeChainRoot([{ name: 'a-old', at: '2026-07-31T10:00:00Z' }]);
-  assert.deepEqual(chainRuns(root, CHAIN_REPO, CHAIN_SLUG, taskFingerprint('что угодно')), ['a-old']);
+  assert.deepEqual(chainRuns(root, CHAIN_REPO, CHAIN_SLUG, taskFingerprint('anything')), ['a-old']);
 });
 
 test('a runs root that does not exist is an empty chain, not a crash', () => {

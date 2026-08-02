@@ -29,7 +29,7 @@ export const CONFIG_PATH = path.join(HERE, 'run-config.json');
  * A run is graded by comparing the worktree either side of it, which silently assumes the
  * run is the only writer. It is not: OMC rewrites .omc/ and Claude Code rewrites its own
  * caches while Codex works, and on 2026-08-02 an honest run was failed for
- * «правки вне объёма: .omc/project-memory.json» — a file Codex never opened. These paths are
+ * “out-of-scope changes: .omc/project-memory.json” — a file Codex never opened. These paths are
  * therefore attributed to the environment rather than to the run. They are not hidden: the
  * reply and meta.json list them separately, so a run that really did edit them is still visible.
  */
@@ -66,28 +66,30 @@ export function readRunConfig(file = CONFIG_PATH) {
     parsed = JSON.parse(raw);
   } catch (err) {
     throw new Error(
-      `${file} не разбирается как JSON (${err.message}). Почини файл или удали его — без файла действует режим по умолчанию: хуки и плагины выключены.`,
+      `${file} cannot be parsed as JSON (${err.message}). Fix or delete the file — without it, ` +
+        'the default mode applies: hooks and plugins are disabled.',
     );
   }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error(`${file} должен содержать объект вида {"hooks": false, "plugins": false}`);
+    throw new Error(`${file} must contain an object like {"hooks": false, "plugins": false}`);
   }
   const config = { ...DEFAULTS };
   for (const [key, value] of Object.entries(parsed)) {
     if (!KEYS.includes(key)) {
-      throw new Error(`${file}: неизвестный ключ «${key}». Допустимы только ${KEYS.join(', ')}`);
+      throw new Error(`${file}: unknown key “${key}”. Only ${KEYS.join(', ')} are allowed`);
     }
     if (LIST_KEYS.includes(key)) {
       if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
         throw new Error(
-          `${file}: ключ «${key}» должен быть списком строк-шаблонов, а не ${JSON.stringify(value)}. Пустой список означает «среда ничего не пишет», а отсутствие ключа — умолчание.`,
+          `${file}: key “${key}” must be a list of string patterns, not ${JSON.stringify(value)}. ` +
+            'An empty list means “the environment writes nothing”; an absent key uses the default.',
         );
       }
       config[key] = value.map((item) => item.trim()).filter(Boolean);
       continue;
     }
     if (typeof value !== 'boolean') {
-      throw new Error(`${file}: ключ «${key}» должен быть true или false, а не ${JSON.stringify(value)}`);
+      throw new Error(`${file}: key “${key}” must be true or false, not ${JSON.stringify(value)}`);
     }
     config[key] = value;
   }
@@ -104,9 +106,10 @@ export const disableFlags = (config) =>
 
 const state = (config) => [
   ...SWITCH_KEYS.map(
-    (key) => `${key}: ${config[key] ? 'on — расширения оператора работают' : 'off — отключены на прогон'}`,
+    (key) => `${key}: ${config[key] ? 'on — operator extensions enabled' : 'off — disabled for the run'}`,
   ),
-  `environmentPaths: ${(config.environmentPaths || []).length} шаблонов — правки в них считаются работой среды, не прогона`,
+  `environmentPaths: ${(config.environmentPaths || []).length} patterns — changes in them are ` +
+    'treated as environment work, not run work',
 ];
 
 function main(argv) {
@@ -114,31 +117,31 @@ function main(argv) {
 
   if (!key) {
     const config = readRunConfig();
-    console.log([...state(config), `Файл: ${CONFIG_PATH}`].join('\n'));
+    console.log([...state(config), `File: ${CONFIG_PATH}`].join('\n'));
     return 0;
   }
 
   if (key === 'reset') {
     writeRunConfig({ ...DEFAULTS });
-    console.log([...state(DEFAULTS), `Сброшено к умолчанию · ${CONFIG_PATH}`].join('\n'));
+    console.log([...state(DEFAULTS), `Reset to defaults · ${CONFIG_PATH}`].join('\n'));
     return 0;
   }
 
   if (!SWITCH_KEYS.includes(key)) {
     const known = LIST_KEYS.includes(key)
-      ? `«${key}» — это список шаблонов, а не переключатель: правь его прямо в ${CONFIG_PATH}`
-      : `неизвестный переключатель «${key}». Допустимы: ${SWITCH_KEYS.join(', ')}, reset`;
+      ? `“${key}” is a pattern list, not a switch: edit it directly in ${CONFIG_PATH}`
+      : `unknown switch “${key}”. Allowed: ${SWITCH_KEYS.join(', ')}, reset`;
     console.error(`run-config: ${known}`);
     return 2;
   }
   if (value !== 'on' && value !== 'off') {
-    console.error(`run-config: значение должно быть on или off, получено «${value ?? '(пусто)'}»`);
+    console.error(`run-config: value must be on or off, received “${value ?? '(empty)'}”`);
     return 2;
   }
 
   const config = { ...readRunConfig(), [key]: value === 'on' };
   writeRunConfig(config);
-  console.log([...state(config), `Файл: ${CONFIG_PATH}`].join('\n'));
+  console.log([...state(config), `File: ${CONFIG_PATH}`].join('\n'));
   return 0;
 }
 

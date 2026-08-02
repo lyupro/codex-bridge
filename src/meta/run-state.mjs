@@ -68,7 +68,8 @@ export function markAbandoned(runsRoot) {
           // The flag exists so that base is read as unknown rather than as clean.
           tree_after: false,
           abandoned_reason:
-            'процесс раннера мёртв, meta.json не записан; состояние дерева после прогона не снято — его правки войдут в базу следующего захода',
+            'runner process is dead, meta.json was not recorded; post-run worktree state was not ' +
+              'captured — its changes will enter the baseline of the next run',
           abandoned_at: new Date().toISOString(),
         };
     try {
@@ -130,6 +131,6 @@ export function writeFailure(runDir, agent, reason, extraLines = []) {
   };
   fs.writeFileSync(path.join(runDir, 'meta.json'), `${JSON.stringify(meta, null, 2)}\n`);
   writeStatus(runDir, { state: 'failed', status: 'FAIL', finished_at: meta.finished_at });
-  const reply = [`FAIL — ${meta.reason}`, ...extraLines, `Прогон: ${runDir}`].join('\n');
+  const reply = [`FAIL — ${meta.reason}`, ...extraLines, `Run: ${runDir}`].join('\n');
   return { meta, reply };
 }

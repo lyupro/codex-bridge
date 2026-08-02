@@ -34,7 +34,7 @@ test('markAbandoned marks a dead, meta-less running run as abandoned', () => {
   assert.deepEqual(changed, [{ run: 'run1', state: 'abandoned' }]);
   const status = JSON.parse(fs.readFileSync(path.join(runDir, 'status.json'), 'utf8'));
   assert.equal(status.state, 'abandoned');
-  assert.match(status.abandoned_reason, /meta\.json не записан/);
+  assert.match(status.abandoned_reason, /meta\.json was not recorded/);
 });
 
 test('an abandoned run says its tree was never snapshotted either', () => {
@@ -50,8 +50,8 @@ test('an abandoned run says its tree was never snapshotted either', () => {
 
   const status = JSON.parse(fs.readFileSync(path.join(runDir, 'status.json'), 'utf8'));
   assert.equal(status.tree_after, false);
-  assert.match(status.abandoned_reason, /состояние дерева после прогона не снято/);
-  assert.match(status.abandoned_reason, /войдут в базу следующего захода/);
+  assert.match(status.abandoned_reason, /post-run worktree state was not captured/);
+  assert.match(status.abandoned_reason, /will enter the baseline of the next run/);
 });
 
 test('markAbandoned repairs a dead running run that already has a meta.json to finished', () => {

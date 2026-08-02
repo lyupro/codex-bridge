@@ -47,10 +47,10 @@ function scoutReply(ctx) {
   return [
     `OK — ${line(r.answer, 160)}`,
     // Only when the order had several questions: with one question the ratio is noise.
-    ...(coverage ? [`Покрытие: ${coverage}`] : []),
-    `Ключевое: ${top ? `${line(top.fact, 130)} (${line(top.where, 60)})` : 'находок не перечислено'}`,
-    `Не выяснено: ${unknowns.length ? line(unknowns.join('; '), 160) : 'нет'}`,
-    `Отчёт: ${ctx.file('report.md')} · Лог: ${ctx.file('raw.log')}`,
+    ...(coverage ? [`Coverage: ${coverage}`] : []),
+    `Key finding: ${top ? `${line(top.fact, 130)} (${line(top.where, 60)})` : 'no findings listed'}`,
+    `Unresolved: ${unknowns.length ? line(unknowns.join('; '), 160) : 'none'}`,
+    `Report: ${ctx.file('report.md')} · Log: ${ctx.file('raw.log')}`,
   ];
 }
 
@@ -59,30 +59,30 @@ function buildReply(ctx) {
   const { work: touchedPaths, environment } = runChanges(ctx.runDir);
   const paths = touchedPaths.slice(0, 3).join(', ');
   const flags = readText(path.join(ctx.runDir, 'flags.txt')).split(/\r?\n/).filter(Boolean);
-  const verify = r.verify_command ? line(r.verify_command, 60) : 'не запускалась';
+  const verify = r.verify_command ? line(r.verify_command, 60) : 'not run';
   const verdict = r.verify_command
     ? r.verify_passed === true
       ? 'pass'
       : r.verify_passed === false
         ? 'fail'
-        : 'результат не сообщён'
-    : 'н/д';
+        : 'result not reported'
+    : 'n/a';
   // A pass that changed nothing because the previous pass of the same task already did the
-  // work says so on the files line: "0 изменено" alone reads as a run that achieved nothing.
+  // work says so on the files line: "0 changed" alone reads as a run that achieved nothing.
   const files = ctx.carried
-    ? `${paths ? `${paths} · ` : ''}правки сделаны предыдущим заходом этой задачи`
-    : paths || 'рабочее дерево не тронуто';
+    ? `${paths ? `${paths} · ` : ''}changes were made by an earlier run of this task`
+    : paths || 'worktree untouched';
   return [
     `OK — ${line(r.summary, 160)}`,
-    `Файлы: ${touchedPaths.length} изменено · ${files}`,
+    `Files: ${touchedPaths.length} changed · ${files}`,
     // Only when something outside the run wrote to the tree. Subtracting those paths from the
     // verdict without naming them would hide a real edit behind a pattern.
     ...(environment.length
-      ? [`Среда: ${environment.length} изменено не прогоном — ${line(environment.slice(0, 3).join(', '), 120)}`]
+      ? [`Environment: ${environment.length} changed outside the run — ${line(environment.slice(0, 3).join(', '), 120)}`]
       : []),
-    `Проверка: ${verify} — ${verdict}`,
-    `Флаги: ${flags.length ? `${flags.length} TODO/skip — ${line(flags.slice(0, 3).join(' | '), 140)}` : 'нет'}`,
-    `Отчёт: ${ctx.file('report.md')} · Лог: ${ctx.file('raw.log')}`,
+    `Verification: ${verify} — ${verdict}`,
+    `Flags: ${flags.length ? `${flags.length} TODO/skip — ${line(flags.slice(0, 3).join(' | '), 140)}` : 'none'}`,
+    `Report: ${ctx.file('report.md')} · Log: ${ctx.file('raw.log')}`,
   ];
 }
 
@@ -94,32 +94,32 @@ function reviewReply(ctx) {
   });
   const top = (r.findings || []).find((f) => f.severity === 'critical' || f.severity === 'high');
   return [
-    `OK — вердикт ${line(r.verdict, 40)}`,
-    `Находки: critical ${counts.critical} · high ${counts.high} · medium ${counts.medium} · low ${counts.low}`,
-    `Топ: ${top ? `${top.severity} ${line(top.file, 80)}:${top.line_start} — ${line(top.title, 90)}` : 'критичных и высоких нет'}`,
-    `Отчёт: ${ctx.file(path.basename(ctx.resultPath))} · Лог: ${ctx.file('raw.log')}`,
+    `OK — verdict ${line(r.verdict, 40)}`,
+    `Findings: critical ${counts.critical} · high ${counts.high} · medium ${counts.medium} · low ${counts.low}`,
+    `Top: ${top ? `${top.severity} ${line(top.file, 80)}:${top.line_start} — ${line(top.title, 90)}` : 'no critical or high findings'}`,
+    `Report: ${ctx.file(path.basename(ctx.resultPath))} · Log: ${ctx.file('raw.log')}`,
   ];
 }
 
 export function failReply(ctx, meta) {
   return [
     `FAIL — ${line(meta.reason, 170)}`,
-    `Артефакты: raw.log ${meta.log_bytes} Б · ${path.basename(ctx.resultPath)} ${meta.result_ok ? 'заполнен' : 'пуст или отсутствует'} · exit=${meta.exit}`,
-    `Лог: ${ctx.file('raw.log')}`,
+    `Artifacts: raw.log ${meta.log_bytes} B · ${path.basename(ctx.resultPath)} ${meta.result_ok ? 'filled' : 'empty or missing'} · exit=${meta.exit}`,
+    `Log: ${ctx.file('raw.log')}`,
   ];
 }
 
 export function limitReply(ctx, meta) {
   const rows = [
-    'LIMIT — квота ChatGPT исчерпана, работа не выполнена',
-    `Сигнал: ${line(meta.reason, 170)}`,
+    'LIMIT — ChatGPT quota exhausted, work not completed',
+    `Signal: ${line(meta.reason, 170)}`,
   ];
   if (ctx.agent === 'codex-build') {
     const { work: touched } = runChanges(ctx.runDir);
     rows.push(
-      `Рабочее дерево: ${touched.length ? `есть незавершённые правки (${touched.length}), см. git-after.txt` : 'без новых изменений'}`,
+      `Worktree: ${touched.length ? `has unfinished changes (${touched.length}), see git-after.txt` : 'no new changes'}`,
     );
   }
-  rows.push(`Лог: ${ctx.file('raw.log')}`);
+  rows.push(`Log: ${ctx.file('raw.log')}`);
   return rows;
 }

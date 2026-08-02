@@ -72,9 +72,9 @@ const BUILD_SCHEMA = {
             minLength: 1,
             pattern: '^[^*?{};,\\s]+$',
             description:
-              'Ровно один путь относительно корня репозитория, в том виде, в каком его ' +
-              'печатает git (например packages/agent-sdk/src/cost/types.ts). Маски, ' +
-              'скобочные раскрытия и перечисления запрещены — на каждый файл своя запись.',
+              'Exactly one repository-root-relative path, in the form printed by git ' +
+              '(for example packages/agent-sdk/src/cost/types.ts). Globs, brace expansion, ' +
+              'and lists are prohibited — use a separate entry for each file.',
           },
           what: { type: 'string' },
           why: { type: 'string' },

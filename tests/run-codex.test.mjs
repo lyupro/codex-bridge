@@ -88,9 +88,9 @@ test('the spelled-out yes and no of --continue are both honoured', () => {
 
 test('a placeholder left in from the prompt template is not consent', () => {
   // The permissive reading this replaces — "anything but 0/false/no means yes" — turned the
-  // agent prompt's own `--continue "<только если оркестратор дал continue>"` into a silent
+  // agent prompt's own `--continue "<only if the orchestrator provided continue>"` into a silent
   // opt-in, and a repeat run started on someone else's quota. The refusal is exit code 2.
-  for (const value of ['<только если оркестратор дал continue>', 'maybe', '']) {
+  for (const value of ['<only if the orchestrator provided continue>', 'maybe', '']) {
     const { code, stderr } = parseArgsInChild(['--agent', 'codex-scout', '--continue', value]);
     assert.equal(code, 2, `--continue ${JSON.stringify(value)}`);
     assert.match(stderr, /takes no value, or one of 1\/true\/yes\/0\/false\/no/);
@@ -190,8 +190,8 @@ test('the run folders are located relative to the repository that hosts them', (
 
 test('a run does not see its own artifacts as work in the tree it measures', () => {
   // ~/.claude hosts both the dispatchers and every run folder, so a run against it snapshots
-  // its own git-after.txt and state-before.txt as edits — one such run failed with «правки
-  // вне объёма» listing nothing but the instrument it was being measured with.
+  // its own git-after.txt and state-before.txt as edits — one such run failed with “out-of-scope
+  // changes” listing nothing but the instrument it was being measured with.
   withHomeRepo((home) => {
     const repo = path.join(home, '.claude');
     const runFolder = path.join(repo, 'codex-runs', 'proj', '2026-07-31_120000_task');

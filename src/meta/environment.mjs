@@ -4,7 +4,7 @@
  * Every verdict about a build run rests on the worktree either side of it, and that
  * comparison assumes the run is the only writer. In a repository under OMC and Claude Code it
  * never is: on 2026-08-02 a run that touched exactly its three scoped files was failed for
- * «правки вне объёма: .omc/project-memory.json», written by the orchestrator's own tooling
+ * “out-of-scope changes: .omc/project-memory.json”, written by the orchestrator's own tooling
  * while Codex worked.
  *
  * The patterns are read from the run's own env.json, not from the config, so recomputing an

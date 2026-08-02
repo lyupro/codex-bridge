@@ -10,12 +10,12 @@ import { outOfScope, reportVersusWork } from '../../src/meta/verdict.mjs';
 import { makeChainRoot, CHAIN_REPO, CHAIN_SLUG } from './test-fixtures.mjs';
 
 const build = (changes, extra = {}) => ({
-  summary: 'сделано',
+  summary: 'done',
   changes,
   verify_command: 'npm test',
   verify_passed: true,
   leftovers: [],
-  report_markdown: '# отчёт',
+  report_markdown: '# report',
   ...extra,
 });
 
@@ -41,7 +41,7 @@ test('reportVersusWork agrees when the declared file is in this run own delta', 
   ]);
   const verdict = reportVersusWork(
     path.join(root, 'only'),
-    build([{ file: 'src/a.ts', what: 'правка', why: 'задача' }]),
+    build([{ file: 'src/a.ts', what: 'change', why: 'task' }]),
     chainCtx(root),
   );
   assert.deepEqual(verdict, { ok: true, carried: false, reason: null });
@@ -54,7 +54,7 @@ test('reportVersusWork carries work an earlier pass of the same task already did
   ]);
   const verdict = reportVersusWork(
     path.join(root, 'b-second'),
-    build([{ file: 'src/a.ts', what: 'правка', why: 'задача' }]),
+    build([{ file: 'src/a.ts', what: 'change', why: 'task' }]),
     chainCtx(root),
   );
   assert.deepEqual(verdict, { ok: true, carried: true, reason: null });
@@ -71,7 +71,7 @@ test('a service-directory claim fails even where the chain would vouch for the s
     ]);
     return reportVersusWork(
       path.join(root, 'b-second'),
-      build([{ file, what: 'правка', why: 'задача' }]),
+      build([{ file, what: 'change', why: 'task' }]),
       chainCtx(root),
     );
   };
@@ -80,7 +80,7 @@ test('a service-directory claim fails even where the chain would vouch for the s
 
   const service = shape('.claude/settings.json');
   assert.equal(service.ok, false);
-  assert.match(service.reason, /служебных каталогах/);
+  assert.match(service.reason, /service directories/);
 });
 
 test('reportVersusWork names both sides when neither matches the other', () => {
@@ -89,12 +89,12 @@ test('reportVersusWork names both sides when neither matches the other', () => {
   ]);
   const verdict = reportVersusWork(
     path.join(root, 'only'),
-    build([{ file: 'src/a.ts', what: 'правка', why: 'задача' }]),
+    build([{ file: 'src/a.ts', what: 'change', why: 'task' }]),
     chainCtx(root),
   );
   assert.equal(verdict.ok, false);
   assert.equal(verdict.carried, false);
-  assert.match(verdict.reason, /отчёт называет src\/a\.ts, а изменилось src\/b\.ts/);
+  assert.match(verdict.reason, /report names src\/a\.ts, but src\/b\.ts changed/);
 });
 
 test('a file the tooling wrote during the run is not work the report owes an entry for', () => {
@@ -118,7 +118,7 @@ test('a file the tooling wrote during the run is not work the report owes an ent
 
   const unrecorded = shape(undefined);
   assert.equal(unrecorded.ok, false);
-  assert.match(unrecorded.reason, /не называет ни одной правки/);
+  assert.match(unrecorded.reason, /names no changes/);
 });
 
 test('reportVersusWork fails a changed tree the report never mentions', () => {
@@ -127,5 +127,5 @@ test('reportVersusWork fails a changed tree the report never mentions', () => {
   ]);
   const verdict = reportVersusWork(path.join(root, 'only'), build([]), chainCtx(root));
   assert.equal(verdict.ok, false);
-  assert.match(verdict.reason, /не называет ни одной правки/);
+  assert.match(verdict.reason, /names no changes/);
 });
