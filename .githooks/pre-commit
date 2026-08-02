@@ -1,0 +1,5 @@
+#!/bin/sh
+# Blocks a commit that introduces (or leaves undocumented) a source file over the
+# repository's line-count limit. See scripts/check-file-size.mjs and
+# .file-size-limit.json for the rule and its documented exceptions.
+node scripts/check-file-size.mjs --error

@@ -1,0 +1,17 @@
+{
+  "maxLines": 400,
+  "mode": "error",
+  "baselineDate": "2026-08-02",
+  "include": [
+    "bin/**/*.{mjs,js,ts}",
+    "cli/**/*.{mjs,js,ts}",
+    "src/**/*.{mjs,js,ts}",
+    "tests/**/*.{mjs,js,ts}",
+    "scripts/**/*.{mjs,js,ts}"
+  ],
+  "exclude": [
+    "**/node_modules/**",
+    ".git/**"
+  ],
+  "exclusionRationale": {}
+}

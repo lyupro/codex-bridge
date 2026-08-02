@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Environment variables (tokens, keys)
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Run artifacts: data produced by the runner, never part of the package
+codex-runs/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temp files
+*.tmp
+*.bak
+
+# Agent session state (per-session, not tracked)
+**/.omc/
+.claude/settings.local.json

@@ -1,0 +1,14 @@
+* text=auto eol=lf
+
+# Shell hooks and the CLI entry point break on CRLF: git's core.autocrlf=true would hand
+# /bin/sh a script ending in ^M and the hook dies with "bad interpreter". Pinned to LF
+# regardless of the checkout platform.
+.githooks/** text eol=lf
+bin/** text eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
