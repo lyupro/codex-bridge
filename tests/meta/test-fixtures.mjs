@@ -1,0 +1,87 @@
+/**
+ * Builds the on-disk artifacts of a temporary codex run, for tests that read real files
+ * rather than mocked ones: makeRun() writes a single run directory the way collect() reads
+ * it; makeChainRoot() writes one or more passes of a task into a fresh runs root, the way
+ * chainRuns()/chainBaseline() and reportVersusWork() read them. Shared because more than
+ * one test file needs the same fixture; if a helper is only ever used by one test file it
+ * stays defined in that file instead.
+ */
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
+/** A raw.log shape collect() reads as a clean, successful run. */
+export const OK_LOG = 'model: gpt-5.6-sol\nsandbox: workspace-write\ntokens used\n104 098\n';
+
+// One task, addressed the way run-codex.mjs writes it into status.json.
+export const CHAIN_REPO = '/repo/task';
+export const CHAIN_SLUG = 'plan6-b1';
+
+/** A run directory on disk, because collect() deliberately reads artifacts, not arguments. */
+export function makeRun({
+  log = OK_LOG,
+  result,
+  before = '',
+  after = '',
+  file = 'result.json',
+  questions,
+  scope,
+  envPaths,
+  headBefore,
+  headAfter,
+} = {}) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-run-'));
+  fs.writeFileSync(path.join(dir, 'raw.log'), log);
+  if (result !== undefined) fs.writeFileSync(path.join(dir, file), JSON.stringify(result));
+  fs.writeFileSync(path.join(dir, 'state-before.txt'), before);
+  fs.writeFileSync(path.join(dir, 'state-after.txt'), after);
+  if (questions !== undefined) fs.writeFileSync(path.join(dir, 'questions.json'), JSON.stringify(questions));
+  if (scope !== undefined) fs.writeFileSync(path.join(dir, 'scope.txt'), scope);
+  if (envPaths !== undefined) {
+    fs.writeFileSync(
+      path.join(dir, 'env.json'),
+      JSON.stringify({ hooks: false, plugins: false, environmentPaths: envPaths }),
+    );
+  }
+  if (headBefore !== undefined) fs.writeFileSync(path.join(dir, 'head-before.txt'), headBefore);
+  if (headAfter !== undefined) fs.writeFileSync(path.join(dir, 'head-after.txt'), headAfter);
+  return dir;
+}
+
+/**
+ * A runs root holding several passes of one task, which is what chainRuns() reads off disk.
+ * Each entry is one pass: `at` decides the order, `repo`/`slug` override the task it belongs
+ * to, `status: null` is a folder from before status.json existed, and an absent `before` or
+ * `after` is a pass that was killed before it could snapshot the tree.
+ */
+export function makeChainRoot(runs) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-runs-'));
+  for (const run of runs) {
+    const dir = path.join(root, run.name);
+    fs.mkdirSync(dir);
+    if (run.status !== null) {
+      const status = {
+        state: 'finished',
+        agent: 'codex-build',
+        repo: run.repo ?? CHAIN_REPO,
+        slug: run.slug ?? CHAIN_SLUG,
+        started_at: run.at ?? '',
+        ...(run.taskHash === undefined ? {} : { task_hash: run.taskHash }),
+      };
+      fs.writeFileSync(path.join(dir, 'status.json'), JSON.stringify(status));
+    }
+    if (run.envPaths !== undefined) {
+      fs.writeFileSync(
+        path.join(dir, 'env.json'),
+        JSON.stringify({ hooks: false, plugins: false, environmentPaths: run.envPaths }),
+      );
+    }
+    if (run.before !== undefined) fs.writeFileSync(path.join(dir, 'state-before.txt'), run.before);
+    if (run.after !== undefined) fs.writeFileSync(path.join(dir, 'state-after.txt'), run.after);
+    if (run.result !== undefined) {
+      fs.writeFileSync(path.join(dir, 'raw.log'), OK_LOG);
+      fs.writeFileSync(path.join(dir, 'result.json'), JSON.stringify(run.result));
+    }
+  }
+  return root;
+}
