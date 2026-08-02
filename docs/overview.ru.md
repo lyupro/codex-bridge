@@ -215,9 +215,9 @@ node ~/.claude/agents/codex/run-config.mjs reset
 
 ## Документация для сопровождающих
 
-- [Жизненный цикл прогона](docs/run-lifecycle.md)
-- [Контракт `worker.json`](docs/worker-contract.md)
-- [Форматы `status.json` и `meta.json`](docs/artifact-formats.md)
-- [Порядок вычисления вердикта](docs/verdict.md)
-- [Операторские чеклисты](docs/operator-checklists.md) — сами файлы в [`docs/checklists/`](docs/checklists/)
-- [Планы пакета](docs/plans/) — почему код устроен так, что отвергнуто и какой ценой
+- [Жизненный цикл прогона](run-lifecycle.md)
+- [Контракт `worker.json`](worker-contract.md)
+- [Форматы `status.json` и `meta.json`](artifact-formats.md)
+- [Порядок вычисления вердикта](verdict.md)
+- [Операторские чеклисты](operator-checklists.md) — сами файлы в [`docs/checklists/`](checklists/)
+- [Планы пакета](plans/) — почему код устроен так, что отвергнуто и какой ценой

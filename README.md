@@ -4,10 +4,27 @@ Delegate implementation, reconnaissance and code review from Claude Code to the
 [Codex CLI](https://developers.openai.com/codex/cli), so the work runs on a Codex
 subscription instead of the Claude one.
 
-> **Status: extraction in progress.** The runner and its dispatchers already work — they
-> are being moved here from a working installation, one stage at a time. The installer
-> (`codex-bridge install`) does not exist yet, so this repository cannot be installed as a
-> package today. See `docs/plans/` for the order of the remaining stages.
+> **Status: extraction in progress.** The runner, the dispatchers and the installer work and
+> are covered by tests, but the package has not been published to npm yet and its prompts are
+> still in Russian. See `docs/plans/` for the remaining stages.
+
+## Install
+
+```bash
+npx @lyupro/codex-bridge install        # into ~/.claude          (not published yet)
+node bin/codex-bridge.mjs install       # from a clone, same thing
+node bin/codex-bridge.mjs install --scope project   # into <repo>/.claude
+node bin/codex-bridge.mjs doctor        # what is installed, where it points, is codex alive
+node bin/codex-bridge.mjs uninstall     # removes exactly what was installed
+```
+
+`install` copies the package into the host's `agents/codex/`, its slash commands into
+`commands/codex/`, and registers the stop hook in `settings.json` — **merged**, so hooks that
+are already there survive, and the file is backed up before every write. Run it twice and the
+second run does nothing. `--dry-run` prints the plan and touches nothing.
+
+`uninstall` removes only what the install recorded: a file you put in `agents/codex/` yourself
+stays, and `codex-runs/` is never touched — those are your run artifacts, not the package.
 
 ## What it gives you
 
