@@ -14,6 +14,7 @@ subscription instead of the Claude one.
 npx @lyupro/codex-bridge install        # into ~/.claude          (not published yet)
 node bin/codex-bridge.mjs install       # from a clone, same thing
 node bin/codex-bridge.mjs install --scope project   # into <repo>/.claude
+node bin/codex-bridge.mjs update        # bring an installation up to the current version
 node bin/codex-bridge.mjs doctor        # what is installed, where it points, is codex alive
 node bin/codex-bridge.mjs uninstall     # removes exactly what was installed
 ```
@@ -22,6 +23,12 @@ node bin/codex-bridge.mjs uninstall     # removes exactly what was installed
 `commands/codex/`, and registers the stop hook in `settings.json` — **merged**, so hooks that
 are already there survive, and the file is backed up before every write. Run it twice and the
 second run does nothing. `--dry-run` prints the plan and touches nothing.
+
+`update` moves an existing installation to the current version. It knows the sha256 of every file
+as it was installed, so it can tell a file you edited on the host from one left over by an older
+version: outdated files are refreshed silently, files you changed by hand stop the run and are
+named, and `--force` is what overwrites them. A file the package no longer ships is removed only
+if you never touched it.
 
 `uninstall` removes only what the install recorded: a file you put in `agents/codex/` yourself
 stays, and `codex-runs/` is never touched — those are your run artifacts, not the package.
