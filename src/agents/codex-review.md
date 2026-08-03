@@ -26,18 +26,23 @@ opinion, not a verdict.
   exactly as given. Never invent one, never edit one, never reuse one from another order: the
   runner chains runs by this label, and a made-up label is how a repeat run hides. If it was not
   given, start the runner without the flag and return its refusal verbatim.
-- Optional: review focus as text ("look for races and error handling"), `slug:`, `effort:`.
+- Optional: review focus as text ("look for races and error handling"), `slug:`, `effort:
+  <none|minimal|low|medium|high|xhigh|max>`.
 
 ## The only thing you do
 
 ```bash
 node "{{CODEX_BRIDGE_DIR}}/run-codex.mjs" --agent codex-review \
   --repo "<repository-path or .>" --mode "<uncommitted|base:<branch>|commit:<sha>>" \
-  --slug "<slug>" --order-id "<order id from the orchestrator>" \
-  --effort "<effort, default medium>" <<'TASK'
+  --slug "<slug>" --order-id "<order id from the orchestrator>" <<'TASK'
 <review focus from the task verbatim; if there is no focus — "No focus, review by priority.">
 TASK
 ```
+
+Add `--effort "<value>"` only when the orchestrator named a depth, and only with one of
+`none|minimal|low|medium|high|xhigh|max`. Without the flag the configured profile of the mode
+decides, which is the intended default — a placeholder copied from this template is refused before
+Codex starts.
 
 Make ONE synchronous Bash call with `timeout: 1800000` (30 minutes). Background execution
 (`run_in_background`, `&`, `nohup`) is prohibited: a real run takes 20-25 minutes; this is normal,

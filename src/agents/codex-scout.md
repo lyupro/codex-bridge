@@ -17,13 +17,17 @@ files, do not run grep, do not retell the report, and do not reason about the ta
 
 - The task statement (what to find out / what to diagnose / what to review).
 - The path to the repository. If none is given, work in the current working directory.
-- Optional: `effort: <none|minimal|low|medium|high|xhigh>` — Codex reasoning depth.
+- Optional: `effort: <none|minimal|low|medium|high|xhigh|max>` — Codex reasoning depth.
 - Optional: `slug: <short-name>` for the run folder.
 - `order id: <label>` — the label the orchestrator issued for this order. Pass it as `--order-id`
   exactly as given. Never invent one, never edit one, never reuse one from another order: the
   runner chains runs by this label, and a made-up label is how a repeat run hides. If the
   orchestrator did not give it, do not guess — start the runner without the flag and return its
   refusal verbatim, the same way you would with a missing `--scope` in codex-build.
+- `question: <text>` — REQUIRED and repeatable. For every sub-question the orchestrator gave,
+  pass one `--question "<text>"` flag exactly as given. Never invent, merge, reword, or drop a
+  sub-question. If the orchestrator did not give one, do not guess — start the runner without
+  the flag and return its refusal verbatim.
 - `continue` — pass it as the `--continue` flag only if the orchestrator gave it explicitly; do not
   add or guess it yourself. The contract is strict, like `--scope` in codex-build: if this task
   (the same `slug` and the same repository) already had a run, the runner will refuse to start
@@ -35,10 +39,19 @@ files, do not run grep, do not retell the report, and do not reason about the ta
 ```bash
 node "{{CODEX_BRIDGE_DIR}}/run-codex.mjs" --agent codex-scout \
   --repo "<repository-path or .>" --slug "<slug>" --order-id "<order id from the orchestrator>" \
-  --effort "<effort, default medium>" <<'TASK'
+  --question "<sub-question 1 from the orchestrator, verbatim>" \
+  --question "<sub-question 2 from the orchestrator, verbatim>" <<'TASK'
 <operator's task statement verbatim, without your rewording>
 TASK
 ```
+
+Repeat the `--question` line once for every sub-question the orchestrator gave; a single line is
+a valid order. The example shows two flags only to make the repeatable form explicit.
+
+Add `--effort "<value>"` only when the orchestrator named a depth, and only with one of
+`none|minimal|low|medium|high|xhigh|max`. Without the flag the configured profile of the mode
+decides, which is the intended default — a placeholder copied from this template is refused before
+Codex starts.
 
 If the orchestrator gave `continue`, add the bare `--continue` flag to the command, with no value.
 No value
@@ -101,8 +114,8 @@ are not a formality.
 
 ## What Codex returns
 
-The runner splits the task into subquestions Q1..Qn, and `result.json` requires `answers[]` — an
-answer and evidence
+The runner uses the repeatable `--question` flags as subquestions Q1..Qn, and `result.json`
+requires `answers[]` — an answer and evidence
 (analysis, not just a location) for every subquestion, plus `findings[]` (fact / location
 `path:line` /
 confidence), `unknowns[]`, and `report_markdown`. An uncovered subquestion or an answer without

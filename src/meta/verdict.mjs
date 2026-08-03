@@ -189,9 +189,10 @@ const answersById = (result) => {
 };
 
 /**
- * Why a scout run is not done. Coverage is checked against questions.json when the order had
- * several questions; otherwise the single answer has to carry the analysis by itself. Every
- * branch here exists because a schema alone accepted the run that answered in coordinates.
+ * Why a scout run is not done. Coverage is checked against the orchestrator's questions.json,
+ * including a one-question order. Runs from before that artifact existed retain the legacy
+ * single-answer check. Every branch here exists because a schema alone accepted the run that
+ * answered in coordinates.
  */
 function scoutCoverageGap(runDir, result) {
   const questions = questionsOf(runDir);
@@ -227,7 +228,7 @@ function scoutCoverageGap(runDir, result) {
   return null;
 }
 
-/** `6/6 sub-questions`, or null when the order asked one question and coverage means nothing. */
+/** `1/1 sub-questions`, or null for legacy runs with no questions.json artifact. */
 export function scoutCoverage(runDir, result) {
   const questions = questionsOf(runDir);
   if (!questions.length) return null;
@@ -306,7 +307,7 @@ export function resolveStatus({ log, logBytes, resultOk, exit, agent, result, ru
     };
   }
   // Answers that never arrived, or arrived as coordinates. Scout-only, and per-question
-  // only when the order asked several questions — see scoutCoverageGap().
+  // only when questions.json is absent — see scoutCoverageGap().
   if (agent === 'codex-scout') {
     const gap = scoutCoverageGap(runDir, result);
     if (gap) return { status: 'FAIL', reason: gap };

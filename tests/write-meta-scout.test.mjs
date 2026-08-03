@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Guards the write-meta.mjs facade on its scout axis: parseQuestions() splitting an order
- * into sub-questions, and collect() grading a codex-scout run's coverage of them.
+ * Guards the write-meta.mjs facade on its scout axis: explicit orchestrator questions and
+ * collect() grading a codex-scout run's coverage of them.
  *   node --test agents/codex/write-meta-scout.test.mjs
  *
  * Split out of write-meta.test.mjs (which still guards collect()'s build/review verdicts)
@@ -10,8 +10,22 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { collect, parseQuestions } from '../src/write-meta.mjs';
+import { spawnSync } from 'node:child_process';
+import { collect } from '../src/write-meta.mjs';
+import { questionsFromFlags } from '../src/runner/launcher.mjs';
 import { makeRun } from './meta/test-fixtures.mjs';
+
+const RUN_CODEX = new URL('../src/run-codex.mjs', import.meta.url).href;
+
+function parseArgsInChild(argv) {
+  const source = `import { parseArgs } from ${JSON.stringify(RUN_CODEX)};
+process.stdout.write(JSON.stringify(parseArgs(JSON.parse(process.env.CODEX_TEST_ARGV))));`;
+  const out = spawnSync(process.execPath, ['--input-type=module', '-e', source], {
+    encoding: 'utf8',
+    env: { ...process.env, CODEX_TEST_ARGV: JSON.stringify(argv) },
+  });
+  return { code: out.status, stderr: out.stderr || '', opts: out.stdout ? JSON.parse(out.stdout) : null };
+}
 
 // substanceLength('reply') = 5, well under MIN_SINGLE_SUBSTANCE_CHARS (200).
 const THIN_ANSWER = 'reply';
@@ -29,57 +43,35 @@ const LONG_PROSE_ANSWER =
 // check exists to catch.
 const COORDINATES_ONLY = 'packages/x/src/source.ts:60-79, registry.ts:14';
 
-// --- parseQuestions ----------------------------------------------------------------
+// --- explicit scout questions --------------------------------------------------------
 
-test('six numbered sub-questions of a real order parse into Q1..Q6', () => {
-  const taskText = `Investigate Codex runs:
-1. What does parseQuestions do?
-2. How is outOfScope computed for service directories?
-3. What happens when questions.json is missing?
-4) How does markAbandoned handle a dead pid?
-5) What does activeRun return for different agents?
-6. How is a commit during the run handled?
-Thank you.`;
-  const questions = parseQuestions(taskText);
-  assert.deepEqual(
-    questions.map((q) => q.id),
-    ['Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'Q6'],
-  );
-  assert.equal(questions[0].text, 'What does parseQuestions do?');
-  assert.equal(questions[5].text, 'How is a commit during the run handled?');
+test('codex-scout refuses before launch without --question', () => {
+  const { code, stderr } = parseArgsInChild([
+    '--agent',
+    'codex-scout',
+    '--order-id',
+    'ord-1',
+  ]);
+  assert.equal(code, 2);
+  assert.match(stderr, /--question is required/);
 });
 
-test('a block of six bulleted spec links is not six questions', () => {
-  const taskText = `- spec: path.ts:12
-- spec: path2.ts:20
-- spec: path3.ts:30
-- spec: path4.ts:40
-- spec: path5.ts:50
-- spec: path6.ts:60`;
-  assert.deepEqual(parseQuestions(taskText), []);
-});
-
-test('a single question falls back to single-question mode', () => {
-  assert.deepEqual(parseQuestions('How does cache invalidation work?'), []);
-});
-
-test('a repeated question is deduped rather than counted twice', () => {
-  const taskText = `1. What does function X do?
-2. What does function X do?
-3. How does Y work?`;
-  const questions = parseQuestions(taskText);
-  assert.deepEqual(
-    questions.map((q) => q.text),
-    ['What does function X do?', 'How does Y work?'],
-  );
-});
-
-test('an oversized question is cut to 300 characters', () => {
-  const longText = 'a'.repeat(350);
-  const taskText = `1. ${longText}\n2. Short question?`;
-  const questions = parseQuestions(taskText);
-  assert.equal(questions[0].text.length, 300);
-  assert.equal(questions[0].text, longText.slice(0, 300));
+test('repeatable flags build questions.json entries in the given order', () => {
+  const { code, opts } = parseArgsInChild([
+    '--agent',
+    'codex-scout',
+    '--order-id',
+    'ord-1',
+    '--question',
+    'First wording is preserved.',
+    '--question',
+    'Second wording is preserved exactly.',
+  ]);
+  assert.equal(code, 0);
+  assert.deepEqual(questionsFromFlags(opts.questions), [
+    { id: 'Q1', text: 'First wording is preserved.' },
+    { id: 'Q2', text: 'Second wording is preserved exactly.' },
+  ]);
 });
 
 // --- scout coverage against questions.json ------------------------------------------
@@ -98,6 +90,42 @@ test('a fully covered order is OK and reports 6/6 in the reply', () => {
   const { meta, reply } = collect(dir, 'codex-scout', 0);
   assert.equal(meta.status, 'OK');
   assert.match(reply, /Coverage: 6\/6 sub-questions/);
+});
+
+test('a single explicit question is graded and reports 1/1 in the reply', () => {
+  const questions = [{ id: 'Q1', text: 'Describe the mechanism.' }];
+  const dir = makeRun({
+    result: {
+      answer: 'Summary of the mechanism.',
+      answers: [{ question_id: 'Q1', answer: PROSE_ANSWER, evidence: ['src/mechanism.mjs:1'] }],
+      findings: [],
+      unknowns: [],
+      report_markdown: '# report',
+    },
+    questions,
+  });
+  const { meta, reply } = collect(dir, 'codex-scout', 0);
+  assert.equal(meta.status, 'OK');
+  assert.match(reply, /Coverage: 1\/1 sub-questions/);
+});
+
+test('coverage counts only the explicit questions', () => {
+  const questions = [
+    { id: 'Q1', text: 'First flag, even without a question mark' },
+    { id: 'Q2', text: 'Second flag, also imperative' },
+  ];
+  const answers = [
+    { question_id: 'Q1', answer: PROSE_ANSWER, evidence: ['src/one.mjs:1'] },
+    { question_id: 'Q2', answer: PROSE_ANSWER, evidence: ['src/two.mjs:1'] },
+    { question_id: 'Q99', answer: PROSE_ANSWER, evidence: ['src/extra.mjs:1'] },
+  ];
+  const dir = makeRun({
+    result: { answer: 'Summary', answers, findings: [], unknowns: [], report_markdown: '# report' },
+    questions,
+  });
+  const { meta, reply } = collect(dir, 'codex-scout', 0);
+  assert.equal(meta.status, 'OK');
+  assert.match(reply, /Coverage: 2\/2 sub-questions/);
 });
 
 test('skipping two sub-questions fails and names them', () => {
@@ -132,6 +160,22 @@ test('a table of coordinates instead of a breakdown fails per question', () => {
   assert.match(meta.reason, /coordinates without analysis/);
 });
 
+test('a single coordinate-only answer still fails the analysis check', () => {
+  const dir = makeRun({
+    result: {
+      answer: 'Summary',
+      answers: [{ question_id: 'Q1', answer: COORDINATES_ONLY, evidence: ['src/source.mjs:60'] }],
+      findings: [],
+      unknowns: [],
+      report_markdown: '# report',
+    },
+    questions: [{ id: 'Q1', text: 'Where is the source?' }],
+  });
+  const { meta } = collect(dir, 'codex-scout', 0);
+  assert.equal(meta.status, 'FAIL');
+  assert.match(meta.reason, /coordinates without analysis/);
+});
+
 test('an answer with no evidence at all fails, even with real prose', () => {
   const questions = [
     { id: 'Q1', text: 'How does X work?' },
@@ -148,6 +192,23 @@ test('an answer with no evidence at all fails, even with real prose', () => {
   const { meta } = collect(dir, 'codex-scout', 0);
   assert.equal(meta.status, 'FAIL');
   assert.match(meta.reason, /responses without a single code reference/);
+});
+
+test('an unanswered explicit question fails the run', () => {
+  const dir = makeRun({
+    result: {
+      answer: 'Summary',
+      answers: [],
+      findings: [],
+      unknowns: [],
+      report_markdown: '# report',
+    },
+    questions: [{ id: 'Q1', text: 'This question was not answered.' }],
+  });
+  const { meta } = collect(dir, 'codex-scout', 0);
+  assert.equal(meta.status, 'FAIL');
+  assert.match(meta.reason, /scout did not answer 1 sub-questions/);
+  assert.match(meta.reason, /Q1/);
 });
 
 test('single-question mode fails a short answer', () => {

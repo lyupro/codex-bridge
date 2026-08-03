@@ -62,6 +62,7 @@ const MODEL_KEYS = ['scout', 'build', 'review'];
  * fallback depth the dispatcher happens to pass.
  */
 const PROFILE_KEYS = ['model', 'effort'];
+export const ALLOWED_EFFORTS = Object.freeze(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
 const KEYS = [...SWITCH_KEYS, ...LIST_KEYS, ...OBJECT_KEYS];
 
 export function readRunConfig(file = CONFIG_PATH) {
@@ -132,10 +133,27 @@ export function readRunConfig(file = CONFIG_PATH) {
             );
           }
           const trimmed = fieldValue.trim();
-          if (trimmed) resolved[field] = trimmed;
+          // A field written as an empty string is a mistake, not an absence: dropping it silently
+          // would send the run to another profile's depth past every check below.
+          if (!trimmed) {
+            throw new Error(
+              `${file}: key “${key}.${mode}.${field}” is empty; remove the field to fall back, ` +
+                'or give it a value',
+            );
+          }
+          resolved[field] = trimmed;
         }
         if (resolved.effort && /\s/.test(resolved.effort)) {
-          throw new Error(`${file}: key “${key}.${mode}.effort” must be a single word`);
+          throw new Error(
+            `${file}: key “${key}.${mode}.effort” must be a single word; ` +
+              `allowed values: ${ALLOWED_EFFORTS.join(', ')}`,
+          );
+        }
+        if (resolved.effort && !ALLOWED_EFFORTS.includes(resolved.effort)) {
+          throw new Error(
+            `${file}: key “${key}.${mode}.effort” must be one of: ` +
+              `${ALLOWED_EFFORTS.join(', ')}; got ${JSON.stringify(resolved.effort)}`,
+          );
         }
         if (Object.keys(resolved).length) models[mode] = resolved;
       }

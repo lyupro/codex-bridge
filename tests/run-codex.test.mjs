@@ -72,6 +72,7 @@ process.stdout.write('imported');`;
 // Every run carries the order label the orchestrator issued, so these cases spell it out
 // rather than testing the --order-id refusal by accident; that refusal has its own cases below.
 const ORDER = ['--order-id', 'ord-1'];
+const SCOUT_QUESTION = ['--question', 'Describe the current implementation.'];
 
 test('parseArgs refuses a run with no order label', () => {
   // The label is what caught the two self-restarts of this project: a dispatcher that renames
@@ -86,25 +87,58 @@ test('parseArgs refuses a run with no order label', () => {
 });
 
 test('the order label is stored trimmed', () => {
-  const { code, opts } = parseArgsInChild(['--agent', 'codex-scout', '--order-id', '  order-42  ']);
+  const { code, opts } = parseArgsInChild([
+    '--agent',
+    'codex-scout',
+    '--order-id',
+    '  order-42  ',
+    ...SCOUT_QUESTION,
+  ]);
   assert.equal(code, 0);
   assert.equal(opts.orderId, 'order-42');
 });
 
+test('a flag name in place of a value is a missing value, not a value', () => {
+  // `--question --continue` recorded `--continue` as the sub-question and satisfied every later
+  // check: the run then graded itself against a question nobody asked.
+  for (const argv of [
+    ['--agent', 'codex-scout', ...ORDER, '--question', '--continue'],
+    ['--agent', 'codex-scout', ...ORDER, ...SCOUT_QUESTION, '--slug', '--continue'],
+  ]) {
+    const { code, stderr } = parseArgsInChild(argv);
+    assert.equal(code, 2, JSON.stringify(argv));
+    assert.match(stderr, /missing value/);
+  }
+});
+
 test('--continue with no value is consent', () => {
-  const { code, opts } = parseArgsInChild(['--agent', 'codex-scout', ...ORDER, '--continue']);
+  const { code, opts } = parseArgsInChild(['--agent', 'codex-scout', ...ORDER, ...SCOUT_QUESTION, '--continue']);
   assert.equal(code, 0);
   assert.equal(opts.continue, true);
 });
 
 test('the spelled-out yes and no of --continue are both honoured', () => {
   for (const value of ['1', 'true', 'yes']) {
-    const { code, opts } = parseArgsInChild(['--agent', 'codex-scout', ...ORDER, '--continue', value]);
+    const { code, opts } = parseArgsInChild([
+      '--agent',
+      'codex-scout',
+      ...ORDER,
+      ...SCOUT_QUESTION,
+      '--continue',
+      value,
+    ]);
     assert.equal(code, 0, `--continue ${value}`);
     assert.equal(opts.continue, true, `--continue ${value}`);
   }
   for (const value of ['0', 'false', 'no']) {
-    const { code, opts } = parseArgsInChild(['--agent', 'codex-scout', ...ORDER, '--continue', value]);
+    const { code, opts } = parseArgsInChild([
+      '--agent',
+      'codex-scout',
+      ...ORDER,
+      ...SCOUT_QUESTION,
+      '--continue',
+      value,
+    ]);
     assert.equal(code, 0, `--continue ${value}`);
     assert.equal(opts.continue, false, `--continue ${value}`);
   }
@@ -115,7 +149,14 @@ test('a placeholder left in from the prompt template is not consent', () => {
   // agent prompt's own `--continue "<only if the orchestrator provided continue>"` into a silent
   // opt-in, and a repeat run started on someone else's quota. The refusal is exit code 2.
   for (const value of ['<only if the orchestrator provided continue>', 'maybe', '']) {
-    const { code, stderr } = parseArgsInChild(['--agent', 'codex-scout', ...ORDER, '--continue', value]);
+    const { code, stderr } = parseArgsInChild([
+      '--agent',
+      'codex-scout',
+      ...ORDER,
+      ...SCOUT_QUESTION,
+      '--continue',
+      value,
+    ]);
     assert.equal(code, 2, `--continue ${JSON.stringify(value)}`);
     assert.match(stderr, /takes no value, or one of 1\/true\/yes\/0\/false\/no/);
   }
@@ -126,6 +167,7 @@ test('--continue does not swallow the flag that follows it', () => {
     '--agent',
     'codex-scout',
     ...ORDER,
+    ...SCOUT_QUESTION,
     '--continue',
     '--scope',
     'src/**',
@@ -133,6 +175,20 @@ test('--continue does not swallow the flag that follows it', () => {
   assert.equal(code, 0);
   assert.equal(opts.continue, true);
   assert.equal(opts.scope, 'src/**');
+});
+
+test('parseArgs refuses an unsupported effort before launch', () => {
+  const { code, stderr } = parseArgsInChild([
+    '--agent',
+    'codex-scout',
+    ...ORDER,
+    ...SCOUT_QUESTION,
+    '--effort',
+    'large',
+  ]);
+  assert.equal(code, 2);
+  assert.match(stderr, /--effort must be one of/);
+  assert.match(stderr, /none.*minimal.*low.*medium.*high.*xhigh.*max/);
 });
 
 // The prompts also say not to delegate, and prompts are what a dispatcher already ignored twice

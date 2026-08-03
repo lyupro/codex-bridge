@@ -17,7 +17,6 @@ import { fileURLToPath } from 'node:url';
 import {
   exitCodeFor,
   writeFailure,
-  parseQuestions,
   writeStatus,
   markAbandoned,
   abandonedBranchDrift,
@@ -47,6 +46,9 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  * below is the CLI entry one level up — not this module, which has no command line of its own.
  */
 const RUNNER_ENTRY = fileURLToPath(new URL('../run-codex.mjs', import.meta.url));
+
+export const questionsFromFlags = (questionTexts = []) =>
+  questionTexts.map((text, i) => ({ id: `Q${i + 1}`, text }));
 
 const readJsonFile = (file) => {
   try {
@@ -215,11 +217,11 @@ export async function launcher() {
     );
   }
 
-  // The sub-questions this run will be graded against, extracted exactly the way write-meta
-  // reads them back. Fewer than two means the order is one question, and grading falls back
-  // to demanding one substantial answer instead of per-question coverage.
-  const questions = opts.agent === 'codex-scout' ? parseQuestions(taskText) : [];
-  if (questions.length) {
+  // The sub-questions this run will be graded against come only from the orchestrator's
+  // repeatable flags. They are written before the task is assembled so the prompt and verdict
+  // read the same ordered list, including a valid one-question order.
+  const questions = opts.agent === 'codex-scout' ? questionsFromFlags(opts.questions) : [];
+  if (opts.agent === 'codex-scout') {
     fs.writeFileSync(path.join(runDir, 'questions.json'), `${JSON.stringify(questions, null, 2)}\n`);
   }
 

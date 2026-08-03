@@ -64,9 +64,12 @@ test('a depth without a model is a valid profile: the depth is the decision', ()
   assert.deepEqual(readRunConfig(file).models, { build: { effort: 'max' } });
 });
 
-test('an empty profile stays unset rather than pinning empty strings', () => {
+test('an empty profile field is refused instead of passing as unset', () => {
+  // It used to read as “not configured”, which walked the value past the allowed-values check
+  // and sent the run to whatever depth the fallback chose. A written key is an intent, and an
+  // empty one is a typo worth naming.
   const file = tempFile('{"models": {"build": {"model": "  ", "effort": ""}}}');
-  assert.deepEqual(readRunConfig(file).models, {});
+  assert.throws(() => readRunConfig(file), /models\.build\.model.*is empty/);
 });
 
 test('an absent models key leaves model choice to Codex', () => {
@@ -95,6 +98,14 @@ test('models must be known modes holding profiles of known string fields', () =>
     () => readRunConfig(tempFile('{"models": {"build": {"effort": "very high"}}}')),
     /effort.*single word/,
   );
+  assert.throws(
+    () => readRunConfig(tempFile('{"models": {"build": {"effort": "large"}}}')),
+    /effort.*one of:.*none.*minimal.*low.*medium.*high.*xhigh.*max/,
+  );
+  // An empty field used to be dropped as if it had never been written, which walked the run past
+  // the whitelist above and into another profile's depth.
+  assert.throws(() => readRunConfig(tempFile('{"models": {"build": {"effort": "  "}}}')), /effort.*is empty/);
+  assert.throws(() => readRunConfig(tempFile('{"models": {"scout": {"model": ""}}}')), /model.*is empty/);
 });
 
 test('an environment list that is not a list of strings is an error', () => {

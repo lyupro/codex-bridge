@@ -10,14 +10,14 @@
  * `.omx/state/session.json` instead of doing the job; the chain case is 2026-07-31, where
  * a second pass of one task was failed for work its first pass had already finished.
  *
- * collect()'s scout axis (parseQuestions, coverage against questions.json) lives in
+ * collect()'s scout axis (explicit orchestrator questions, coverage against questions.json) lives in
  * write-meta-scout.test.mjs, and its git-state axis (the commit and the branch either side
  * of a build run) in write-meta-git-state.test.mjs — the same facade, split by subject once
  * this file outgrew the 400-line limit.
  * Unit coverage of the modules collect() delegates to lives beside each module instead:
  * meta/paths.test.mjs, meta/chain.test.mjs, meta/run-state.test.mjs, meta/verdict.test.mjs.
  *
- * The import below deliberately names all 16 public exports of write-meta.mjs, not just
+ * The import below deliberately names all public exports of write-meta.mjs, not just
  * the ones this file's own tests call — an ESM import fails loudly at load time if the
  * facade stops re-exporting one of them, which is what makes this list itself a standing
  * check that the facade's public surface survives a refactor.
@@ -32,7 +32,6 @@ import path from 'node:path';
 import {
   collect,
   projectFolder,
-  parseQuestions,
   exitCodeFor,
   AGENTS,
   globToRegExp,

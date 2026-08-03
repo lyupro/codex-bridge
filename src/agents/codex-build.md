@@ -38,8 +38,8 @@ job is to report the run status honestly, including failure.
   `--continue` — before
   starting Codex, so no quota is spent. The orchestrator decides on a repeat run; your job is to
   pass the flag if given and return the runner's refusal exactly if it is absent.
-- Optional: `effort:`, `slug:`, `verify: <verification command>` (for example `npm test`,
-  `tsc --noEmit`).
+- Optional: `effort: <none|minimal|low|medium|high|xhigh|max>`, `slug:`, `verify: <verification
+  command>` (for example `npm test`, `tsc --noEmit`).
 
 ## The only thing you do
 
@@ -47,10 +47,15 @@ job is to report the run status honestly, including failure.
 node "{{CODEX_BRIDGE_DIR}}/run-codex.mjs" --agent codex-build \
   --repo "<repository-path or .>" --scope "<glob,glob from input>" --slug "<slug>" \
   --order-id "<order id from the orchestrator>" \
-  --effort "<effort, default medium>" --verify "<verification command, if given>" <<'TASK'
+  --verify "<verification command, if given>" <<'TASK'
 <operator's task statement together with the completion criteria, verbatim>
 TASK
 ```
+
+Add `--effort "<value>"` only when the orchestrator named a depth, and only with one of
+`none|minimal|low|medium|high|xhigh|max`. Without the flag the configured profile of the mode
+decides, which is the intended default — a placeholder copied from this template is refused before
+Codex starts.
 
 If the orchestrator gave `continue`, add the bare `--continue` flag to the command, with no value.
 No value

@@ -34,41 +34,6 @@ export { abandonedBranchDrift, activeRun, markAbandoned, writeFailure } from './
 export { outOfScope, reportVersusWork } from './meta/verdict.mjs';
 export { AGENTS, writeStatus };
 
-const BULLET_RE = /^\s*[-*]\s+/;
-const NUMBERED_RE = /^\s*\d{1,2}[.)]\s+(.+)$/;
-
-/**
- * The sub-questions an order actually asks. A scout run is graded against them, so they
- * have to be extracted the same way every time instead of living in the wording: one run
- * answered six numbered questions with a single table of coordinates, and nothing in the
- * artifacts could tell that five of them were never addressed.
- *
- * Numbered top-level items and lines ending in `?` count. Bulleted lines deliberately do
- * not: in real orders they carry links to specs, file lists and constraints, and a parser
- * that took them for questions would drown in them.
- *
- * Fewer than two hits means the order is one question — the whole task — and grading falls
- * back to demanding one substantial answer rather than per-question coverage.
- */
-export function parseQuestions(taskText) {
-  const found = [];
-  const seen = new Set();
-  for (const raw of String(taskText ?? '').split(/\r?\n/)) {
-    if (BULLET_RE.test(raw)) continue;
-    const trimmed = raw.trim();
-    if (!trimmed) continue;
-    const numbered = raw.match(NUMBERED_RE);
-    const text = numbered ? numbered[1].trim() : trimmed.endsWith('?') ? trimmed : '';
-    if (!text) continue;
-    const key = text.toLowerCase().replace(/\s+/g, ' ');
-    if (seen.has(key)) continue;
-    seen.add(key);
-    found.push(text.slice(0, 300));
-  }
-  if (found.length < 2) return [];
-  return found.map((text, i) => ({ id: `Q${i + 1}`, text }));
-}
-
 /**
  * Folder name a repository gets inside codex-runs. A repo whose own folder starts with a
  * dot (~/.claude, ~/.omc) would otherwise produce a hidden run folder that plain `ls` does

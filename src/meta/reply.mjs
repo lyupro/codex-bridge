@@ -46,7 +46,7 @@ function scoutReply(ctx) {
   const coverage = scoutCoverage(ctx.runDir, r);
   return [
     `OK — ${line(r.answer, 160)}`,
-    // Only when the order had several questions: with one question the ratio is noise.
+    // Any explicit question gets a coverage line, including a valid one-question order.
     ...(coverage ? [`Coverage: ${coverage}`] : []),
     `Key finding: ${top ? `${line(top.fact, 130)} (${line(top.where, 60)})` : 'no findings listed'}`,
     `Unresolved: ${unknowns.length ? line(unknowns.join('; '), 160) : 'none'}`,

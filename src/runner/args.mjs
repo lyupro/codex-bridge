@@ -7,6 +7,7 @@
  */
 import path from 'node:path';
 import { AGENTS } from '../write-meta.mjs';
+import { ALLOWED_EFFORTS } from '../run-config.mjs';
 
 export function die(message) {
   console.error(`run-codex: ${message}`);
@@ -20,6 +21,7 @@ export function die(message) {
 // whose whole point is that a human decided it must never be switched on by a leftover
 // template.
 const BOOLEAN_FLAGS = new Set(['continue']);
+const REPEATABLE_FLAGS = new Set(['question']);
 const BOOLEAN_YES = /^(1|true|yes)$/i;
 const BOOLEAN_NO = /^(0|false|no)$/i;
 
@@ -45,7 +47,15 @@ export function parseArgs(argv) {
       }
       continue;
     }
-    if (value === undefined) die(`missing value for ${key}`);
+    // A flag name where a value belongs means the value was left out: `--question --continue`
+    // otherwise records `--continue` as the question and passes every later check.
+    if (value === undefined || value.startsWith('--')) die(`missing value for ${key}`);
+    if (REPEATABLE_FLAGS.has(name)) {
+      if (!opts.questions) opts.questions = [];
+      opts.questions.push(value);
+      i += 1;
+      continue;
+    }
     opts[name] = value;
     i += 1;
   }
@@ -59,13 +69,26 @@ export function parseArgs(argv) {
         'the installed dispatcher prompts are stale and need npm run dev:install (local dev) or codex-bridge update.',
     );
   }
-  // Effort levels are the provider's vocabulary and it changes: `minimal` was accepted
-  // until the default model dropped it, `max` appeared. So the value is passed through
-  // as given; an unsupported one comes back as a 400 in the log and becomes a FAIL with
-  // the exact list Codex accepts. A whitelist here would only go stale.
+  if (opts.agent === 'codex-scout') {
+    if (!opts.questions?.length) {
+      die(
+        '--question is required for codex-scout: repeat it once for every sub-question the orchestrator gave. ' +
+          'The runner will not infer questions from the task text; no quota was spent.',
+      );
+    }
+    if (opts.questions.some((question) => !String(question).trim())) {
+      die('--question must not be empty for codex-scout; no quota was spent');
+    }
+  }
+  const allowedEfforts = ALLOWED_EFFORTS.join(', ');
   // Left unset when not given, rather than defaulted here: the mode's configured profile is
   // what fills the gap, and a default applied this early would always win over it.
-  if (opts.effort !== undefined && /\s/.test(opts.effort)) die('--effort must be a single word');
+  if (opts.effort !== undefined && /\s/.test(opts.effort)) {
+    die(`--effort must be a single word; allowed values: ${allowedEfforts}`);
+  }
+  if (opts.effort !== undefined && !ALLOWED_EFFORTS.includes(opts.effort)) {
+    die(`--effort must be one of: ${allowedEfforts}; got ${JSON.stringify(opts.effort)}`);
+  }
   opts.repo = path.resolve(opts.repo || process.cwd());
   opts.slug = (opts.slug || opts.agent.replace(/^codex-/, '')).replace(/[^A-Za-z0-9._-]+/g, '-');
   opts.mode = opts.mode || 'uncommitted';
