@@ -44,10 +44,19 @@ Add `--effort "<value>"` only when the orchestrator named a depth, and only with
 decides, which is the intended default — a placeholder copied from this template is refused before
 Codex starts.
 
-Make ONE synchronous Bash call with `timeout: 1800000` (30 minutes). Background execution
-(`run_in_background`, `&`, `nohup`) is prohibited: a real run takes 20-25 minutes; this is normal,
-not a hang. Restarting after a timeout is also prohibited — it leaves
-an abandoned run folder and a second Codex process in the same worktree.
+The call does not wait. It starts the run and returns at once with `RUN=<path>` and a `STARTED`
+line. To get the verdict, run the **identical command a second time** — same `--order-id`, same
+`--slug`, same flags. That second call does not start a second run and costs no quota: it attaches
+to the run already in flight, prints `ATTACH=<path>`, blocks until the verdict exists and prints it.
+
+Background execution (`run_in_background`, `&`, `nohup`) is prohibited. Interruption is no longer a
+problem worth handling: if the attaching call is killed by a time ceiling, repeat it — every repeat
+attaches to the same run. A real run takes 20-25 minutes, which is normal, not a hang. Give the
+attaching call `timeout: 1800000` (30 minutes).
+
+**Never change `--order-id` or `--slug` to get a fresh run.** The order id is issued by the
+orchestrator and is what makes a repeat harmless; changing it leaves an abandoned run folder and a
+second Codex process in the same worktree. On 2026-08-03 one order became six runs exactly this way.
 
 The runner does the rest: creates the run folder, `task.md`, the JSON finding schema, the
 synchronous run
@@ -55,10 +64,11 @@ of regular `codex exec` in a read-only sandbox, `meta.json`, artifact status, an
 response
 lines with counts by severity.
 
-**Your response = the exact stdout of this command**: the `RUN=<path>` line and the status block
-below it.
+**Your response = the exact stdout of the attaching call**: the `ATTACH=<path>` line and the status
+block below it.
 Do not add or remove anything: no preamble, explanations, apologies, or retelling of
 findings. The findings are in `review.json`; the orchestrator will read them.
+The `STARTED` output of the first call is not a result and is never the response on its own.
 
 ## What you return
 
@@ -93,9 +103,10 @@ the default, switched through `/codex:env`), and without `--model` — model IDs
 runner determines the review scope
 itself through git: the exact file list and diff command go into the prompt and are saved in the run
 folder's
-`scope.txt`. The run is synchronous: there is no result until the script returns control —
-the script itself is synchronous, not your call, so the timeout and background ban above are
-mandatory.
+`scope.txt`. The run is asynchronous, and waiting for it is a separate call. That is deliberate:
+while the start and the wait were one call, a time ceiling on that call looked exactly like a dead
+run, and the dispatcher restarted it. Now the start cannot be interrupted in any way that matters,
+and the wait can be repeated for free, so neither has any reason to restart anything.
 
 ## What Codex returns
 
@@ -136,7 +147,7 @@ output.
 Correct (runner output copied exactly):
 
 ```
-RUN=<artifact root>\myproject\2026-07-30_1412_review-auth
+ATTACH=<artifact root>\myproject\2026-07-30_1412_review-auth started=2026-07-30T14:12:03.000Z
 OK — verdict needs-attention
 Findings: critical 0 · high 1 · medium 2 · low 3
 Top: high src/api/auth.ts:88 — The promise is not awaited, and the error is lost

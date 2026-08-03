@@ -65,16 +65,21 @@ command from this template is an argument error, and the run will not start. If 
 the flag
 must not be present in the command at all.
 
-Make ONE synchronous Bash call with `timeout: 1800000` (30 minutes). Background execution
-(`run_in_background`, `&`, `nohup`) is prohibited: a real run takes 20-25 minutes; this is normal,
-not a hang. Restarting after an interruption is still prohibited, but there is now an alternative:
-the runner survives an interrupted Bash call and finishes writing `raw.log`, `result.json`,
-`meta.json`, and an honest `status.json` by itself, without waiting for you. If your call is
-interrupted,
-do not restart the run or invent a report from memory; tell the orchestrator the run path (the
-repository
-and slug you passed, or the `RUN=<path>` line if it was printed); the artifacts will appear
-on their own, and the orchestrator will finish reading them.
+The call does not wait. It starts the run and returns at once with `RUN=<path>` and a `STARTED`
+line. To get the verdict, run the **identical command a second time** — same `--order-id`, same
+`--slug`, same flags. That second call does not start a second run and costs no quota: it attaches
+to the run already in flight, prints `ATTACH=<path>`, blocks until the verdict exists and prints it.
+
+Background execution (`run_in_background`, `&`, `nohup`) is prohibited, and so is inventing a report
+from memory. Interruption is no longer a problem worth handling: if the attaching call is killed by
+a time ceiling, repeat it — every repeat attaches to the same run. A real run takes 20-25 minutes,
+which is normal, not a hang. Give the attaching call `timeout: 1800000` (30 minutes).
+
+**Never change `--order-id` or `--slug` to get a fresh run.** The order id is issued by the
+orchestrator and is what makes a repeat harmless; changing it turns a repeat into a second paid run.
+On 2026-08-03 one order became six runs exactly this way, and four of them were never accounted for
+at all. A second writing run in one worktree is refused anyway — the tree is shared and has no
+isolation.
 
 The runner does the rest: creates the run folder, captures `git status` before and after (without
 it,
@@ -84,11 +89,12 @@ starts Codex synchronously in the
 unfinished work,
 creates `meta.json`, determines artifact status, and prepares response lines.
 
-**Your response = the exact stdout of this command**: the `RUN=<path>` line and the status block
-below it.
+**Your response = the exact stdout of the attaching call**: the `ATTACH=<path>` line and the status
+block below it.
 Do not add or remove anything: no preamble, explanations, or retelling of the diff. The report
 is in `report.md`; the orchestrator will read it. Do not make commits: that is the operator's
 decision.
+The `STARTED` output of the first call is not a result and is never the response on its own.
 
 The only allowed final response is this exact stdout. Wording such as "the run has started,
 waiting for completion," "I will wait for a notification," or "Monitor started in the background" is
@@ -125,12 +131,11 @@ The operator switches the mode through `/codex:env` (file `agents/codex/run-conf
 is recorded in the run's `meta.json` — do not guess it or add flags yourself.
 `--dangerously-bypass-approvals-and-sandbox` is never used. `--model` is not
 passed: model IDs are volatile. The script fixes this once, so silent
-flag selection is impossible. The run is synchronous: there is no result until the script returns
-control. The script itself is synchronous, not your call: the runner survives its interruption and
-finishes
-Codex on its own, but at the moment of interruption you have nothing to return except a promise —
-hence the timeout
-and background ban above.
+flag selection is impossible. The run is asynchronous, and waiting for it is a separate call. That
+is deliberate: while the start and the wait were one call, a time ceiling on that call looked
+exactly like a dead run, and the dispatcher restarted it. Now the start cannot be interrupted in any
+way that matters, and the wait can be repeated for free, so neither has any reason to restart
+anything.
 
 ## What Codex returns
 
@@ -192,7 +197,7 @@ Implementing the task instead of Codex is prohibited for any reason it fails.
 Correct (runner output copied exactly):
 
 ```
-RUN=<artifact root>\myproject\2026-07-30_1412_retry
+ATTACH=<artifact root>\myproject\2026-07-30_1412_retry started=2026-07-30T14:12:03.000Z
 OK — Added retry to the fetch helper and a timeout test
 Files: 2 changed · src/net/fetch.ts, src/net/fetch.test.ts
 Verification: npm test — pass

@@ -2,14 +2,14 @@
 /**
  * SubagentStop guard for the Codex dispatchers (codex-scout / codex-build / codex-review).
  *
- * Their contract is that the reply IS the runner's stdout: a `RUN=<folder>` line plus the
- * status block printed by write-meta.mjs. Prose forbids anything else, and prose has been
+ * Their contract is that the reply IS the runner's stdout: a `RUN=` or `ATTACH=` line naming the
+ * run folder plus the status block printed by write-meta.mjs. Prose forbids anything else, and prose has been
  * ignored twice — once a dispatcher reviewed the diff itself (68k Claude tokens instead of
  * five lines), once it announced a background run that never existed. Neither is visible
  * from the reply alone, which is why this check lives outside the model.
  *
  * It blocks on substance only:
- *   - no usable `RUN=` path in the reply (the dispatcher did not delegate at all);
+ *   - no usable `RUN=` / `ATTACH=` path in the reply (the dispatcher did not delegate at all);
  *   - status.json says the run is still going, or was abandoned, before meta.json exists;
  *   - the run folder has no meta.json (the reply rests on nothing);
  *   - the reply's status word contradicts meta.json.
@@ -162,14 +162,20 @@ const blockState = (reason, stopReason) => {
   pass();
 };
 
-const runMatch = reply.match(/RUN=(.+?)(?:\r?\n|$)/);
-const runDir = runMatch ? runMatch[1].trim().replace(/[`"'*]+$/g, '') : null;
+/**
+ * Either line names the run folder. `RUN=` is printed by the call that starts a run, `ATTACH=`
+ * by the repeat that joins it — and since the launcher stopped waiting, the reply carrying the
+ * verdict is the stdout of the attaching call. Matching only `RUN=` would block every honest
+ * answer given under the new contract as "did not delegate at all".
+ */
+const runMatch = reply.match(/(?:RUN|ATTACH)=(.+?)(?:\r?\n|$)/);
+const runDir = runMatch ? runMatch[1].trim().replace(/\s+started=\S*$/, '').replace(/[`"'*]+$/g, '') : null;
 
 if (!runDir || !fs.existsSync(runDir)) {
   blockForm(
-    'Contract violated: the response has no RUN= line with an existing run folder, so ' +
+    'Contract violated: the response has no RUN= or ATTACH= line with an existing run folder, so ' +
       'delegation to Codex is not confirmed. Run run-codex.mjs and return its stdout ' +
-      'verbatim — the RUN=<path> line and the status block below it. If no run occurred, ' +
+      'verbatim — the ATTACH=<path> line and the status block below it. If no run occurred, ' +
       'report the runner status: your own analysis instead of Codex is prohibited in all outcomes.',
   );
 }
@@ -208,9 +214,10 @@ const stopText = (headline, observed, runStatus) =>
     `Worktree ${fact(runStatus?.repo)} is busy with this run: do not build, test, or commit until ` +
       'status.json changes state to finished or failed. The runner snapshots the tree before ' +
       'and after the run and will claim any changes made during this window.',
-    'The run will close itself: the runner survives an interrupted Bash call and completes ' +
-      'meta.json and status.json without the dispatcher. Wait for state to change and reread ' +
-      'status.json — the verdict will be there; there is no need to ask the dispatcher again.',
+    'The run will close itself: the worker outlives every caller and completes meta.json and ' +
+      'status.json without the dispatcher. Wait for state to change and reread status.json — the ' +
+      'verdict will be there; there is no need to ask the dispatcher again. Repeating the same ' +
+      'command with the same --order-id attaches to this run rather than starting another.',
   ].join(' ');
 
 /**
@@ -231,9 +238,9 @@ if (fs.existsSync(statusPath)) {
     if (isPidAlive(runStatus.pid)) {
       blockState(
         'Contract violated: status.json says state=running and the process is alive — the run is ' +
-          'not finished, but you are already responding. Run run-codex.mjs synchronously in one ' +
-          'Bash call with timeout 1800000, not in the background: no notification will arrive ' +
-          'after you exit, and a response before the run finishes is unsupported.',
+          'not finished, but you are already responding. The STARTED output of the starting call ' +
+          'is not a result. Repeat the identical run-codex.mjs command, same --order-id, with ' +
+          'timeout 1800000: it attaches to this same run, costs no quota, and prints the verdict.',
         stopText(
           `The reply guard stopped the session: the dispatcher responded ${MAX_STATE_BLOCKS} ` +
             'times while the Codex run was still in progress.',
@@ -245,9 +252,9 @@ if (fs.existsSync(statusPath)) {
     if (!fs.existsSync(path.join(runDir, 'meta.json'))) {
       blockState(
         'Contract violated: status.json says state=running, but the process with this pid is dead ' +
-          'and meta.json is missing — the run is abandoned, likely because the call hit a 2-minute ' +
-          'timeout, while a genuine run takes 20-25 minutes. Repeat run-codex.mjs with timeout ' +
-          'of at least 1800000 and return its stdout verbatim.',
+          'and meta.json is missing — the run is abandoned. Repeat the identical run-codex.mjs ' +
+          'command, same --order-id, with timeout of at least 1800000 and return its stdout ' +
+          'verbatim.',
         stopText(
           `The reply guard stopped the session: the dispatcher responded ${MAX_STATE_BLOCKS} ` +
             'times for a run it did not complete.',
@@ -261,9 +268,9 @@ if (fs.existsSync(statusPath)) {
     }
   } else if (runStatus?.state === 'abandoned') {
     blockState(
-      'Contract violated: status.json says state=abandoned — the run is abandoned, likely because ' +
-        'the call hit a 2-minute timeout, while a genuine run takes 20-25 minutes. Repeat ' +
-        'run-codex.mjs with timeout of at least 1800000 and return its stdout verbatim.',
+      'Contract violated: status.json says state=abandoned — the runner died without a verdict. ' +
+        'Repeat the identical run-codex.mjs command, same --order-id, with timeout of at least ' +
+        '1800000 and return its stdout verbatim.',
       stopText(
         `The reply guard stopped the session: the dispatcher responded ${MAX_STATE_BLOCKS} ` +
           'times for an abandoned run.',

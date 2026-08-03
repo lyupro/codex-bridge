@@ -1,6 +1,6 @@
 /**
  * The half the caller can kill: every preparation and every refusal that costs no quota,
- * then the spawn of the worker and the wait for its reply.
+ * then the spawn of the worker and the immediate return; a repeated call waits for the reply.
  *
  * The order it leaves for the worker is worker.json in the run folder — after the split
  * that file is the only connection between the two halves. It is written here with
@@ -15,7 +15,6 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
-  exitCodeFor,
   writeFailure,
   writeStatus,
   markAbandoned,
@@ -25,6 +24,7 @@ import {
   taskFingerprint,
   readJson,
 } from '../write-meta.mjs';
+import { attach } from './attach.mjs';
 import { setRun } from './run-context.mjs';
 import { loadRunEnv, RUN_ENV } from './run-env.mjs';
 import { parseArgs, die } from './args.mjs';
@@ -35,12 +35,6 @@ import { codexArgs, requireCodex, unsafeForCmd } from './codex-cmd.mjs';
 import { runsRoot } from './runs-root.mjs';
 import { resolveProjectRunsDir } from './project-dir.mjs';
 
-// How often the launcher looks for the worker's reply. A run lasts 20-25 minutes, so the
-// interval only decides how promptly the caller is released at the end of it.
-const POLL_MS = 500;
-
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
 /**
  * The worker is this same program re-invoked as `--worker <runDir>`, so the path spawned
  * below is the CLI entry one level up — not this module, which has no command line of its own.
@@ -49,29 +43,6 @@ const RUNNER_ENTRY = fileURLToPath(new URL('../run-codex.mjs', import.meta.url))
 
 export const questionsFromFlags = (questionTexts = []) =>
   questionTexts.map((text, i) => ({ id: `Q${i + 1}`, text }));
-
-const readJsonFile = (file) => {
-  try {
-    return JSON.parse(fs.readFileSync(file, 'utf8'));
-  } catch {
-    return null;
-  }
-};
-
-/**
- * Is this pid still running? EPERM means the process exists and belongs to someone else,
- * which for our purposes is alive. Same reading write-meta.mjs uses — two answers to "is
- * this run still going" would be one answer too many.
- */
-const alive = (pid) => {
-  if (!Number.isInteger(pid) || pid <= 0) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (err) {
-    return err.code === 'EPERM';
-  }
-};
 
 const stamp = () => {
   const d = new Date();
@@ -141,6 +112,21 @@ export async function launcher() {
   // like --scope.
   const taskHash = taskFingerprint(taskText);
   const chain = chainRuns(projectRunsRoot, repoRoot, opts.slug, taskHash, opts.orderId);
+
+  // One order produced six Codex runs on 2026-08-03 because the caller's time ceiling made it
+  // restart the synchronous launcher. A live same-order run is now the repeat target: attach
+  // before creating a folder, probing Codex or spending another token.
+  const attachedExitCode = await attach({
+    runsRoot: projectRunsRoot,
+    repo: repoRoot,
+    slug: opts.slug,
+    taskHash,
+    orderId: opts.orderId,
+    chain,
+    isContinue: opts.continue,
+  });
+  if (attachedExitCode !== null) process.exit(attachedExitCode);
+
   if (chain.length && !opts.continue) {
     const last = chain[chain.length - 1];
     const lastSlug = String(readJson(path.join(projectRunsRoot, last, 'status.json'))?.slug || '');
@@ -328,47 +314,11 @@ export async function launcher() {
   worker.unref();
   writeStatus(runDir, { pid: worker.pid, runner_pid: worker.pid });
 
-  const replyText = await waitForReply(runDir, worker.pid);
-  if (replyText !== null) {
-    console.log(replyText);
-    process.exit(exitCodeFor(readJsonFile(path.join(runDir, 'meta.json'))?.status));
-  }
-
-  // The worker died without leaving its reply. If it got as far as meta.json the verdict is
-  // real and stays untouched — overwriting it would throw away the token accounting; if it
-  // did not, the failure is recorded like any other, through meta.json.
-  const meta = readJsonFile(path.join(runDir, 'meta.json'));
-  if (meta) {
-    console.log(
-      [
-        `${meta.status} — ${meta.reason || 'verdict recorded, worker process response not saved'}`,
-        `Run: ${runDir}`,
-      ].join('\n'),
-    );
-    process.exit(exitCodeFor(meta.status));
-  }
-  const { reply } = writeFailure(runDir, opts.agent, 'run worker process died without recording a verdict', [
-    `Log: ${path.join(runDir, 'raw.log')}`,
-    'Any Codex changes remain in the tree — check them with git status',
-  ]);
-  console.log(reply);
-  process.exit(1);
-}
-
-/** Blocks until the worker's reply exists, or until the worker is provably gone without one. */
-async function waitForReply(runDir, workerPid) {
-  const replyPath = path.join(runDir, 'reply.txt');
-  let pollsSinceDeath = 0;
-  for (;;) {
-    if (fs.existsSync(replyPath)) return fs.readFileSync(replyPath, 'utf8').replace(/\s+$/, '');
-    // A dead worker will never write it. Two extra polls before believing that: the pid is
-    // released around the same moment as the last write, and the order is not guaranteed.
-    if (alive(workerPid)) {
-      pollsSinceDeath = 0;
-    } else {
-      pollsSinceDeath += 1;
-      if (pollsSinceDeath > 2) return null;
-    }
-    await sleep(POLL_MS);
-  }
+  console.log(
+    `STARTED agent=${opts.agent} slug=${opts.slug} order-id=${opts.orderId} worker-pid=${worker.pid}`,
+  );
+  console.log(
+    'To get the verdict, repeat the identical command with the same --order-id; it will attach to this run and will not start a second run.',
+  );
+  process.exit(0);
 }
