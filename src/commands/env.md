@@ -1,37 +1,38 @@
 ---
-description: Показать или переключить среду делегированных Codex-прогонов — хуки и плагины оператора
+description: Show or switch the environment of delegated Codex runs — the operator's hooks and plugins
 allowed-tools: Bash
 argument-hint: "[hooks|plugins on|off] | [reset]"
 ---
 
-<!-- Часть пакета agents/codex/. Файл лежит здесь вынужденно: имя слэш-команды задаётся
-     расположением в commands/<namespace>/, а симлинков и файлов-указателей Claude Code не
-     понимает (проверено 2026-08-02). Правится здесь же; при выносе пакета едет копией. -->
+<!-- Part of the agents/codex/ package. The file lives here out of necessity: the slash command name
+     is set by its location under commands/<namespace>/, and Claude Code understands neither
+     symlinks nor pointer files (verified 2026-08-02). Edit it here; it travels as a copy when the
+     package is installed. -->
 
-Переключатели среды для прогонов `codex-scout` / `codex-build` / `codex-review`. По умолчанию
-хуки и плагины из `~/.codex` в делегированный прогон не попадают: они рассчитаны на
-интерактивную работу, а в автоматическом прогоне вредят — падающий `Stop`-хук `oh-my-codex`
-не выпускал Codex из сессии, и тот вместо задачи переносил в карантин `.omx/state/session.json`.
-Интерактивный Codex оператора это не затрагивает: флаги ставятся на конкретный вызов раннера,
-`~/.codex/hooks.json` не меняется.
+Environment switches for `codex-scout` / `codex-build` / `codex-review` runs. By default the hooks
+and plugins from `~/.codex` do not reach a delegated run: they are written for interactive work and
+do harm in an automated one — the failing `Stop` hook of `oh-my-codex` would not let Codex leave the
+session, and instead of doing the task it quarantined `.omx/state/session.json`. The operator's
+interactive Codex is untouched: the flags are set on one specific runner invocation,
+`~/.codex/hooks.json` is not modified.
 
-Выполни ровно эту команду, подставив аргументы пользователя (`$ARGUMENTS`), и верни её вывод
-дословно. Ничего не дописывай и не пересчитывай:
+Run exactly this command, substituting the user's arguments (`$ARGUMENTS`), and return its output
+verbatim. Add nothing and recompute nothing:
 
 ```bash
 node "{{CODEX_BRIDGE_DIR}}/run-config.mjs" $ARGUMENTS
 ```
 
-Формы вызова:
+Call forms:
 
-- без аргументов — показать текущее состояние и путь к файлу;
-- `hooks on` / `hooks off` — вернуть или убрать хуки оператора;
-- `plugins on` / `plugins off` — то же для плагинов;
-- `reset` — вернуть умолчание (оба выключены).
+- no arguments — show the current state and the path to the file;
+- `hooks on` / `hooks off` — bring back or remove the operator's hooks;
+- `plugins on` / `plugins off` — the same for plugins;
+- `reset` — back to the default (both off).
 
-Состояние живёт в `agents/codex/run-config.json` и попадает в `meta.json` каждого прогона,
-поэтому по артефактам всегда видно, в какой среде прогон шёл.
+The state lives in `agents/codex/run-config.json` and lands in the `meta.json` of every run, so the
+artifacts always show which environment a run went through.
 
-Если пользователь включает `hooks`, скажи одной строкой: пока в `~/.codex/hooks.json` остаётся
-падающий `Stop`-хук `oh-my-codex`, прогоны снова начнут тратить квоту на постороннюю починку.
-Сверка отчёта с деревом такой прогон завалит, но квота уже будет потрачена.
+If the user turns `hooks` on, say in one line: while the failing `Stop` hook of `oh-my-codex` stays
+in `~/.codex/hooks.json`, runs will again spend quota on unrelated repairs. Checking the report
+against the tree will fail such a run, but the quota is already gone.
