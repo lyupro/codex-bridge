@@ -112,6 +112,17 @@ test('--continue does not swallow the flag that follows it', () => {
   assert.equal(opts.scope, 'src/**');
 });
 
+// The prompts also say not to delegate, and prompts are what a dispatcher already ignored twice
+// in this project. The flag is the half that cannot be talked out of.
+test('no runner mode leaves subagent spawning available', () => {
+  loadRunEnv();
+  const runDir = path.join(os.tmpdir(), 'codex-run');
+  for (const agent of ['codex-scout', 'codex-build', 'codex-review']) {
+    const args = codexArgs({ agent, repo: process.cwd() }, runDir, true);
+    assert.equal(args.filter((arg) => arg === 'agents.enabled=false').length, 1, agent);
+  }
+});
+
 test('no runner mode disables installed Codex rules', () => {
   loadRunEnv();
   const runDir = path.join(os.tmpdir(), 'codex-run');

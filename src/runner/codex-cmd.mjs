@@ -121,6 +121,15 @@ export function requireCodex(runDir, agent) {
  */
 const FALLBACK_EFFORT = 'medium';
 
+/**
+ * A run is one worker, not a team it recruits for itself.
+ *
+ * Codex can spawn subagents when a prompt asks it to, and their edits land in the same
+ * worktree — so they arrive in the snapshot as the run's own work, outside the scope check
+ * that grades it, on quota nobody budgeted. The prompts say not to; this is why they cannot.
+ */
+const NO_SUBAGENTS = ['-c', 'agents.enabled=false'];
+
 function runProfile(opts) {
   const mode = {
     'codex-scout': 'scout',
@@ -147,6 +156,7 @@ export function codexArgs(opts, runDir, isGitRepo) {
       '--ignore-user-config',
       '-c',
       effort,
+      ...NO_SUBAGENTS,
       ...modelArgs,
       '--sandbox',
       'read-only',
@@ -168,6 +178,7 @@ export function codexArgs(opts, runDir, isGitRepo) {
       ...CLEAN_ENV,
       '-c',
       effort,
+      ...NO_SUBAGENTS,
       ...modelArgs,
       '--sandbox',
       'workspace-write',
@@ -198,6 +209,7 @@ export function codexArgs(opts, runDir, isGitRepo) {
     '--ignore-user-config',
     '-c',
     effort,
+    ...NO_SUBAGENTS,
     ...modelArgs,
     '--sandbox',
     'read-only',

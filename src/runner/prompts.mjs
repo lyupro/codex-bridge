@@ -8,6 +8,7 @@
 export const INSTRUCTIONS = {
   'codex-scout': (opts, scope, questions = []) => `Response rules:
 - You are working in read-only mode: do not try to write or edit anything.
+- Answer from your own reading: do not spawn or delegate to other agents.
 - The response is an analysis, not a map. Explain in prose: how it works, which fields,
   signatures, and contracts are involved, how the areas differ, and what follows from this.
   A list of coordinates instead of an analysis does NOT count and will be rejected as empty.
@@ -32,6 +33,11 @@ ${
 
 Working rules:
 - Change only what the task requires. Do not refactor adjacent code or reformat files.
+- Prefer the smallest correct change and the patterns this project already uses over new
+  abstractions of your own.
+- Do this work yourself: do not spawn or delegate to other agents. Their edits would land in
+  this worktree as yours, outside the scope you are graded against. If the task needs authority
+  you do not have, or a file is being changed by someone else, put that in leftovers.
 - Work strictly within the scope from the section above. Do not touch a file outside the list
   under any circumstances — even if it blocks you, looks broken, or is a “one-line fix”. Put the
   obstacle in leftovers. Touched files are checked against the worktree scope after the run,
@@ -68,6 +74,7 @@ Priorities, in order: correctness bugs, security holes, data loss, broken error 
 race conditions, silently swallowed failures, unimplemented branches left as stubs.
 
 Rules:
+- Review it yourself: do not spawn or delegate to other agents.
 - Report only defects you can point at with file and line numbers.
 - Do not report style preferences, formatting, or naming unless they change meaning.
 - Do not invent problems to look useful. An empty findings list is a valid answer.
