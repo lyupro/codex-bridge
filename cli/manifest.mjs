@@ -9,6 +9,17 @@ export const PACKAGE_ROOT = path.resolve(HERE, '..');
 export const INSTALL_RECORD_NAME = '.codex-bridge-install.json';
 export const RULES_NAME = 'codex-bridge.rules';
 const RULES_SOURCE = `src/rules/${RULES_NAME}`;
+/**
+ * Files the operator owns once they exist. Seeded on first install so the defaults are
+ * visible and editable, then never written, never compared, never removed: run-config.json
+ * is where a host states which model each mode runs on, and an installer that overwrites it
+ * would erase that on the next update — the same way overwriting a .env would.
+ */
+export const SEEDED_SOURCES = Object.freeze(['src/run-config.json']);
+const seededTargets = (host) =>
+  new Set(SEEDED_SOURCES.map((source) => posix(
+    path.relative(host.root, path.join(host.agentsDir, path.relative('src', source))),
+  )));
 export const INSTALL_TABLE = Object.freeze([
   { source: 'src/agents/*.md', target: 'agentsDir', processing: 'placeholders' },
   { source: 'src/commands/*.md', target: 'commandsDir', processing: 'placeholders' },
@@ -28,6 +39,15 @@ export async function packageInfo(packageRoot = PACKAGE_ROOT) {
 
 export function installRecordPath(host) {
   return path.join(host.agentsDir, INSTALL_RECORD_NAME);
+}
+
+/** Where each seeded file comes from and where it goes; contents are copied verbatim. */
+export function seedPlan(host, packageRoot = PACKAGE_ROOT) {
+  return SEEDED_SOURCES.map((source) => ({
+    source: path.join(packageRoot, source),
+    target: path.join(host.agentsDir, path.relative('src', source)),
+    processing: 'copy',
+  }));
 }
 
 export function rulesPlan(host, packageRoot = PACKAGE_ROOT) {
@@ -145,7 +165,18 @@ export async function readInstallRecord(host) {
   } catch (err) {
     throw new Error(`invalid installation record JSON: ${err.message}`);
   }
-  return validateInstallRecord(parsed);
+  const record = validateInstallRecord(parsed);
+  // Earlier versions installed the config as a package file and recorded it. Dropping it here
+  // is what stops the next update from calling the operator's edited config an orphan and
+  // deleting it, and it needs no migration step: the record is rewritten on the next write.
+  const seeded = seededTargets(host);
+  record.files = record.files.filter((file) => !seeded.has(file));
+  if (record.fingerprints) {
+    record.fingerprints = Object.fromEntries(
+      Object.entries(record.fingerprints).filter(([file]) => !seeded.has(file)),
+    );
+  }
+  return record;
 }
 
 export async function writeInstallRecord(host, record) {
@@ -159,6 +190,7 @@ export async function buildInstallPlan(host, packageRoot = PACKAGE_ROOT) {
   for (const mapping of INSTALL_TABLE) {
     for await (const relative of fs.glob(mapping.source, { cwd: packageRoot, exclude: claimedSources })) {
       if (posix(relative) === RULES_SOURCE) continue;
+      if (SEEDED_SOURCES.includes(posix(relative))) continue;
       const source = path.join(packageRoot, relative);
       if (!(await fs.stat(source)).isFile()) continue;
       const targetRelative = mapping.processing === 'copy'

@@ -8,6 +8,7 @@ import {
   readInstallRecord,
   recordMatchesPackage,
   rulesPlan,
+  seedPlan,
   writeInstallRecord,
 } from './manifest.mjs';
 import { copyPlannedFile, targetMatches } from './copy.mjs';
@@ -81,6 +82,11 @@ export async function install({ host, dryRun = false, force = false, packageRoot
 
   for (const { item } of changedFiles) await copyPlannedFile(item, host.agentsDir);
   if (changedRule) await copyPlannedFile(rule, host.agentsDir);
+  // Seeded files are written once and then belong to the operator: an existing one is left
+  // exactly as it is, including under --force, because --force is about our files, not theirs.
+  for (const seed of seedPlan(host, packageRoot)) {
+    if (!(await targetExists(seed.target))) await copyPlannedFile(seed, host.agentsDir);
+  }
   const hookResult = await mergeHook(
     host.settingsPath,
     path.join(host.agentsDir, 'hooks', 'reply-guard.mjs'),

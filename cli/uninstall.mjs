@@ -22,7 +22,8 @@ async function removeEmptyParents(target, boundary) {
 
 export async function uninstall({ host, dryRun = false } = {}) {
   const record = await readInstallRecord(host);
-  const preservation = `Run artifacts in ${path.join(host.root, 'codex-runs')} are preserved.`;
+  const preservation = `Run artifacts in ${path.join(host.root, 'codex-runs')} and the run `
+    + `configuration in ${path.join(host.agentsDir, 'run-config.json')} are preserved.`;
   if (!record) return { exitCode: 1, output: `codex-bridge is not installed.\n${preservation}` };
 
   if (dryRun) {

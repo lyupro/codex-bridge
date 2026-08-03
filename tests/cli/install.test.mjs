@@ -264,6 +264,8 @@ test('uninstall without a record is nonzero and dry-run uninstall changes nothin
   assert.match(dry.output, /Would remove/);
   assert.deepEqual(await allFiles(installed.host.root), before);
   assert.equal((await uninstall({ host: installed.host })).exitCode, 0);
-  await assert.rejects(() => fs.access(installed.host.agentsDir), { code: 'ENOENT' });
+  // The agents directory outlives an uninstall by exactly one file: the config the operator
+  // owns. Everything the package put there is gone, and the commands directory with it.
+  assert.deepEqual(await fs.readdir(installed.host.agentsDir), ['run-config.json']);
   await assert.rejects(() => fs.access(installed.host.commandsDir), { code: 'ENOENT' });
 });
