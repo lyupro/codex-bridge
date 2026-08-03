@@ -11,6 +11,7 @@ import {
   fileFingerprint,
   readInstallRecord,
   replacePlaceholders,
+  rulesPlan,
   validateInstallRecord,
   writeInstallRecord,
 } from '../../cli/manifest.mjs';
@@ -19,14 +20,16 @@ async function fixture(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-manifest-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const packageRoot = path.join(root, 'package');
-  const host = resolveHost({ host: path.join(root, 'host') });
+  const host = resolveHost({ host: path.join(root, 'host'), codexHome: path.join(root, 'codex-home') });
   await fs.mkdir(path.join(packageRoot, 'src', 'agents'), { recursive: true });
   await fs.mkdir(path.join(packageRoot, 'src', 'commands'), { recursive: true });
   await fs.mkdir(path.join(packageRoot, 'src', 'hooks'), { recursive: true });
+  await fs.mkdir(path.join(packageRoot, 'src', 'rules'), { recursive: true });
   await fs.writeFile(path.join(packageRoot, 'src', 'agents', 'build.md'), 'agent');
   await fs.writeFile(path.join(packageRoot, 'src', 'agents', 'notes.txt'), 'notes');
   await fs.writeFile(path.join(packageRoot, 'src', 'commands', 'env.md'), 'command');
   await fs.writeFile(path.join(packageRoot, 'src', 'hooks', 'guard.mjs'), 'guard');
+  await fs.writeFile(path.join(packageRoot, 'src', 'rules', 'codex-bridge.rules'), 'rules');
   return { root, packageRoot, host };
 }
 
@@ -57,6 +60,11 @@ test('install plan maps agents, commands, and remaining src files', async (t) =>
     'commands/codex/env.md',
   ]);
   assert.deepEqual(plan.map((item) => item.processing), ['copy', 'placeholders', 'copy', 'placeholders']);
+  assert.deepEqual(rulesPlan(host, packageRoot), {
+    source: path.join(packageRoot, 'src', 'rules', 'codex-bridge.rules'),
+    target: path.join(host.codexRulesDir, 'codex-bridge.rules'),
+    name: 'codex-bridge.rules',
+  });
 });
 
 test('placeholder becomes an absolute POSIX agents path', () => {
@@ -83,6 +91,27 @@ test('file fingerprint hashes bytes and returns null for a missing file', async 
 
 test('installation record without fingerprints remains valid', () => {
   assert.equal(validateInstallRecord(record), record);
+});
+
+test('installation record accepts an optional absolute rules fingerprint', () => {
+  const withRules = {
+    ...record,
+    rules: { path: path.resolve('codex-home', 'rules', 'codex-bridge.rules'), fingerprint: 'a'.repeat(64) },
+  };
+  assert.equal(validateInstallRecord(withRules), withRules);
+  assert.equal(validateInstallRecord(record), record);
+});
+
+test('installation record rejects malformed rules metadata', () => {
+  assert.throws(() => validateInstallRecord({ ...record, rules: 'rules' }), /rules must be an object/);
+  assert.throws(() => validateInstallRecord({
+    ...record,
+    rules: { path: path.resolve('rules', 'foreign.rules'), fingerprint: 'a'.repeat(64) },
+  }), /rules path must name codex-bridge\.rules/);
+  assert.throws(() => validateInstallRecord({
+    ...record,
+    rules: { path: path.resolve('rules', 'codex-bridge.rules'), fingerprint: 'not-hex' },
+  }), /rules fingerprint must be a 64-character hexadecimal/);
 });
 
 test('installation record rejects an extra fingerprint key', () => {

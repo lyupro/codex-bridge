@@ -17,7 +17,7 @@ const codexProbe = () => ({ available: true, value: 'codex-cli 1.2.3' });
 async function hostFixture(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-doctor-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
-  return resolveHost({ host: root });
+  return resolveHost({ host: root, codexHome: path.join(root, 'codex-home') });
 }
 
 async function installedFixture(t) {

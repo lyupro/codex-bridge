@@ -13,13 +13,22 @@ function repositoryRoot(start) {
   }
 }
 
-export function resolveHost({ scope = 'user', host, cwd = process.cwd(), homedir = os.homedir() } = {}) {
+export function resolveHost({
+  scope = 'user',
+  host,
+  cwd = process.cwd(),
+  homedir = os.homedir(),
+  codexHome,
+} = {}) {
+  const resolvedCodexHome = codexHome || process.env.CODEX_HOME || path.join(homedir, '.codex');
+  const codexRulesDir = path.join(resolvedCodexHome, 'rules');
   if (host) {
     const root = path.resolve(host);
     return {
       root,
       agentsDir: path.join(root, 'agents', 'codex'),
       commandsDir: path.join(root, 'commands', 'codex'),
+      codexRulesDir,
       settingsPath: path.join(root, 'settings.json'),
       scope: 'host',
     };
@@ -34,6 +43,7 @@ export function resolveHost({ scope = 'user', host, cwd = process.cwd(), homedir
     root,
     agentsDir: path.join(root, 'agents', 'codex'),
     commandsDir: path.join(root, 'commands', 'codex'),
+    codexRulesDir,
     settingsPath: path.join(root, 'settings.json'),
     scope,
   };

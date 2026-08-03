@@ -17,7 +17,8 @@ const ROOT = path.resolve(HERE, '..', '..');
 async function fixture(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-update-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
-  return { root, host: resolveHost({ host: path.join(root, 'host') }) };
+  // Naming the Codex home is not optional: without it the installed rules land in the real one.
+  return { root, host: resolveHost({ host: path.join(root, 'host'), codexHome: path.join(root, 'codex-home') }) };
 }
 
 async function packageFixture(root, name, { version = '0.0.0', extraFile } = {}) {

@@ -1,7 +1,7 @@
 /** Uninstalls only recorded codex-bridge files while preserving host data and foreign files. */
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { installRecordPath, readInstallRecord } from './manifest.mjs';
+import { fileFingerprint, installRecordPath, readInstallRecord } from './manifest.mjs';
 import { removeHook } from './settings-merge.mjs';
 
 async function removeEmpty(directory) {
@@ -27,6 +27,7 @@ export async function uninstall({ host, dryRun = false } = {}) {
 
   if (dryRun) {
     const lines = record.files.map((file) => `Would remove ${file}`);
+    if (record.rules) lines.push(`Would remove ${record.rules.path} if its fingerprint is unchanged.`);
     lines.push('Would remove the SubagentStop hook and installation record.');
     lines.push(preservation);
     return { exitCode: 0, output: lines.join('\n') };
@@ -35,6 +36,15 @@ export async function uninstall({ host, dryRun = false } = {}) {
   await removeHook(host.settingsPath, path.join(host.root, record.hook.path), {
     createdGroup: record.hook.createdGroup === true,
   });
+  let rulesOutput;
+  if (record.rules) {
+    const currentFingerprint = await fileFingerprint(record.rules.path);
+    if (currentFingerprint === record.rules.fingerprint) {
+      await fs.rm(record.rules.path, { force: true });
+    } else if (currentFingerprint !== null) {
+      rulesOutput = `Left ${record.rules.path} because its contents changed after installation.`;
+    }
+  }
   for (const relative of record.files) {
     const target = path.join(host.root, relative);
     await fs.rm(target, { force: true });
@@ -44,5 +54,8 @@ export async function uninstall({ host, dryRun = false } = {}) {
   await removeEmpty(host.commandsDir);
   await fs.rm(installRecordPath(host), { force: true });
   await removeEmpty(host.agentsDir);
-  return { exitCode: 0, output: `Uninstalled codex-bridge.\n${preservation}` };
+  return {
+    exitCode: 0,
+    output: [`Uninstalled codex-bridge.`, rulesOutput, preservation].filter(Boolean).join('\n'),
+  };
 }

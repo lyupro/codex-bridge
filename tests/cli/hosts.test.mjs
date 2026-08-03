@@ -26,9 +26,33 @@ test('project scope finds the repository root above cwd', (t) => {
 
 test('explicit host overrides both scope choices', () => {
   const explicit = path.join(os.tmpdir(), 'bridge-explicit');
-  const host = resolveHost({ scope: 'ignored', host: explicit, cwd: path.parse(explicit).root });
+  const codexHome = path.join(os.tmpdir(), 'bridge-codex-home');
+  const host = resolveHost({ scope: 'ignored', host: explicit, cwd: path.parse(explicit).root, codexHome });
   assert.equal(host.root, path.resolve(explicit));
+  assert.equal(host.codexRulesDir, path.join(codexHome, 'rules'));
   assert.equal(host.scope, 'host');
+});
+
+test('Codex rules use CODEX_HOME independently of the Claude Code host', (t) => {
+  const previous = process.env.CODEX_HOME;
+  const codexHome = path.join(os.tmpdir(), 'bridge-env-codex-home');
+  process.env.CODEX_HOME = codexHome;
+  t.after(() => {
+    if (previous === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = previous;
+  });
+  const host = resolveHost({ host: path.join(os.tmpdir(), 'unrelated-claude-host') });
+  assert.equal(host.codexRulesDir, path.join(codexHome, 'rules'));
+});
+
+test('Codex rules default beneath the supplied home directory', (t) => {
+  const previous = process.env.CODEX_HOME;
+  delete process.env.CODEX_HOME;
+  t.after(() => {
+    if (previous !== undefined) process.env.CODEX_HOME = previous;
+  });
+  const homedir = path.join(os.tmpdir(), 'bridge-default-codex-home');
+  assert.equal(resolveHost({ homedir }).codexRulesDir, path.join(homedir, '.codex', 'rules'));
 });
 
 test('unknown scope is rejected', () => {

@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const PACKAGE_ROOT = path.resolve(HERE, '..');
 export const INSTALL_RECORD_NAME = '.codex-bridge-install.json';
+export const RULES_NAME = 'codex-bridge.rules';
+const RULES_SOURCE = `src/rules/${RULES_NAME}`;
 export const INSTALL_TABLE = Object.freeze([
   { source: 'src/agents/*.md', target: 'agentsDir', processing: 'placeholders' },
   { source: 'src/commands/*.md', target: 'commandsDir', processing: 'placeholders' },
@@ -28,6 +30,14 @@ export function installRecordPath(host) {
   return path.join(host.agentsDir, INSTALL_RECORD_NAME);
 }
 
+export function rulesPlan(host, packageRoot = PACKAGE_ROOT) {
+  return {
+    source: path.join(packageRoot, RULES_SOURCE),
+    target: path.join(host.codexRulesDir, RULES_NAME),
+    name: RULES_NAME,
+  };
+}
+
 export async function fileFingerprint(absolutePath) {
   try {
     return createHash('sha256').update(await fs.readFile(absolutePath)).digest('hex');
@@ -42,14 +52,16 @@ export async function fileFingerprint(absolutePath) {
  * and update both decide "nothing to do" by this question, so it is answered in one place: two
  * copies of the condition would drift the first time a field is added to the record.
  */
-export function recordMatchesPackage(record, plan, currentPackage, fingerprints) {
+export function recordMatchesPackage(record, plan, currentPackage, fingerprints, ruleState) {
   return Boolean(record)
     && record.name === currentPackage.name
     && record.version === currentPackage.version
     && record.files.length === plan.length
     && record.files.every((file, index) => file === plan[index].relativeToHost)
     && Boolean(record.fingerprints)
-    && plan.every((item) => record.fingerprints[item.relativeToHost] === fingerprints.get(item.relativeToHost));
+    && plan.every((item) => record.fingerprints[item.relativeToHost] === fingerprints.get(item.relativeToHost))
+    && (!ruleState || (record.rules?.path === ruleState.path
+      && record.rules.fingerprint === ruleState.fingerprint));
 }
 
 export function validateInstallRecord(record) {
@@ -87,6 +99,21 @@ export function validateInstallRecord(record) {
     if (Object.values(record.fingerprints).some((fingerprint) =>
       typeof fingerprint !== 'string' || !/^[a-f0-9]{64}$/i.test(fingerprint))) {
       throw new Error('installation record fingerprints must be 64-character hexadecimal SHA256 strings');
+    }
+  }
+  if (record.rules !== undefined) {
+    if (!record.rules || typeof record.rules !== 'object' || Array.isArray(record.rules)) {
+      throw new Error('installation record rules must be an object');
+    }
+    if (typeof record.rules.path !== 'string' || !record.rules.path) {
+      throw new Error('installation record rules path must be a non-empty string');
+    }
+    if (path.basename(record.rules.path) !== RULES_NAME) {
+      throw new Error(`installation record rules path must name ${RULES_NAME}`);
+    }
+    if (typeof record.rules.fingerprint !== 'string'
+      || !/^[a-f0-9]{64}$/i.test(record.rules.fingerprint)) {
+      throw new Error('installation record rules fingerprint must be a 64-character hexadecimal SHA256 string');
     }
   }
   if (!record.hook || typeof record.hook !== 'object' || Array.isArray(record.hook)) {
@@ -131,6 +158,7 @@ export async function buildInstallPlan(host, packageRoot = PACKAGE_ROOT) {
   const claimedSources = [];
   for (const mapping of INSTALL_TABLE) {
     for await (const relative of fs.glob(mapping.source, { cwd: packageRoot, exclude: claimedSources })) {
+      if (posix(relative) === RULES_SOURCE) continue;
       const source = path.join(packageRoot, relative);
       if (!(await fs.stat(source)).isFile()) continue;
       const targetRelative = mapping.processing === 'copy'

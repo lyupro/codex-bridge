@@ -1,0 +1,173 @@
+# codex-bridge installs this file to constrain delegated Codex runs.
+# It exists because a delegated run must not rewrite the operator's repository history or branches.
+# Check it with: codex execpolicy check --rules src/rules/codex-bridge.rules -- <command> <args>.
+# Codex combines this file with other active rule files, and the strictest matching decision wins.
+# Known limit: prefix rules cannot detect shell redirection into .git/HEAD or equivalent indirect writes.
+
+prefix_rule(
+    pattern = ["git", "reset"],
+    decision = "forbidden",
+    justification = "Leave your work uncommitted in the tree; the index, commits and HEAD belong to the orchestrator.",
+    match = ["git reset --hard HEAD~1", "git reset HEAD -- file.txt"],
+    not_match = ["git status", "git diff --stat"],
+)
+
+prefix_rule(
+    pattern = ["git", "checkout"],
+    decision = "forbidden",
+    justification = "Read another revision with git show <rev>:<path>; branches and revisions are switched by the operator, never by a run.",
+    match = ["git checkout master", "git checkout -- file.txt"],
+    not_match = ["git show HEAD:file.txt", "git restore file.txt"],
+)
+
+prefix_rule(
+    pattern = ["git", "switch"],
+    decision = "forbidden",
+    justification = "Inspect branches with git branch --show-current and leave branch switching or creation to the operator.",
+    match = ["git switch main", "git switch -c feature"],
+    not_match = ["git branch --show-current", "git status"],
+)
+
+prefix_rule(
+    pattern = ["git", "branch", ["-d", "-D", "-m", "-M", "--delete", "--move", "--force"]],
+    decision = "forbidden",
+    justification = "Inspect branches with git branch or git branch --show-current; ask the operator to delete, rename, or force a branch.",
+    match = ["git branch -D feature", "git branch --move old new", "git branch --force feature HEAD"],
+    not_match = ["git branch", "git branch --show-current", "git branch --list"],
+)
+
+prefix_rule(
+    pattern = ["git", ["rebase", "cherry-pick", "revert", "merge"]],
+    decision = "forbidden",
+    justification = "Inspect candidate changes with git show or git diff and leave history integration to the operator.",
+    match = ["git rebase main", "git cherry-pick abc123", "git revert HEAD", "git merge feature"],
+    not_match = ["git show HEAD", "git diff main...feature"],
+)
+
+prefix_rule(
+    pattern = ["git", "stash", ["drop", "clear", "pop"]],
+    decision = "forbidden",
+    justification = "Inspect saved work with git stash list or git stash show and ask the operator before removing or applying it.",
+    match = ["git stash drop", "git stash clear", "git stash pop"],
+    not_match = ["git stash", "git stash list", "git stash show"],
+)
+
+prefix_rule(
+    pattern = ["git", ["update-ref", "symbolic-ref", "worktree", "filter-branch"]],
+    decision = "forbidden",
+    justification = "Inspect references with git show-ref or git branch and ask the operator to mutate refs, worktrees, or repository history.",
+    match = ["git update-ref refs/heads/main HEAD", "git symbolic-ref HEAD refs/heads/main", "git worktree remove ../other", "git filter-branch -- --all"],
+    not_match = ["git show-ref", "git branch --show-current"],
+)
+
+prefix_rule(
+    pattern = ["git", "gc", ["--prune", "--prune=now"]],
+    decision = "forbidden",
+    justification = "Inspect repository size with git count-objects -v and leave object pruning to the operator.",
+    match = ["git gc --prune", "git gc --prune=now"],
+    not_match = ["git gc", "git count-objects -v"],
+)
+
+prefix_rule(
+    pattern = ["git", "reflog", "expire"],
+    decision = "forbidden",
+    justification = "Inspect recovery history with git reflog show and leave reflog expiration to the operator.",
+    match = ["git reflog expire --expire=now --all"],
+    not_match = ["git reflog", "git reflog show"],
+)
+
+prefix_rule(
+    pattern = ["git", "push"],
+    decision = "forbidden",
+    justification = "Prepare local commits and show the operator the verified git push command; only the operator publishes changes.",
+    match = ["git push", "git push origin main", "git push --force"],
+    not_match = ["git status", "git remote -v"],
+)
+
+prefix_rule(
+    pattern = ["git", "remote", ["set-url", "remove", "rm", "set-head"]],
+    decision = "forbidden",
+    justification = "Inspect remotes with git remote -v and ask the operator to change remote configuration.",
+    match = ["git remote set-url origin example.invalid/repo", "git remote remove origin", "git remote rm origin", "git remote set-head origin main"],
+    not_match = ["git remote", "git remote -v", "git remote get-url origin"],
+)
+
+prefix_rule(
+    pattern = ["git", "config", ["--global", "--system"]],
+    decision = "forbidden",
+    justification = "Read configuration with git config --get <key>; ask the operator to change global or system configuration.",
+    match = ["git config --global user.name Agent", "git config --system core.autocrlf false"],
+    not_match = ["git config --get user.name", "git config user.name"],
+)
+
+prefix_rule(
+    pattern = ["git", "commit", "--amend"],
+    decision = "forbidden",
+    justification = "Create a new commit when authorized and leave rewriting the previous commit to the operator.",
+    match = ["git commit --amend", "git commit --amend --no-edit"],
+    not_match = ["git commit -m msg", "git status"],
+)
+
+prefix_rule(
+    pattern = ["git", "clean", ["-f", "-fd", "-df", "-fdx", "-xfd"]],
+    decision = "forbidden",
+    justification = "Preview untracked cleanup with git clean -n and remove only explicitly reviewed paths without forced bulk cleanup.",
+    match = ["git clean -f", "git clean -fd", "git clean -df", "git clean -fdx", "git clean -xfd"],
+    not_match = ["git clean -n", "git status --short"],
+)
+
+prefix_rule(
+    pattern = ["rm", ["-rf", "-fr", "-Rf", "-fR", "-rF", "-Fr", "-RF", "-FR"]],
+    decision = "forbidden",
+    justification = "Remove specific reviewed files without combined recursive-force flags, or ask the operator for bulk deletion.",
+    match = ["rm -rf build", "rm -fr /tmp/example", "rm -RF cache"],
+    not_match = ["rm -f stale.txt", "rm notes.md"],
+)
+
+prefix_rule(
+    pattern = ["rm", ["-r", "-R", "--recursive"], ["-f", "--force"]],
+    decision = "forbidden",
+    justification = "Remove specific reviewed files without recursive forced deletion, or ask the operator for bulk deletion.",
+    match = ["rm -r -f build", "rm --recursive --force cache"],
+    not_match = ["rm -r empty-directory", "rm -f stale.txt"],
+)
+
+prefix_rule(
+    pattern = ["rm", ["-f", "--force"], ["-r", "-R", "--recursive"]],
+    decision = "forbidden",
+    justification = "Remove specific reviewed files without recursive forced deletion, or ask the operator for bulk deletion.",
+    match = ["rm -f -r build", "rm --force --recursive cache"],
+    not_match = ["rm -f stale.txt", "rm -r empty-directory"],
+)
+
+prefix_rule(
+    pattern = ["rm", ".git"],
+    decision = "forbidden",
+    justification = "Inspect repository metadata with git status or git rev-parse and leave removal of the repository database to the operator.",
+    match = ["rm .git"],
+    not_match = ["rm .gitignore", "git status"],
+)
+
+prefix_rule(
+    pattern = ["rm", ["-r", "-R", "--recursive"], ".git"],
+    decision = "forbidden",
+    justification = "Inspect repository metadata with git status or git rev-parse and leave removal of the repository database to the operator.",
+    match = ["rm -r .git", "rm --recursive .git"],
+    not_match = ["rm -r build", "rm .gitignore"],
+)
+
+prefix_rule(
+    pattern = ["mv", ".git"],
+    decision = "forbidden",
+    justification = "Inspect the repository location with git rev-parse --git-dir and ask the operator to move repository metadata.",
+    match = ["mv .git .git-old"],
+    not_match = ["mv notes.txt archive.txt", "git rev-parse --git-dir"],
+)
+
+prefix_rule(
+    pattern = ["git", "restore"],
+    decision = "prompt",
+    justification = "Every form of restore rewinds tracked state: leave the tree as it is and report what you changed instead.",
+    match = ["git restore file.txt", "git restore --worktree file.txt", "git restore --staged file.txt"],
+    not_match = ["git status", "git show HEAD:file.txt"],
+)
