@@ -7,7 +7,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { diagnose, renderDoctor } from '../../cli/doctor.mjs';
 import { resolveHost } from '../../cli/hosts.mjs';
-import { writeInstallRecord } from '../../cli/manifest.mjs';
+import { fileFingerprint, writeInstallRecord } from '../../cli/manifest.mjs';
 import { PROJECT_MARKER } from '../../src/runner/project-dir.mjs';
 import { projectFolder } from '../../src/write-meta.mjs';
 
@@ -44,6 +44,15 @@ async function installedFixture(t) {
   return { host, record };
 }
 
+async function addRules(host, record, content = 'prefix_rule(pattern=["safe"], decision="allow")\n') {
+  const rulePath = path.join(host.codexRulesDir, 'codex-bridge.rules');
+  await fs.mkdir(path.dirname(rulePath), { recursive: true });
+  await fs.writeFile(rulePath, content);
+  record.rules = { path: rulePath, fingerprint: await fileFingerprint(rulePath) };
+  await writeInstallRecord(host, record);
+  return rulePath;
+}
+
 async function runsRootFixture(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-runs-'));
   const previous = process.env.CODEX_RUNS_ROOT;
@@ -74,6 +83,62 @@ test('complete installation with all files exits zero', async (t) => {
   assert.equal(result.exitCode, 0);
   assert.equal(result.checks.find((item) => item.key === 'files').status, 'ok');
   assert.equal(result.checks.find((item) => item.key === 'hook').status, 'ok');
+});
+
+test('rules cannot be checked before installation', async (t) => {
+  const host = await hostFixture(t);
+  const result = await diagnose({ host, codexProbe, currentPackage: ownPackage });
+  assert.deepEqual(result.checks.find((item) => item.key === 'rules'), {
+    key: 'rules',
+    status: 'warn',
+    value: 'cannot check before installation',
+  });
+});
+
+test('an old installation record warns that update will add rules', async (t) => {
+  const { host } = await installedFixture(t);
+  const result = await diagnose({ host, codexProbe, currentPackage: ownPackage });
+  const rules = result.checks.find((item) => item.key === 'rules');
+  assert.equal(rules.status, 'warn');
+  assert.match(rules.value, /not installed by this installation/i);
+  assert.match(rules.value, /install or update/i);
+});
+
+test('rules matching their recorded fingerprint are healthy', async (t) => {
+  const { host, record } = await installedFixture(t);
+  const rulePath = await addRules(host, record);
+  const result = await diagnose({ host, codexProbe, currentPackage: ownPackage });
+  assert.deepEqual(result.checks.find((item) => item.key === 'rules'), {
+    key: 'rules',
+    status: 'ok',
+    value: `${rulePath} (matches record)`,
+  });
+  assert.equal(result.exitCode, 0);
+});
+
+test('missing recorded rules fail diagnosis and name their full path', async (t) => {
+  const { host, record } = await installedFixture(t);
+  const rulePath = await addRules(host, record);
+  await fs.rm(rulePath);
+  const result = await diagnose({ host, codexProbe, currentPackage: ownPackage });
+  assert.deepEqual(result.checks.find((item) => item.key === 'rules'), {
+    key: 'rules',
+    status: 'fail',
+    value: rulePath,
+  });
+  assert.equal(result.exitCode, 1);
+});
+
+test('manually modified rules warn without failing diagnosis', async (t) => {
+  const { host, record } = await installedFixture(t);
+  const rulePath = await addRules(host, record);
+  await fs.writeFile(rulePath, 'manual operator rules\n');
+  const result = await diagnose({ host, codexProbe, currentPackage: ownPackage });
+  const rules = result.checks.find((item) => item.key === 'rules');
+  assert.equal(rules.status, 'warn');
+  assert.match(rules.value, /modified after installation/i);
+  assert.match(rules.value, new RegExp(rulePath.replaceAll('\\', '\\\\')));
+  assert.equal(result.exitCode, 0);
 });
 
 test('missing recorded file is a failure', async (t) => {

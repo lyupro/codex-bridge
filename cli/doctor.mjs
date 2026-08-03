@@ -2,7 +2,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { readInstallRecord, packageInfo } from './manifest.mjs';
+import { fileFingerprint, readInstallRecord, packageInfo } from './manifest.mjs';
 import { runsRoot } from '../src/runner/runs-root.mjs';
 import { resolveProjectRunsDir } from '../src/runner/project-dir.mjs';
 
@@ -97,6 +97,18 @@ async function hookCheck(host, record) {
     : check('hook', 'warn', 'SubagentStop does not point to the installed reply-guard.mjs');
 }
 
+async function rulesCheck(record) {
+  if (!record) return check('rules', 'warn', 'cannot check before installation');
+  if (!record.rules) {
+    return check('rules', 'warn', 'rules were not installed by this installation; install or update will add them');
+  }
+  const fingerprint = await fileFingerprint(record.rules.path);
+  if (!fingerprint) return check('rules', 'fail', record.rules.path);
+  return fingerprint === record.rules.fingerprint
+    ? check('rules', 'ok', `${record.rules.path} (matches record)`)
+    : check('rules', 'warn', `${record.rules.path} (modified after installation)`);
+}
+
 export async function diagnose({ host, codexProbe = probeCodex, currentPackage } = {}) {
   const checks = [];
   const hostExists = await exists(host.root);
@@ -132,6 +144,8 @@ export async function diagnose({ host, codexProbe = probeCodex, currentPackage }
     !record ? 'warn' : missingFiles.length ? 'fail' : 'ok',
     !record ? 'not checked' : missingFiles.length ? `missing: ${missingFiles.join(', ')}` : `${record.files.length} installed file(s) present`,
   ));
+  const rules = await rulesCheck(record);
+  checks.push(rules);
   checks.push(await hookCheck(host, record));
 
   const codex = codexProbe();
@@ -143,7 +157,8 @@ export async function diagnose({ host, codexProbe = probeCodex, currentPackage }
   checks.push(projectRuns);
 
   return {
-    exitCode: !record || recordBroken || missingFiles.length || projectRuns.status === 'fail' ? 1 : 0,
+    exitCode: !record || recordBroken || missingFiles.length || rules.status === 'fail'
+      || projectRuns.status === 'fail' ? 1 : 0,
     checks,
     record,
     missingFiles,

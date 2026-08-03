@@ -8,6 +8,7 @@ import {
   packageInfo,
   readInstallRecord,
   recordMatchesPackage,
+  rulesPlan,
 } from './manifest.mjs';
 import { targetMatches } from './copy.mjs';
 import { inspectHook } from './settings-merge.mjs';
@@ -25,7 +26,7 @@ function classifyPlanned(state, record) {
   if (!state.recorded) return 'new';
   if (!state.exists) return 'missing';
   if (state.matchesPackage) return 'up-to-date';
-  if (record.fingerprints?.[state.relative] === state.fingerprint) return 'outdated';
+  if (state.recordedFingerprint === state.fingerprint) return 'outdated';
   return 'modified';
 }
 
@@ -85,6 +86,7 @@ export async function update({ host, dryRun = false, force = false, packageRoot 
   }
 
   const plan = await buildInstallPlan(host, packageRoot);
+  const rule = { ...rulesPlan(host, packageRoot), processing: 'copy' };
   const planned = new Map(plan.map((item) => [item.relativeToHost, item]));
   const plannedStates = await Promise.all(plan.map(async (item) => {
     const relative = item.relativeToHost;
@@ -93,12 +95,24 @@ export async function update({ host, dryRun = false, force = false, packageRoot 
       relative,
       item,
       recorded: record.files.includes(relative),
+      recordedFingerprint: record.fingerprints?.[relative],
       exists: targetExists,
       matchesPackage: targetExists && await targetMatches(item, host.agentsDir),
       fingerprint: targetExists ? await fileFingerprint(item.target) : null,
     };
     return { ...state, status: classifyPlanned(state, record) };
   }));
+  const ruleExists = await exists(rule.target);
+  const ruleState = {
+    relative: rule.target,
+    item: rule,
+    recorded: Boolean(record.rules),
+    recordedFingerprint: record.rules?.fingerprint,
+    exists: ruleExists,
+    matchesPackage: ruleExists && await targetMatches(rule, host.agentsDir),
+    fingerprint: ruleExists ? await fileFingerprint(rule.target) : null,
+  };
+  ruleState.status = classifyPlanned(ruleState, record);
   const orphanStates = await Promise.all(record.files
     .filter((relative) => !planned.has(relative))
     .map(async (relative) => {
@@ -112,7 +126,7 @@ export async function update({ host, dryRun = false, force = false, packageRoot 
       };
       return { ...state, status: classifyOrphan(state, record) };
     }));
-  const states = [...plannedStates, ...orphanStates];
+  const states = [...plannedStates, ruleState, ...orphanStates];
   const conflicts = states.filter((state) => state.status === 'modified' || state.status === 'missing');
   const legacy = !record.fingerprints;
   if (conflicts.length && !force) {
@@ -123,7 +137,8 @@ export async function update({ host, dryRun = false, force = false, packageRoot 
   const inspectedHook = await inspectHook(host.settingsPath, guardPath);
   const currentPackage = await packageInfo(packageRoot);
   const recordCurrent = recordMatchesPackage(record, plan, currentPackage,
-    new Map(plannedStates.map((state) => [state.relative, state.fingerprint])));
+    new Map(plannedStates.map((state) => [state.relative, state.fingerprint])),
+    { path: rule.target, fingerprint: ruleState.fingerprint });
   const changed = states.some((state) => state.status !== 'up-to-date');
   if (!changed && inspectedHook.present && recordCurrent) {
     return { exitCode: 0, output: 'codex-bridge is up to date' };

@@ -15,6 +15,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { parseArgs, runsPrefixInside, worktreeSnapshot } from '../src/run-codex.mjs';
+import { codexArgs } from '../src/runner/codex-cmd.mjs';
+import { loadRunEnv } from '../src/runner/run-env.mjs';
 import { runsRoot } from '../src/runner/runs-root.mjs';
 
 /** Resolved from this file, so a copied folder tests its own copy of the runner. */
@@ -108,6 +110,15 @@ test('--continue does not swallow the flag that follows it', () => {
   assert.equal(code, 0);
   assert.equal(opts.continue, true);
   assert.equal(opts.scope, 'src/**');
+});
+
+test('no runner mode disables installed Codex rules', () => {
+  loadRunEnv();
+  const runDir = path.join(os.tmpdir(), 'codex-run');
+  for (const agent of ['codex-scout', 'codex-build', 'codex-review']) {
+    const args = codexArgs({ agent, effort: 'medium', repo: process.cwd() }, runDir, true);
+    assert.equal(args.includes('--ignore-rules'), false, agent);
+  }
 });
 
 /**
