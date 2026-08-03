@@ -5,7 +5,28 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { globToRegExp, expandDeclared } from '../../src/meta/paths.mjs';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { globToRegExp, expandDeclared, readJson } from '../../src/meta/paths.mjs';
+
+// --- readJson ---------------------------------------------------------------------
+
+test('a status.json saved with a byte-order mark still reads', () => {
+  // Not a hypothetical: PowerShell's `Set-Content -Encoding utf8` writes one, and a status.json
+  // that fails to parse reads as "no such run" — which quietly excuses that run from every
+  // check that looks it up, the abandoned-branch refusal included.
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'codex-json-')), 'status.json');
+  fs.writeFileSync(file, `﻿${JSON.stringify({ state: 'abandoned' })}`);
+  assert.deepEqual(readJson(file), { state: 'abandoned' });
+});
+
+test('unreadable or malformed JSON is still null, not a throw', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-json-'));
+  fs.writeFileSync(path.join(dir, 'broken.json'), '{ not json');
+  assert.equal(readJson(path.join(dir, 'broken.json')), null);
+  assert.equal(readJson(path.join(dir, 'absent.json')), null);
+});
 
 // --- globToRegExp -----------------------------------------------------------------
 
