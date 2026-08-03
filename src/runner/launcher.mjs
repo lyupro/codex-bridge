@@ -30,7 +30,7 @@ import { loadRunEnv, RUN_ENV } from './run-env.mjs';
 import { parseArgs, die } from './args.mjs';
 import { SCHEMAS } from './schemas.mjs';
 import { INSTRUCTIONS } from './prompts.mjs';
-import { git, headSha, worktreeSnapshot, reviewScope } from './git-state.mjs';
+import { git, headSha, branchName, worktreeSnapshot, reviewScope } from './git-state.mjs';
 import { codexArgs, requireCodex, unsafeForCmd } from './codex-cmd.mjs';
 import { runsRoot } from './runs-root.mjs';
 import { resolveProjectRunsDir } from './project-dir.mjs';
@@ -258,6 +258,7 @@ export async function launcher() {
 
   if (opts.agent === 'codex-build') {
     fs.writeFileSync(path.join(runDir, 'head-before.txt'), `${isGitRepo ? headSha(repoRoot) : ''}\n`);
+    fs.writeFileSync(path.join(runDir, 'branch-before.txt'), `${isGitRepo ? branchName(repoRoot) : ''}\n`);
     fs.writeFileSync(path.join(runDir, 'git-before.txt'), git(repoRoot, ['status', '--porcelain']).stdout || '');
     fs.writeFileSync(path.join(runDir, 'state-before.txt'), `${worktreeSnapshot(repoRoot)}\n`);
   }

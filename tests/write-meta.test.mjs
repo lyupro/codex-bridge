@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * Guards the write-meta.mjs facade on its build/review axis: collect() resolving a run's
- * status from its artifacts (mismatch, service directories, scope, a commit made mid-run),
- * plus projectFolder() and status.json bookkeeping.
+ * status from its artifacts (mismatch, service directories, scope), plus projectFolder()
+ * and status.json bookkeeping.
  *   node --test agents/codex/write-meta.test.mjs
  *
  * Every case here is a run shape that has to keep resolving the same way. The mismatch
@@ -11,7 +11,9 @@
  * a second pass of one task was failed for work its first pass had already finished.
  *
  * collect()'s scout axis (parseQuestions, coverage against questions.json) lives in
- * write-meta-scout.test.mjs — the same facade, split from this file purely on line count.
+ * write-meta-scout.test.mjs, and its git-state axis (the commit and the branch either side
+ * of a build run) in write-meta-git-state.test.mjs — the same facade, split by subject once
+ * this file outgrew the 400-line limit.
  * Unit coverage of the modules collect() delegates to lives beside each module instead:
  * meta/paths.test.mjs, meta/chain.test.mjs, meta/run-state.test.mjs, meta/verdict.test.mjs.
  *
@@ -44,7 +46,7 @@ import {
   expandDeclared,
   reportVersusWork,
 } from '../src/write-meta.mjs';
-import { makeChainRoot, makeRun } from './meta/test-fixtures.mjs';
+import { buildResult as build, makeChainRoot, makeRun } from './meta/test-fixtures.mjs';
 
 // substanceLength ≈ 227 — clears MIN_SINGLE_SUBSTANCE_CHARS (200), so a scout run below
 // clears the bar collect() judges it by, independent of the build mismatch check.
@@ -52,16 +54,6 @@ const LONG_PROSE_ANSWER =
   'The module reads the file line by line, parses fields according to the format, and validates ' +
   'values before passing them through the processing pipeline without side effects or needless ' +
   'runtime exceptions. The error contract and dependency call order are described separately.';
-
-const build = (changes, extra = {}) => ({
-  summary: 'done',
-  changes,
-  verify_command: 'npm test',
-  verify_passed: true,
-  leftovers: [],
-  report_markdown: '# report',
-  ...extra,
-});
 
 test('report matching the tree stays OK', () => {
   const dir = makeRun({
@@ -321,55 +313,30 @@ test('a run with no scope.txt (an older run) is not scope-checked', () => {
   assert.equal(meta.status, 'OK');
 });
 
-// --- commit made during the run -------------------------------------------------------
-
-test('a HEAD that moved during the run fails, however clean the report', () => {
+test('reportVersusWork finds a renamed run baseline by task hash', () => {
+  const taskHash = 'same-task-hash';
+  const runsRoot = makeChainRoot([
+    {
+      name: '2026-08-03_100000_old-name',
+      slug: 'old-name',
+      taskHash,
+      before: '',
+      result: build([]),
+    },
+  ]);
   const dir = makeRun({
     result: build([{ file: 'src/a.ts', what: 'change', why: 'task' }]),
-    before: '',
-    after: 'U\t10\tsrc/a.ts\n',
-    headBefore: 'abcdef1234567890\n',
-    headAfter: 'fedcba0987654321\n',
-  });
-  const { meta } = collect(dir, 'codex-build', 0);
-  assert.equal(meta.status, 'FAIL');
-  assert.match(meta.reason, /commit made despite prohibition/);
-});
-
-test('a moved HEAD outranks a LIMIT signal in the same log', () => {
-  const dir = makeRun({
-    log: 'ERROR: rate limit exceeded for this account\n',
-    result: { summary: '', changes: [], report_markdown: '' },
-    before: '',
-    after: 'U\t10\tsrc/a.ts\n',
-    headBefore: 'abcdef1234567890\n',
-    headAfter: 'fedcba0987654321\n',
-  });
-  const { meta } = collect(dir, 'codex-build', 0);
-  assert.equal(meta.status, 'FAIL');
-  assert.match(meta.reason, /commit made despite prohibition/);
-});
-
-test('identical HEAD before and after is not a commit violation', () => {
-  const dir = makeRun({
-    result: build([{ file: 'src/a.ts', what: 'change', why: 'task' }]),
-    before: '',
-    after: 'U\t10\tsrc/a.ts\n',
-    headBefore: 'abcdef1234567890\n',
-    headAfter: 'abcdef1234567890\n',
-  });
-  const { meta } = collect(dir, 'codex-build', 0);
-  assert.equal(meta.status, 'OK');
-});
-
-test('missing head-before/after files (an older run) is not a commit violation', () => {
-  const dir = makeRun({
-    result: build([{ file: 'src/a.ts', what: 'change', why: 'task' }]),
-    before: '',
+    before: 'U\t10\tsrc/a.ts\n',
     after: 'U\t10\tsrc/a.ts\n',
   });
-  const { meta } = collect(dir, 'codex-build', 0);
-  assert.equal(meta.status, 'OK');
+  const verdict = reportVersusWork(dir, build([{ file: 'src/a.ts', what: 'change', why: 'task' }]), {
+    runsRoot,
+    repo: '/repo/task',
+    slug: 'new-name',
+    taskHash,
+  });
+  assert.equal(verdict.ok, true);
+  assert.equal(verdict.carried, true);
 });
 
 // --- collect(): status.json -----------------------------------------------------------

@@ -6,6 +6,7 @@
  * an outcome its own run does not support. Every branch in resolveStatus() exists because
  * a real run satisfied every schema while doing something other than the job.
  */
+import fs from 'node:fs';
 import path from 'node:path';
 import {
   SERVICE_RE,
@@ -127,7 +128,7 @@ export function reportVersusWork(runDir, result, ctx) {
     );
   }
 
-  const baseline = chainBaseline(ctx?.runsRoot, ctx?.repo, ctx?.slug);
+  const baseline = chainBaseline(ctx?.runsRoot, ctx?.repo, ctx?.slug, ctx?.taskHash);
   if (baseline !== null) {
     const accumulated = splitRunChanges(runDir, changedPaths(baseline, after)).work;
     if (declared.some((d) => declaredHits(d, accumulated))) return agreed(true);
@@ -246,6 +247,26 @@ function commitDuringRun(runDir) {
 }
 
 /**
+ * A branch moved under an explicit ban. Branch names are snapshotted either side of the run,
+ * so the artifacts prove whether it stayed on the same ref or left the repository detached.
+ *
+ * Existence is checked rather than emptiness, because here an empty file is data — detached
+ * HEAD — and a missing one is silence. Both snapshots have to be present for the comparison
+ * to mean anything: a run whose launcher predates this check, or whose worker died before
+ * writing its half, would otherwise be accused of detaching a branch it never touched.
+ */
+function branchDuringRun(runDir) {
+  const beforeFile = path.join(runDir, 'branch-before.txt');
+  const afterFile = path.join(runDir, 'branch-after.txt');
+  if (!fs.existsSync(beforeFile) || !fs.existsSync(afterFile)) return null;
+  const before = readText(beforeFile).trim();
+  const after = readText(afterFile).trim();
+  if (before === after) return null;
+  if (before && !after) return `branch moved despite prohibition: ${before} → detached HEAD`;
+  return `branch moved despite prohibition: ${before || 'detached HEAD'} → ${after}`;
+}
+
+/**
  * Status comes from artifacts, never from intent. An abandoned run leaves raw.log at
  * zero bytes, and that is a FAIL with its own reason — not a retry hint. An empty
  * result with a quota signal in the log is LIMIT; without one it is FAIL.
@@ -263,6 +284,8 @@ export function resolveStatus({ log, logBytes, resultOk, exit, agent, result, ru
   if (agent === 'codex-build') {
     const committed = commitDuringRun(runDir);
     if (committed) return { status: 'FAIL', reason: committed };
+    const branched = branchDuringRun(runDir);
+    if (branched) return { status: 'FAIL', reason: branched };
   }
   if (!resultOk) {
     const limit = limitSignal(log);

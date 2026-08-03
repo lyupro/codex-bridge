@@ -69,6 +69,13 @@ export function worktreeSnapshot(repo) {
  */
 export const headSha = (repo) => (git(repo, ['rev-parse', 'HEAD']).stdout || '').trim();
 
+/**
+ * The branch a run starts and ends on. Empty means detached HEAD, which is data to compare,
+ * not an error: a run may begin detached and stay that way, or leave the repository detached.
+ */
+export const branchName = (repo) =>
+  (git(repo, ['symbolic-ref', '--short', '-q', 'HEAD']).stdout || '').trim();
+
 const FAKE_DONE_RE =
   /TODO|FIXME|test\.(skip|only)|it\.(skip|only)|describe\.(skip|only)|NotImplemented/;
 

@@ -13,6 +13,17 @@ import path from 'node:path';
 /** A raw.log shape collect() reads as a clean, successful run. */
 export const OK_LOG = 'model: gpt-5.6-sol\nsandbox: workspace-write\ntokens used\n104 098\n';
 
+/** A build result that satisfies the schema, so a test can vary only what it is about. */
+export const buildResult = (changes, extra = {}) => ({
+  summary: 'done',
+  changes,
+  verify_command: 'npm test',
+  verify_passed: true,
+  leftovers: [],
+  report_markdown: '# report',
+  ...extra,
+});
+
 // One task, addressed the way run-codex.mjs writes it into status.json.
 export const CHAIN_REPO = '/repo/task';
 export const CHAIN_SLUG = 'plan6-b1';
@@ -29,6 +40,8 @@ export function makeRun({
   envPaths,
   headBefore,
   headAfter,
+  branchBefore,
+  branchAfter,
 } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-run-'));
   fs.writeFileSync(path.join(dir, 'raw.log'), log);
@@ -45,6 +58,8 @@ export function makeRun({
   }
   if (headBefore !== undefined) fs.writeFileSync(path.join(dir, 'head-before.txt'), headBefore);
   if (headAfter !== undefined) fs.writeFileSync(path.join(dir, 'head-after.txt'), headAfter);
+  if (branchBefore !== undefined) fs.writeFileSync(path.join(dir, 'branch-before.txt'), branchBefore);
+  if (branchAfter !== undefined) fs.writeFileSync(path.join(dir, 'branch-after.txt'), branchAfter);
   return dir;
 }
 
