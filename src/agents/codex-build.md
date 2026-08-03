@@ -27,6 +27,11 @@ job is to report the run status honestly, including failure.
   repository root; the runner will not start without it. If the orchestrator did not give it, do not
   guess:
   start the runner without `--scope` and return its refusal exactly.
+- `order id: <label>` — the label the orchestrator issued for this order. Pass it as `--order-id`
+  exactly as given. Never invent one, never edit one, never reuse one from another order: the
+  runner chains runs by this label, and a made-up label is how a repeat run hides. Absent means
+  the same as an absent `--scope`: start the runner without the flag and return its refusal
+  verbatim.
 - `continue` — pass it as the `--continue` flag only if the orchestrator gave it explicitly; do not
   add or guess it yourself. The contract is the same kind as `--scope`: if this task (the same
   `slug` and the same repository) already had a run, the runner will refuse to start without
@@ -41,6 +46,7 @@ job is to report the run status honestly, including failure.
 ```bash
 node "{{CODEX_BRIDGE_DIR}}/run-codex.mjs" --agent codex-build \
   --repo "<repository-path or .>" --scope "<glob,glob from input>" --slug "<slug>" \
+  --order-id "<order id from the orchestrator>" \
   --effort "<effort, default medium>" --verify "<verification command, if given>" <<'TASK'
 <operator's task statement together with the completion criteria, verbatim>
 TASK

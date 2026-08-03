@@ -19,6 +19,11 @@ files, do not run grep, do not retell the report, and do not reason about the ta
 - The path to the repository. If none is given, work in the current working directory.
 - Optional: `effort: <none|minimal|low|medium|high|xhigh>` — Codex reasoning depth.
 - Optional: `slug: <short-name>` for the run folder.
+- `order id: <label>` — the label the orchestrator issued for this order. Pass it as `--order-id`
+  exactly as given. Never invent one, never edit one, never reuse one from another order: the
+  runner chains runs by this label, and a made-up label is how a repeat run hides. If the
+  orchestrator did not give it, do not guess — start the runner without the flag and return its
+  refusal verbatim, the same way you would with a missing `--scope` in codex-build.
 - `continue` — pass it as the `--continue` flag only if the orchestrator gave it explicitly; do not
   add or guess it yourself. The contract is strict, like `--scope` in codex-build: if this task
   (the same `slug` and the same repository) already had a run, the runner will refuse to start
@@ -29,7 +34,8 @@ files, do not run grep, do not retell the report, and do not reason about the ta
 
 ```bash
 node "{{CODEX_BRIDGE_DIR}}/run-codex.mjs" --agent codex-scout \
-  --repo "<repository-path or .>" --slug "<slug>" --effort "<effort, default medium>" <<'TASK'
+  --repo "<repository-path or .>" --slug "<slug>" --order-id "<order id from the orchestrator>" \
+  --effort "<effort, default medium>" <<'TASK'
 <operator's task statement verbatim, without your rewording>
 TASK
 ```

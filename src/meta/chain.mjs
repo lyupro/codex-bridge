@@ -34,13 +34,14 @@ export const taskFingerprint = (taskText) => {
  * honestly, changed nothing and was told it had done no work. Folder names rather than
  * full paths; the current run joins the list as soon as its status.json exists.
  */
-export function chainRuns(runsRoot, repo, slug, taskHash = '') {
+export function chainRuns(runsRoot, repo, slug, taskHash = '', orderId = '') {
   const wantedRepo = normalizePath(repo);
   const wantedSlug = String(slug ?? '').trim().toLowerCase();
   const wantedHash = String(taskHash ?? '').trim().toLowerCase();
+  const wantedOrderId = String(orderId ?? '').trim();
   // No handle on the task, or no repo, means nothing to chain — an empty context must find
   // nothing rather than fall back to "every run in this folder".
-  if (!wantedRepo || (!wantedSlug && !wantedHash)) return [];
+  if (!wantedRepo || (!wantedSlug && !wantedHash && !wantedOrderId)) return [];
   let entries;
   try {
     entries = fs.readdirSync(runsRoot, { withFileTypes: true });
@@ -56,7 +57,8 @@ export function chainRuns(runsRoot, repo, slug, taskHash = '') {
     // slug still catches the follow-up whose wording the orchestrator edited on purpose.
     const sameSlug = Boolean(wantedSlug) && String(status.slug ?? '').trim().toLowerCase() === wantedSlug;
     const sameTask = Boolean(wantedHash) && String(status.task_hash ?? '').trim().toLowerCase() === wantedHash;
-    if (!sameSlug && !sameTask) continue;
+    const sameOrder = Boolean(wantedOrderId) && String(status.order_id ?? '').trim() === wantedOrderId;
+    if (!sameSlug && !sameTask && !sameOrder) continue;
     if (normalizePath(status.repo) !== wantedRepo) continue;
     runs.push({ name: entry.name, at: String(status.started_at || '') });
   }
@@ -74,8 +76,8 @@ export function chainRuns(runsRoot, repo, slug, taskHash = '') {
  * null when there is no chain or that first run never got a snapshot; an existing but
  * empty snapshot is a clean tree, which is data, not absence.
  */
-export function chainBaseline(runsRoot, repo, slug, taskHash = '') {
-  const [first] = chainRuns(runsRoot, repo, slug, taskHash);
+export function chainBaseline(runsRoot, repo, slug, taskHash = '', orderId = '') {
+  const [first] = chainRuns(runsRoot, repo, slug, taskHash, orderId);
   if (!first) return null;
   try {
     return fs.readFileSync(path.join(runsRoot, first, 'state-before.txt'), 'utf8');

@@ -54,6 +54,32 @@ test('a different task under the same slug is not chained by fingerprint', () =>
   assert.deepEqual(chainRuns(root, CHAIN_REPO, 'other-slug', taskFingerprint('another task')), []);
 });
 
+test('an order id chains renamed and reworded passes', () => {
+  const root = makeChainRoot([
+    { name: 'a-first', at: '2026-08-02T01:42:00Z', slug: 'old-slug', taskHash: taskFingerprint('one task'), orderId: 'order-42' },
+    { name: 'b-renamed', at: '2026-08-02T01:45:00Z', slug: 'new-slug', taskHash: taskFingerprint('another task'), orderId: 'order-42' },
+  ]);
+  assert.deepEqual(chainRuns(root, CHAIN_REPO, 'new-slug', taskFingerprint('another task'), 'order-42'), [
+    'a-first',
+    'b-renamed',
+  ]);
+});
+
+test('an empty order id does not chain older unlabeled runs extra', () => {
+  const root = makeChainRoot([
+    { name: 'a-first', at: '2026-08-02T01:42:00Z', slug: 'old-slug', taskHash: taskFingerprint('one task') },
+    { name: 'b-other', at: '2026-08-02T01:45:00Z', slug: 'other-slug', taskHash: taskFingerprint('another task') },
+  ]);
+  assert.deepEqual(chainRuns(root, CHAIN_REPO, 'new-slug', taskFingerprint('new task'), ''), []);
+});
+
+test('a different order id does not chain a different slug and hash', () => {
+  const root = makeChainRoot([
+    { name: 'a-first', at: '2026-08-02T01:42:00Z', slug: 'old-slug', taskHash: taskFingerprint('one task'), orderId: 'order-41' },
+  ]);
+  assert.deepEqual(chainRuns(root, CHAIN_REPO, 'new-slug', taskFingerprint('another task'), 'order-42'), []);
+});
+
 test('the fingerprint ignores rewrapping but not rewording', () => {
   assert.equal(taskFingerprint('Do  X\n\nand Y'), taskFingerprint('do x and y'));
   assert.notEqual(taskFingerprint('do x'), taskFingerprint('do z'));
@@ -77,6 +103,13 @@ test('the baseline is the first pass snapshot, even when a later pass has none a
     { name: 'b-killed', at: '2026-07-31T11:00:00Z' },
   ]);
   assert.equal(chainBaseline(root, CHAIN_REPO, CHAIN_SLUG), 'U\t10\tsrc/a.ts\n');
+});
+
+test('the baseline can be found through the order id alone', () => {
+  const root = makeChainRoot([
+    { name: 'a-first', at: '2026-08-02T01:42:00Z', slug: 'old-slug', before: 'U\t10\tsrc/a.ts\n', orderId: 'order-42' },
+  ]);
+  assert.equal(chainBaseline(root, CHAIN_REPO, 'new-slug', '', 'order-42'), 'U\t10\tsrc/a.ts\n');
 });
 
 test('an empty first snapshot is a clean tree, a missing one is no baseline at all', () => {

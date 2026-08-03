@@ -51,6 +51,14 @@ export function parseArgs(argv) {
   }
   if (!opts.agent) die('--agent is required');
   if (!AGENTS[opts.agent]) die(`unknown --agent ${opts.agent}`);
+  opts.orderId = String(opts['order-id'] ?? '').trim();
+  if (!opts.orderId) {
+    die(
+      '--order-id is required: the orchestrator issues the order label and the runner will not invent one. ' +
+        'A repeat of the same order should come back with --continue. If this appeared right after a package update, ' +
+        'the installed dispatcher prompts are stale and need npm run dev:install (local dev) or codex-bridge update.',
+    );
+  }
   // Effort levels are the provider's vocabulary and it changes: `minimal` was accepted
   // until the default model dropped it, `max` appeared. So the value is passed through
   // as given; an unsupported one comes back as a 400 in the log and becomes a FAIL with

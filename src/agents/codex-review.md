@@ -22,6 +22,10 @@ opinion, not a verdict.
   - branch against base — `--mode base:<branch>`;
   - specific commit — `--mode commit:<sha>`.
 - The path to the repository. If none is given, use the current working directory.
+- `order id: <label>` — the label the orchestrator issued for this order. Pass it as `--order-id`
+  exactly as given. Never invent one, never edit one, never reuse one from another order: the
+  runner chains runs by this label, and a made-up label is how a repeat run hides. If it was not
+  given, start the runner without the flag and return its refusal verbatim.
 - Optional: review focus as text ("look for races and error handling"), `slug:`, `effort:`.
 
 ## The only thing you do
@@ -29,7 +33,8 @@ opinion, not a verdict.
 ```bash
 node "{{CODEX_BRIDGE_DIR}}/run-codex.mjs" --agent codex-review \
   --repo "<repository-path or .>" --mode "<uncommitted|base:<branch>|commit:<sha>>" \
-  --slug "<slug>" --effort "<effort, default medium>" <<'TASK'
+  --slug "<slug>" --order-id "<order id from the orchestrator>" \
+  --effort "<effort, default medium>" <<'TASK'
 <review focus from the task verbatim; if there is no focus — "No focus, review by priority.">
 TASK
 ```

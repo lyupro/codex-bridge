@@ -83,6 +83,7 @@ export function makeChainRoot(runs) {
         slug: run.slug ?? CHAIN_SLUG,
         started_at: run.at ?? '',
         ...(run.taskHash === undefined ? {} : { task_hash: run.taskHash }),
+        ...(run.orderId === undefined ? {} : { order_id: run.orderId }),
       };
       fs.writeFileSync(path.join(dir, 'status.json'), JSON.stringify(status));
     }

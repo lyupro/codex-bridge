@@ -4,11 +4,11 @@
  *
  * The order it leaves for the worker is worker.json in the run folder — after the split
  * that file is the only connection between the two halves. It is written here with
- * `agent`, `slug`, `repo`, `is_git_repo`, `launcher_pid` and `args`; worker.mjs reads
- * `repo`, `agent`, `args` and `is_git_repo`. The two extra fields are deliberate: `slug`
- * and `launcher_pid` are what a run folder read back months later needs in order to
- * explain itself. Nothing may be dropped from this shape without changing worker.mjs and
- * saying so out loud.
+ * `agent`, `slug`, `order_id`, `repo`, `is_git_repo`, `launcher_pid` and `args`; worker.mjs reads
+ * `repo`, `agent`, `args` and `is_git_repo`. The three extra fields are deliberate: `slug`,
+ * `order_id` and `launcher_pid` are what a run folder read back months later needs in order to
+ * explain itself — which order it belonged to included. Nothing may be dropped from this shape
+ * without changing worker.mjs and saying so out loud.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -138,7 +138,7 @@ export async function launcher() {
   // the identical order as `<slug>-v2` and spent 46k on it. Refused before the folder exists,
   // like --scope.
   const taskHash = taskFingerprint(taskText);
-  const chain = chainRuns(projectRunsRoot, repoRoot, opts.slug, taskHash);
+  const chain = chainRuns(projectRunsRoot, repoRoot, opts.slug, taskHash, opts.orderId);
   if (chain.length && !opts.continue) {
     const last = chain[chain.length - 1];
     const lastSlug = String(readJson(path.join(projectRunsRoot, last, 'status.json'))?.slug || '');
@@ -178,6 +178,7 @@ export async function launcher() {
     launcher_pid: process.pid,
     agent: opts.agent,
     slug: opts.slug,
+    order_id: opts.orderId,
     // Fingerprint of the order, so a later run of the same task finds this one whatever it
     // calls itself. Written here, before Codex is probed, like everything the chain reads.
     task_hash: taskHash,
@@ -295,6 +296,7 @@ export async function launcher() {
       {
         agent: opts.agent,
         slug: opts.slug,
+        order_id: opts.orderId,
         repo: repoRoot,
         is_git_repo: isGitRepo,
         launcher_pid: process.pid,

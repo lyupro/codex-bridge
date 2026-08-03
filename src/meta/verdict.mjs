@@ -128,7 +128,7 @@ export function reportVersusWork(runDir, result, ctx) {
     );
   }
 
-  const baseline = chainBaseline(ctx?.runsRoot, ctx?.repo, ctx?.slug, ctx?.taskHash);
+  const baseline = chainBaseline(ctx?.runsRoot, ctx?.repo, ctx?.slug, ctx?.taskHash, ctx?.orderId);
   if (baseline !== null) {
     const accumulated = splitRunChanges(runDir, changedPaths(baseline, after)).work;
     if (declared.some((d) => declaredHits(d, accumulated))) return agreed(true);
@@ -154,6 +154,7 @@ const chainContextOf = (runDir) => {
     slug: status.slug || '',
     // Runs from before the fingerprint existed carry no hash; they chain by slug as they did.
     taskHash: status.task_hash || '',
+    orderId: status.order_id || '',
   };
 };
 

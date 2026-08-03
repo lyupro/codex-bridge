@@ -69,20 +69,42 @@ process.stdout.write('imported');`;
   assert.deepEqual(fs.readdirSync(home), []);
 });
 
+// Every run carries the order label the orchestrator issued, so these cases spell it out
+// rather than testing the --order-id refusal by accident; that refusal has its own cases below.
+const ORDER = ['--order-id', 'ord-1'];
+
+test('parseArgs refuses a run with no order label', () => {
+  // The label is what caught the two self-restarts of this project: a dispatcher that renames
+  // itself has no honest source of a new one. So it is required, never defaulted, and never
+  // invented by the runner — a runner-issued label would be fresh on a restart and the chain
+  // would miss again.
+  for (const argv of [['--agent', 'codex-scout'], ['--agent', 'codex-scout', '--order-id', '   ']]) {
+    const { code, stderr } = parseArgsInChild(argv);
+    assert.equal(code, 2, JSON.stringify(argv));
+    assert.match(stderr, /--order-id is required/);
+  }
+});
+
+test('the order label is stored trimmed', () => {
+  const { code, opts } = parseArgsInChild(['--agent', 'codex-scout', '--order-id', '  order-42  ']);
+  assert.equal(code, 0);
+  assert.equal(opts.orderId, 'order-42');
+});
+
 test('--continue with no value is consent', () => {
-  const { code, opts } = parseArgsInChild(['--agent', 'codex-scout', '--continue']);
+  const { code, opts } = parseArgsInChild(['--agent', 'codex-scout', ...ORDER, '--continue']);
   assert.equal(code, 0);
   assert.equal(opts.continue, true);
 });
 
 test('the spelled-out yes and no of --continue are both honoured', () => {
   for (const value of ['1', 'true', 'yes']) {
-    const { code, opts } = parseArgsInChild(['--agent', 'codex-scout', '--continue', value]);
+    const { code, opts } = parseArgsInChild(['--agent', 'codex-scout', ...ORDER, '--continue', value]);
     assert.equal(code, 0, `--continue ${value}`);
     assert.equal(opts.continue, true, `--continue ${value}`);
   }
   for (const value of ['0', 'false', 'no']) {
-    const { code, opts } = parseArgsInChild(['--agent', 'codex-scout', '--continue', value]);
+    const { code, opts } = parseArgsInChild(['--agent', 'codex-scout', ...ORDER, '--continue', value]);
     assert.equal(code, 0, `--continue ${value}`);
     assert.equal(opts.continue, false, `--continue ${value}`);
   }
@@ -93,7 +115,7 @@ test('a placeholder left in from the prompt template is not consent', () => {
   // agent prompt's own `--continue "<only if the orchestrator provided continue>"` into a silent
   // opt-in, and a repeat run started on someone else's quota. The refusal is exit code 2.
   for (const value of ['<only if the orchestrator provided continue>', 'maybe', '']) {
-    const { code, stderr } = parseArgsInChild(['--agent', 'codex-scout', '--continue', value]);
+    const { code, stderr } = parseArgsInChild(['--agent', 'codex-scout', ...ORDER, '--continue', value]);
     assert.equal(code, 2, `--continue ${JSON.stringify(value)}`);
     assert.match(stderr, /takes no value, or one of 1\/true\/yes\/0\/false\/no/);
   }
@@ -103,6 +125,7 @@ test('--continue does not swallow the flag that follows it', () => {
   const { code, opts } = parseArgsInChild([
     '--agent',
     'codex-scout',
+    ...ORDER,
     '--continue',
     '--scope',
     'src/**',
