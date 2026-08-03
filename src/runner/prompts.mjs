@@ -5,7 +5,9 @@
  * every rule in it was added by an incident. Keyed by agent name, next to the matching
  * schema in schemas.mjs — one lookup picks both halves of an agent's strategy.
  */
-export const INSTRUCTIONS = {
+import { DEFAULTS } from '../run-config.mjs';
+import { RUN_ENV } from './run-env.mjs';
+const BODIES = {
   'codex-scout': (opts, scope, questions = []) => `Response rules:
 - You are working in read-only mode: do not try to write or edit anything.
 - Answer from your own reading: do not spawn or delegate to other agents.
@@ -80,3 +82,16 @@ Rules:
 - Do not invent problems to look useful. An empty findings list is a valid answer.
 - Set confidence honestly: "low" when you are guessing about intent or missing context.`,
 };
+
+/**
+ * The language of the answer, appended to every agent rather than repeated in three places.
+ * Left unsaid, the model picked it from the task, the surrounding docs or its own default: an
+ * English order once came back in Russian, and one project's artifacts ended up in two languages.
+ */
+const languageRule = () =>
+  `- Write the answer, report_markdown and every text field of result.json in ` +
+  `${RUN_ENV?.answerLanguage || DEFAULTS.answerLanguage}, whatever language the task is written in.`;
+
+export const INSTRUCTIONS = Object.fromEntries(
+  Object.entries(BODIES).map(([agent, body]) => [agent, (...args) => `${body(...args)}\n${languageRule()}`]),
+);

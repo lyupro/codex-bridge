@@ -108,6 +108,13 @@ test('models must be known modes holding profiles of known string fields', () =>
   assert.throws(() => readRunConfig(tempFile('{"models": {"scout": {"model": ""}}}')), /model.*is empty/);
 });
 
+test('the answer language defaults to English and is refused when written empty', () => {
+  assert.equal(readRunConfig(tempFile('{"hooks": true}')).answerLanguage, 'English');
+  assert.equal(readRunConfig(tempFile('{"answerLanguage": " Spanish "}')).answerLanguage, 'Spanish');
+  assert.throws(() => readRunConfig(tempFile('{"answerLanguage": ""}')), /non-empty string/);
+  assert.throws(() => readRunConfig(tempFile('{"answerLanguage": 5}')), /non-empty string/);
+});
+
 test('an environment list that is not a list of strings is an error', () => {
   assert.throws(() => readRunConfig(tempFile('{"environmentPaths": ".omc/**"}')), /list of string patterns/);
   assert.throws(() => readRunConfig(tempFile('{"environmentPaths": [1]}')), /list of string patterns/);

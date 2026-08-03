@@ -48,6 +48,7 @@ export const DEFAULTS = {
   plugins: false,
   models: {},
   environmentPaths: DEFAULT_ENVIRONMENT_PATHS,
+  answerLanguage: 'English',
 };
 
 /** Booleans the operator flips from the command line; structured keys are edited in the file. */
@@ -63,7 +64,13 @@ const MODEL_KEYS = ['scout', 'build', 'review'];
  */
 const PROFILE_KEYS = ['model', 'effort'];
 export const ALLOWED_EFFORTS = Object.freeze(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
-const KEYS = [...SWITCH_KEYS, ...LIST_KEYS, ...OBJECT_KEYS];
+/**
+ * The language a run answers in. Left to the model it followed the task, the surrounding docs or
+ * its own default: an English order came back in Russian, and artifacts of one project ended up in
+ * two languages. English is the default because the package is read by strangers.
+ */
+const STRING_KEYS = ['answerLanguage'];
+const KEYS = [...SWITCH_KEYS, ...LIST_KEYS, ...OBJECT_KEYS, ...STRING_KEYS];
 
 export function readRunConfig(file = CONFIG_PATH) {
   let raw;
@@ -88,6 +95,16 @@ export function readRunConfig(file = CONFIG_PATH) {
   for (const [key, value] of Object.entries(parsed)) {
     if (!KEYS.includes(key)) {
       throw new Error(`${file}: unknown key “${key}”. Only ${KEYS.join(', ')} are allowed`);
+    }
+    if (STRING_KEYS.includes(key)) {
+      if (typeof value !== 'string' || !value.trim()) {
+        throw new Error(
+          `${file}: key “${key}” must be a non-empty string, not ${JSON.stringify(value)}. ` +
+            `Remove the key to keep the default (${DEFAULTS[key]}).`,
+        );
+      }
+      config[key] = value.trim();
+      continue;
     }
     if (LIST_KEYS.includes(key)) {
       if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {

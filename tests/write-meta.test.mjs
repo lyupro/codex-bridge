@@ -257,6 +257,21 @@ test('the build reply preserves the touched path spelling', () => {
   assert.match(reply, /Files: 1 changed · CHANGELOG\.md/);
 });
 
+test('a multi-line verification names its first command whole, not a cut-off one', () => {
+  // Collapsed into one 60-character line, three commands came out as
+  // `rtk npm test rtk npm run check:s — pass`: a command the operator cannot run or trust.
+  const dir = makeRun({
+    result: build([{ file: 'a.txt', what: 'change', why: 'task' }], {
+      verify_command: 'npm test\nnpm run check:size\ngit status --short',
+    }),
+    before: '',
+    after: 'U\t10\ta.txt\n',
+    scope: '**\n',
+  });
+  const { reply } = collect(dir, 'codex-build', 0);
+  assert.match(reply, /Verification: npm test \(\+2 more\) — pass/);
+});
+
 test('an extra file outside the scope pattern fails', () => {
   const dir = makeRun({
     result: build([{ file: 'packages/agent-sdk/src/x.ts', what: 'change', why: 'task' }]),

@@ -59,7 +59,15 @@ function buildReply(ctx) {
   const { work: touchedPaths, environment } = runChanges(ctx.runDir);
   const paths = touchedPaths.slice(0, 3).join(', ');
   const flags = readText(path.join(ctx.runDir, 'flags.txt')).split(/\r?\n/).filter(Boolean);
-  const verify = r.verify_command ? line(r.verify_command, 60) : 'not run';
+  // A multi-line verification is several commands, and collapsing them into one 60-character
+  // line cut the last one mid-word: the reply named a command nobody could run.
+  const commands = String(r.verify_command ?? '')
+    .split(/\r?\n/)
+    .map((command) => command.trim())
+    .filter(Boolean);
+  const verify = commands.length
+    ? `${line(commands[0], 60)}${commands.length > 1 ? ` (+${commands.length - 1} more)` : ''}`
+    : 'not run';
   const verdict = r.verify_command
     ? r.verify_passed === true
       ? 'pass'
