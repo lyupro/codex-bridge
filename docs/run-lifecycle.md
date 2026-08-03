@@ -29,7 +29,8 @@
 11. Для review вычисляется область diff и пишется `scope.txt`. Для scout извлечённые из задачи
     подвопросы пишутся в `questions.json`. Для build в `scope.txt` пишутся шаблоны `--scope`.
 12. Пишутся `env.json`, затем `task.md` и `schema.json`.
-13. Для build снимаются `head-before.txt`, `git-before.txt` и `state-before.txt`.
+13. Для build снимаются `head-before.txt`, `branch-before.txt`, `git-before.txt` и
+    `state-before.txt`. Пустой `branch-before.txt` означает detached HEAD, а не отсутствие данных.
 14. Собирается argv для `codex exec`; небезопасный для `cmd.exe` аргумент приводит к
     артефактированному `FAIL` до вызова Codex.
 15. Пишется `worker.json` — полный заказ второй половине.
@@ -57,8 +58,8 @@ launcher может отказать без вызова Codex. После не�
    текущий каталог для crash-handler.
 2. `runCodex()` получает полный `task.md` через stdin. stdout и stderr потоково дописываются в
    `raw.log`; лог ограничен 256 MiB, но превышение обрезает лог, а не убивает прогон.
-3. После завершения Codex build пишет `head-after.txt`, `git-after.txt`, `state-after.txt`,
-   `diff.stat` и `flags.txt` именно в этом порядке.
+3. После завершения Codex build пишет `head-after.txt`, `branch-after.txt`, `git-after.txt`,
+   `state-after.txt`, `diff.stat` и `flags.txt` именно в этом порядке.
 4. Для scout и build worker читает структурированный result и, если присутствует
    `report_markdown`, пишет `report.md`. Review оставляет отчёт в `review.json`.
 5. `collect()` читает артефакты, вычисляет вердикт и пишет `meta.json`.
