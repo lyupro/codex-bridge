@@ -7,7 +7,12 @@ import { fileURLToPath } from 'node:url';
 
 const docs = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'docs');
 const indexFile = path.join(docs, 'operator-checklists.md');
-const index = fs.readFileSync(indexFile, 'utf8');
+
+// Only rendered links count. A link inside a fenced block or an HTML comment is invisible to the
+// operator reading the page, so counting it would let the index look complete while it is not.
+const index = fs.readFileSync(indexFile, 'utf8')
+  .replace(/<!--[\s\S]*?-->/g, '')
+  .replace(/^```[\s\S]*?^```/gm, '');
 
 const checklists = () => {
   const found = [];
