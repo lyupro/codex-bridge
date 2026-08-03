@@ -66,7 +66,8 @@ export function makeRun({
 /**
  * A runs root holding several passes of one task, which is what chainRuns() reads off disk.
  * Each entry is one pass: `at` decides the order, `repo`/`slug` override the task it belongs
- * to, `status: null` is a folder from before status.json existed, and an absent `before` or
+ * to, `state` overrides how the pass ended (`abandoned` is what a killed runner leaves),
+ * `status: null` is a folder from before status.json existed, and an absent `before` or
  * `after` is a pass that was killed before it could snapshot the tree.
  */
 export function makeChainRoot(runs) {
@@ -76,7 +77,7 @@ export function makeChainRoot(runs) {
     fs.mkdirSync(dir);
     if (run.status !== null) {
       const status = {
-        state: 'finished',
+        state: run.state ?? 'finished',
         agent: 'codex-build',
         repo: run.repo ?? CHAIN_REPO,
         slug: run.slug ?? CHAIN_SLUG,
@@ -93,6 +94,7 @@ export function makeChainRoot(runs) {
     }
     if (run.before !== undefined) fs.writeFileSync(path.join(dir, 'state-before.txt'), run.before);
     if (run.after !== undefined) fs.writeFileSync(path.join(dir, 'state-after.txt'), run.after);
+    if (run.branchBefore !== undefined) fs.writeFileSync(path.join(dir, 'branch-before.txt'), run.branchBefore);
     if (run.result !== undefined) {
       fs.writeFileSync(path.join(dir, 'raw.log'), OK_LOG);
       fs.writeFileSync(path.join(dir, 'result.json'), JSON.stringify(run.result));

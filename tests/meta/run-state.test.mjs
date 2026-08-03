@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Guards run-state.mjs: status.json, writeFailure, markAbandoned, activeRun.
+ * Guards run-state.mjs: status.json, writeFailure, markAbandoned, activeRun,
+ * abandonedBranchDrift.
  *   node --test agents/codex/meta/run-state.test.mjs
  */
 import { test } from 'node:test';
@@ -8,7 +9,14 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { writeStatus, markAbandoned, activeRun, writeFailure } from '../../src/meta/run-state.mjs';
+import {
+  writeStatus,
+  markAbandoned,
+  activeRun,
+  abandonedBranchDrift,
+  writeFailure,
+} from '../../src/meta/run-state.mjs';
+import { makeChainRoot } from './test-fixtures.mjs';
 
 // A dispatcher pid this OS will never hand out, so pidAlive() reads it as dead everywhere
 // these tests run (verified against the real implementation, not assumed).
@@ -117,4 +125,48 @@ test('activeRun ignores a running entry whose pid is dead', () => {
   writeStatus(runDir, { state: 'running', pid: DEAD_PID, repo: '/repo/b', agent: 'codex-build' });
 
   assert.equal(activeRun(runsRoot, '/repo/b'), null);
+});
+
+// One abandoned pass of a build run against /repo/a, which is the only shape this check
+// looks at. `state` goes through the fixture rather than a second status.json written on
+// top of it: a test that rewrites the fixture's own artifact stops testing the fixture.
+const abandonedRoot = (runs) =>
+  makeChainRoot(runs.map((run) => ({ repo: '/repo/a', ...run, state: 'abandoned' })));
+
+test('abandoned detached run reports the recorded branch', () => {
+  const root = abandonedRoot([{ name: 'abandoned', branchBefore: 'master' }]);
+  assert.deepEqual(abandonedBranchDrift(root, '/repo/a', ''), { run: 'abandoned', branch: 'master' });
+});
+
+test('abandoned branch drift clears when the repository is back on the branch', () => {
+  const root = abandonedRoot([{ name: 'abandoned', branchBefore: 'master' }]);
+  assert.equal(abandonedBranchDrift(root, '/repo/a', 'master'), null);
+});
+
+test('abandoned branch drift ignores normal work on another branch', () => {
+  const root = abandonedRoot([{ name: 'abandoned', branchBefore: 'master' }]);
+  assert.equal(abandonedBranchDrift(root, '/repo/a', 'feature'), null);
+});
+
+test('abandoned run with an empty branch snapshot is ignored', () => {
+  const root = abandonedRoot([{ name: 'abandoned', branchBefore: '' }]);
+  assert.equal(abandonedBranchDrift(root, '/repo/a', ''), null);
+});
+
+test('finished run with branch artifacts is ignored', () => {
+  const root = makeChainRoot([{ name: 'finished', repo: '/repo/a', branchBefore: 'master' }]);
+  assert.equal(abandonedBranchDrift(root, '/repo/a', ''), null);
+});
+
+test('abandoned run from another repository is ignored', () => {
+  const root = abandonedRoot([{ name: 'other', repo: '/repo/b', branchBefore: 'master' }]);
+  assert.equal(abandonedBranchDrift(root, '/repo/a', ''), null);
+});
+
+test('newest abandoned run wins', () => {
+  const root = abandonedRoot([
+    { name: 'older', branchBefore: 'master', at: '2026-08-01' },
+    { name: 'newer', branchBefore: 'feature', at: '2026-08-02' },
+  ]);
+  assert.deepEqual(abandonedBranchDrift(root, '/repo/a', ''), { run: 'newer', branch: 'feature' });
 });

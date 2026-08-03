@@ -20,6 +20,7 @@ import {
   parseQuestions,
   writeStatus,
   markAbandoned,
+  abandonedBranchDrift,
   activeRun,
   chainRuns,
   taskFingerprint,
@@ -116,6 +117,16 @@ export async function launcher() {
   // anything else happens. One order produced four of them, and without this pass an
   // abandoned folder is indistinguishable from a run still working: neither has meta.json.
   markAbandoned(projectRunsRoot);
+
+  if (isGitRepo) {
+    const drift = abandonedBranchDrift(projectRunsRoot, repoRoot, branchName(repoRoot));
+    if (drift) {
+      die(
+        `repository is detached after abandoned run ${drift.run}, which recorded branch ${drift.branch}. ` +
+          `Return with: git checkout ${drift.branch}. No run folder was created and no quota was spent.`,
+      );
+    }
+  }
 
   // A second pass at the same task is a real need — after a timeout or a LIMIT the work has
   // to be finished — so it is allowed and made visible rather than forbidden. What is

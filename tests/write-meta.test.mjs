@@ -17,7 +17,7 @@
  * Unit coverage of the modules collect() delegates to lives beside each module instead:
  * meta/paths.test.mjs, meta/chain.test.mjs, meta/run-state.test.mjs, meta/verdict.test.mjs.
  *
- * The import below deliberately names all 15 public exports of write-meta.mjs, not just
+ * The import below deliberately names all 16 public exports of write-meta.mjs, not just
  * the ones this file's own tests call — an ESM import fails loudly at load time if the
  * facade stops re-exporting one of them, which is what makes this list itself a standing
  * check that the facade's public surface survives a refactor.
@@ -39,6 +39,7 @@ import {
   outOfScope,
   writeStatus,
   markAbandoned,
+  abandonedBranchDrift,
   activeRun,
   writeFailure,
   chainRuns,

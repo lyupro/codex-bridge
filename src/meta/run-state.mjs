@@ -107,6 +107,39 @@ export function activeRun(runsRoot, repo, agent = 'codex-build') {
 }
 
 /**
+ * Finds the newest abandoned run that recorded a branch while the repository is detached.
+ * The caller supplies the current branch because this module deliberately has no git calls.
+ */
+export function abandonedBranchDrift(runsRoot, repo, currentBranch) {
+  if (String(currentBranch ?? '').trim()) return null;
+  const wanted = normalizePath(repo);
+  if (!wanted) return null;
+  let entries;
+  try {
+    entries = fs.readdirSync(runsRoot, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+  const matches = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const runDir = path.join(runsRoot, entry.name);
+    const status = readJson(path.join(runDir, 'status.json'));
+    if (!status || status.state !== 'abandoned' || normalizePath(status.repo) !== wanted) continue;
+    let branch;
+    try {
+      branch = fs.readFileSync(path.join(runDir, 'branch-before.txt'), 'utf8').trim();
+    } catch {
+      continue;
+    }
+    if (branch) matches.push({ name: entry.name, at: String(status.started_at || ''), branch });
+  }
+  matches.sort((a, b) => (a.at === b.at ? (a.name < b.name ? -1 : 1) : a.at < b.at ? -1 : 1));
+  const newest = matches.at(-1);
+  return newest ? { run: newest.name, branch: newest.branch } : null;
+}
+
+/**
  * A failure that happens before Codex could produce anything — missing CLI, a crash of
  * the runner itself. It still goes through meta.json, so there is no second path by
  * which a reply could exist without an artifact backing it.
