@@ -30,3 +30,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Prevented different repositories with the same directory name from sharing run history.
 - Prevented malformed state files, including files with a byte-order mark, from silently bypassing abandoned-run detection, busy-tree locking, and chain lookup.
 - Fixed diagnostics to report the run folder actually used by the runner and to continue reporting remaining checks when a project marker is unreadable.
+- Fixed reported file paths to keep the spelling on disk instead of the case-folded form used for matching, so a reply names a path that exists on case-sensitive filesystems.
