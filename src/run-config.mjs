@@ -46,13 +46,23 @@ export const DEFAULT_ENVIRONMENT_PATHS = [
 export const DEFAULTS = {
   hooks: false,
   plugins: false,
+  models: {},
   environmentPaths: DEFAULT_ENVIRONMENT_PATHS,
 };
 
-/** Booleans the operator flips from the command line; the list key is edited in the file. */
+/** Booleans the operator flips from the command line; structured keys are edited in the file. */
 const SWITCH_KEYS = ['hooks', 'plugins'];
 const LIST_KEYS = ['environmentPaths'];
-const KEYS = [...SWITCH_KEYS, ...LIST_KEYS];
+const OBJECT_KEYS = ['models'];
+const MODEL_KEYS = ['scout', 'build', 'review'];
+/**
+ * A mode is configured as a pair, not as a model alone: reasoning depth is half of what a
+ * model is worth. A cheap model at its default depth is a different worker from the same
+ * model at "max", and pinning only the name would have silently kept every run at the
+ * fallback depth the dispatcher happens to pass.
+ */
+const PROFILE_KEYS = ['model', 'effort'];
+const KEYS = [...SWITCH_KEYS, ...LIST_KEYS, ...OBJECT_KEYS];
 
 export function readRunConfig(file = CONFIG_PATH) {
   let raw;
@@ -88,6 +98,50 @@ export function readRunConfig(file = CONFIG_PATH) {
       config[key] = value.map((item) => item.trim()).filter(Boolean);
       continue;
     }
+    if (OBJECT_KEYS.includes(key)) {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        throw new Error(
+          `${file}: key “${key}” must be an object keyed by ${MODEL_KEYS.join(', ')}, ` +
+            `each holding {"model": "...", "effort": "..."}, not ${JSON.stringify(value)}`,
+        );
+      }
+      const models = {};
+      for (const [mode, profile] of Object.entries(value)) {
+        if (!MODEL_KEYS.includes(mode)) {
+          throw new Error(
+            `${file}: key “${key}” has unknown mode “${mode}”. Only ${MODEL_KEYS.join(', ')} are allowed`,
+          );
+        }
+        if (!profile || typeof profile !== 'object' || Array.isArray(profile)) {
+          throw new Error(
+            `${file}: key “${key}.${mode}” must be an object like ` +
+              `{"model": "...", "effort": "..."}, not ${JSON.stringify(profile)}`,
+          );
+        }
+        const resolved = {};
+        for (const [field, fieldValue] of Object.entries(profile)) {
+          if (!PROFILE_KEYS.includes(field)) {
+            throw new Error(
+              `${file}: key “${key}.${mode}” has unknown field “${field}”. ` +
+                `Only ${PROFILE_KEYS.join(', ')} are allowed`,
+            );
+          }
+          if (typeof fieldValue !== 'string') {
+            throw new Error(
+              `${file}: key “${key}.${mode}.${field}” must be a string, not ${JSON.stringify(fieldValue)}`,
+            );
+          }
+          const trimmed = fieldValue.trim();
+          if (trimmed) resolved[field] = trimmed;
+        }
+        if (resolved.effort && /\s/.test(resolved.effort)) {
+          throw new Error(`${file}: key “${key}.${mode}.effort” must be a single word`);
+        }
+        if (Object.keys(resolved).length) models[mode] = resolved;
+      }
+      config[key] = models;
+      continue;
+    }
     if (typeof value !== 'boolean') {
       throw new Error(`${file}: key “${key}” must be true or false, not ${JSON.stringify(value)}`);
     }
@@ -110,6 +164,12 @@ const state = (config) => [
   ),
   `environmentPaths: ${(config.environmentPaths || []).length} patterns — changes in them are ` +
     'treated as environment work, not run work',
+  `models: ${MODEL_KEYS.map((key) => {
+    const profile = config.models?.[key];
+    if (!profile?.model && !profile?.effort) return `${key}: default — chosen by Codex`;
+    const model = profile.model || 'default model';
+    return `${key}: ${model}${profile.effort ? ` at ${profile.effort} effort` : ''}`;
+  }).join('; ')}`,
 ];
 
 function main(argv) {
@@ -130,7 +190,9 @@ function main(argv) {
   if (!SWITCH_KEYS.includes(key)) {
     const known = LIST_KEYS.includes(key)
       ? `“${key}” is a pattern list, not a switch: edit it directly in ${CONFIG_PATH}`
-      : `unknown switch “${key}”. Allowed: ${SWITCH_KEYS.join(', ')}, reset`;
+      : OBJECT_KEYS.includes(key)
+        ? `“${key}” is configured in the file, not as a switch: edit it directly in ${CONFIG_PATH}`
+        : `unknown switch “${key}”. Allowed: ${SWITCH_KEYS.join(', ')}, reset`;
     console.error(`run-config: ${known}`);
     return 2;
   }

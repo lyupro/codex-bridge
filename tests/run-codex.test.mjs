@@ -121,6 +121,59 @@ test('no runner mode disables installed Codex rules', () => {
   }
 });
 
+test('each runner mode passes its configured model exactly once', () => {
+  loadRunEnv();
+  const runDir = path.join(os.tmpdir(), 'codex-run');
+  const cases = [
+    ['codex-scout', 'scout'],
+    ['codex-build', 'build'],
+    ['codex-review', 'review'],
+  ];
+  for (const [agent, key] of cases) {
+    const model = `model-${key}`;
+    const args = codexArgs(
+      { agent, effort: 'medium', repo: process.cwd(), models: { [key]: { model } } },
+      runDir,
+      true,
+    );
+    assert.equal(args.filter((arg) => arg === '-m').length, 1, agent);
+    assert.equal(args[args.indexOf('-m') + 1], model, agent);
+    assert.ok(args.indexOf('-m') < args.indexOf('--sandbox'), agent);
+  }
+});
+
+// The pair is the point: a mode pinned to a model but left at the fallback depth is a
+// different worker from the one the operator configured, and the difference is invisible
+// in the arguments unless something asserts on it.
+test('reasoning depth comes from the request first, then the mode profile, then the fallback', () => {
+  loadRunEnv();
+  const runDir = path.join(os.tmpdir(), 'codex-run');
+  const depthOf = (args) => args[args.indexOf('-c') + 1];
+  const profile = { models: { build: { model: 'model-b', effort: 'max' } } };
+
+  const configured = codexArgs({ agent: 'codex-build', repo: process.cwd(), ...profile }, runDir, true);
+  assert.equal(depthOf(configured), 'model_reasoning_effort=max');
+
+  const asked = codexArgs(
+    { agent: 'codex-build', effort: 'low', repo: process.cwd(), ...profile },
+    runDir,
+    true,
+  );
+  assert.equal(depthOf(asked), 'model_reasoning_effort=low');
+
+  const bare = codexArgs({ agent: 'codex-build', repo: process.cwd(), models: {} }, runDir, true);
+  assert.equal(depthOf(bare), 'model_reasoning_effort=medium');
+});
+
+test('runner modes omit the model flag when their model is not configured', () => {
+  loadRunEnv();
+  const runDir = path.join(os.tmpdir(), 'codex-run');
+  for (const agent of ['codex-scout', 'codex-build', 'codex-review']) {
+    const args = codexArgs({ agent, effort: 'medium', repo: process.cwd(), models: {} }, runDir, true);
+    assert.equal(args.includes('-m'), false, agent);
+  }
+});
+
 /**
  * A repository that physically contains the run folders, with homedir() pointed at the
  * fixture for as long as `body` runs. Git is cut off from the operator's own config too, so

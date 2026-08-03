@@ -55,8 +55,9 @@ export function parseArgs(argv) {
   // until the default model dropped it, `max` appeared. So the value is passed through
   // as given; an unsupported one comes back as a 400 in the log and becomes a FAIL with
   // the exact list Codex accepts. A whitelist here would only go stale.
-  opts.effort = opts.effort || 'medium';
-  if (/\s/.test(opts.effort)) die('--effort must be a single word');
+  // Left unset when not given, rather than defaulted here: the mode's configured profile is
+  // what fills the gap, and a default applied this early would always win over it.
+  if (opts.effort !== undefined && /\s/.test(opts.effort)) die('--effort must be a single word');
   opts.repo = path.resolve(opts.repo || process.cwd());
   opts.slug = (opts.slug || opts.agent.replace(/^codex-/, '')).replace(/[^A-Za-z0-9._-]+/g, '-');
   opts.mode = opts.mode || 'uncommitted';

@@ -13,7 +13,7 @@ import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { writeFailure } from '../write-meta.mjs';
 import { MAX_LOG } from './git-state.mjs';
-import { CLEAN_ENV } from './run-env.mjs';
+import { CLEAN_ENV, RUN_ENV } from './run-env.mjs';
 
 /**
  * An argument cmd.exe cannot be handed safely, or undefined. `%` is fatal because cmd
@@ -111,9 +111,35 @@ export function requireCodex(runDir, agent) {
   }
 }
 
+/**
+ * Which model runs a mode, and how deep it reasons.
+ *
+ * Three sources, in this order: what the dispatcher asked for this one task, the mode's
+ * configured profile, and finally a depth to fall back on. The order is the whole point —
+ * pinning a model without its depth leaves every run at the fallback, which is how a mode
+ * configured for maximum reasoning would quietly keep working at the shallowest setting.
+ */
+const FALLBACK_EFFORT = 'medium';
+
+function runProfile(opts) {
+  const mode = {
+    'codex-scout': 'scout',
+    'codex-build': 'build',
+    'codex-review': 'review',
+  }[opts.agent];
+  // opts.models is how tests state a configuration; a real run reads the one loaded for it.
+  const configured = (opts.models || RUN_ENV?.models || {})[mode] || {};
+  return {
+    model: configured.model || '',
+    effort: opts.effort || configured.effort || FALLBACK_EFFORT,
+  };
+}
+
 export function codexArgs(opts, runDir, isGitRepo) {
   const schema = path.join(runDir, 'schema.json');
-  const effort = `model_reasoning_effort=${opts.effort}`;
+  const profile = runProfile(opts);
+  const effort = `model_reasoning_effort=${profile.effort}`;
+  const modelArgs = profile.model ? ['-m', profile.model] : [];
   if (opts.agent === 'codex-scout') {
     return [
       'exec',
@@ -121,6 +147,7 @@ export function codexArgs(opts, runDir, isGitRepo) {
       '--ignore-user-config',
       '-c',
       effort,
+      ...modelArgs,
       '--sandbox',
       'read-only',
       '--skip-git-repo-check',
@@ -141,6 +168,7 @@ export function codexArgs(opts, runDir, isGitRepo) {
       ...CLEAN_ENV,
       '-c',
       effort,
+      ...modelArgs,
       '--sandbox',
       'workspace-write',
       '-C',
@@ -170,6 +198,7 @@ export function codexArgs(opts, runDir, isGitRepo) {
     '--ignore-user-config',
     '-c',
     effort,
+    ...modelArgs,
     '--sandbox',
     'read-only',
     '-C',

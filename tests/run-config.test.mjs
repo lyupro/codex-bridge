@@ -49,6 +49,54 @@ test('an empty environment list is a decision, not a default', () => {
   assert.deepEqual(readRunConfig(file).environmentPaths, []);
 });
 
+test('a mode is configured as a model and a reasoning depth, both trimmed', () => {
+  const file = tempFile(
+    '{"models": {"scout": {"model": "  model-s  ", "effort": " high "}, "build": {"model": "model-b"}}}',
+  );
+  assert.deepEqual(readRunConfig(file).models, {
+    scout: { model: 'model-s', effort: 'high' },
+    build: { model: 'model-b' },
+  });
+});
+
+test('a depth without a model is a valid profile: the depth is the decision', () => {
+  const file = tempFile('{"models": {"build": {"effort": "max"}}}');
+  assert.deepEqual(readRunConfig(file).models, { build: { effort: 'max' } });
+});
+
+test('an empty profile stays unset rather than pinning empty strings', () => {
+  const file = tempFile('{"models": {"build": {"model": "  ", "effort": ""}}}');
+  assert.deepEqual(readRunConfig(file).models, {});
+});
+
+test('an absent models key leaves model choice to Codex', () => {
+  assert.deepEqual(readRunConfig(tempFile('{"hooks": true}')).models, {});
+});
+
+test('models must be known modes holding profiles of known string fields', () => {
+  assert.throws(() => readRunConfig(tempFile('{"models": []}')), /models.*must be an object/);
+  assert.throws(
+    () => readRunConfig(tempFile('{"models": {"deploy": {"model": "model-d"}}}')),
+    /unknown mode.*deploy.*scout, build, review/,
+  );
+  assert.throws(
+    () => readRunConfig(tempFile('{"models": {"build": "model-b"}}')),
+    /models\.build.*must be an object/,
+  );
+  assert.throws(
+    () => readRunConfig(tempFile('{"models": {"build": {"depth": "max"}}}')),
+    /unknown field.*depth.*model, effort/,
+  );
+  assert.throws(
+    () => readRunConfig(tempFile('{"models": {"build": {"model": 5}}}')),
+    /models\.build\.model.*must be a string/,
+  );
+  assert.throws(
+    () => readRunConfig(tempFile('{"models": {"build": {"effort": "very high"}}}')),
+    /effort.*single word/,
+  );
+});
+
 test('an environment list that is not a list of strings is an error', () => {
   assert.throws(() => readRunConfig(tempFile('{"environmentPaths": ".omc/**"}')), /list of string patterns/);
   assert.throws(() => readRunConfig(tempFile('{"environmentPaths": [1]}')), /list of string patterns/);
