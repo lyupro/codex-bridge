@@ -12,6 +12,7 @@ import {
   SERVICE_RE,
   changedPaths,
   declaredHits,
+  displayPath,
   expandDeclared,
   globToRegExp,
   line,
@@ -71,14 +72,14 @@ export function outOfScope(touchedPaths, patterns) {
   const allowed = (patterns || []).filter(Boolean).map(globToRegExp);
   const bad = [];
   for (const raw of touchedPaths || []) {
-    const file = normalizePath(raw);
-    if (!file) continue;
-    if (SERVICE_RE.test(file)) {
+    const file = displayPath(raw);
+    const comparison = normalizePath(file);
+    if (!comparison) continue;
+    if (SERVICE_RE.test(comparison)) {
       bad.push(file);
       continue;
     }
-    if (!allowed.length) continue;
-    if (!allowed.some((re) => re.test(file))) bad.push(file);
+    if (allowed.length && !allowed.some((re) => re.test(file))) bad.push(file);
   }
   return bad;
 }

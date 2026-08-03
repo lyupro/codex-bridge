@@ -246,6 +246,18 @@ test('an edit inside the declared scope is OK', () => {
   assert.equal(meta.status, 'OK');
 });
 
+test('the build reply preserves the touched path spelling', () => {
+  const dir = makeRun({
+    result: build([{ file: 'CHANGELOG.md', what: 'change', why: 'task' }]),
+    before: '',
+    after: 'U\t10\tCHANGELOG.md\n',
+    scope: '**\n',
+  });
+  const { meta, reply } = collect(dir, 'codex-build', 0);
+  assert.equal(meta.status, 'OK');
+  assert.match(reply, /Files: 1 changed · CHANGELOG\.md/);
+});
+
 test('an extra file outside the scope pattern fails', () => {
   const dir = makeRun({
     result: build([{ file: 'packages/agent-sdk/src/x.ts', what: 'change', why: 'task' }]),
@@ -256,7 +268,7 @@ test('an extra file outside the scope pattern fails', () => {
   const { meta } = collect(dir, 'codex-build', 0);
   assert.equal(meta.status, 'FAIL');
   assert.match(meta.reason, /out-of-scope changes/);
-  assert.match(meta.reason, /!plans\/plan_x\.md/);
+  assert.match(meta.reason, /!Plans\/Plan_X\.md/);
 });
 
 test('a file the environment wrote during the run is reported, not charged to the run', () => {

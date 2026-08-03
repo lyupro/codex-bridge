@@ -11,7 +11,7 @@
  * old run's verdict gives the answer it gave then — the config may have changed since.
  */
 import path from 'node:path';
-import { globToRegExp, normalizePath, readJson } from './paths.mjs';
+import { displayPath, globToRegExp, normalizePath, readJson } from './paths.mjs';
 
 /** Empty for runs made before the list existed: absence means "the run was the only writer". */
 export function environmentPatterns(runDir) {
@@ -25,8 +25,8 @@ export function splitEnvironment(paths, patterns) {
   const work = [];
   const environment = [];
   for (const raw of paths || []) {
-    const file = normalizePath(raw);
-    if (!file) continue;
+    const file = displayPath(raw);
+    if (!normalizePath(file)) continue;
     (matchers.some((re) => re.test(file)) ? environment : work).push(file);
   }
   return { work, environment };

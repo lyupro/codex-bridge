@@ -81,17 +81,22 @@ export const SERVICE_RE = /^(\.omx|\.omc|\.claude|\.codex|\.git|node_modules)\//
  * forward slashes, while Codex writes whatever it likes — backslashes, `./` prefixes,
  * absolute paths, the occasional backtick left over from markdown.
  */
-export const normalizePath = (value) =>
+export const displayPath = (value) =>
   String(value ?? '')
     .trim()
     .replace(/^[`'"]+|[`'"]+$/g, '')
     .replace(/\\/g, '/')
-    .replace(/^\.\//, '')
-    .toLowerCase();
+    .replace(/^\.\//, '');
+
+/** Comparison spelling: displayPath's canonical separators plus Windows-style case folding. */
+export const normalizePath = (value) => displayPath(value).toLowerCase();
 
 /** Suffix match, so an absolute path from Codex still meets a relative one from git. */
-export const samePath = (declared, touched) =>
-  declared === touched || touched.endsWith(`/${declared}`) || declared.endsWith(`/${touched}`);
+export const samePath = (declared, touched) => {
+  const left = normalizePath(declared);
+  const right = normalizePath(touched);
+  return left === right || right.endsWith(`/${left}`) || left.endsWith(`/${right}`);
+};
 
 /**
  * One --scope pattern as a regular expression. Deliberately a small glob dialect and not a
@@ -164,11 +169,17 @@ export function expandDeclared(file) {
     return brace[1].split(',').flatMap((option) => expand(`${head}${option.trim()}${tail}`));
   };
 
+  // Deduplication compares exact spellings, not suffixes: `a/x.mjs` and `b/a/x.mjs` declared in
+  // one entry are two files, and samePath would fold the pair into one.
   const out = [];
+  const seen = new Set();
   for (const part of parts) {
     for (const candidate of expand(part)) {
-      const normalized = normalizePath(candidate);
-      if (normalized && !out.includes(normalized)) out.push(normalized);
+      const displayed = displayPath(candidate);
+      const key = normalizePath(displayed);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(displayed);
     }
   }
   return out;

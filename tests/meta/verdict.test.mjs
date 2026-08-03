@@ -47,6 +47,18 @@ test('reportVersusWork agrees when the declared file is in this run own delta', 
   assert.deepEqual(verdict, { ok: true, carried: false, reason: null });
 });
 
+test('declared paths match touched paths without regard to case', () => {
+  const root = makeChainRoot([
+    { name: 'only', at: '2026-07-31T10:00:00Z', before: '', after: 'U\t10\tCHANGELOG.md\n' },
+  ]);
+  const verdict = reportVersusWork(
+    path.join(root, 'only'),
+    build([{ file: 'changelog.md', what: 'change', why: 'task' }]),
+    chainCtx(root),
+  );
+  assert.deepEqual(verdict, { ok: true, carried: false, reason: null });
+});
+
 test('reportVersusWork carries work an earlier pass of the same task already did', () => {
   const root = makeChainRoot([
     { name: 'a-first', at: '2026-07-31T10:00:00Z', before: '', after: 'U\t10\tsrc/a.ts\n' },
