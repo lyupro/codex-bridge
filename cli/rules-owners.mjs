@@ -1,10 +1,14 @@
 /** Tracks which Claude Code hosts own the shared Codex bridge rules file. */
 import fs from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { normalizeRepoPath } from '../src/runner/project-dir.mjs';
 
 export const RULES_REGISTRY_NAME = '.codex-bridge-rules.json';
 export const RULES_REGISTRY_VERSION = 1;
+
+const REGISTRY_LOCK_RETRIES = 200;
+const REGISTRY_LOCK_DELAY_MS = 5;
 
 export function rulesRegistryPath(host) {
   return path.join(host.codexRulesDir, RULES_REGISTRY_NAME);
@@ -59,8 +63,48 @@ function hasSameOwners(raw, registry) {
 }
 
 async function writeRulesRegistry(host, registry) {
+  const target = rulesRegistryPath(host);
+  const temporary = `${target}.${randomUUID()}.tmp`;
+  try {
+    await fs.writeFile(temporary, `${JSON.stringify(registry, null, 2)}\n`, { flag: 'wx' });
+    await fs.rename(temporary, target);
+  } catch (err) {
+    await fs.rm(temporary, { force: true }).catch(() => {});
+    throw err;
+  }
+}
+
+function registryLockPath(host) {
+  return `${rulesRegistryPath(host)}.lock`;
+}
+
+function waitForRegistryLock() {
+  return new Promise((resolve) => setTimeout(resolve, REGISTRY_LOCK_DELAY_MS));
+}
+
+async function acquireRegistryLock(host) {
   await fs.mkdir(host.codexRulesDir, { recursive: true });
-  await fs.writeFile(rulesRegistryPath(host), `${JSON.stringify(registry, null, 2)}\n`);
+  const lockPath = registryLockPath(host);
+  for (let attempt = 0; attempt < REGISTRY_LOCK_RETRIES; attempt += 1) {
+    try {
+      const handle = await fs.open(lockPath, 'wx');
+      return { handle, lockPath };
+    } catch (err) {
+      if (err.code !== 'EEXIST') throw err;
+      await waitForRegistryLock();
+    }
+  }
+  throw new Error(`timed out waiting for rules ownership registry lock: ${lockPath}`);
+}
+
+async function withRegistryLock(host, action) {
+  const lock = await acquireRegistryLock(host);
+  try {
+    return await action();
+  } finally {
+    await lock.handle.close().catch(() => {});
+    await fs.rm(lock.lockPath, { force: true }).catch(() => {});
+  }
 }
 
 export async function readRulesRegistry(host) {
@@ -68,15 +112,19 @@ export async function readRulesRegistry(host) {
 }
 
 export async function addRulesOwner(host) {
-  const loaded = await loadRulesRegistry(host);
-  const owner = normalizedRulesOwner(host);
-  const current = loaded?.registry || { version: RULES_REGISTRY_VERSION, owners: [] };
-  const registry = {
-    version: RULES_REGISTRY_VERSION,
-    owners: normalizeOwners([...current.owners, owner]),
-  };
-  if (!loaded || !hasSameOwners(loaded.raw, registry)) await writeRulesRegistry(host, registry);
-  return registry;
+  await loadRulesRegistry(host);
+  return withRegistryLock(host, async () => {
+    // Read after locking so a concurrent installer is merged instead of overwritten.
+    const loaded = await loadRulesRegistry(host);
+    const owner = normalizedRulesOwner(host);
+    const current = loaded?.registry || { version: RULES_REGISTRY_VERSION, owners: [] };
+    const registry = {
+      version: RULES_REGISTRY_VERSION,
+      owners: normalizeOwners([...current.owners, owner]),
+    };
+    if (!loaded || !hasSameOwners(loaded.raw, registry)) await writeRulesRegistry(host, registry);
+    return registry;
+  });
 }
 
 export function remainingRulesOwners(registry, host) {
@@ -86,16 +134,20 @@ export function remainingRulesOwners(registry, host) {
 }
 
 export async function removeRulesOwner(host) {
-  const loaded = await loadRulesRegistry(host);
-  if (!loaded) return null;
-  const registry = {
-    version: RULES_REGISTRY_VERSION,
-    owners: remainingRulesOwners(loaded.registry, host),
-  };
-  if (registry.owners.length) {
-    if (!hasSameOwners(loaded.raw, registry)) await writeRulesRegistry(host, registry);
-  } else {
-    await fs.rm(rulesRegistryPath(host), { force: true });
-  }
-  return registry;
+  const initial = await loadRulesRegistry(host);
+  if (!initial) return null;
+  return withRegistryLock(host, async () => {
+    const loaded = await loadRulesRegistry(host);
+    if (!loaded) return null;
+    const registry = {
+      version: RULES_REGISTRY_VERSION,
+      owners: remainingRulesOwners(loaded.registry, host),
+    };
+    if (registry.owners.length) {
+      if (!hasSameOwners(loaded.raw, registry)) await writeRulesRegistry(host, registry);
+    } else {
+      await fs.rm(rulesRegistryPath(host), { force: true });
+    }
+    return registry;
+  });
 }

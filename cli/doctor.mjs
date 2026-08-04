@@ -103,7 +103,13 @@ async function rulesCheck(host, record) {
   if (!record.rules) {
     return check('rules', 'warn', 'rules were not installed by this installation; install or update will add them');
   }
-  const registry = await readRulesRegistry(host);
+  let registry;
+  try {
+    registry = await readRulesRegistry(host);
+  } catch (err) {
+    // Keep every diagnostic visible: package removal on a broken registry left the host without its watchdog.
+    return check('rules', 'fail', err.message);
+  }
   const ownerNote = registry?.owners.length > 1 ? `; ${registry.owners.length} owners` : '';
   const fingerprint = await fileFingerprint(record.rules.path);
   if (!fingerprint) return check('rules', 'fail', `${record.rules.path}${ownerNote ? ` (${registry.owners.length} owners)` : ''}`);

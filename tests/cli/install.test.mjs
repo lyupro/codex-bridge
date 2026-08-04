@@ -93,6 +93,24 @@ test('install copies the exact plan, expands placeholders, and writes a valid re
   }
 });
 
+test('a corrupt rules registry aborts install before writing any files', async (t) => {
+  const { root, host } = await fixture(t);
+  await fs.mkdir(host.codexRulesDir, { recursive: true });
+  await fs.writeFile(rulesRegistryPath(host), '{"version":1,"owners":[');
+  const before = await allFiles(root);
+  await assert.rejects(() => install({ host }), /invalid rules ownership registry JSON/);
+  assert.deepEqual(await allFiles(root), before);
+});
+
+test('a corrupt rules registry aborts update before removing or writing any files', async (t) => {
+  const { root, host } = await fixture(t);
+  await install({ host });
+  await fs.writeFile(rulesRegistryPath(host), '{"version":1,"owners":[');
+  const before = await allFiles(root);
+  await assert.rejects(() => update({ host }), /invalid rules ownership registry JSON/);
+  assert.deepEqual(await allFiles(root), before);
+});
+
 test('install and update keep one normalized owner without duplicates', async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-owners-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
@@ -313,8 +331,28 @@ test('uninstall without an ownership registry uses the legacy fingerprint behavi
   await install({ host });
   const record = await readInstallRecord(host);
   await fs.rm(rulesRegistryPath(host));
-  assert.equal((await uninstall({ host })).exitCode, 0);
+  const result = await uninstall({ host });
+  assert.equal(result.exitCode, 0);
+  assert.match(result.output, /ownership registry was missing.*other installations may use/i);
   await assert.rejects(() => fs.access(record.rules.path), { code: 'ENOENT' });
+});
+
+test('uninstall completes with a corrupt registry and preserves shared rules', async (t) => {
+  const { host } = await fixture(t);
+  await install({ host });
+  const record = await readInstallRecord(host);
+  await fs.writeFile(rulesRegistryPath(host), '{"version":1,"owners":[');
+
+  const result = await uninstall({ host });
+  assert.equal(result.exitCode, 0);
+  assert.match(result.output, /Left .*rules ownership registry is invalid.*ownership is unknown/i);
+  assert.deepEqual(await fs.readFile(record.rules.path), await fs.readFile('src/rules/codex-bridge.rules'));
+  for (const relative of record.files) {
+    await assert.rejects(() => fs.access(path.join(host.root, relative)), { code: 'ENOENT' });
+  }
+  await assert.rejects(() => fs.access(path.join(host.agentsDir, '.codex-bridge-install.json')), { code: 'ENOENT' });
+  const settings = JSON.parse(await fs.readFile(host.settingsPath, 'utf8'));
+  assert.deepEqual(settings.hooks.SubagentStop, []);
 });
 
 test('uninstall without a record is nonzero and dry-run uninstall changes nothing', async (t) => {

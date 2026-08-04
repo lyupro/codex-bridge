@@ -12,7 +12,7 @@ import {
 } from './manifest.mjs';
 import { targetMatches } from './copy.mjs';
 import { inspectHook } from './settings-merge.mjs';
-import { addRulesOwner } from './rules-owners.mjs';
+import { addRulesOwner, readRulesRegistry } from './rules-owners.mjs';
 
 async function exists(target) {
   try {
@@ -81,6 +81,7 @@ function dryRunOutput(states, hookPresent, legacy) {
 }
 
 export async function update({ host, dryRun = false, force = false, packageRoot } = {}) {
+  await readRulesRegistry(host);
   const record = await readInstallRecord(host);
   if (!record) {
     return { exitCode: 1, output: 'codex-bridge is not installed. Run codex-bridge install first.' };

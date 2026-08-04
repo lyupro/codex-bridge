@@ -26,6 +26,14 @@ function remainingOwnersText(count) {
 }
 
 export async function uninstall({ host, dryRun = false } = {}) {
+  // Preflight before removing the hook: package removal on a broken registry left the host without its watchdog.
+  let registry = null;
+  let registryError = null;
+  try {
+    registry = await readRulesRegistry(host);
+  } catch (err) {
+    registryError = err;
+  }
   const record = await readInstallRecord(host);
   const preservation = `Run artifacts in ${path.join(host.root, 'codex-runs')} and the run `
     + `configuration in ${path.join(host.agentsDir, 'run-config.json')} are preserved.`;
@@ -34,17 +42,23 @@ export async function uninstall({ host, dryRun = false } = {}) {
   if (dryRun) {
     const lines = record.files.map((file) => `Would remove ${file}`);
     if (record.rules) {
-      const registry = await readRulesRegistry(host);
-      const remainingOwners = remainingRulesOwners(registry, host);
-      const currentFingerprint = await fileFingerprint(record.rules.path);
-      if (remainingOwners?.length) {
-        lines.push(`Would leave ${record.rules.path} because ${remainingOwnersText(remainingOwners.length)}.`);
-      } else if (currentFingerprint === record.rules.fingerprint) {
-        lines.push(`Would remove ${record.rules.path}; no other owners remain and its fingerprint is unchanged.`);
-      } else if (currentFingerprint !== null) {
-        lines.push(`Would leave ${record.rules.path} because its contents changed after installation.`);
+      if (registryError) {
+        lines.push(`Would leave ${record.rules.path} because the rules ownership registry is invalid; ownership is unknown.`);
       } else {
-        lines.push(`Would leave ${record.rules.path} because it is already absent.`);
+        const remainingOwners = remainingRulesOwners(registry, host);
+        const currentFingerprint = await fileFingerprint(record.rules.path);
+        if (remainingOwners?.length) {
+          lines.push(`Would leave ${record.rules.path} because ${remainingOwnersText(remainingOwners.length)}.`);
+        } else if (currentFingerprint === record.rules.fingerprint) {
+          lines.push(`Would remove ${record.rules.path}; no other owners remain and its fingerprint is unchanged.`);
+        } else if (currentFingerprint !== null) {
+          lines.push(`Would leave ${record.rules.path} because its contents changed after installation.`);
+        } else {
+          lines.push(`Would leave ${record.rules.path} because it is already absent.`);
+        }
+        if (!registry) {
+          lines.push(`Warning: the rules ownership registry was missing; other installations may use ${record.rules.path}.`);
+        }
       }
     }
     lines.push('Would remove the SubagentStop hook and installation record.');
@@ -55,17 +69,31 @@ export async function uninstall({ host, dryRun = false } = {}) {
   await removeHook(host.settingsPath, path.join(host.root, record.hook.path), {
     createdGroup: record.hook.createdGroup === true,
   });
-  const ownership = await removeRulesOwner(host);
-  let rulesOutput;
+  let ownership = null;
+  if (!registryError) {
+    try {
+      ownership = await removeRulesOwner(host);
+    } catch (err) {
+      registryError = err;
+    }
+  }
+  const rulesOutput = [];
   if (record.rules) {
-    if (ownership?.owners.length) {
-      rulesOutput = `Left ${record.rules.path} because ${remainingOwnersText(ownership.owners.length)}.`;
+    if (registryError) {
+      rulesOutput.push(`Left ${record.rules.path} because the rules ownership registry is invalid; ownership is unknown.`);
     } else {
-      const currentFingerprint = await fileFingerprint(record.rules.path);
-      if (currentFingerprint === record.rules.fingerprint) {
-        await fs.rm(record.rules.path, { force: true });
-      } else if (currentFingerprint !== null) {
-        rulesOutput = `Left ${record.rules.path} because its contents changed after installation.`;
+      if (ownership?.owners.length) {
+        rulesOutput.push(`Left ${record.rules.path} because ${remainingOwnersText(ownership.owners.length)}.`);
+      } else {
+        const currentFingerprint = await fileFingerprint(record.rules.path);
+        if (currentFingerprint === record.rules.fingerprint) {
+          await fs.rm(record.rules.path, { force: true });
+        } else if (currentFingerprint !== null) {
+          rulesOutput.push(`Left ${record.rules.path} because its contents changed after installation.`);
+        }
+      }
+      if (!registry) {
+        rulesOutput.push(`Warning: the rules ownership registry was missing; other installations may use ${record.rules.path}.`);
       }
     }
   }
@@ -80,6 +108,6 @@ export async function uninstall({ host, dryRun = false } = {}) {
   await removeEmpty(host.agentsDir);
   return {
     exitCode: 0,
-    output: [`Uninstalled codex-bridge.`, rulesOutput, preservation].filter(Boolean).join('\n'),
+    output: [`Uninstalled codex-bridge.`, ...rulesOutput, preservation].join('\n'),
   };
 }

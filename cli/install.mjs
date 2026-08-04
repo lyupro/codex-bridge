@@ -13,7 +13,7 @@ import {
 } from './manifest.mjs';
 import { copyPlannedFile, targetMatches } from './copy.mjs';
 import { inspectHook, mergeHook } from './settings-merge.mjs';
-import { addRulesOwner } from './rules-owners.mjs';
+import { addRulesOwner, readRulesRegistry } from './rules-owners.mjs';
 
 async function targetExists(target) {
   try {
@@ -26,6 +26,8 @@ async function targetExists(target) {
 }
 
 export async function install({ host, dryRun = false, force = false, packageRoot } = {}) {
+  // Validate the shared registry before writes; package removal on a broken registry left the host without its watchdog.
+  await readRulesRegistry(host);
   const plan = await buildInstallPlan(host, packageRoot);
   const rule = { ...rulesPlan(host, packageRoot), processing: 'copy' };
   const currentPackage = await packageInfo(packageRoot);

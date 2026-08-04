@@ -135,6 +135,24 @@ test('doctor reports multiple owners of shared rules', async (t) => {
   assert.match(renderDoctor(result), /rules: .*2 owners/);
 });
 
+test('corrupt rules registry fails only the rules check and keeps all diagnostics', async (t) => {
+  const { host, record } = await installedFixture(t);
+  await addRules(host, record);
+  await fs.writeFile(
+    path.join(host.codexRulesDir, RULES_REGISTRY_NAME),
+    '{"version":1,"owners":[',
+  );
+  const result = await diagnose({ host, codexProbe, currentPackage: ownPackage });
+  const rendered = renderDoctor(result);
+  for (const key of ['host', 'installation', 'files', 'rules', 'hook', 'codex', 'node', 'runsRoot', 'projectRuns']) {
+    assert.match(rendered, new RegExp(`\\] ${key}:`));
+  }
+  const rules = result.checks.find((item) => item.key === 'rules');
+  assert.equal(rules.status, 'fail');
+  assert.match(rules.value, /invalid rules ownership registry JSON/);
+  assert.equal(result.exitCode, 1);
+});
+
 test('missing recorded rules fail diagnosis and name their full path', async (t) => {
   const { host, record } = await installedFixture(t);
   const rulePath = await addRules(host, record);
