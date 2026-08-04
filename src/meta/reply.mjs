@@ -9,6 +9,7 @@
  * The lines built here ARE the reply. Agents forward this text verbatim instead of
  * composing prose, which is what keeps a delegated run at five lines.
  */
+import fs from 'node:fs';
 import path from 'node:path';
 import { changedPaths, line, readText } from './paths.mjs';
 import { splitRunChanges } from './environment.mjs';
@@ -113,8 +114,30 @@ export function failReply(ctx, meta) {
   return [
     `FAIL — ${line(meta.reason, 170)}`,
     `Artifacts: raw.log ${meta.log_bytes} B · ${path.basename(ctx.resultPath)} ${meta.result_ok ? 'filled' : 'empty or missing'} · exit=${meta.exit}`,
+    // A failed build says what it left behind, exactly as a LIMIT does. "The work was not
+    // done" is not "the tree is clean": a run can write half a change and then declare fail,
+    // and the orchestrator has to know whether there is something to revert before it decides
+    // anything else.
+    ...(ctx.agent === 'codex-build' ? [`Worktree: ${worktreeState(ctx.runDir)}`] : []),
     `Log: ${ctx.file('raw.log')}`,
   ];
+}
+
+/**
+ * What the run left in the tree, or an admission that nobody knows. Both snapshots are
+ * required: a run killed before it wrote state-after.txt has no delta to compute, and
+ * printing "no new changes" there would be a claim made out of missing data — the same
+ * mistake status.json's `tree_after: false` exists to prevent.
+ */
+function worktreeState(runDir) {
+  const hasSnapshots = ['state-before.txt', 'state-after.txt'].every((f) =>
+    fs.existsSync(path.join(runDir, f)),
+  );
+  if (!hasSnapshots) return 'unknown — the run left no worktree snapshot, check git status';
+  const { work } = runChanges(runDir);
+  return work.length
+    ? `has unfinished changes (${work.length}): ${line(work.slice(0, 3).join(', '), 120)}`
+    : 'no new changes';
 }
 
 export function limitReply(ctx, meta) {

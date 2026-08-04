@@ -15,6 +15,9 @@ export const OK_LOG = 'model: gpt-5.6-sol\nsandbox: workspace-write\ntokens used
 
 /** A build result that satisfies the schema, so a test can vary only what it is about. */
 export const buildResult = (changes, extra = {}) => ({
+  // Declared, because the schema requires it of every run from 0.1.3 on. Runs whose fixture
+  // writes no schema.json are archived runs and ignore it — see meta/outcome.mjs.
+  outcome: 'done',
   summary: 'done',
   changes,
   verify_command: 'npm test',
@@ -36,6 +39,9 @@ export function makeRun({
   after = '',
   file = 'result.json',
   questions,
+  // The response contract this run ran under, written the way the launcher writes it. Absent
+  // means an archived run: one from before the contract carried an outcome field.
+  schema,
   scope,
   envPaths,
   headBefore,
@@ -49,6 +55,7 @@ export function makeRun({
   fs.writeFileSync(path.join(dir, 'state-before.txt'), before);
   fs.writeFileSync(path.join(dir, 'state-after.txt'), after);
   if (questions !== undefined) fs.writeFileSync(path.join(dir, 'questions.json'), JSON.stringify(questions));
+  if (schema !== undefined) fs.writeFileSync(path.join(dir, 'schema.json'), JSON.stringify(schema));
   if (scope !== undefined) fs.writeFileSync(path.join(dir, 'scope.txt'), scope);
   if (envPaths !== undefined) {
     fs.writeFileSync(

@@ -52,6 +52,15 @@ Working rules:
   cannot be done, do not pretend it is done; list it in leftovers.
 - After making changes, run verification: ${opts.verify || 'determine the command from the project'}.
   Put the command actually run in verify_command and whether it passed in verify_passed.
+- Declare the outcome in outcome: "done" if the work the task asked for was carried out,
+  "fail" if it was not — for any reason at all, including an impossible order, a file that
+  does not exist, a scope that forbids the only fix, or running out of time. "done" with an
+  empty changes[] is correct only when the task asked you to check something and nothing
+  needed changing; if you could not do what was asked, "fail" is the answer even when the
+  worktree is clean and verification is green. This is not a self-grade: work that was done
+  and merely leaves follow-ups is "done" with the follow-ups in leftovers, and partial work
+  that satisfies the definition of done is "done" too. On "fail" the first sentence of summary
+  states the reason — it is what the orchestrator is shown.
 - summary and changes describe only changes in this repository for this task. Do not include
   anything unrelated in them.
 - Each change is a separate changes[] entry, exactly one file per entry. The file field contains

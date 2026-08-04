@@ -22,6 +22,7 @@ import {
 } from './paths.mjs';
 import { chainBaseline } from './chain.mjs';
 import { splitRunChanges } from './environment.mjs';
+import { outcomeGap } from './outcome.mjs';
 
 /**
  * Quota exhaustion is a transport error, not a word. Both markers must sit on the same
@@ -305,6 +306,13 @@ export function resolveStatus({ log, logBytes, resultOk, exit, agent, result, ru
       status: 'FAIL',
       reason: `verification “${line(result.verify_command || 'no command', 60)}” failed; changes remain in the tree`,
     };
+  }
+  // What the executor says about its own work, after verification and ahead of scope: work
+  // that was never done matters more than where it was not done. Only runs whose schema.json
+  // demanded the field are judged by it — see outcome.mjs.
+  if (agent === 'codex-build') {
+    const declared = outcomeGap(runDir, result);
+    if (declared) return { status: 'FAIL', reason: declared };
   }
   // Answers that never arrived, or arrived as coordinates. Scout-only, and per-question
   // only when questions.json is absent — see scoutCoverageGap().

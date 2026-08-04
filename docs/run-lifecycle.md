@@ -63,7 +63,9 @@ Launcher вердикта не ждёт: он стартует прогон и �
 12. Для review вычисляется область diff и пишется `scope.txt`. Для scout переданные флагами
     `--question` подвопросы пишутся в `questions.json` в том же порядке (`Q1..Qn`); текст задачи
     источником списка не является. Для build в `scope.txt` пишутся шаблоны `--scope`.
-13. Пишутся `env.json`, затем `task.md` и `schema.json`.
+13. Пишутся `env.json`, затем `task.md` и `schema.json`. `schema.json` — не только формат ответа
+    для Codex: по нему вердикт узнаёт, был ли прогон обязан объявить исход (`outcome` в
+    `required`), поэтому старая папка судится контрактом своего дня — см. [verdict.md](verdict.md).
 14. Для build снимаются `head-before.txt`, `branch-before.txt`, `git-before.txt` и
     `state-before.txt`. Пустой `branch-before.txt` означает detached HEAD, а не отсутствие данных.
 15. Собирается argv для `codex exec`; небезопасный для `cmd.exe` аргумент приводит к

@@ -51,8 +51,30 @@ const BUILD_SCHEMA = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
   type: 'object',
   additionalProperties: false,
-  required: ['summary', 'changes', 'verify_command', 'verify_passed', 'leftovers', 'report_markdown'],
+  required: [
+    'outcome',
+    'summary',
+    'changes',
+    'verify_command',
+    'verify_passed',
+    'leftovers',
+    'report_markdown',
+  ],
   properties: {
+    // The outcome is declared, never inferred. On 2026-08-04 a build asked to fix a function
+    // in a module that does not exist answered `OK — no code change was made`: every artifact
+    // was well-formed, the tree was legitimately clean, and the runner has no way to know
+    // whether the order required an edit. A string rather than a boolean because the set of
+    // outcomes will grow (`blocked` is a candidate) and an enum extends without breaking the
+    // contract. Presence of this field in the run's own schema.json is also the marker that
+    // says the run was contracted to declare an outcome — see meta/outcome.mjs.
+    outcome: {
+      type: 'string',
+      enum: ['done', 'fail'],
+      description:
+        'done — the work the task asked for was carried out. fail — it was not, for any ' +
+        'reason at all (impossible order, missing file, blocked by scope, out of time).',
+    },
     summary: { type: 'string', minLength: 1 },
     changes: {
       type: 'array',
