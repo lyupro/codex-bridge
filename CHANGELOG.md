@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - Two runners starting at the same moment in equally named repositories no longer fail on the exclusive writes that assign a runs directory: the runner that loses either race now reads the marker the winner wrote and takes the next candidate, which is the collision the marker was introduced to survive.
+- A repeated order is answered from its newest run instead of the pass before it: while a continuation was in flight, repeating the command returned the previous run's verdict as if it described the current one.
 
 ## [0.1.0] - 2026-08-04
 
