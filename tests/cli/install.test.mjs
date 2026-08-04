@@ -8,7 +8,10 @@ import { createHash } from 'node:crypto';
 import { resolveHost } from '../../cli/hosts.mjs';
 import { install } from '../../cli/install.mjs';
 import { buildInstallPlan, readInstallRecord } from '../../cli/manifest.mjs';
+import { RULES_REGISTRY_NAME } from '../../cli/rules-owners.mjs';
 import { uninstall } from '../../cli/uninstall.mjs';
+import { update } from '../../cli/update.mjs';
+import { normalizeRepoPath } from '../../src/runner/project-dir.mjs';
 
 async function fixture(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-install-'));
@@ -42,6 +45,14 @@ async function backups(host) {
 
 async function fileHash(target) {
   return createHash('sha256').update(await fs.readFile(target)).digest('hex');
+}
+
+function rulesRegistryPath(host) {
+  return path.join(host.codexRulesDir, RULES_REGISTRY_NAME);
+}
+
+async function readRulesRegistry(host) {
+  return JSON.parse(await fs.readFile(rulesRegistryPath(host), 'utf8'));
 }
 
 test('a rendered file is fingerprinted as written, not as shipped', async (t) => {
@@ -80,6 +91,54 @@ test('install copies the exact plan, expands placeholders, and writes a valid re
       assert.notEqual(record.fingerprints[item.relativeToHost], createHash('sha256').update(source).digest('hex'));
     }
   }
+});
+
+test('install and update keep one normalized owner without duplicates', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-owners-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const host = resolveHost({
+    host: path.join(root, 'Host'),
+    codexHome: path.join(root, 'codex-home'),
+  });
+  await install({ host });
+  assert.deepEqual(await readRulesRegistry(host), {
+    version: 1,
+    owners: [normalizeRepoPath(host.root)],
+  });
+  await install({ host });
+  await fs.rm(rulesRegistryPath(host));
+  assert.equal((await update({ host })).exitCode, 0);
+  assert.deepEqual(await readRulesRegistry(host), {
+    version: 1,
+    owners: [normalizeRepoPath(host.root)],
+  });
+});
+
+test('uninstall leaves shared rules for another owner and removes them for the last owner', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-shared-owners-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const codexHome = path.join(root, 'codex-home');
+  const first = resolveHost({ host: path.join(root, 'first-host'), codexHome });
+  const second = resolveHost({ host: path.join(root, 'second-host'), codexHome });
+  await install({ host: first });
+  await install({ host: second });
+  const rulesPath = path.join(codexHome, 'rules', 'codex-bridge.rules');
+  assert.equal((await readRulesRegistry(first)).owners.length, 2);
+
+  const removedFirst = await uninstall({ host: first });
+  assert.match(removedFirst.output, /1 other owner remains/);
+  await fs.access(rulesPath);
+  assert.deepEqual(await readRulesRegistry(second), {
+    version: 1,
+    owners: [normalizeRepoPath(second.root)],
+  });
+
+  const dryRun = await uninstall({ host: second, dryRun: true });
+  assert.match(dryRun.output, /Would remove .*codex-bridge\.rules/);
+  await fs.access(rulesPath);
+  assert.equal((await uninstall({ host: second })).exitCode, 0);
+  await assert.rejects(() => fs.access(rulesPath), { code: 'ENOENT' });
+  await assert.rejects(() => fs.access(rulesRegistryPath(second)), { code: 'ENOENT' });
 });
 
 test('install upgrades a legacy record with host fingerprints', async (t) => {
@@ -247,6 +306,15 @@ test('uninstall accepts a legacy record without rules metadata', async (t) => {
   await fs.writeFile(recordPath, `${JSON.stringify(legacy, null, 2)}\n`);
   assert.equal((await uninstall({ host })).exitCode, 0);
   assert.equal(await fs.readFile(rulesPath, 'utf8'), await fs.readFile('src/rules/codex-bridge.rules', 'utf8'));
+});
+
+test('uninstall without an ownership registry uses the legacy fingerprint behavior', async (t) => {
+  const { host } = await fixture(t);
+  await install({ host });
+  const record = await readInstallRecord(host);
+  await fs.rm(rulesRegistryPath(host));
+  assert.equal((await uninstall({ host })).exitCode, 0);
+  await assert.rejects(() => fs.access(record.rules.path), { code: 'ENOENT' });
 });
 
 test('uninstall without a record is nonzero and dry-run uninstall changes nothing', async (t) => {

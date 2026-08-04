@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileFingerprint, readInstallRecord, packageInfo } from './manifest.mjs';
+import { readRulesRegistry } from './rules-owners.mjs';
 import { runsRoot } from '../src/runner/runs-root.mjs';
 import { resolveProjectRunsDir } from '../src/runner/project-dir.mjs';
 
@@ -97,16 +98,18 @@ async function hookCheck(host, record) {
     : check('hook', 'warn', 'SubagentStop does not point to the installed reply-guard.mjs');
 }
 
-async function rulesCheck(record) {
+async function rulesCheck(host, record) {
   if (!record) return check('rules', 'warn', 'cannot check before installation');
   if (!record.rules) {
     return check('rules', 'warn', 'rules were not installed by this installation; install or update will add them');
   }
+  const registry = await readRulesRegistry(host);
+  const ownerNote = registry?.owners.length > 1 ? `; ${registry.owners.length} owners` : '';
   const fingerprint = await fileFingerprint(record.rules.path);
-  if (!fingerprint) return check('rules', 'fail', record.rules.path);
+  if (!fingerprint) return check('rules', 'fail', `${record.rules.path}${ownerNote ? ` (${registry.owners.length} owners)` : ''}`);
   return fingerprint === record.rules.fingerprint
-    ? check('rules', 'ok', `${record.rules.path} (matches record)`)
-    : check('rules', 'warn', `${record.rules.path} (modified after installation)`);
+    ? check('rules', 'ok', `${record.rules.path} (matches record${ownerNote})`)
+    : check('rules', 'warn', `${record.rules.path} (modified after installation${ownerNote})`);
 }
 
 export async function diagnose({ host, codexProbe = probeCodex, currentPackage } = {}) {
@@ -144,7 +147,7 @@ export async function diagnose({ host, codexProbe = probeCodex, currentPackage }
     !record ? 'warn' : missingFiles.length ? 'fail' : 'ok',
     !record ? 'not checked' : missingFiles.length ? `missing: ${missingFiles.join(', ')}` : `${record.files.length} installed file(s) present`,
   ));
-  const rules = await rulesCheck(record);
+  const rules = await rulesCheck(host, record);
   checks.push(rules);
   checks.push(await hookCheck(host, record));
 

@@ -12,6 +12,7 @@ import {
 } from './manifest.mjs';
 import { targetMatches } from './copy.mjs';
 import { inspectHook } from './settings-merge.mjs';
+import { addRulesOwner } from './rules-owners.mjs';
 
 async function exists(target) {
   try {
@@ -141,6 +142,7 @@ export async function update({ host, dryRun = false, force = false, packageRoot 
     { path: rule.target, fingerprint: ruleState.fingerprint });
   const changed = states.some((state) => state.status !== 'up-to-date');
   if (!changed && inspectedHook.present && recordCurrent) {
+    if (!dryRun) await addRulesOwner(host);
     return { exitCode: 0, output: 'codex-bridge is up to date' };
   }
   if (dryRun) {

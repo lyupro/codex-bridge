@@ -8,7 +8,8 @@ import { spawnSync } from 'node:child_process';
 import { diagnose, renderDoctor } from '../../cli/doctor.mjs';
 import { resolveHost } from '../../cli/hosts.mjs';
 import { fileFingerprint, writeInstallRecord } from '../../cli/manifest.mjs';
-import { PROJECT_MARKER } from '../../src/runner/project-dir.mjs';
+import { RULES_REGISTRY_NAME } from '../../cli/rules-owners.mjs';
+import { normalizeRepoPath, PROJECT_MARKER } from '../../src/runner/project-dir.mjs';
 import { projectFolder } from '../../src/write-meta.mjs';
 
 const ownPackage = { name: '@lyupro/codex-bridge', version: '0.1.0' };
@@ -114,6 +115,24 @@ test('rules matching their recorded fingerprint are healthy', async (t) => {
     value: `${rulePath} (matches record)`,
   });
   assert.equal(result.exitCode, 0);
+});
+
+test('doctor reports multiple owners of shared rules', async (t) => {
+  const { host, record } = await installedFixture(t);
+  await addRules(host, record);
+  const otherHost = path.join(path.dirname(host.root), 'other-host');
+  await fs.writeFile(
+    path.join(host.codexRulesDir, RULES_REGISTRY_NAME),
+    `${JSON.stringify({
+      version: 1,
+      owners: [normalizeRepoPath(host.root), normalizeRepoPath(otherHost)],
+    }, null, 2)}\n`,
+  );
+  const result = await diagnose({ host, codexProbe, currentPackage: ownPackage });
+  const rules = result.checks.find((item) => item.key === 'rules');
+  assert.equal(rules.status, 'ok');
+  assert.match(rules.value, /2 owners/);
+  assert.match(renderDoctor(result), /rules: .*2 owners/);
 });
 
 test('missing recorded rules fail diagnosis and name their full path', async (t) => {

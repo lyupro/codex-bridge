@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Two runners starting at the same moment in equally named repositories no longer fail on the exclusive writes that assign a runs directory: the runner that loses either race now reads the marker the winner wrote and takes the next candidate, which is the collision the marker was introduced to survive.
 - A repeated order is answered from its newest run instead of the pass before it: while a continuation was in flight, repeating the command returned the previous run's verdict as if it described the current one.
+- Uninstalling one installation no longer takes the Codex rules file away from every other installation on the machine. The file lives in `CODEX_HOME`, which is shared by every host, while ownership was recorded per host and two installations of the same version share a fingerprint — so removing a project-scope or throwaway host silently left the remaining ones running Codex without the execpolicy that forbids destructive repository work. Ownership is now tracked next to the file itself, and the last owner to leave is the one that removes it.
 
 ## [0.1.0] - 2026-08-04
 

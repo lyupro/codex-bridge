@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileFingerprint, installRecordPath, readInstallRecord } from './manifest.mjs';
 import { removeHook } from './settings-merge.mjs';
+import { readRulesRegistry, removeRulesOwner, remainingRulesOwners } from './rules-owners.mjs';
 
 async function removeEmpty(directory) {
   try {
@@ -20,6 +21,10 @@ async function removeEmptyParents(target, boundary) {
   }
 }
 
+function remainingOwnersText(count) {
+  return `${count} other owner${count === 1 ? '' : 's'} ${count === 1 ? 'remains' : 'remain'}`;
+}
+
 export async function uninstall({ host, dryRun = false } = {}) {
   const record = await readInstallRecord(host);
   const preservation = `Run artifacts in ${path.join(host.root, 'codex-runs')} and the run `
@@ -28,7 +33,20 @@ export async function uninstall({ host, dryRun = false } = {}) {
 
   if (dryRun) {
     const lines = record.files.map((file) => `Would remove ${file}`);
-    if (record.rules) lines.push(`Would remove ${record.rules.path} if its fingerprint is unchanged.`);
+    if (record.rules) {
+      const registry = await readRulesRegistry(host);
+      const remainingOwners = remainingRulesOwners(registry, host);
+      const currentFingerprint = await fileFingerprint(record.rules.path);
+      if (remainingOwners?.length) {
+        lines.push(`Would leave ${record.rules.path} because ${remainingOwnersText(remainingOwners.length)}.`);
+      } else if (currentFingerprint === record.rules.fingerprint) {
+        lines.push(`Would remove ${record.rules.path}; no other owners remain and its fingerprint is unchanged.`);
+      } else if (currentFingerprint !== null) {
+        lines.push(`Would leave ${record.rules.path} because its contents changed after installation.`);
+      } else {
+        lines.push(`Would leave ${record.rules.path} because it is already absent.`);
+      }
+    }
     lines.push('Would remove the SubagentStop hook and installation record.');
     lines.push(preservation);
     return { exitCode: 0, output: lines.join('\n') };
@@ -37,13 +55,18 @@ export async function uninstall({ host, dryRun = false } = {}) {
   await removeHook(host.settingsPath, path.join(host.root, record.hook.path), {
     createdGroup: record.hook.createdGroup === true,
   });
+  const ownership = await removeRulesOwner(host);
   let rulesOutput;
   if (record.rules) {
-    const currentFingerprint = await fileFingerprint(record.rules.path);
-    if (currentFingerprint === record.rules.fingerprint) {
-      await fs.rm(record.rules.path, { force: true });
-    } else if (currentFingerprint !== null) {
-      rulesOutput = `Left ${record.rules.path} because its contents changed after installation.`;
+    if (ownership?.owners.length) {
+      rulesOutput = `Left ${record.rules.path} because ${remainingOwnersText(ownership.owners.length)}.`;
+    } else {
+      const currentFingerprint = await fileFingerprint(record.rules.path);
+      if (currentFingerprint === record.rules.fingerprint) {
+        await fs.rm(record.rules.path, { force: true });
+      } else if (currentFingerprint !== null) {
+        rulesOutput = `Left ${record.rules.path} because its contents changed after installation.`;
+      }
     }
   }
   for (const relative of record.files) {

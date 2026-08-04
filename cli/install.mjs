@@ -13,6 +13,7 @@ import {
 } from './manifest.mjs';
 import { copyPlannedFile, targetMatches } from './copy.mjs';
 import { inspectHook, mergeHook } from './settings-merge.mjs';
+import { addRulesOwner } from './rules-owners.mjs';
 
 async function targetExists(target) {
   try {
@@ -66,6 +67,7 @@ export async function install({ host, dryRun = false, force = false, packageRoot
     new Map(states.map((state) => [state.item.relativeToHost, state.fingerprint])),
     { path: rule.target, fingerprint: ruleState.fingerprint });
   if (!changedFiles.length && !changedRule && inspectedHook.present && sameRecord) {
+    if (!dryRun) await addRulesOwner(host);
     return { exitCode: 0, output: 'codex-bridge is already installed; nothing to do.' };
   }
 
@@ -105,5 +107,6 @@ export async function install({ host, dryRun = false, force = false, packageRoot
     rules: { path: rule.target, fingerprint: await fileFingerprint(rule.target) },
     hook: { event: 'SubagentStop', path: hookRelative, createdGroup: hookResult.createdGroup || record?.hook?.createdGroup || false },
   });
+  await addRulesOwner(host);
   return { exitCode: 0, output: `Installed ${plan.length + 1} files and registered the SubagentStop hook.` };
 }
