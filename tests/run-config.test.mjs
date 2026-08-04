@@ -13,6 +13,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { readRunConfig, writeRunConfig, disableFlags, DEFAULTS } from '../src/run-config.mjs';
+import { runMode } from '../src/runner/codex-cmd.mjs';
 
 const tempFile = (content) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-cfg-'));
@@ -24,6 +25,21 @@ const tempFile = (content) => {
 test('an absent file means defaults, not an error', () => {
   const file = path.join(os.tmpdir(), 'codex-cfg-missing', 'run-config.json');
   assert.deepEqual(readRunConfig(file), DEFAULTS);
+});
+
+/**
+ * The launcher resolves a run's budget as budgets[runMode(agent)] and writes it into
+ * worker.json. A mode present in one table and missing from the other makes that expression
+ * undefined, which the deadline reads as "no budget" — the limit would then be silently absent
+ * for exactly one agent, the failure mode this step exists to remove.
+ */
+test('every agent maps to a mode that has a budget', () => {
+  for (const agent of ['codex-scout', 'codex-build', 'codex-review']) {
+    const mode = runMode(agent);
+    assert.ok(mode, `${agent} has no mode`);
+    assert.equal(typeof DEFAULTS.budgets[mode], 'number', `${mode} has no default budget`);
+    assert.ok(DEFAULTS.budgets[mode] > 0);
+  }
 });
 
 test('defaults keep the operator environment out of a run', () => {
@@ -57,6 +73,41 @@ test('a mode is configured as a model and a reasoning depth, both trimmed', () =
     scout: { model: 'model-s', effort: 'high' },
     build: { model: 'model-b' },
   });
+});
+
+test('budgets default per mode and merge when only one mode is written', () => {
+  assert.deepEqual(DEFAULTS.budgets, { scout: 15, build: 25, review: 20 });
+  assert.deepEqual(readRunConfig(tempFile('{"budgets": {"build": 7.5}}')).budgets, {
+    scout: 15,
+    build: 7.5,
+    review: 20,
+  });
+});
+
+test('budgets reject every invalid shape with an actionable message', () => {
+  assert.throws(() => readRunConfig(tempFile('{"budgets": null}')), /budgets.*must be an object/);
+  assert.throws(() => readRunConfig(tempFile('{"budgets": []}')), /budgets.*must be an object/);
+  assert.throws(() => readRunConfig(tempFile('{"budgets": 5}')), /budgets.*must be an object/);
+  assert.throws(
+    () => readRunConfig(tempFile('{"budgets": {"deploy": 5}}')),
+    /budgets.*unknown mode.*deploy.*scout, build, review/,
+  );
+  assert.throws(
+    () => readRunConfig(tempFile('{"budgets": {"build": "5"}}')),
+    /budgets\.build.*positive number/,
+  );
+  assert.throws(
+    () => readRunConfig(tempFile('{"budgets": {"build": 0}}')),
+    /budgets\.build.*positive number/,
+  );
+  assert.throws(
+    () => readRunConfig(tempFile('{"budgets": {"build": -1}}')),
+    /budgets\.build.*positive number/,
+  );
+  assert.throws(
+    () => readRunConfig(tempFile('{"budgets": {"build": ""}}')),
+    /budgets\.build.*is empty/,
+  );
 });
 
 test('a depth without a model is a valid profile: the depth is the decision', () => {

@@ -3,8 +3,11 @@
  *
  * It takes its whole order from worker.json, written by launcher.mjs into the run folder —
  * after the split that file is the only connection between the two halves. Read here:
- * `repo`, `agent`, `args`, `is_git_repo`. Written there: those four plus `slug` and
- * `launcher_pid`, which nothing here needs but a run folder read back months later does.
+ * `repo`, `agent`, `args`, `is_git_repo`, `budget_minutes`. Written there: those five plus
+ * `slug` and `launcher_pid`, which nothing here needs but a run folder read back months later
+ * does. The launcher must write the selected mode's budget into worker.json before spawning
+ * this half, so the worker never re-reads run-config.json and one run cannot acquire two
+ * configurations.
  * Neither side may change the shape alone.
  */
 import fs from 'node:fs';
@@ -27,6 +30,7 @@ export async function worker(runDir) {
     cfg.args,
     fs.readFileSync(path.join(runDir, 'task.md'), 'utf8'),
     path.join(runDir, 'raw.log'),
+    cfg.budget_minutes,
   );
 
   if (cfg.agent === 'codex-build') {

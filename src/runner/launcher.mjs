@@ -4,8 +4,8 @@
  *
  * The order it leaves for the worker is worker.json in the run folder — after the split
  * that file is the only connection between the two halves. It is written here with
- * `agent`, `slug`, `order_id`, `repo`, `is_git_repo`, `launcher_pid` and `args`; worker.mjs reads
- * `repo`, `agent`, `args` and `is_git_repo`. The three extra fields are deliberate: `slug`,
+ * `agent`, `slug`, `order_id`, `repo`, `is_git_repo`, `launcher_pid`, `budget_minutes` and `args`;
+ * worker.mjs reads `repo`, `agent`, `args`, `is_git_repo` and `budget_minutes`. The three extra fields are deliberate: `slug`,
  * `order_id` and `launcher_pid` are what a run folder read back months later needs in order to
  * explain itself — which order it belonged to included. Nothing may be dropped from this shape
  * without changing worker.mjs and saying so out loud.
@@ -31,7 +31,7 @@ import { parseArgs, die } from './args.mjs';
 import { SCHEMAS } from './schemas.mjs';
 import { INSTRUCTIONS } from './prompts.mjs';
 import { git, headSha, branchName, worktreeSnapshot, reviewScope } from './git-state.mjs';
-import { codexArgs, requireCodex, unsafeForCmd } from './codex-cmd.mjs';
+import { codexArgs, requireCodex, runMode, unsafeForCmd } from './codex-cmd.mjs';
 import { runsRoot } from './runs-root.mjs';
 import { resolveProjectRunsDir } from './project-dir.mjs';
 
@@ -89,7 +89,9 @@ export async function launcher() {
   // Folders left behind by a runner that was killed mid-run get an explicit state before
   // anything else happens. One order produced four of them, and without this pass an
   // abandoned folder is indistinguishable from a run still working: neither has meta.json.
-  markAbandoned(projectRunsRoot);
+  // The snapshot is passed in because meta/ makes no git calls of its own: it is the only way an
+  // abandoned run can be closed with the files it left behind rather than with a bare label.
+  markAbandoned(projectRunsRoot, isGitRepo ? worktreeSnapshot(repoRoot) : undefined);
 
   if (isGitRepo) {
     const drift = abandonedBranchDrift(projectRunsRoot, repoRoot, branchName(repoRoot));
@@ -288,6 +290,9 @@ export async function launcher() {
         repo: repoRoot,
         is_git_repo: isGitRepo,
         launcher_pid: process.pid,
+        // The mode's wall-clock budget, resolved here and never re-read by the worker: a run
+        // that consulted run-config.json twice could end up honouring two different limits.
+        budget_minutes: RUN_ENV?.budgets?.[runMode(opts.agent)],
         args: codexArgv,
       },
       null,

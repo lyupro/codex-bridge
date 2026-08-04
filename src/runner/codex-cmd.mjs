@@ -25,6 +25,24 @@ export const unsafeForCmd = (args) =>
   ['codex', ...args].find((a) => a.includes('%') || a.includes('"'));
 
 /**
+ * Stop the process that owns the Codex invocation. On Windows that process is cmd.exe, so
+ * child.kill() would reap only the shell and leave Codex spending quota as its grandchild —
+ * the exact orphan left by the killed caller on 2026-07-31. taskkill's tree flag is required;
+ * POSIX has no shell wrapper here, so killing the child itself is the honest boundary.
+ */
+function stopCodex(child, onWindows) {
+  if (!onWindows) {
+    child.kill('SIGKILL');
+    return;
+  }
+  const killed = spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], {
+    stdio: 'ignore',
+    windowsHide: true,
+  });
+  if (killed.error || killed.status !== 0) child.kill();
+}
+
+/**
  * Windows npm ships `codex` as codex.cmd, and Node refuses to spawn .cmd without a
  * shell. One command line through cmd.exe keeps a single code path; every argument is
  * quoted here, and unsafeForCmd() has already refused the ones that cannot be.
@@ -36,8 +54,12 @@ export const unsafeForCmd = (args) =>
  * outside spawnSync. MAX_LOG stays the ceiling; past it the log is cut with a note rather
  * than the run being killed — a huge log is a diagnosis, not a reason to lose the work.
  */
-export function runCodex(args, taskText, logPath) {
+export function runCodex(args, taskText, logPath, budgetMinutes) {
   const onWindows = process.platform === 'win32';
+  const deadlineMs =
+    typeof budgetMinutes === 'number' && Number.isFinite(budgetMinutes) && budgetMinutes > 0
+      ? budgetMinutes * 60 * 1000
+      : null;
   const log = fs.createWriteStream(logPath, { flags: 'a' });
   let written = 0;
   let cut = false;
@@ -74,6 +96,8 @@ export function runCodex(args, taskText, logPath) {
 
   return new Promise((resolve) => {
     let failed = false;
+    let deadlineTimer;
+    const startedAt = Date.now();
     child.stdout.on('data', append);
     child.stderr.on('data', append);
     child.on('error', (err) => {
@@ -85,7 +109,17 @@ export function runCodex(args, taskText, logPath) {
     // a crash of the runner.
     child.stdin.on('error', () => {});
     child.stdin.end(Buffer.from(taskText, 'utf8'));
+    if (deadlineMs !== null) {
+      deadlineTimer = setTimeout(() => {
+        const elapsed = Date.now() - startedAt;
+        log.write(
+          `\nrun-codex: run stopped on its deadline after ${elapsed} ms (budget ${deadlineMs} ms)\n`,
+        );
+        stopCodex(child, onWindows);
+      }, deadlineMs);
+    }
     child.on('close', (code) => {
+      if (deadlineTimer) clearTimeout(deadlineTimer);
       log.end(() => resolve(failed || code === null ? 1 : code));
     });
   });
@@ -130,12 +164,19 @@ const FALLBACK_EFFORT = 'medium';
  */
 const NO_SUBAGENTS = ['-c', 'agents.enabled=false'];
 
-function runProfile(opts) {
-  const mode = {
+/**
+ * Which configured mode an agent is. One table, because the launcher needs the same answer to
+ * pick a run's time budget: a second copy of this mapping is a second place to forget a mode.
+ */
+export const runMode = (agent) =>
+  ({
     'codex-scout': 'scout',
     'codex-build': 'build',
     'codex-review': 'review',
-  }[opts.agent];
+  })[agent];
+
+function runProfile(opts) {
+  const mode = runMode(opts.agent);
   // opts.models is how tests state a configuration; a real run reads the one loaded for it.
   const configured = (opts.models || RUN_ENV?.models || {})[mode] || {};
   return {

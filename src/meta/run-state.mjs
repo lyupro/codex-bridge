@@ -9,7 +9,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { line, normalizePath, readJson, size } from './paths.mjs';
+import { changedPaths, line, normalizePath, readJson, readText, size } from './paths.mjs';
 
 /**
  * Is this pid still running? EPERM means the process exists and belongs to someone else,
@@ -42,9 +42,12 @@ export function writeStatus(runDir, patch) {
  * run, so a folder left by a killed dispatcher gets an explicit state instead of reading as
  * "something is missing here". A dead pid with meta.json present is not abandoned — the
  * verdict exists, only the final status write was lost, so the state is repaired to
- * finished. Returns what changed, for callers that want to report it.
+ * finished. The caller supplies the current worktree snapshot because this module deliberately
+ * has no git calls; that snapshot is compared with the run's own state-before.txt and described
+ * as a later-run file list rather than exact authorship by the abandoned run. Returns what
+ * changed, for callers that want to report it.
  */
-export function markAbandoned(runsRoot) {
+export function markAbandoned(runsRoot, currentTree) {
   let entries;
   try {
     entries = fs.readdirSync(runsRoot, { withFileTypes: true });
@@ -57,8 +60,10 @@ export function markAbandoned(runsRoot) {
     const runDir = path.join(runsRoot, entry.name);
     const status = readJson(path.join(runDir, 'status.json'));
     if (!status || status.state !== 'running' || pidAlive(status.pid)) continue;
-    const meta = readJson(path.join(runDir, 'meta.json'));
-    const patch = meta
+    const metaPath = path.join(runDir, 'meta.json');
+    const meta = readJson(metaPath);
+    if (!meta && fs.existsSync(metaPath)) continue;
+    let patch = meta
       ? { state: 'finished', status: meta.status, finished_at: meta.finished_at }
       : {
           state: 'abandoned',
@@ -71,7 +76,30 @@ export function markAbandoned(runsRoot) {
             'runner process is dead, meta.json was not recorded; post-run worktree state was not ' +
               'captured — its changes will enter the baseline of the next run',
           abandoned_at: new Date().toISOString(),
-        };
+    };
+    if (!meta) {
+      const hasCurrentTree = typeof currentTree === 'string';
+      const beforePath = path.join(runDir, 'state-before.txt');
+      const hasBeforeSnapshot = fs.existsSync(beforePath);
+      const files = hasCurrentTree && hasBeforeSnapshot
+        ? changedPaths(readText(beforePath), currentTree)
+        : [];
+      const treeReason = hasCurrentTree && hasBeforeSnapshot
+        ? files.length
+          ? `the current worktree differs from state-before.txt in: ${files.join(', ')}`
+          : 'the current worktree has no files differing from state-before.txt'
+        : hasCurrentTree
+          ? 'the run has no state-before.txt, so no file list is available'
+          : 'no current worktree snapshot was supplied, so no file list is available';
+      const reason =
+        'runner process is dead, meta.json was not recorded; ' +
+        `${treeReason}. This comparison runs at the start of a later run, so its file list may ` +
+        'include work made after the abandoned run and is not a definitive list of that run\'s work; ' +
+        'post-run worktree state was not captured — its changes will enter the baseline of the next run';
+      const { meta: failure } = writeFailure(runDir, status.agent, reason);
+      fs.writeFileSync(metaPath, `${JSON.stringify({ ...failure, reason }, null, 2)}\n`);
+      patch = { ...patch, abandoned_reason: reason, abandoned_at: failure.finished_at };
+    }
     try {
       writeStatus(runDir, patch);
       changed.push({ run: entry.name, state: patch.state });

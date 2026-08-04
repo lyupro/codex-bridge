@@ -62,12 +62,32 @@ test('an abandoned run says its tree was never snapshotted either', () => {
   assert.match(status.abandoned_reason, /will enter the baseline of the next run/);
 });
 
+test('markAbandoned writes a FAIL verdict with the later worktree file list', () => {
+  const runsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-runs-'));
+  const runDir = path.join(runsRoot, 'run-files');
+  fs.mkdirSync(runDir);
+  writeStatus(runDir, { state: 'running', pid: DEAD_PID, repo: '/repo', agent: 'codex-build' });
+  fs.writeFileSync(path.join(runDir, 'state-before.txt'), '0\t0\ttracked.txt\nU\t4\told.txt\n');
+  const currentTree = '1\t0\ttracked.txt\nU\t4\told.txt\nU\t3\tnew.txt\n';
+
+  markAbandoned(runsRoot, currentTree);
+
+  const meta = JSON.parse(fs.readFileSync(path.join(runDir, 'meta.json'), 'utf8'));
+  assert.equal(meta.status, 'FAIL');
+  assert.match(meta.reason, /tracked\.txt/);
+  assert.match(meta.reason, /new\.txt/);
+  assert.match(meta.reason, /later run/);
+  assert.match(meta.reason, /not a definitive list/);
+  assert.equal(fs.existsSync(path.join(runDir, 'state-after.txt')), false);
+});
+
 test('markAbandoned repairs a dead running run that already has a meta.json to finished', () => {
   const runsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-runs-'));
   const runDir = path.join(runsRoot, 'run2');
   fs.mkdirSync(runDir);
   writeStatus(runDir, { state: 'running', pid: DEAD_PID, repo: '/repo', agent: 'codex-build' });
-  fs.writeFileSync(path.join(runDir, 'meta.json'), JSON.stringify({ status: 'OK', finished_at: 'X' }));
+  const metaText = JSON.stringify({ status: 'OK', finished_at: 'X' });
+  fs.writeFileSync(path.join(runDir, 'meta.json'), metaText);
 
   const changed = markAbandoned(runsRoot);
 
@@ -76,6 +96,7 @@ test('markAbandoned repairs a dead running run that already has a meta.json to f
   assert.equal(status.state, 'finished');
   assert.equal(status.status, 'OK');
   assert.equal(status.finished_at, 'X');
+  assert.equal(fs.readFileSync(path.join(runDir, 'meta.json'), 'utf8'), metaText);
 });
 
 test('markAbandoned leaves a running run alone while its pid is alive', () => {

@@ -23,6 +23,10 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const CONFIG_PATH = path.join(HERE, 'run-config.json');
 
+const BUDGET_KEY = 'budgets';
+const BUDGET_MODES = ['scout', 'build', 'review'];
+const DEFAULT_BUDGETS = { scout: 15, build: 25, review: 20 };
+
 /**
  * Files the surrounding tooling writes on its own, in any repository a run touches.
  *
@@ -47,6 +51,7 @@ export const DEFAULTS = {
   hooks: false,
   plugins: false,
   models: {},
+  budgets: DEFAULT_BUDGETS,
   environmentPaths: DEFAULT_ENVIRONMENT_PATHS,
   answerLanguage: 'English',
 };
@@ -70,7 +75,44 @@ export const ALLOWED_EFFORTS = Object.freeze(['none', 'minimal', 'low', 'medium'
  * two languages. English is the default because the package is read by strangers.
  */
 const STRING_KEYS = ['answerLanguage'];
-const KEYS = [...SWITCH_KEYS, ...LIST_KEYS, ...OBJECT_KEYS, ...STRING_KEYS];
+const KEYS = [...SWITCH_KEYS, ...LIST_KEYS, ...OBJECT_KEYS, ...STRING_KEYS, BUDGET_KEY];
+
+/**
+ * A run gets a hard wall-clock budget, because the caller's timeout is not a run contract:
+ * on 2026-08-03 one order restarted six times and spent 170,293 accounted tokens while four
+ * killed callers left their Codex processes and token spend unrecorded.
+ */
+function readBudgets(file, value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(
+      `${file}: key “${BUDGET_KEY}” must be an object keyed by ${BUDGET_MODES.join(', ')}, ` +
+        `each holding a positive number of minutes, not ${JSON.stringify(value)}`,
+    );
+  }
+  const budgets = { ...DEFAULT_BUDGETS };
+  for (const [mode, minutes] of Object.entries(value)) {
+    if (!BUDGET_MODES.includes(mode)) {
+      throw new Error(
+        `${file}: key “${BUDGET_KEY}” has unknown mode “${mode}”. ` +
+          `Only ${BUDGET_MODES.join(', ')} are allowed`,
+      );
+    }
+    if (typeof minutes === 'string' && !minutes.trim()) {
+      throw new Error(
+        `${file}: key “${BUDGET_KEY}.${mode}” is empty; remove the field to use the default ` +
+          `(${DEFAULT_BUDGETS[mode]} minutes), or give it a positive number of minutes`,
+      );
+    }
+    if (typeof minutes !== 'number' || !Number.isFinite(minutes) || minutes <= 0) {
+      throw new Error(
+        `${file}: key “${BUDGET_KEY}.${mode}” must be a positive number of minutes, ` +
+          `not ${JSON.stringify(minutes)}`,
+      );
+    }
+    budgets[mode] = minutes;
+  }
+  return budgets;
+}
 
 export function readRunConfig(file = CONFIG_PATH) {
   let raw;
@@ -104,6 +146,10 @@ export function readRunConfig(file = CONFIG_PATH) {
         );
       }
       config[key] = value.trim();
+      continue;
+    }
+    if (key === BUDGET_KEY) {
+      config[key] = readBudgets(file, value);
       continue;
     }
     if (LIST_KEYS.includes(key)) {
@@ -205,6 +251,7 @@ const state = (config) => [
     const model = profile.model || 'default model';
     return `${key}: ${model}${profile.effort ? ` at ${profile.effort} effort` : ''}`;
   }).join('; ')}`,
+  `budgets: ${BUDGET_MODES.map((mode) => `${mode}: ${config.budgets?.[mode] ?? DEFAULT_BUDGETS[mode]} minutes`).join('; ')}`,
 ];
 
 function main(argv) {
