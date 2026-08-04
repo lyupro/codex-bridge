@@ -4,6 +4,8 @@ import path from 'node:path';
 import {
   buildInstallPlan,
   fileFingerprint,
+  HOOK_DEFINITIONS,
+  installedHookPath,
   packageInfo,
   readInstallRecord,
   recordMatchesPackage,
@@ -12,7 +14,7 @@ import {
   writeInstallRecord,
 } from './manifest.mjs';
 import { copyPlannedFile, targetMatches } from './copy.mjs';
-import { inspectHook, mergeHook } from './settings-merge.mjs';
+import { commandFor, inspectHook, mergeHook } from './settings-merge.mjs';
 import { addRulesOwner, readRulesRegistry } from './rules-owners.mjs';
 
 async function targetExists(target) {
@@ -25,6 +27,24 @@ async function targetExists(target) {
   }
 }
 
+function hookTargets(host) {
+  return HOOK_DEFINITIONS.map((definition) => {
+    const target = installedHookPath(host, definition);
+    return {
+      definition,
+      target,
+      relative: path.relative(host.root, target).split(path.sep).join('/'),
+      spec: { event: definition.event, matcher: definition.matcher, command: commandFor(target) },
+    };
+  });
+}
+
+function recordHasHooks(record, targets) {
+  return Boolean(record)
+    && targets.every(({ definition, relative }) => record.hooks?.some((hook) =>
+      hook.event === definition.event && hook.path === relative));
+}
+
 export async function install({ host, dryRun = false, force = false, packageRoot } = {}) {
   // Validate the shared registry before writes; package removal on a broken registry left the host without its watchdog.
   await readRulesRegistry(host);
@@ -32,10 +52,14 @@ export async function install({ host, dryRun = false, force = false, packageRoot
   const rule = { ...rulesPlan(host, packageRoot), processing: 'copy' };
   const currentPackage = await packageInfo(packageRoot);
   const record = await readInstallRecord(host);
-  const inspectedHook = await inspectHook(
-    host.settingsPath,
-    path.join(host.agentsDir, 'hooks', 'reply-guard.mjs'),
-  );
+  const targets = hookTargets(host);
+  for (const target of targets) {
+    if (!plan.some((item) => item.relativeToHost === target.relative)) {
+      throw new Error(`install plan does not contain hooks/${target.definition.file}`);
+    }
+  }
+  const inspectedHooks = await Promise.all(targets.map(({ spec }) =>
+    inspectHook(host.settingsPath, spec)));
   const states = await Promise.all(plan.map(async (item) => ({
     item,
     exists: await targetExists(item.target),
@@ -68,7 +92,8 @@ export async function install({ host, dryRun = false, force = false, packageRoot
   const sameRecord = recordMatchesPackage(record, plan, currentPackage,
     new Map(states.map((state) => [state.item.relativeToHost, state.fingerprint])),
     { path: rule.target, fingerprint: ruleState.fingerprint });
-  if (!changedFiles.length && !changedRule && inspectedHook.present && sameRecord) {
+  if (!changedFiles.length && !changedRule && inspectedHooks.every((state) => state.present)
+    && recordHasHooks(record, targets) && sameRecord) {
     if (!dryRun) await addRulesOwner(host);
     return { exitCode: 0, output: 'codex-bridge is already installed; nothing to do.' };
   }
@@ -79,7 +104,12 @@ export async function install({ host, dryRun = false, force = false, packageRoot
     if (changedRule) {
       lines.push(`${ruleState.exists ? 'Would overwrite' : 'Would create'} ${rule.target}`);
     }
-    lines.push(inspectedHook.present ? 'Hook is already registered.' : 'Would register SubagentStop hook.');
+    inspectedHooks.forEach((state, index) => {
+      const { definition } = targets[index];
+      lines.push(state.present
+        ? `${definition.event} hook is already registered.`
+        : `Would register ${definition.event} hook for matcher ${definition.matcher}.`);
+    });
     lines.push('Would write installation record.');
     return { exitCode: 0, output: lines.join('\n') };
   }
@@ -95,15 +125,16 @@ export async function install({ host, dryRun = false, force = false, packageRoot
   for (const seed of seedPlan(host, packageRoot)) {
     if (!(await targetExists(seed.target))) await copyPlannedFile(seed, host.agentsDir);
   }
-  const hookResult = await mergeHook(
-    host.settingsPath,
-    path.join(host.agentsDir, 'hooks', 'reply-guard.mjs'),
-    inspectedHook,
-  );
-  const hookRelative = plan.find((item) => path.basename(item.target) === 'reply-guard.mjs')?.relativeToHost;
-  if (!hookRelative) throw new Error('install plan does not contain hooks/reply-guard.mjs');
+  const hookResults = [];
+  for (const { spec } of targets) hookResults.push(await mergeHook(host.settingsPath, spec));
   const fingerprints = Object.fromEntries(await Promise.all(plan.map(async (item) =>
     [item.relativeToHost, await fileFingerprint(item.target)])));
+  const hooks = targets.map(({ definition, relative }, index) => {
+    const prior = record?.hooks?.find((hook) => hook.event === definition.event);
+    const createdGroup = hookResults[index].createdGroup || prior?.createdGroup === true;
+    return createdGroup ? { event: definition.event, path: relative, createdGroup: true }
+      : { event: definition.event, path: relative };
+  });
   await writeInstallRecord(host, {
     ...currentPackage,
     installedAt: new Date().toISOString(),
@@ -111,7 +142,10 @@ export async function install({ host, dryRun = false, force = false, packageRoot
     files: plan.map((item) => item.relativeToHost),
     fingerprints,
     rules: { path: rule.target, fingerprint: await fileFingerprint(rule.target) },
-    hook: { event: 'SubagentStop', path: hookRelative, createdGroup: hookResult.createdGroup || record?.hook?.createdGroup || false },
+    hooks,
   });
-  return { exitCode: 0, output: `Installed ${plan.length + 1} files and registered the SubagentStop hook.` };
+  return {
+    exitCode: 0,
+    output: `Installed ${plan.length + 1} files and registered the ${targets.map(({ definition }) => definition.event).join(' and ')} hooks.`,
+  };
 }

@@ -7,7 +7,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { diagnose, renderDoctor } from '../../cli/doctor.mjs';
 import { resolveHost } from '../../cli/hosts.mjs';
-import { fileFingerprint, writeInstallRecord } from '../../cli/manifest.mjs';
+import { fileFingerprint, HOOK_DEFINITIONS, writeInstallRecord } from '../../cli/manifest.mjs';
 import { RULES_REGISTRY_NAME } from '../../cli/rules-owners.mjs';
 import { normalizeRepoPath, PROJECT_MARKER } from '../../src/runner/project-dir.mjs';
 import { projectFolder } from '../../src/write-meta.mjs';
@@ -23,7 +23,12 @@ async function hostFixture(t) {
 
 async function installedFixture(t) {
   const host = await hostFixture(t);
-  const files = ['agents/codex/run-codex.mjs', 'agents/codex/hooks/reply-guard.mjs'];
+  const files = [
+    'agents/codex/run-codex.mjs',
+    'agents/codex/required-inputs.mjs',
+    'agents/codex/hooks/reply-guard.mjs',
+    'agents/codex/hooks/order-gate.mjs',
+  ];
   for (const relative of files) {
     const target = path.join(host.root, relative);
     await fs.mkdir(path.dirname(target), { recursive: true });
@@ -34,14 +39,23 @@ async function installedFixture(t) {
     installedAt: '2026-08-02T10:00:00.000Z',
     mode: 'copy',
     files,
-    hook: { event: 'SubagentStop', path: 'agents/codex/hooks/reply-guard.mjs' },
+    hooks: [
+      { event: 'SubagentStop', path: 'agents/codex/hooks/reply-guard.mjs' },
+      { event: 'PreToolUse', path: 'agents/codex/hooks/order-gate.mjs' },
+    ],
   };
   await writeInstallRecord(host, record);
-  await fs.writeFile(host.settingsPath, JSON.stringify({
-    hooks: {
-      SubagentStop: [{ hooks: [{ type: 'command', command: `node "${path.join(host.root, record.hook.path)}"` }] }],
-    },
+  // Registered from the definitions, not from literals: doctor compares the matcher it finds
+  // against the one the installer would write, so a fixture with its own copy would report a
+  // healthy host green while the real one drifted.
+  const hooks = Object.fromEntries(HOOK_DEFINITIONS.map((definition) => {
+    const recorded = record.hooks.find((hook) => hook.event === definition.event);
+    return [definition.event, [{
+      matcher: definition.matcher,
+      hooks: [{ type: 'command', command: `node "${path.join(host.root, recorded.path)}"` }],
+    }]];
   }));
+  await fs.writeFile(host.settingsPath, JSON.stringify({ hooks }));
   return { host, record };
 }
 
@@ -83,7 +97,8 @@ test('complete installation with all files exits zero', async (t) => {
   const result = await diagnose({ host, codexProbe, currentPackage: ownPackage });
   assert.equal(result.exitCode, 0);
   assert.equal(result.checks.find((item) => item.key === 'files').status, 'ok');
-  assert.equal(result.checks.find((item) => item.key === 'hook').status, 'ok');
+  assert.equal(result.checks.find((item) => item.key === 'hook:SubagentStop').status, 'ok');
+  assert.equal(result.checks.find((item) => item.key === 'hook:PreToolUse').status, 'ok');
 });
 
 test('rules cannot be checked before installation', async (t) => {
@@ -144,7 +159,7 @@ test('corrupt rules registry fails only the rules check and keeps all diagnostic
   );
   const result = await diagnose({ host, codexProbe, currentPackage: ownPackage });
   const rendered = renderDoctor(result);
-  for (const key of ['host', 'installation', 'files', 'rules', 'hook', 'codex', 'node', 'runsRoot', 'projectRuns']) {
+  for (const key of ['host', 'installation', 'files', 'rules', 'hook:SubagentStop', 'hook:PreToolUse', 'codex', 'node', 'runsRoot', 'projectRuns']) {
     assert.match(rendered, new RegExp(`\\] ${key}:`));
   }
   const rules = result.checks.find((item) => item.key === 'rules');
@@ -199,17 +214,30 @@ test('a directory at a recorded file path is treated as missing', async (t) => {
 
 test('hook command must reference the exact installed guard path', async (t) => {
   const { host, record } = await installedFixture(t);
-  const wrong = path.join(host.root, record.hook.path, 'reply-guard.mjs');
+  const replyHook = record.hooks.find((hook) => hook.event === 'SubagentStop');
+  const wrong = path.join(host.root, replyHook.path, 'reply-guard.mjs');
   await fs.writeFile(host.settingsPath, JSON.stringify({
     hooks: {
       SubagentStop: [{
-        matcher: path.join(host.root, record.hook.path),
+        matcher: '*',
         hooks: [{ type: 'command', command: `node "${wrong}"` }],
       }],
     },
   }));
   const result = await diagnose({ host, codexProbe, currentPackage: ownPackage });
-  assert.equal(result.checks.find((item) => item.key === 'hook').status, 'warn');
+  assert.equal(result.checks.find((item) => item.key === 'hook:SubagentStop').status, 'warn');
+  assert.equal(result.checks.find((item) => item.key === 'hook:PreToolUse').status, 'warn');
+});
+
+test('doctor exposes a half-registered host as one healthy and one warning hook', async (t) => {
+  const { host } = await installedFixture(t);
+  const settings = JSON.parse(await fs.readFile(host.settingsPath, 'utf8'));
+  delete settings.hooks.PreToolUse;
+  await fs.writeFile(host.settingsPath, `${JSON.stringify(settings)}\n`);
+  const result = await diagnose({ host, codexProbe, currentPackage: ownPackage });
+  assert.equal(result.checks.find((item) => item.key === 'hook:SubagentStop').status, 'ok');
+  assert.equal(result.checks.find((item) => item.key === 'hook:PreToolUse').status, 'warn');
+  assert.match(renderDoctor(result), /hook:PreToolUse:.*does not point|hook:PreToolUse:.*settings/);
 });
 
 test('an unreadable project marker fails one check, not the whole diagnosis', async (t) => {

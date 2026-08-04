@@ -5,13 +5,15 @@ import { install } from './install.mjs';
 import {
   buildInstallPlan,
   fileFingerprint,
+  HOOK_DEFINITIONS,
+  installedHookPath,
   packageInfo,
   readInstallRecord,
   recordMatchesPackage,
   rulesPlan,
 } from './manifest.mjs';
 import { targetMatches } from './copy.mjs';
-import { inspectHook } from './settings-merge.mjs';
+import { commandFor, inspectHook } from './settings-merge.mjs';
 import { addRulesOwner, readRulesRegistry } from './rules-owners.mjs';
 
 async function exists(target) {
@@ -35,6 +37,23 @@ function classifyOrphan(state, record) {
   if (!state.exists) return 'orphaned';
   if (record.fingerprints?.[state.relative] === state.fingerprint) return 'orphaned';
   return 'modified';
+}
+
+function hookTargets(host) {
+  return HOOK_DEFINITIONS.map((definition) => {
+    const target = installedHookPath(host, definition);
+    return {
+      definition,
+      relative: path.relative(host.root, target).split(path.sep).join('/'),
+      spec: { event: definition.event, matcher: definition.matcher, command: commandFor(target) },
+    };
+  });
+}
+
+function recordHasHooks(record, targets) {
+  return Boolean(record)
+    && targets.every(({ definition, relative }) => record.hooks?.some((hook) =>
+      hook.event === definition.event && hook.path === relative));
 }
 
 /**
@@ -62,7 +81,7 @@ function conflictOutput(conflicts, legacy, dryRun) {
   return [heading, ...lines].join('\n');
 }
 
-function dryRunOutput(states, hookPresent, legacy) {
+function dryRunOutput(states, hookStates, legacy) {
   const lines = [];
   for (const state of states) {
     if (state.status === 'outdated') lines.push(`Would update ${state.relative}.`);
@@ -72,7 +91,10 @@ function dryRunOutput(states, hookPresent, legacy) {
     if (state.status === 'orphaned' && state.exists) lines.push(`Would remove ${state.relative}.`);
     if (state.status === 'modified' && !state.item) lines.push(`Would preserve modified orphan ${state.relative}.`);
   }
-  if (!hookPresent) lines.push('Would register SubagentStop hook.');
+  hookStates.forEach(({ state, target }) => {
+    const { definition } = target;
+    if (!state.present) lines.push(`Would register ${definition.event} hook for matcher ${definition.matcher}.`);
+  });
   lines.push('Would write installation record with new fingerprints.');
   if (legacy && states.some((state) => state.status === 'modified')) {
     lines.push('Installation record has no fingerprints; differing files are treated as modified.');
@@ -135,19 +157,23 @@ export async function update({ host, dryRun = false, force = false, packageRoot 
     return { exitCode: 1, output: conflictOutput(conflicts, legacy, dryRun) };
   }
 
-  const guardPath = path.join(host.agentsDir, 'hooks', 'reply-guard.mjs');
-  const inspectedHook = await inspectHook(host.settingsPath, guardPath);
+  const targets = hookTargets(host);
+  const inspectedHooks = await Promise.all(targets.map(async (target) => ({
+    target,
+    state: await inspectHook(host.settingsPath, target.spec),
+  })));
   const currentPackage = await packageInfo(packageRoot);
   const recordCurrent = recordMatchesPackage(record, plan, currentPackage,
     new Map(plannedStates.map((state) => [state.relative, state.fingerprint])),
     { path: rule.target, fingerprint: ruleState.fingerprint });
   const changed = states.some((state) => state.status !== 'up-to-date');
-  if (!changed && inspectedHook.present && recordCurrent) {
+  if (!changed && inspectedHooks.every(({ state }) => state.present)
+    && recordHasHooks(record, targets) && recordCurrent) {
     if (!dryRun) await addRulesOwner(host);
     return { exitCode: 0, output: 'codex-bridge is up to date' };
   }
   if (dryRun) {
-    return { exitCode: 0, output: dryRunOutput(states, inspectedHook.present, legacy) };
+    return { exitCode: 0, output: dryRunOutput(states, inspectedHooks, legacy) };
   }
 
   for (const state of orphanStates) {

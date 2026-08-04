@@ -1,4 +1,4 @@
-/** Verifies lossless, idempotent SubagentStop hook settings updates and backups. */
+/** Verifies lossless, idempotent named hook settings updates and backups. */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -20,6 +20,10 @@ async function backups(root) {
   return (await fs.readdir(root)).filter((name) => name.startsWith('settings.json.codex-bridge-backup-'));
 }
 
+function spec(target, event = 'SubagentStop', matcher = '*', hookPath = target.guardPath) {
+  return { event, matcher, command: `node "${path.resolve(hookPath)}"` };
+}
+
 test('merge preserves a foreign hook, backs up settings, and remove deletes only our hook', async (t) => {
   const target = await fixture(t);
   const original = `${JSON.stringify({
@@ -28,7 +32,7 @@ test('merge preserves a foreign hook, backs up settings, and remove deletes only
   }, null, 2)}\n`;
   await fs.writeFile(target.settingsPath, original);
 
-  const merged = await mergeHook(target.settingsPath, target.guardPath);
+  const merged = await mergeHook(target.settingsPath, spec(target));
   assert.deepEqual(merged, { changed: true, createdGroup: false });
   assert.equal((await backups(target.root)).length, 1);
   const backup = path.join(target.root, (await backups(target.root))[0]);
@@ -37,9 +41,9 @@ test('merge preserves a foreign hook, backs up settings, and remove deletes only
   assert.equal(afterMerge.theme, 'dark');
   assert.equal(afterMerge.hooks.SubagentStop[0].hooks.length, 2);
 
-  assert.deepEqual(await mergeHook(target.settingsPath, target.guardPath), { changed: false, createdGroup: false });
+  assert.deepEqual(await mergeHook(target.settingsPath, spec(target)), { changed: false, createdGroup: false });
   assert.equal((await backups(target.root)).length, 1);
-  await removeHook(target.settingsPath, target.guardPath);
+  await removeHook(target.settingsPath, spec(target));
   const afterRemove = JSON.parse(await fs.readFile(target.settingsPath, 'utf8'));
   assert.deepEqual(afterRemove.hooks.SubagentStop[0].hooks, [{ type: 'command', command: 'dacapo hook claude' }]);
 });
@@ -48,15 +52,15 @@ test('merge creates missing structures and removes a group that it created', asy
   for (const initial of [null, { model: 'test' }]) {
     const target = await fixture(t);
     if (initial) await fs.writeFile(target.settingsPath, JSON.stringify(initial));
-    const result = await mergeHook(target.settingsPath, target.guardPath);
+    const result = await mergeHook(target.settingsPath, spec(target));
     assert.equal(result.createdGroup, true);
-    const state = await inspectHook(target.settingsPath, target.guardPath);
+    const state = await inspectHook(target.settingsPath, spec(target));
     assert.equal(state.present, true);
     assert.deepEqual(state.settings.hooks.SubagentStop[0], {
       matcher: '*',
       hooks: [{ type: 'command', command: `node "${path.resolve(target.guardPath)}"`, timeout: 10 }],
     });
-    await removeHook(target.settingsPath, target.guardPath, { createdGroup: true });
+    await removeHook(target.settingsPath, spec(target), { createdGroup: true });
     const removed = JSON.parse(await fs.readFile(target.settingsPath, 'utf8'));
     assert.deepEqual(removed.hooks.SubagentStop, []);
   }
@@ -66,7 +70,24 @@ test('invalid JSON fails without changing settings or creating a backup', async 
   const target = await fixture(t);
   const invalid = '{ nope';
   await fs.writeFile(target.settingsPath, invalid);
-  await assert.rejects(() => mergeHook(target.settingsPath, target.guardPath), /cannot parse/);
+  await assert.rejects(() => mergeHook(target.settingsPath, spec(target)), /cannot parse/);
   assert.equal(await fs.readFile(target.settingsPath, 'utf8'), invalid);
   assert.deepEqual(await backups(target.root), []);
+});
+
+test('named matcher operations leave a foreign matcher in the same event untouched', async (t) => {
+  const target = await fixture(t);
+  await fs.writeFile(target.settingsPath, JSON.stringify({
+    hooks: {
+      PreToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: 'foreign pre-tool hook' }] }],
+    },
+  }));
+  const gate = spec(target, 'PreToolUse', 'Agent', path.join(target.root, 'agents', 'codex', 'hooks', 'order-gate.mjs'));
+  const merged = await mergeHook(target.settingsPath, gate);
+  assert.deepEqual(merged, { changed: true, createdGroup: true });
+  await removeHook(target.settingsPath, gate, { createdGroup: true });
+  const settings = JSON.parse(await fs.readFile(target.settingsPath, 'utf8'));
+  assert.deepEqual(settings.hooks.PreToolUse, [
+    { matcher: '*' , hooks: [{ type: 'command', command: 'foreign pre-tool hook' }] },
+  ]);
 });

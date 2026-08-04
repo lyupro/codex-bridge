@@ -7,7 +7,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { resolveHost } from '../../cli/hosts.mjs';
 import { install } from '../../cli/install.mjs';
-import { buildInstallPlan, readInstallRecord } from '../../cli/manifest.mjs';
+import { buildInstallPlan, HOOK_DEFINITIONS, readInstallRecord } from '../../cli/manifest.mjs';
 import { RULES_REGISTRY_NAME } from '../../cli/rules-owners.mjs';
 import { uninstall } from '../../cli/uninstall.mjs';
 import { update } from '../../cli/update.mjs';
@@ -77,6 +77,14 @@ test('install copies the exact plan, expands placeholders, and writes a valid re
   const rulesBytes = await fs.readFile(record.rules.path);
   assert.deepEqual(rulesBytes, await fs.readFile('src/rules/codex-bridge.rules'));
   assert.equal(record.rules.fingerprint, createHash('sha256').update(rulesBytes).digest('hex'));
+  assert.deepEqual(record.hooks.map(({ event }) => event), ['SubagentStop', 'PreToolUse']);
+  const settings = JSON.parse(await fs.readFile(host.settingsPath, 'utf8'));
+  // Read from the definitions rather than restated: the PreToolUse matcher lists every name a
+  // host gives the subagent tool, and a literal here would have to be edited — or silently
+  // contradict the installer — the first time that list grows.
+  for (const definition of HOOK_DEFINITIONS) {
+    assert.equal(settings.hooks[definition.event][0].matcher, definition.matcher);
+  }
   const installed = await allFiles(host.root);
   for (const file of record.files) assert.ok(installed.includes(file), file);
   await fs.access(path.join(host.agentsDir, '.codex-bridge-install.json'));
@@ -271,7 +279,10 @@ test('uninstall removes only recorded files and hook while preserving foreign ho
   const { host } = await fixture(t);
   await fs.mkdir(host.root, { recursive: true });
   await fs.writeFile(host.settingsPath, JSON.stringify({
-    hooks: { SubagentStop: [{ matcher: '*', hooks: [{ type: 'command', command: 'dacapo hook claude' }] }] },
+    hooks: {
+      SubagentStop: [{ matcher: '*', hooks: [{ type: 'command', command: 'dacapo hook claude' }] }],
+      PreToolUse: [{ matcher: 'Agent', hooks: [{ type: 'command', command: 'foreign pre-tool hook' }] }],
+    },
   }));
   await install({ host });
   const foreign = path.join(host.agentsDir, 'foreign.txt');
@@ -287,6 +298,7 @@ test('uninstall removes only recorded files and hook while preserving foreign ho
   assert.equal(await readInstallRecord(host), null);
   const settings = JSON.parse(await fs.readFile(host.settingsPath, 'utf8'));
   assert.deepEqual(settings.hooks.SubagentStop[0].hooks, [{ type: 'command', command: 'dacapo hook claude' }]);
+  assert.deepEqual(settings.hooks.PreToolUse[0].hooks, [{ type: 'command', command: 'foreign pre-tool hook' }]);
   await assert.rejects(() => fs.access(host.commandsDir), { code: 'ENOENT' });
 });
 
@@ -353,6 +365,7 @@ test('uninstall completes with a corrupt registry and preserves shared rules', a
   await assert.rejects(() => fs.access(path.join(host.agentsDir, '.codex-bridge-install.json')), { code: 'ENOENT' });
   const settings = JSON.parse(await fs.readFile(host.settingsPath, 'utf8'));
   assert.deepEqual(settings.hooks.SubagentStop, []);
+  assert.deepEqual(settings.hooks.PreToolUse, []);
 });
 
 test('uninstall without a record is nonzero and dry-run uninstall changes nothing', async (t) => {

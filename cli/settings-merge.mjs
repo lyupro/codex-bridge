@@ -1,12 +1,29 @@
-/** Merges and removes the codex-bridge SubagentStop hook without disturbing host settings. */
+/** Merges and removes named codex-bridge hooks without disturbing host settings. */
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 
-const EVENT = 'SubagentStop';
+const LEGACY_SPEC = { event: 'SubagentStop', matcher: '*' };
 
-function commandFor(guardPath) {
+export function commandFor(guardPath) {
   return `node "${path.resolve(guardPath)}"`;
+}
+
+function normalizeSpec(specOrPath) {
+  if (typeof specOrPath === 'string') {
+    return { ...LEGACY_SPEC, command: commandFor(specOrPath) };
+  }
+  if (!specOrPath || typeof specOrPath !== 'object'
+    || typeof specOrPath.event !== 'string'
+    || typeof specOrPath.matcher !== 'string'
+    || typeof specOrPath.command !== 'string') {
+    throw new TypeError('hook spec must contain event, matcher, and command strings');
+  }
+  return {
+    event: specOrPath.event,
+    matcher: specOrPath.matcher,
+    command: specOrPath.command,
+  };
 }
 
 async function readSettings(settingsPath) {
@@ -27,8 +44,8 @@ async function readSettings(settingsPath) {
   }
 }
 
-function groups(settings) {
-  const value = settings?.hooks?.[EVENT];
+function groups(settings, event) {
+  const value = settings?.hooks?.[event];
   return Array.isArray(value) ? value : [];
 }
 
@@ -40,12 +57,14 @@ function groupHooks(group) {
   return Array.isArray(group?.hooks) ? group.hooks : [];
 }
 
-export async function inspectHook(settingsPath, guardPath) {
+export async function inspectHook(settingsPath, specOrPath) {
   const state = await readSettings(settingsPath);
-  const command = commandFor(guardPath);
-  const present = groups(state.settings).some((group) =>
-    groupHooks(group).some((hook) => hook?.type === 'command' && hook.command === command));
-  return { ...state, command, present };
+  const spec = normalizeSpec(specOrPath);
+  const present = groups(state.settings, spec.event)
+    .filter((group) => group?.matcher === spec.matcher)
+    .some((group) => groupHooks(group)
+      .some((hook) => hook?.type === 'command' && hook.command === spec.command));
+  return { ...state, ...spec, present };
 }
 
 function backupName(settingsPath) {
@@ -66,35 +85,38 @@ async function atomicWrite(settingsPath, settings, previous) {
   }
 }
 
-export async function mergeHook(settingsPath, guardPath, inspected) {
-  const state = inspected || await inspectHook(settingsPath, guardPath);
+export async function mergeHook(settingsPath, specOrPath, inspected) {
+  const spec = normalizeSpec(specOrPath);
+  const state = inspected || await inspectHook(settingsPath, spec);
   if (state.present) return { changed: false, createdGroup: false };
   const settings = structuredClone(state.settings);
   settings.hooks ??= {};
-  if (!Array.isArray(settings.hooks[EVENT])) settings.hooks[EVENT] = [];
-  let group = settings.hooks[EVENT].find((entry) => entry?.matcher === '*');
+  if (!Array.isArray(settings.hooks[spec.event])) settings.hooks[spec.event] = [];
+  let group = settings.hooks[spec.event].find((entry) => entry?.matcher === spec.matcher);
   const createdGroup = !group;
   if (!group) {
-    group = { matcher: '*', hooks: [] };
-    settings.hooks[EVENT].push(group);
+    group = { matcher: spec.matcher, hooks: [] };
+    settings.hooks[spec.event].push(group);
   }
   if (!Array.isArray(group.hooks)) group.hooks = [];
-  group.hooks.push(ownHook(state.command));
+  group.hooks.push(ownHook(spec.command));
   await atomicWrite(settingsPath, settings, state);
   return { changed: true, createdGroup };
 }
 
-export async function removeHook(settingsPath, guardPath, { createdGroup = false } = {}) {
-  const state = await inspectHook(settingsPath, guardPath);
+export async function removeHook(settingsPath, specOrPath, { createdGroup = false } = {}) {
+  const spec = normalizeSpec(specOrPath);
+  const state = await inspectHook(settingsPath, spec);
   if (!state.present) return { changed: false };
   const settings = structuredClone(state.settings);
-  const eventGroups = groups(settings);
+  const eventGroups = groups(settings, spec.event);
   for (let index = eventGroups.length - 1; index >= 0; index -= 1) {
     const group = eventGroups[index];
+    if (group?.matcher !== spec.matcher) continue;
     if (!Array.isArray(group?.hooks)) continue;
     group.hooks = group.hooks.filter((hook) =>
-      !(hook?.type === 'command' && hook.command === state.command));
-    if (createdGroup && group.matcher === '*' && group.hooks.length === 0) eventGroups.splice(index, 1);
+      !(hook?.type === 'command' && hook.command === spec.command));
+    if (createdGroup && group.hooks.length === 0) eventGroups.splice(index, 1);
   }
   await atomicWrite(settingsPath, settings, state);
   return { changed: true };

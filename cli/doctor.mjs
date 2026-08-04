@@ -2,7 +2,13 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { fileFingerprint, readInstallRecord, packageInfo } from './manifest.mjs';
+import {
+  fileFingerprint,
+  HOOK_DEFINITIONS,
+  readInstallRecord,
+  packageInfo,
+} from './manifest.mjs';
+import { commandFor, inspectHook } from './settings-merge.mjs';
 import { readRulesRegistry } from './rules-owners.mjs';
 import { runsRoot } from '../src/runner/runs-root.mjs';
 import { resolveProjectRunsDir } from '../src/runner/project-dir.mjs';
@@ -53,22 +59,6 @@ function projectRunsCheck() {
   return check('projectRuns', 'ok', `${path.resolve(resolved.dir)} (${note})`);
 }
 
-function hookCommands(value) {
-  if (Array.isArray(value)) return value.flatMap(hookCommands);
-  if (value && typeof value === 'object') {
-    const own = value.type === 'command' && typeof value.command === 'string' ? [value.command] : [];
-    return [...own, ...Object.values(value).filter((child) => child !== value.command).flatMap(hookCommands)];
-  }
-  return [];
-}
-
-function commandReferences(command, expected) {
-  const normalizedExpected = path.resolve(expected).split(path.sep).join('/');
-  const tokens = [...command.matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g)]
-    .map((match) => match[1] ?? match[2] ?? match[3]);
-  return tokens.some((token) => path.resolve(token).split(path.sep).join('/') === normalizedExpected);
-}
-
 export function probeCodex() {
   const command = process.platform === 'win32' ? process.env.ComSpec || 'cmd.exe' : 'codex';
   const args = process.platform === 'win32' ? ['/d', '/s', '/c', 'codex --version'] : ['--version'];
@@ -79,23 +69,30 @@ export function probeCodex() {
   return { available: true, value: (result.stdout || result.stderr).trim() };
 }
 
-async function hookCheck(host, record) {
-  if (!record) return check('hook', 'warn', 'cannot check before installation');
-  let settings;
-  try {
-    settings = JSON.parse(await fs.readFile(host.settingsPath, 'utf8'));
-  } catch (err) {
-    const value = err.code === 'ENOENT' ? 'settings.json is absent' : `settings.json is invalid: ${err.message}`;
-    return check('hook', 'warn', value);
-  }
-  const registration = settings?.hooks?.SubagentStop;
-  if (!registration) return check('hook', 'warn', 'SubagentStop is not registered');
-  const expected = path.resolve(host.root, record.hook.path);
-  const commands = hookCommands(registration);
-  const pointsToGuard = commands.some((command) => commandReferences(command, expected));
-  return pointsToGuard
-    ? check('hook', 'ok', `SubagentStop -> ${expected}`)
-    : check('hook', 'warn', 'SubagentStop does not point to the installed reply-guard.mjs');
+async function hookChecks(host, record) {
+  return Promise.all(HOOK_DEFINITIONS.map(async (definition) => {
+    const key = `hook:${definition.event}`;
+    if (!record) return check(key, 'warn', 'cannot check before installation');
+    const recorded = record.hooks.find((hook) => hook.event === definition.event);
+    if (!recorded) {
+      return check(key, 'warn', `${definition.event} hook is not present in the installation record`);
+    }
+    const expected = path.resolve(host.root, recorded.path);
+    try {
+      const state = await inspectHook(host.settingsPath, {
+        event: definition.event,
+        matcher: definition.matcher,
+        command: commandFor(expected),
+      });
+      if (state.present) {
+        return check(key, 'ok', `${definition.event} matcher ${definition.matcher} -> ${expected}`);
+      }
+      return check(key, 'warn', `${definition.event} matcher ${definition.matcher} does not point to the installed ${definition.file}`);
+    } catch (err) {
+      const value = err.code === 'ENOENT' ? 'settings.json is absent' : `settings.json is invalid: ${err.message}`;
+      return check(key, 'warn', `${definition.event} hook: ${value}`);
+    }
+  }));
 }
 
 async function rulesCheck(host, record) {
@@ -155,7 +152,7 @@ export async function diagnose({ host, codexProbe = probeCodex, currentPackage }
   ));
   const rules = await rulesCheck(host, record);
   checks.push(rules);
-  checks.push(await hookCheck(host, record));
+  checks.push(...await hookChecks(host, record));
 
   const codex = codexProbe();
   checks.push(check('codex', codex.available ? 'ok' : 'warn', codex.value || 'available'));

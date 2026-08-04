@@ -3,6 +3,11 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+// The hook table lives under src/ because the installed gate reads it too: cli/ is not copied
+// into a host, so a definition kept here would be invisible to the very hook it describes.
+import { HOOK_DEFINITIONS } from '../src/hook-definitions.mjs';
+
+export { HOOK_DEFINITIONS };
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const PACKAGE_ROOT = path.resolve(HERE, '..');
@@ -39,6 +44,10 @@ export async function packageInfo(packageRoot = PACKAGE_ROOT) {
 
 export function installRecordPath(host) {
   return path.join(host.agentsDir, INSTALL_RECORD_NAME);
+}
+
+export function installedHookPath(host, definition) {
+  return path.join(host.agentsDir, 'hooks', definition.file);
 }
 
 /** Where each seeded file comes from and where it goes; contents are copied verbatim. */
@@ -136,19 +145,36 @@ export function validateInstallRecord(record) {
       throw new Error('installation record rules fingerprint must be a 64-character hexadecimal SHA256 string');
     }
   }
-  if (!record.hook || typeof record.hook !== 'object' || Array.isArray(record.hook)) {
-    throw new Error('installation record hook must be an object');
+  if (record.hooks !== undefined && record.hook !== undefined) {
+    throw new Error('installation record must use hooks instead of hook');
   }
-  if (record.hook.event !== 'SubagentStop' || typeof record.hook.path !== 'string' || !record.hook.path) {
-    throw new Error('installation record hook must identify SubagentStop and its path');
+  const hooks = record.hooks !== undefined ? record.hooks : record.hook !== undefined ? [record.hook] : null;
+  if (!Array.isArray(hooks) || !hooks.length) {
+    throw new Error('installation record hooks must be a non-empty list');
   }
-  if (path.isAbsolute(record.hook.path) || record.hook.path.split(/[\\/]/).includes('..')) {
-    throw new Error('installation record hook path must stay relative to the host root');
-  }
-  if (path.basename(record.hook.path) !== 'reply-guard.mjs' || !record.files.includes(record.hook.path)) {
-    throw new Error('installation record hook path must name the installed reply-guard.mjs');
+  for (const hook of hooks) {
+    if (!hook || typeof hook !== 'object' || Array.isArray(hook)) {
+      throw new Error('installation record hook must be an object');
+    }
+    const definition = HOOK_DEFINITIONS.find((entry) => entry.event === hook.event);
+    if (!definition || typeof hook.path !== 'string' || !hook.path) {
+      throw new Error('installation record hook must identify a supported event and its path');
+    }
+    if (path.isAbsolute(hook.path) || hook.path.split(/[\\/]/).includes('..')) {
+      throw new Error('installation record hook path must stay relative to the host root');
+    }
+    if (path.basename(hook.path) !== definition.file || !record.files.includes(hook.path)) {
+      throw new Error(`installation record hook path must name the installed ${definition.file}`);
+    }
   }
   return record;
+}
+
+export function normalizeInstallRecord(record) {
+  validateInstallRecord(record);
+  if (record.hooks !== undefined) return record;
+  const { hook, ...withoutLegacyHook } = record;
+  return { ...withoutLegacyHook, hooks: [hook] };
 }
 
 export async function readInstallRecord(host) {
@@ -165,7 +191,7 @@ export async function readInstallRecord(host) {
   } catch (err) {
     throw new Error(`invalid installation record JSON: ${err.message}`);
   }
-  const record = validateInstallRecord(parsed);
+  const record = normalizeInstallRecord(parsed);
   // Earlier versions installed the config as a package file and recorded it. Dropping it here
   // is what stops the next update from calling the operator's edited config an orphan and
   // deleting it, and it needs no migration step: the record is rewritten on the next write.
@@ -180,8 +206,8 @@ export async function readInstallRecord(host) {
 }
 
 export async function writeInstallRecord(host, record) {
-  validateInstallRecord(record);
-  await fs.writeFile(installRecordPath(host), `${JSON.stringify(record, null, 2)}\n`);
+  const normalized = normalizeInstallRecord(record);
+  await fs.writeFile(installRecordPath(host), `${JSON.stringify(normalized, null, 2)}\n`);
 }
 
 export async function buildInstallPlan(host, packageRoot = PACKAGE_ROOT) {

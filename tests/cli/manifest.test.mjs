@@ -39,7 +39,7 @@ const record = {
   installedAt: '2026-08-02T10:00:00.000Z',
   mode: 'copy',
   files: ['agents/codex/run-codex.mjs', 'agents/codex/hooks/reply-guard.mjs'],
-  hook: { event: 'SubagentStop', path: 'agents/codex/hooks/reply-guard.mjs' },
+  hooks: [{ event: 'SubagentStop', path: 'agents/codex/hooks/reply-guard.mjs' }],
 };
 
 test('installation table is exported data', () => {
@@ -79,6 +79,18 @@ test('installation record writes and reads after validation', async (t) => {
   await fs.mkdir(host.agentsDir, { recursive: true });
   await writeInstallRecord(host, record);
   assert.deepEqual(await readInstallRecord(host), record);
+});
+
+test('installation record migrates an old single-hook record on read', async (t) => {
+  const { host } = await fixture(t);
+  const legacy = { ...record, hooks: undefined };
+  delete legacy.hooks;
+  legacy.hook = { event: 'SubagentStop', path: 'agents/codex/hooks/reply-guard.mjs' };
+  await fs.mkdir(host.agentsDir, { recursive: true });
+  await fs.writeFile(path.join(host.agentsDir, '.codex-bridge-install.json'), `${JSON.stringify(legacy)}\n`);
+  const migrated = await readInstallRecord(host);
+  assert.deepEqual(migrated.hooks, [legacy.hook]);
+  assert.equal(migrated.hook, undefined);
 });
 
 test('file fingerprint hashes bytes and returns null for a missing file', async (t) => {
@@ -145,6 +157,7 @@ test('malformed and structurally broken records fail loudly', async (t) => {
   assert.throws(() => validateInstallRecord({ ...record, files: [] }), /non-empty list/);
   assert.throws(() => validateInstallRecord({ ...record, files: ['.'] }), /host root/);
   assert.throws(() => validateInstallRecord({ ...record, files: ['../outside.mjs'] }), /host root/);
-  assert.throws(() => validateInstallRecord({ ...record, hook: null }), /hook/);
-  assert.throws(() => validateInstallRecord({ ...record, hook: { event: 'SubagentStop', path: record.files[0] } }), /reply-guard/);
+  assert.throws(() => validateInstallRecord({ ...record, hooks: null }), /hooks/);
+  assert.throws(() => validateInstallRecord({ ...record, hooks: [{ event: 'SubagentStop', path: record.files[0] }] }), /reply-guard/);
+  assert.throws(() => validateInstallRecord({ ...record, hooks: [{ event: 'Unknown', path: record.files[1] }] }), /supported event/);
 });

@@ -1,8 +1,13 @@
 /** Uninstalls only recorded codex-bridge files while preserving host data and foreign files. */
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { fileFingerprint, installRecordPath, readInstallRecord } from './manifest.mjs';
-import { removeHook } from './settings-merge.mjs';
+import {
+  fileFingerprint,
+  HOOK_DEFINITIONS,
+  installRecordPath,
+  readInstallRecord,
+} from './manifest.mjs';
+import { commandFor, removeHook } from './settings-merge.mjs';
 import { readRulesRegistry, removeRulesOwner, remainingRulesOwners } from './rules-owners.mjs';
 
 async function removeEmpty(directory) {
@@ -23,6 +28,10 @@ async function removeEmptyParents(target, boundary) {
 
 function remainingOwnersText(count) {
   return `${count} other owner${count === 1 ? '' : 's'} ${count === 1 ? 'remains' : 'remain'}`;
+}
+
+function hookDefinition(event) {
+  return HOOK_DEFINITIONS.find((definition) => definition.event === event);
 }
 
 export async function uninstall({ host, dryRun = false } = {}) {
@@ -61,14 +70,24 @@ export async function uninstall({ host, dryRun = false } = {}) {
         }
       }
     }
-    lines.push('Would remove the SubagentStop hook and installation record.');
+    for (const hook of record.hooks) {
+      const definition = hookDefinition(hook.event);
+      lines.push(`Would remove the ${hook.event} hook for matcher ${definition.matcher}.`);
+    }
+    lines.push('Would remove the installation record.');
     lines.push(preservation);
     return { exitCode: 0, output: lines.join('\n') };
   }
 
-  await removeHook(host.settingsPath, path.join(host.root, record.hook.path), {
-    createdGroup: record.hook.createdGroup === true,
-  });
+  for (const hook of record.hooks) {
+    const definition = hookDefinition(hook.event);
+    const target = path.join(host.root, hook.path);
+    await removeHook(host.settingsPath, {
+      event: hook.event,
+      matcher: definition.matcher,
+      command: commandFor(target),
+    }, { createdGroup: hook.createdGroup === true });
+  }
   let ownership = null;
   if (!registryError) {
     try {
