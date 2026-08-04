@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-08-04
+
+### Fixed
+
+- Two runners starting at the same moment in equally named repositories no longer fail on the exclusive writes that assign a runs directory: the runner that loses either race now reads the marker the winner wrote and takes the next candidate, which is the collision the marker was introduced to survive.
+
 ## [0.1.0] - 2026-08-04
 
 ### Added

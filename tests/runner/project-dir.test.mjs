@@ -130,6 +130,96 @@ test('an empty legacy folder is adopted by the current repo', (t) => {
   assert.equal(readMarker(base).repo, repo);
 });
 
+// Until 2026-08-04 a runner that lost either exclusive write died on EEXIST,
+// which is exactly the collision the project marker was introduced to survive.
+// The race cannot be produced in one process, so the winner is played by a mock.
+test('losing the directory race sends this repo to the next candidate', (t) => {
+  const runsRoot = fixture(t);
+  const repo = path.join(runsRoot, 'ours', 'api');
+  const foreignRepo = path.join(runsRoot, 'theirs', 'api');
+  const base = path.join(runsRoot, 'api');
+  const realMkdir = fs.mkdirSync;
+
+  t.mock.method(fs, 'mkdirSync', (target, options) => {
+    if (target !== base) return realMkdir(target, options);
+    realMkdir(base, { recursive: true });
+    fs.writeFileSync(
+      path.join(base, PROJECT_MARKER),
+      `${JSON.stringify({ repo: foreignRepo, created: '2026-08-04T00:00:00.000Z' }, null, 2)}\n`,
+    );
+    const err = new Error(`EEXIST: file already exists, mkdir '${base}'`);
+    err.code = 'EEXIST';
+    throw err;
+  });
+
+  const result = resolveProjectRunsDir(runsRoot, repo);
+
+  assert.equal(result.name, 'api-2');
+  assert.equal(readMarker(base).repo, foreignRepo);
+});
+
+test('losing the marker race leaves the directory to its winner', (t) => {
+  const runsRoot = fixture(t);
+  const repo = path.join(runsRoot, 'ours', 'api');
+  const foreignRepo = path.join(runsRoot, 'theirs', 'api');
+  const base = path.join(runsRoot, 'api');
+  const realWrite = fs.writeFileSync;
+  let raced = false;
+
+  t.mock.method(fs, 'writeFileSync', (target, data, options) => {
+    if (raced || path.dirname(target) !== base) return realWrite(target, data, options);
+    raced = true;
+    realWrite(target, `${JSON.stringify({ repo: foreignRepo, created: '2026-08-04T00:00:00.000Z' }, null, 2)}\n`);
+    const err = new Error(`EEXIST: file already exists, open '${target}'`);
+    err.code = 'EEXIST';
+    throw err;
+  });
+
+  const result = resolveProjectRunsDir(runsRoot, repo);
+
+  assert.equal(result.name, 'api-2');
+  assert.equal(readMarker(base).repo, foreignRepo);
+});
+
+test('losing the marker race to the same repo keeps the directory', (t) => {
+  const runsRoot = fixture(t);
+  const repo = path.join(runsRoot, 'ours', 'api');
+  const base = path.join(runsRoot, 'api');
+  const realWrite = fs.writeFileSync;
+  let raced = false;
+
+  t.mock.method(fs, 'writeFileSync', (target, data, options) => {
+    if (raced || path.dirname(target) !== base) return realWrite(target, data, options);
+    raced = true;
+    realWrite(target, `${JSON.stringify({ repo, created: '2026-08-04T00:00:00.000Z' }, null, 2)}\n`);
+    const err = new Error(`EEXIST: file already exists, open '${target}'`);
+    err.code = 'EEXIST';
+    throw err;
+  });
+
+  const result = resolveProjectRunsDir(runsRoot, repo);
+
+  assert.equal(result.name, 'api');
+  assert.equal(result.reason, 'created');
+  assert.equal(readMarker(base).created, '2026-08-04T00:00:00.000Z');
+});
+
+test('a directory error that is not a lost race still fails the run', (t) => {
+  const runsRoot = fixture(t);
+  const repo = path.join(runsRoot, 'ours', 'api');
+  const base = path.join(runsRoot, 'api');
+  const realMkdir = fs.mkdirSync;
+
+  t.mock.method(fs, 'mkdirSync', (target, options) => {
+    if (target !== base) return realMkdir(target, options);
+    const err = new Error('EACCES: permission denied');
+    err.code = 'EACCES';
+    throw err;
+  });
+
+  assert.throws(() => resolveProjectRunsDir(runsRoot, repo), /EACCES/);
+});
+
 test('repo path normalization follows platform case rules', () => {
   if (process.platform === 'win32') {
     assert.equal(normalizeRepoPath(String.raw`C:\Repos\Api`), normalizeRepoPath('c:/repos/api/'));
