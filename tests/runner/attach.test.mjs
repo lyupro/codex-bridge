@@ -240,14 +240,17 @@ test('the same order in another repository is a different run', async (t) => {
   assert.equal(code, null);
 });
 
-test('the oldest live run of an order is joined, so a repeat never fans out', async (t) => {
+// An order gets a second run when the orchestrator spends its one --continue. Answering a repeat
+// from the earlier run — which is what happened until 2026-08-04 — hands back the previous pass's
+// verdict as if it were this one's, and the caller has no way to tell.
+test('the newest run of an order answers the repeat, not the pass before it', async (t) => {
   const runsRoot = fixture(t);
   const repo = path.join(runsRoot, 'repo');
-  const first = run(runsRoot, '2026-08-04_090000_async-start', running(repo), {
+  run(runsRoot, '2026-08-04_090000_async-start', running(repo), {
     'reply.txt': 'OK — first\n',
     'meta.json': JSON.stringify({ status: 'OK' }),
   });
-  run(
+  const second = run(
     runsRoot,
     '2026-08-04_091500_async-start-2',
     running(repo, { started_at: '2026-08-04T09:15:00.000Z' }),
@@ -256,7 +259,31 @@ test('the oldest live run of an order is joined, so a repeat never fans out', as
 
   const { lines } = await attaching(order(runsRoot, repo));
 
-  assert.equal(lines[0], `ATTACH=${first} started=2026-08-04T09:00:00.000Z`);
+  assert.equal(lines[0], `ATTACH=${second} started=2026-08-04T09:15:00.000Z`);
+  assert.equal(lines[1], 'OK — second');
+});
+
+test('a continuation still running is joined instead of the answered pass before it', async (t) => {
+  const runsRoot = fixture(t);
+  const repo = path.join(runsRoot, 'repo');
+  run(runsRoot, '2026-08-04_090000_async-start', running(repo), {
+    'reply.txt': 'OK — first\n',
+    'meta.json': JSON.stringify({ status: 'OK' }),
+  });
+  const second = run(
+    runsRoot,
+    '2026-08-04_091500_async-start-2',
+    running(repo, { started_at: '2026-08-04T09:15:00.000Z', pid: process.pid }),
+  );
+  setTimeout(() => {
+    fs.writeFileSync(path.join(second, 'meta.json'), JSON.stringify({ status: 'OK' }));
+    fs.writeFileSync(path.join(second, 'reply.txt'), 'OK — the continuation\n');
+  }, 60);
+
+  const { lines } = await attaching(order(runsRoot, repo));
+
+  assert.equal(lines[0], `ATTACH=${second} started=2026-08-04T09:15:00.000Z`);
+  assert.equal(lines[1], 'OK — the continuation');
 });
 
 test('an attach creates no run folder of its own', async (t) => {

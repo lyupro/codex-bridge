@@ -71,15 +71,24 @@ export async function attach({ runsRoot, repo, slug, taskHash, orderId, chain, i
     .map((run) => ({ run, status: readJsonFile(path.join(runsRoot, run, 'status.json')) }))
     .filter(({ status }) => status && String(status.order_id ?? '') === String(orderId ?? ''));
 
-  const answered = sameOrder.find(({ run }) => fs.existsSync(path.join(runsRoot, run, 'reply.txt')));
-  if (answered) {
-    const runDir = path.join(runsRoot, answered.run);
-    console.log(`ATTACH=${runDir} started=${answered.status.started_at}`);
-    console.log(fs.readFileSync(path.join(runDir, 'reply.txt'), 'utf8').replace(/\s+$/, ''));
-    return exitCodeFor(readJsonFile(path.join(runDir, 'meta.json'))?.status);
+  // The run an order is currently about is its newest one, and the chain arrives oldest first.
+  // Reading it from the end is the whole point: `--continue` adds a second run under the same
+  // order, and while it was in flight a repeat used to be answered by the first run's reply.txt —
+  // a stale verdict presented as this pass's answer. Found by the Plan_11-2 checklist, 2026-08-04.
+  let candidate = null;
+  for (let i = sameOrder.length - 1; i >= 0; i -= 1) {
+    const entry = sameOrder[i];
+    const dir = path.join(runsRoot, entry.run);
+    if (fs.existsSync(path.join(dir, 'reply.txt'))) {
+      console.log(`ATTACH=${dir} started=${entry.status.started_at}`);
+      console.log(fs.readFileSync(path.join(dir, 'reply.txt'), 'utf8').replace(/\s+$/, ''));
+      return exitCodeFor(readJsonFile(path.join(dir, 'meta.json'))?.status);
+    }
+    if (alive(entry.status.pid)) {
+      candidate = entry;
+      break;
+    }
   }
-
-  const candidate = sameOrder.find(({ status }) => alive(status.pid));
   if (!candidate) return null;
 
   const runDir = path.join(runsRoot, candidate.run);
