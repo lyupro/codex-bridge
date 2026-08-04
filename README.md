@@ -17,6 +17,7 @@ node bin/codex-bridge.mjs install --scope project   # into <repo>/.claude
 node bin/codex-bridge.mjs update        # bring an installation up to the current version
 node bin/codex-bridge.mjs doctor        # what is installed, where it points, is codex alive
 node bin/codex-bridge.mjs uninstall     # removes exactly what was installed
+node bin/codex-bridge.mjs stop <run>    # close a hanging run by hand, without hunting for a pid
 ```
 
 `install` copies the package into the host's `agents/codex/`, its slash commands into
@@ -32,6 +33,12 @@ if you never touched it.
 
 `uninstall` removes only what the install recorded: a file you put in `agents/codex/` yourself
 stays, and `codex-runs/` is never touched — those are your run artifacts, not the package.
+
+`stop` takes a run folder — a full path or a bare name from the current project's runs directory —
+kills that run's whole process tree and closes the folder the way an abandoned run is closed: a
+`FAIL` verdict naming what the run left in the worktree. A run that already has a verdict is left
+alone. Runs end on their own time budget now, so this is for the case where something wedged
+anyway.
 
 Run artifacts live in `codex-runs/<project>/`, one folder per repository, marked with a
 `.project.json` holding that repository's path. Two checkouts that share a directory name — two

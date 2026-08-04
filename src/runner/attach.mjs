@@ -57,7 +57,8 @@ export async function waitForReply(runDir, workerPid) {
  * where the verdict exists and the run is not closed — judged by meta.json, a repeat arriving in
  * that window would be refused and sent to the --continue gate instead of being answered. The
  * promise being kept here is that repeating the command is always safe, and a promise with a
- * window in it is not one.
+ * window in it is not one. markAbandoned() closes dead runs with FAIL before the gate, so this
+ * path only covers a live run that has not recorded a verdict yet.
  *
  * A repeat that arrives after the verdict is answered from disk rather than refused, for the same
  * reason. `--continue` is the one case that must not attach: it is the orchestrator saying it read

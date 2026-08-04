@@ -65,6 +65,15 @@ test('an order id chains renamed and reworded passes', () => {
   ]);
 });
 
+test('an order chain exposes both spent passes for the one-continuation cap', () => {
+  const root = makeChainRoot([
+    { name: 'a-first', at: '2026-08-02T01:42:00Z', orderId: 'order-42' },
+    { name: 'b-second', at: '2026-08-02T01:45:00Z', orderId: 'order-42' },
+  ]);
+
+  assert.deepEqual(chainRuns(root, CHAIN_REPO, CHAIN_SLUG, '', 'order-42'), ['a-first', 'b-second']);
+});
+
 test('an empty order id does not chain older unlabeled runs extra', () => {
   const root = makeChainRoot([
     { name: 'a-first', at: '2026-08-02T01:42:00Z', slug: 'old-slug', taskHash: taskFingerprint('one task') },

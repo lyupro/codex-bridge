@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { attach } from '../../src/runner/attach.mjs';
+import { continuationRefusal } from '../../src/runner/launcher.mjs';
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'attach-'));
@@ -123,6 +124,67 @@ test('--continue never attaches: the orchestrator asked for another pass', async
   const { code } = await attaching(order(runsRoot, repo, { isContinue: true }));
 
   assert.equal(code, null);
+});
+
+test('the first --continue is allowed after exactly one finished run', (t) => {
+  const runsRoot = fixture(t);
+  const repo = path.join(runsRoot, 'repo');
+  const name = '2026-08-04_090000_async-start';
+  run(runsRoot, name, running(repo, { state: 'finished', pid: deadPid() }), {
+    'meta.json': JSON.stringify({ status: 'LIMIT' }),
+  });
+
+  assert.equal(continuationRefusal(runsRoot, [name], true, 'order-1'), null);
+});
+
+test('a second --continue names the runs already spent and requires a new order id', (t) => {
+  const runsRoot = fixture(t);
+  const repo = path.join(runsRoot, 'repo');
+  const first = '2026-08-04_090000_async-start';
+  const second = '2026-08-04_091500_async-start-2';
+  for (const name of [first, second]) {
+    run(runsRoot, name, running(repo, { state: 'finished', pid: deadPid() }), {
+      'meta.json': JSON.stringify({ status: 'FAIL' }),
+    });
+  }
+
+  const message = continuationRefusal(runsRoot, [first, second], true, 'order-1');
+
+  assert.match(message, new RegExp(first));
+  assert.match(message, new RegExp(second));
+  assert.match(message, /new order id from the orchestrator/);
+});
+
+/**
+ * The escape hatch the refusal itself points at has to actually work. The chain also matches runs
+ * by the task fingerprint, so a fresh order id lands in the same chain — counted over the chain
+ * rather than over the order, a task would be refused with --continue and refused without it.
+ */
+test('a fresh order id is not charged for the runs of the previous one', (t) => {
+  const runsRoot = fixture(t);
+  const repo = path.join(runsRoot, 'repo');
+  const first = '2026-08-04_090000_async-start';
+  const second = '2026-08-04_091500_async-start-2';
+  for (const name of [first, second]) {
+    run(runsRoot, name, running(repo, { state: 'finished', pid: deadPid() }), {
+      'meta.json': JSON.stringify({ status: 'FAIL' }),
+    });
+  }
+
+  assert.equal(continuationRefusal(runsRoot, [first, second], true, 'order-2'), null);
+});
+
+test('--continue behind a run without a verdict is refused before another folder is made', (t) => {
+  const runsRoot = fixture(t);
+  const repo = path.join(runsRoot, 'repo');
+  const name = '2026-08-04_090000_async-start';
+  run(runsRoot, name, running(repo));
+
+  const message = continuationRefusal(runsRoot, [name], true, 'order-1');
+
+  assert.match(message, /no finished verdict/);
+  assert.match(message, /Repeat without --continue to attach/);
+  assert.deepEqual(fs.readdirSync(runsRoot), [name]);
 });
 
 test('a verdict written before the reply still answers the repeat', async (t) => {

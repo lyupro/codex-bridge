@@ -30,7 +30,7 @@ export const unsafeForCmd = (args) =>
  * the exact orphan left by the killed caller on 2026-07-31. taskkill's tree flag is required;
  * POSIX has no shell wrapper here, so killing the child itself is the honest boundary.
  */
-function stopCodex(child, onWindows) {
+export function stopCodex(child, onWindows = process.platform === 'win32') {
   if (!onWindows) {
     child.kill('SIGKILL');
     return;

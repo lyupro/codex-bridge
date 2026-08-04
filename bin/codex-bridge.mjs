@@ -6,6 +6,7 @@ import { diagnose, renderDoctor } from '../cli/doctor.mjs';
 import { resolveHost } from '../cli/hosts.mjs';
 import { install } from '../cli/install.mjs';
 import { packageInfo } from '../cli/manifest.mjs';
+import { stop } from '../cli/stop.mjs';
 import { uninstall } from '../cli/uninstall.mjs';
 import { update } from '../cli/update.mjs';
 
@@ -16,6 +17,7 @@ Usage:
   codex-bridge update [--scope user|project] [--host <path>] [--dry-run] [--force]
   codex-bridge uninstall [--scope user|project] [--host <path>] [--dry-run]
   codex-bridge doctor [--scope user|project] [--host <path>]
+  codex-bridge stop <run>
   codex-bridge --help
   codex-bridge --version
 
@@ -23,7 +25,8 @@ Commands:
   install   Install codex-bridge into the selected Claude Code host
   update    Update a recorded codex-bridge installation
   uninstall Remove installed files while preserving run artifacts
-  doctor    Diagnose the selected Claude Code host`;
+  doctor    Diagnose the selected Claude Code host
+  stop      Stop a running Codex run and record FAIL`;
 
 function commandOptions(command, argv) {
   const options = {};
@@ -62,6 +65,15 @@ export async function main(argv, io = console) {
     const host = resolveHost(commandOptions(command, rest));
     const result = await diagnose({ host });
     io.log(renderDoctor(result));
+    return result.exitCode;
+  }
+  if (command === 'stop') {
+    if (rest.length !== 1) {
+      io.error('codex-bridge stop requires exactly one run folder (full path or bare name).');
+      return 2;
+    }
+    const result = await stop({ run: rest[0] });
+    io.log(result.output);
     return result.exitCode;
   }
   if (command === 'install' || command === 'update' || command === 'uninstall') {
