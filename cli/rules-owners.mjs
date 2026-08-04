@@ -9,6 +9,7 @@ export const RULES_REGISTRY_VERSION = 1;
 
 const REGISTRY_LOCK_RETRIES = 200;
 const REGISTRY_LOCK_DELAY_MS = 5;
+const REGISTRY_LOCK_STALE_MS = 30_000;
 
 export function rulesRegistryPath(host) {
   return path.join(host.codexRulesDir, RULES_REGISTRY_NAME);
@@ -82,6 +83,24 @@ function waitForRegistryLock() {
   return new Promise((resolve) => setTimeout(resolve, REGISTRY_LOCK_DELAY_MS));
 }
 
+/**
+ * A lock nobody released is worse than no lock: interrupting an install left the file behind and
+ * every later install and uninstall died on it until someone deleted it by hand (reproduced
+ * 2026-08-04). An owner update takes milliseconds, so a lock older than the staleness window
+ * belongs to a process that is gone.
+ */
+async function dropStaleLock(lockPath) {
+  try {
+    const { mtimeMs } = await fs.stat(lockPath);
+    if (Date.now() - mtimeMs < REGISTRY_LOCK_STALE_MS) return false;
+    await fs.rm(lockPath, { force: true });
+    return true;
+  } catch {
+    // Vanished or unreadable — let the next open() decide rather than guess here.
+    return false;
+  }
+}
+
 async function acquireRegistryLock(host) {
   await fs.mkdir(host.codexRulesDir, { recursive: true });
   const lockPath = registryLockPath(host);
@@ -91,7 +110,7 @@ async function acquireRegistryLock(host) {
       return { handle, lockPath };
     } catch (err) {
       if (err.code !== 'EEXIST') throw err;
-      await waitForRegistryLock();
+      if (!(await dropStaleLock(lockPath))) await waitForRegistryLock();
     }
   }
   throw new Error(`timed out waiting for rules ownership registry lock: ${lockPath}`);

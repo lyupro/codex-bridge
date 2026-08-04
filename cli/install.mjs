@@ -84,6 +84,10 @@ export async function install({ host, dryRun = false, force = false, packageRoot
     return { exitCode: 0, output: lines.join('\n') };
   }
 
+  // Claim ownership of the shared rules file before writing anything. Claiming it last meant a
+  // failure at that step left a fully installed host absent from the registry, and the next
+  // uninstall elsewhere would then delete the rules out from under it.
+  await addRulesOwner(host);
   for (const { item } of changedFiles) await copyPlannedFile(item, host.agentsDir);
   if (changedRule) await copyPlannedFile(rule, host.agentsDir);
   // Seeded files are written once and then belong to the operator: an existing one is left
@@ -109,6 +113,5 @@ export async function install({ host, dryRun = false, force = false, packageRoot
     rules: { path: rule.target, fingerprint: await fileFingerprint(rule.target) },
     hook: { event: 'SubagentStop', path: hookRelative, createdGroup: hookResult.createdGroup || record?.hook?.createdGroup || false },
   });
-  await addRulesOwner(host);
   return { exitCode: 0, output: `Installed ${plan.length + 1} files and registered the SubagentStop hook.` };
 }
