@@ -4,13 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2026-08-04
+
+### Fixed
+
+- A damaged ownership registry no longer breaks the command that reads it. Every command parses the registry before its first write, `doctor` reports the damage as a failed check while still printing the other eight, and `uninstall` finishes removing the package but keeps the shared rules file, because ownership is unknown and disarming another installation is worse than leaving a file behind. Until this release an `uninstall` on a damaged registry stopped after the hook was gone, leaving the host with every package file and no reply guard.
+- Owner updates are written through a temporary file under a lock, so two installers running at once merge instead of overwriting each other. The lock expires: an interrupted run used to leave it behind, and every later install and uninstall then died on it until someone deleted the file by hand.
+- Installation claims its share of the rules file before writing anything. Claiming it last meant a failure at that step left a fully installed host missing from the registry, and the next uninstall elsewhere would delete the rules out from under it.
+
 ## [0.1.1] - 2026-08-04
 
 ### Fixed
 
 - Two runners starting at the same moment in equally named repositories no longer fail on the exclusive writes that assign a runs directory: the runner that loses either race now reads the marker the winner wrote and takes the next candidate, which is the collision the marker was introduced to survive.
 - A repeated order is answered from its newest run instead of the pass before it: while a continuation was in flight, repeating the command returned the previous run's verdict as if it described the current one.
-- A damaged ownership registry no longer breaks the command that reads it. Every command parses the registry before its first write, `doctor` reports the damage as a failed check while still printing the other eight, and `uninstall` finishes removing the package but keeps the shared rules file, because ownership is unknown and disarming another installation is worse than leaving a file behind. Owner updates are written through a temporary file under a lock that expires, so neither a concurrent installer nor an interrupted one can lose an owner or wedge every later run.
 - Uninstalling one installation no longer takes the Codex rules file away from every other installation on the machine. The file lives in `CODEX_HOME`, which is shared by every host, while ownership was recorded per host and two installations of the same version share a fingerprint — so removing a project-scope or throwaway host silently left the remaining ones running Codex without the execpolicy that forbids destructive repository work. Ownership is now tracked next to the file itself, and the last owner to leave is the one that removes it.
 
 ## [0.1.0] - 2026-08-04
