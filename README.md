@@ -4,14 +4,10 @@ Delegate implementation, reconnaissance and code review from Claude Code to the
 [Codex CLI](https://developers.openai.com/codex/cli), so the work runs on a Codex
 subscription instead of the Claude one.
 
-> **Status: extraction in progress.** The runner, the dispatchers and the installer work and
-> are covered by tests, but the package has not been published to npm yet and its prompts are
-> still in Russian. See `docs/plans/` for the remaining stages.
-
 ## Install
 
 ```bash
-npx @lyupro/codex-bridge install        # into ~/.claude          (not published yet)
+npx @lyupro/codex-bridge install        # into ~/.claude
 node bin/codex-bridge.mjs install       # from a clone, same thing
 node bin/codex-bridge.mjs install --scope project   # into <repo>/.claude
 node bin/codex-bridge.mjs update        # bring an installation up to the current version
