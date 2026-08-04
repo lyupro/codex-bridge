@@ -8,10 +8,15 @@
 import path from 'node:path';
 import { AGENTS } from '../write-meta.mjs';
 import { ALLOWED_EFFORTS } from '../run-config.mjs';
+import { requiredInputsFor } from '../required-inputs.mjs';
 
 export function die(message) {
   console.error(`run-codex: ${message}`);
   process.exit(2);
+}
+
+function requiredInput(agentType, label) {
+  return requiredInputsFor(agentType).find((entry) => entry.label === label);
 }
 
 // Flags that carry no value. A value is accepted only in its explicit yes/no spellings;
@@ -63,10 +68,12 @@ export function parseArgs(argv) {
   if (!AGENTS[opts.agent]) die(`unknown --agent ${opts.agent}`);
   opts.orderId = String(opts['order-id'] ?? '').trim();
   if (!opts.orderId) {
+    const orderInput = requiredInput(opts.agent, 'order id');
     die(
-      '--order-id is required: the orchestrator issues the order label and the runner will not invent one. ' +
+      `--order-id is required: ${orderInput.source} supplies the ${orderInput.label}; the runner will not invent one. ` +
         'A repeat of the same order should come back with --continue. If this appeared right after a package update, ' +
-        'the installed dispatcher prompts are stale and need npm run dev:install (local dev) or codex-bridge update.',
+        'the installed dispatcher prompts are stale and need npm run dev:install (local dev) or codex-bridge update. ' +
+        `Example: --order-id "${orderInput.example}". Action: get the value from ${orderInput.source}, pass it as --order-id, and retry.`,
     );
   }
   if (opts.agent === 'codex-scout') {
@@ -101,10 +108,11 @@ export function parseArgs(argv) {
     .map((p) => p.trim())
     .filter(Boolean);
   if (opts.agent === 'codex-build' && !opts.scopePatterns.length) {
+    const scopeInput = requiredInput(opts.agent, 'scope');
     die(
-      '--scope is required for codex-build: comma-separated globs relative to the repo root, ' +
-        'e.g. --scope "packages/event-calendar/**,apps/orchestrator/src/maestro/calendar-refresh.ts". ' +
-        'Anything outside the list is off limits and fails the run.',
+      `--scope is required for codex-build: ${scopeInput.source} supplies the ${scopeInput.label}. ` +
+        `${scopeInput.explanation} Example: --scope "${scopeInput.example}". ` +
+        `Action: get the value from ${scopeInput.source}, pass it as --scope, and retry.`,
     );
   }
   return opts;

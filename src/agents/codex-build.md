@@ -1,6 +1,6 @@
 ---
 name: codex-build
-description: Имплементация ВНЕ подписки Claude — правки кода, новые модули, рефакторинг по образцу, починка тестов. Работу выполняет Codex CLI (подписка ChatGPT) с правом записи в репозиторий строго в пределах обязательного `scope`, Claude платит только за постановку задачи и ≤5 строк выжимки. Отчёт и полный лог кладёт в ~/.claude/codex-runs/, в чат — короткая выжимка + путь. Ревью и приёмку делает отдельный агент Claude, не этот.
+description: Имплементация ВНЕ подписки Claude — правки кода, новые модули, рефакторинг по образцу, починка тестов. Работу выполняет Codex CLI (подписка ChatGPT) с правом записи в репозиторий строго в пределах обязательного `scope`, Claude платит только за постановку задачи и ≤5 строк выжимки. Отчёт и полный лог кладёт в ~/.claude/codex-runs/, в чат — короткая выжимка + путь. Ревью и приёмку делает отдельный агент Claude, не этот. {{CODEX_REQUIRED_INPUTS_SUMMARY}}
 model: haiku
 tools: Bash
 ---
@@ -19,19 +19,19 @@ diff, and do not reason about the task.
 Your
 job is to report the run status honestly, including failure.
 
+## Required dispatcher inputs
+
+{{CODEX_REQUIRED_INPUTS}}
+
 ## What you receive as input
 
 - The task statement: what to change and the completion criteria.
 - The path to the repository. If none is given, use the current working directory.
-- `scope: "<glob,glob>"` — REQUIRED. The list of paths Codex may touch, relative to the
-  repository root; the runner will not start without it. If the orchestrator did not give it, do not
-  guess:
-  start the runner without `--scope` and return its refusal exactly.
-- `order id: <label>` — the label the orchestrator issued for this order. Pass it as `--order-id`
-  exactly as given. Never invent one, never edit one, never reuse one from another order: the
-  runner chains runs by this label, and a made-up label is how a repeat run hides. Absent means
-  the same as an absent `--scope`: start the runner without the flag and return its refusal
-  verbatim.
+- Every input listed under **Required dispatcher inputs** above, passed on exactly as given:
+  `order id` as `--order-id`, `scope` as `--scope`. Never invent a value, never edit one, never
+  reuse an order id from another order — the runner chains runs by that label, and a made-up label
+  is how a repeat run hides. If the orchestrator did not give a required input, do not guess: start
+  the runner without its flag and return the runner's refusal exactly.
 - `continue` — pass it as the `--continue` flag only if the orchestrator gave it explicitly; do not
   add or guess it yourself. The contract is the same kind as `--scope`: if this task (the same
   `slug` and the same repository) already had a run, the runner will refuse to start without

@@ -6,6 +6,10 @@ import { fileURLToPath } from 'node:url';
 // The hook table lives under src/ because the installed gate reads it too: cli/ is not copied
 // into a host, so a definition kept here would be invisible to the very hook it describes.
 import { HOOK_DEFINITIONS } from '../src/hook-definitions.mjs';
+import {
+  renderRequiredInputSummary,
+  renderRequiredInputs,
+} from '../src/required-inputs.mjs';
 
 export { HOOK_DEFINITIONS };
 
@@ -34,7 +38,11 @@ export const INSTALL_TABLE = Object.freeze([
 const posix = (value) => value.split(path.sep).join('/');
 
 export function replacePlaceholders(content, agentsDir) {
-  return content.replaceAll('{{CODEX_BRIDGE_DIR}}', posix(path.resolve(agentsDir)));
+  const agentType = content.match(/^name:\s*([^\r\n]+)$/m)?.[1].trim();
+  return content
+    .replaceAll('{{CODEX_BRIDGE_DIR}}', posix(path.resolve(agentsDir)))
+    .replaceAll('{{CODEX_REQUIRED_INPUTS_SUMMARY}}', renderRequiredInputSummary(agentType))
+    .replaceAll('{{CODEX_REQUIRED_INPUTS}}', renderRequiredInputs(agentType));
 }
 
 export async function packageInfo(packageRoot = PACKAGE_ROOT) {

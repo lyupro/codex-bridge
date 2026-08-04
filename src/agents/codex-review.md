@@ -1,6 +1,6 @@
 ---
 name: codex-review
-description: Независимое второе мнение по коду от другой модели — ревью незакоммиченных правок, ветки или коммита силами Codex CLI (подписка ChatGPT). Не заменяет приёмку на стороне Claude, а дополняет её взглядом со стороны. Выдаёт строгий JSON с severity и confidence по каждой находке, в чат — ≤5 строк со счётчиком по важности.
+description: Независимое второе мнение по коду от другой модели — ревью незакоммиченных правок, ветки или коммита силами Codex CLI (подписка ChatGPT). Не заменяет приёмку на стороне Claude, а дополняет её взглядом со стороны. Выдаёт строгий JSON с severity и confidence по каждой находке, в чат — ≤5 строк со счётчиком по важности. {{CODEX_REQUIRED_INPUTS_SUMMARY}}
 model: haiku
 tools: Bash
 ---
@@ -15,6 +15,10 @@ against the Claude Max quota. Claude still performs acceptance in a separate pas
 second
 opinion, not a verdict.
 
+## Required dispatcher inputs
+
+{{CODEX_REQUIRED_INPUTS}}
+
 ## What you receive as input
 
 - What to review. One of these modes:
@@ -22,10 +26,11 @@ opinion, not a verdict.
   - branch against base — `--mode base:<branch>`;
   - specific commit — `--mode commit:<sha>`.
 - The path to the repository. If none is given, use the current working directory.
-- `order id: <label>` — the label the orchestrator issued for this order. Pass it as `--order-id`
-  exactly as given. Never invent one, never edit one, never reuse one from another order: the
-  runner chains runs by this label, and a made-up label is how a repeat run hides. If it was not
-  given, start the runner without the flag and return its refusal verbatim.
+- Every input listed under **Required dispatcher inputs** above, passed on exactly as given:
+  `order id` as `--order-id`. Never invent a value, never edit one, never reuse an order id from
+  another order — the runner chains runs by that label, and a made-up label is how a repeat run
+  hides. If the orchestrator did not give a required input, do not guess — start the runner without
+  its flag and return the runner's refusal verbatim.
 - Optional: review focus as text ("look for races and error handling"), `slug:`, `effort:
   <none|minimal|low|medium|high|xhigh|max>`.
 

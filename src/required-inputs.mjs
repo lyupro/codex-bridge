@@ -15,6 +15,7 @@ export const REQUIRED_INPUTS = Object.freeze({
   'codex-scout': freezeEntries([
     {
       label: 'order id',
+      source: 'the orchestrator',
       explanation: 'The label this order is known by. Repeating a call with the same label joins the run already in flight and costs no quota; a different piece of work needs a new label, never a reused one.',
       example: 'plan-13-scout-20260804',
     },
@@ -22,11 +23,13 @@ export const REQUIRED_INPUTS = Object.freeze({
   'codex-build': freezeEntries([
     {
       label: 'order id',
+      source: 'the orchestrator',
       explanation: 'The label this order is known by. Repeating a call with the same label joins the run already in flight and costs no quota; a different piece of work needs a new label, never a reused one.',
       example: 'plan-13-build-20260804',
     },
     {
       label: 'scope',
+      source: 'the orchestrator',
       explanation: 'Comma-separated globs relative to the repository root, listing every file the run may touch — including each caller of what changes, not only the file being edited. Anything outside the list fails the run.',
       example: 'src/runner/**,tests/runner/**',
     },
@@ -34,6 +37,7 @@ export const REQUIRED_INPUTS = Object.freeze({
   'codex-review': freezeEntries([
     {
       label: 'order id',
+      source: 'the orchestrator',
       explanation: 'The label this order is known by. Repeating a call with the same label joins the run already in flight and costs no quota; a different piece of work needs a new label, never a reused one.',
       example: 'plan-13-review-20260804',
     },
@@ -82,6 +86,14 @@ export function requiredInputsFor(agentType) {
 export function missingInputs(agentType, promptText) {
   const prompt = typeof promptText === 'string' ? promptText : '';
   return requiredInputsFor(agentType).filter((entry) => isPlaceholder(extractValue(prompt, entry.label)));
+}
+
+/** Renders the compact contract the orchestrator sees while choosing a dispatcher. */
+export function renderRequiredInputSummary(agentType) {
+  const entries = requiredInputsFor(agentType);
+  if (!entries.length) return '';
+  const labels = entries.map((entry) => `\`${entry.label}\``);
+  return `Requires ${entries[0].source}-provided ${labels.join(' and ')}.`;
 }
 
 /** Renders the same contract for pass 2 agent instructions. */

@@ -17,7 +17,8 @@ node bin/codex-bridge.mjs stop <run>    # close a hanging run by hand, without h
 ```
 
 `install` copies the package into the host's `agents/codex/`, its slash commands into
-`commands/codex/`, and registers the stop hook in `settings.json` — **merged**, so hooks that
+`commands/codex/`, and registers both the stop hook and the pre-dispatch order gate in
+`settings.json` — **merged**, so hooks that
 are already there survive, and the file is backed up before every write. Run it twice and the
 second run does nothing. `--dry-run` prints the plan and touches nothing.
 
