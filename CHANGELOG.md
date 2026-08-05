@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] - 2026-08-05
+
+### Added
+
+- Dispatcher calls are refused before a subagent exists. A `PreToolUse` gate rejects a `codex-*` call whose task text carries no order label — and, for `codex-build`, no scope — or whose value is still a template placeholder. Until this release the missing input was discovered by the runner, after the subagent had been created and paid for out of the Claude subscription.
+- `codex-build` declares the outcome of its own run in a required `outcome` field. A run that could not do the work reports `fail`, and the verdict goes red with the reason even when the worktree is clean and verification is green — the shape that used to answer `OK`, because an empty delta is a legitimate outcome the runner cannot tell apart from a failure. Whether a run owed that declaration is read from the response schema it was handed, so runs recorded before this release keep the verdict of their own day.
+
+### Changed
+
+- Every dispatcher's description and prompt lists the inputs it requires, filled in at install time from the same table the gate enforces, and the runner's own refusals name the input, an example value and what to do about it. A caller no longer learns the contract by being refused.
+- A failed `codex-build` reports what it left in the worktree, the way a quota-exhausted run already did. "The work was not done" is not "the tree is clean", and where no snapshot exists the line says so instead of claiming there were no changes.
+- The installation record stores a list of hooks rather than a single hook, so a host can register more than one. Records written by earlier versions are read as a one-element list.
+
 ## [0.1.2] - 2026-08-04
 
 ### Fixed
