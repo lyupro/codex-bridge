@@ -106,6 +106,12 @@ test('complete installation with all files exits zero', async (t) => {
   const preToolUse = result.checks.filter((item) => item.key === 'hook:PreToolUse');
   assert.equal(preToolUse.length, 2);
   assert.ok(preToolUse.every((item) => item.status === 'ok'));
+  // Each line must name its own file. Matching the record by event alone reported the worktree
+  // lock's matcher as pointing at order-gate.mjs, which is exactly the lie an operator reading
+  // doctor cannot catch.
+  for (const file of ['order-gate.mjs', 'worktree-lock.mjs']) {
+    assert.equal(preToolUse.filter((item) => item.value.endsWith(file)).length, 1);
+  }
 });
 
 test('rules cannot be checked before installation', async (t) => {

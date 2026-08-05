@@ -73,7 +73,12 @@ async function hookChecks(host, record) {
   return Promise.all(HOOK_DEFINITIONS.map(async (definition) => {
     const key = `hook:${definition.event}`;
     if (!record) return check(key, 'warn', 'cannot check before installation');
-    const recorded = record.hooks.find((hook) => hook.event === definition.event);
+    // The file, not just the event: PreToolUse carries two hooks of this package, and matching
+    // by event alone reported the worktree lock's matcher as pointing at order-gate.mjs. The
+    // hook line is the only place an operator can see WHICH file a matcher was registered for,
+    // so a wrong name here is worse than no line at all.
+    const recorded = record.hooks.find((hook) => hook.event === definition.event
+      && path.basename(hook.path) === definition.file);
     if (!recorded) {
       return check(key, 'warn', `${definition.event} hook is not present in the installation record`);
     }
