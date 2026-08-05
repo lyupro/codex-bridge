@@ -13,6 +13,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { collect, exitCodeFor, AGENTS } from '../write-meta.mjs';
+import { writeStatus } from '../meta/run-state.mjs';
 import { setRun, emitReply } from './run-context.mjs';
 import { git, headSha, branchName, worktreeSnapshot, findFakeDone } from './git-state.mjs';
 import { runCodex } from './codex-cmd.mjs';
@@ -26,12 +27,19 @@ export async function worker(runDir) {
   const repoRoot = cfg.repo;
   setRun(runDir, cfg.agent);
 
-  const exit = await runCodex(
+  const run = await runCodex(
     cfg.args,
     fs.readFileSync(path.join(runDir, 'task.md'), 'utf8'),
     path.join(runDir, 'raw.log'),
     cfg.budget_minutes,
   );
+  // This runner-owned fact cannot be forged through raw.log, which Codex can write (Plan_15).
+  // Written even when no deadline fired: `false` is the marker that a runner was watching,
+  // and an archived run with no field at all must stay distinguishable from a run that lived.
+  writeStatus(runDir, {
+    stopped_on_deadline: run.stoppedOnDeadline,
+    elapsed_ms: run.elapsedMs,
+  });
 
   if (cfg.agent === 'codex-build') {
     fs.writeFileSync(path.join(runDir, 'head-after.txt'), `${cfg.is_git_repo ? headSha(repoRoot) : ''}\n`);
@@ -56,7 +64,7 @@ export async function worker(runDir) {
 
   // collect() writes meta.json and closes status.json; reply.txt comes last, so the launcher
   // seeing a reply is proof the verdict behind it is already on disk.
-  const { meta, reply } = collect(runDir, cfg.agent, exit);
+  const { meta, reply } = collect(runDir, cfg.agent, run.exit);
   emitReply(reply);
   process.exit(exitCodeFor(meta.status));
 }

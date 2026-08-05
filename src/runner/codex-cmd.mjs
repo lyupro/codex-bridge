@@ -1,6 +1,6 @@
 /**
  * Everything about invoking the `codex` CLI: which flags a run gets, whether the CLI is
- * there at all, and how its output reaches raw.log.
+ * there at all, and how its output reaches raw.log and stderr.log.
  *
  * The flag sets below are the ones the three agent files carried before, verbatim.
  * Sandboxes especially must not drift: codex-scout is read-only through
@@ -53,6 +53,8 @@ export function stopCodex(child, onWindows = process.platform === 'win32') {
  * on disk, and the task text is pushed into stdin by hand since there is no `input` option
  * outside spawnSync. MAX_LOG stays the ceiling; past it the log is cut with a note rather
  * than the run being killed — a huge log is a diagnosis, not a reason to lose the work.
+ * stderr is also copied to its own bounded file: raw.log deliberately mixes both streams for
+ * human diagnosis, but a large stdout must not hide a transport error from the verdict.
  */
 export function runCodex(args, taskText, logPath, budgetMinutes) {
   const onWindows = process.platform === 'win32';
@@ -61,22 +63,27 @@ export function runCodex(args, taskText, logPath, budgetMinutes) {
       ? budgetMinutes * 60 * 1000
       : null;
   const log = fs.createWriteStream(logPath, { flags: 'a' });
-  let written = 0;
-  let cut = false;
-  const append = (chunk) => {
-    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), 'utf8');
-    if (written >= MAX_LOG) {
-      if (!cut) {
-        cut = true;
-        log.write(`\nrun-codex: log truncated at ${MAX_LOG} bytes; further output is not saved\n`);
+  const stderrLog = fs.createWriteStream(path.join(path.dirname(logPath), 'stderr.log'), { flags: 'a' });
+  const appendTo = (stream, label) => {
+    let written = 0;
+    let cut = false;
+    return (chunk) => {
+      const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), 'utf8');
+      if (written >= MAX_LOG) {
+        if (!cut) {
+          cut = true;
+          stream.write(`\nrun-codex: ${label} truncated at ${MAX_LOG} bytes; further output is not saved\n`);
+        }
+        return;
       }
-      return;
-    }
-    const room = MAX_LOG - written;
-    const slice = buf.length > room ? buf.subarray(0, room) : buf;
-    written += slice.length;
-    log.write(slice);
+      const room = MAX_LOG - written;
+      const slice = buf.length > room ? buf.subarray(0, room) : buf;
+      written += slice.length;
+      stream.write(slice);
+    };
   };
+  const append = appendTo(log, 'log');
+  const appendStderr = appendTo(stderrLog, 'stderr log');
 
   let child;
   if (onWindows) {
@@ -97,9 +104,14 @@ export function runCodex(args, taskText, logPath, budgetMinutes) {
   return new Promise((resolve) => {
     let failed = false;
     let deadlineTimer;
+    let stoppedOnDeadline = false;
+    let elapsedMs = 0;
     const startedAt = Date.now();
     child.stdout.on('data', append);
-    child.stderr.on('data', append);
+    child.stderr.on('data', (chunk) => {
+      append(chunk);
+      appendStderr(chunk);
+    });
     child.on('error', (err) => {
       failed = true;
       append(`\nrun-codex: ${err.message}\n`);
@@ -112,6 +124,8 @@ export function runCodex(args, taskText, logPath, budgetMinutes) {
     if (deadlineMs !== null) {
       deadlineTimer = setTimeout(() => {
         const elapsed = Date.now() - startedAt;
+        stoppedOnDeadline = true;
+        elapsedMs = elapsed;
         log.write(
           `\nrun-codex: run stopped on its deadline after ${elapsed} ms (budget ${deadlineMs} ms)\n`,
         );
@@ -120,7 +134,9 @@ export function runCodex(args, taskText, logPath, budgetMinutes) {
     }
     child.on('close', (code) => {
       if (deadlineTimer) clearTimeout(deadlineTimer);
-      log.end(() => resolve(failed || code === null ? 1 : code));
+      if (!stoppedOnDeadline) elapsedMs = Date.now() - startedAt;
+      const exit = failed || code === null ? 1 : code;
+      log.end(() => stderrLog.end(() => resolve({ exit, stoppedOnDeadline, elapsedMs })));
     });
   });
 }

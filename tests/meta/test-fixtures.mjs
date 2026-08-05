@@ -34,6 +34,7 @@ export const CHAIN_SLUG = 'plan6-b1';
 /** A run directory on disk, because collect() deliberately reads artifacts, not arguments. */
 export function makeRun({
   log = OK_LOG,
+  stderr,
   result,
   before = '',
   after = '',
@@ -48,9 +49,12 @@ export function makeRun({
   headAfter,
   branchBefore,
   branchAfter,
+  status,
 } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-run-'));
   fs.writeFileSync(path.join(dir, 'raw.log'), log);
+  if (stderr !== undefined) fs.writeFileSync(path.join(dir, 'stderr.log'), stderr);
+  if (status !== undefined) fs.writeFileSync(path.join(dir, 'status.json'), JSON.stringify(status));
   if (result !== undefined) fs.writeFileSync(path.join(dir, file), JSON.stringify(result));
   fs.writeFileSync(path.join(dir, 'state-before.txt'), before);
   fs.writeFileSync(path.join(dir, 'state-after.txt'), after);

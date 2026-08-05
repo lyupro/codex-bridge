@@ -114,6 +114,7 @@ if (process.platform === 'win32') {
   fs.writeFileSync(process.env.CODEX_DEADLINE_PID, String(process.pid));
 }
 process.stdout.write('started\\n');
+process.stderr.write('transport error\\n');
 setInterval(() => {}, 1000);
 `,
     async (root) => {
@@ -128,13 +129,19 @@ setInterval(() => {}, 1000);
       try {
         const result = runCodex([], 'deadline test', logPath, 0.01);
         assert.equal(await waitFor(() => fs.existsSync(pidPath)), true);
-        const exit = await result;
-        assert.equal(exit, 1);
+        const run = await result;
+        assert.equal(run.exit, 1);
+        assert.equal(run.stoppedOnDeadline, true);
+        assert.ok(run.elapsedMs >= 0);
         const pid = Number(fs.readFileSync(pidPath, 'utf8'));
         assert.equal(await waitFor(() => !processAlive(pid)), true);
         await wait(1_100);
         const log = fs.readFileSync(logPath, 'utf8');
+        const stderr = fs.readFileSync(path.join(root, 'stderr.log'), 'utf8');
         assert.match(log, /started/);
+        assert.match(log, /transport error/);
+        assert.equal(stderr, 'transport error\n');
+        assert.equal(fs.existsSync(path.join(root, 'stderr.log')), true);
         assert.match(log, /run stopped on its deadline after \d+ ms/);
         assert.equal(fs.existsSync(marker), false);
         if (process.platform === 'win32') {
@@ -158,11 +165,13 @@ test('an early exit is not replaced by a deadline kill', async () => {
     "process.stdout.write('finished early\\n'); process.exit(23);\n",
     async (root) => {
       const logPath = path.join(root, 'raw.log');
-      const exit = await runCodex([], 'early exit test', logPath, 0.05);
-      assert.equal(exit, 23);
+      const run = await runCodex([], 'early exit test', logPath, 0.05);
+      assert.equal(run.exit, 23);
+      assert.equal(run.stoppedOnDeadline, false);
       const log = fs.readFileSync(logPath, 'utf8');
       assert.match(log, /finished early/);
       assert.doesNotMatch(log, /stopped on its deadline/);
+      assert.equal(fs.readFileSync(path.join(root, 'stderr.log'), 'utf8'), '');
     },
   );
 });

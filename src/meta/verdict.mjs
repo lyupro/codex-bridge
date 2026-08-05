@@ -23,6 +23,7 @@ import {
 import { chainBaseline } from './chain.mjs';
 import { splitRunChanges } from './environment.mjs';
 import { outcomeGap } from './outcome.mjs';
+import { deadlineReason } from './deadline.mjs';
 
 /**
  * Quota exhaustion is a transport error, not a word. Both markers must sit on the same
@@ -55,8 +56,10 @@ const reasonFrom = (log) => {
   return line(errorLine || lines[lines.length - 1] || '');
 };
 
-const limitSignal = (log) => {
-  const hit = log.split(/\r?\n/).find((l) => LIMIT_RE.test(l) && ERROR_RE.test(l));
+const limitSignal = (log, runDir) => {
+  const stderrPath = path.join(runDir, 'stderr.log');
+  const source = fs.existsSync(stderrPath) ? readText(stderrPath) : log;
+  const hit = source.split(/\r?\n/).find((l) => LIMIT_RE.test(l) && ERROR_RE.test(l));
   return hit ? line(hit) : null;
 };
 
@@ -291,8 +294,10 @@ export function resolveStatus({ log, logBytes, resultOk, exit, agent, result, ru
     const branched = branchDuringRun(runDir);
     if (branched) return { status: 'FAIL', reason: branched };
   }
+  const deadline = deadlineReason(runDir);
+  if (deadline) return { status: 'FAIL', reason: deadline };
   if (!resultOk) {
-    const limit = limitSignal(log);
+    const limit = limitSignal(log, runDir);
     if (limit) return { status: 'LIMIT', reason: limit };
     return { status: 'FAIL', reason: reasonFrom(log) || `result is empty, exit=${exit}` };
   }

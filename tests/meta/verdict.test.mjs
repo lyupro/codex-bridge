@@ -6,8 +6,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
+import { collect } from '../../src/write-meta.mjs';
 import { outOfScope, reportVersusWork } from '../../src/meta/verdict.mjs';
-import { makeChainRoot, CHAIN_REPO, CHAIN_SLUG } from './test-fixtures.mjs';
+import { makeChainRoot, makeRun, CHAIN_REPO, CHAIN_SLUG } from './test-fixtures.mjs';
 
 const build = (changes, extra = {}) => ({
   summary: 'done',
@@ -140,4 +141,55 @@ test('reportVersusWork fails a changed tree the report never mentions', () => {
   const verdict = reportVersusWork(path.join(root, 'only'), build([]), chainCtx(root));
   assert.equal(verdict.ok, false);
   assert.match(verdict.reason, /names no changes/);
+});
+
+// The incident behind Plan_15: the quota line came from this package's own test fixtures,
+// which a run had printed into raw.log while grepping the repository.
+const QUOTA = 'ERROR: rate limit exceeded for this account\n';
+const emptyBuild = { summary: '', changes: [], report_markdown: '' };
+
+test('a quoted quota error in raw.log is not a LIMIT when stderr.log exists', () => {
+  const dir = makeRun({
+    log: `grep output: "${QUOTA.trim()}"\n`,
+    stderr: '',
+    result: emptyBuild,
+  });
+  const { meta } = collect(dir, 'codex-build', 1);
+  assert.equal(meta.status, 'FAIL');
+});
+
+// The other half of the same rule: narrowing the search must not cost LIMIT its real cases,
+// or the runner would answer FAIL to a wall it cannot push and the orchestrator would retry.
+test('a quota error on the transport stream is still a LIMIT', () => {
+  const dir = makeRun({ log: 'reading files\n', stderr: QUOTA, result: emptyBuild });
+  const { meta } = collect(dir, 'codex-build', 1);
+  assert.equal(meta.status, 'LIMIT');
+  assert.match(meta.reason, /rate limit/);
+});
+
+test('a deadline verdict outranks quota text in both logs', () => {
+  const dir = makeRun({
+    log: QUOTA,
+    stderr: QUOTA,
+    status: { stopped_on_deadline: true, elapsed_ms: 60012 },
+    result: emptyBuild,
+  });
+  const { meta } = collect(dir, 'codex-build', 1);
+  assert.equal(meta.status, 'FAIL');
+  assert.match(meta.reason, /deadline after 60012 ms/);
+  assert.doesNotMatch(meta.reason, /rate limit/);
+});
+
+test('an archived run without stderr.log keeps the raw.log quota verdict', () => {
+  const dir = makeRun({ log: QUOTA, result: emptyBuild });
+  const { meta } = collect(dir, 'codex-build', 1);
+  assert.equal(meta.status, 'LIMIT');
+});
+
+// Existence is the contract marker, never size: a run whose stderr stayed silent is a new
+// run with nothing to report, not an old run to be judged by its stdout.
+test('an empty stderr.log is a silent new run, not an archived run', () => {
+  const dir = makeRun({ log: QUOTA, stderr: '', result: emptyBuild });
+  const { meta } = collect(dir, 'codex-build', 1);
+  assert.equal(meta.status, 'FAIL');
 });
