@@ -51,7 +51,9 @@ hand-edited files stop the run unless `--force`.
   place the artifacts.
 - `write-meta.mjs` is the only reader of a finished run's artifacts. `meta/` splits it: `paths`
   (artifact reads and path matching), `chain` (earlier passes of the same task), `run-state`
-  (`status.json` honesty, abandoned runs), `verdict` (OK/FAIL/LIMIT), `reply` (the printed lines).
+  (`status.json` honesty, abandoned runs), `events` (the JSONL stream — the only module that knows
+  it is JSONL), `startup` (a run that never began), `transport`/`deadline`/`outcome` (damaged
+  evidence, killed runs, the declared outcome), `verdict` (OK/FAIL/LIMIT), `reply` (printed lines).
 - `hooks/` holds the three guards, all fail-open on anything they do not recognise:
   `reply-guard.mjs` (SubagentStop) rejects a dispatcher reply that `meta.json` does not support or
   that stays silent about a live `codex-build` run of the same project; `order-gate.mjs`
@@ -65,6 +67,10 @@ Importers name `run-codex.mjs` and `write-meta.mjs`, never a module below them.
 
 - **Verdict check order is the contract**, not an implementation detail — `resolveStatus()` returns
   on the first hit. See `docs/verdict.md` before reordering or inserting a check.
+- **`LIMIT` comes only from a CLI error event**, never from text. Runs go through `codex exec
+  --json`, and `meta/events.mjs` admits only `type: "error"` and `turn.failed` as transport
+  evidence. `item.completed` carries the model's own words — a run quoting "rate limit" out of a
+  source file once became a false `LIMIT` and threw away finished work.
 - **Artifact write order**: `status.json` first, `worker.json` complete before `spawn()`,
   `meta.json` before `status.json` is closed, `reply.txt` last. `reply.txt` existing means the
   verdict is already on disk.
