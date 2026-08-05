@@ -164,15 +164,17 @@ export function validateInstallRecord(record) {
     if (!hook || typeof hook !== 'object' || Array.isArray(hook)) {
       throw new Error('installation record hook must be an object');
     }
-    const definition = HOOK_DEFINITIONS.find((entry) => entry.event === hook.event);
-    if (!definition || typeof hook.path !== 'string' || !hook.path) {
+    const definitions = HOOK_DEFINITIONS.filter((entry) => entry.event === hook.event);
+    if (!definitions.length || typeof hook.path !== 'string' || !hook.path) {
       throw new Error('installation record hook must identify a supported event and its path');
     }
     if (path.isAbsolute(hook.path) || hook.path.split(/[\\/]/).includes('..')) {
       throw new Error('installation record hook path must stay relative to the host root');
     }
-    if (path.basename(hook.path) !== definition.file || !record.files.includes(hook.path)) {
-      throw new Error(`installation record hook path must name the installed ${definition.file}`);
+    const definition = definitions.find((entry) => path.basename(hook.path) === entry.file);
+    if (!definition || !record.files.includes(hook.path)) {
+      const files = definitions.map((entry) => entry.file).join(' or ');
+      throw new Error(`installation record hook path must name the installed ${files}`);
     }
   }
   return record;

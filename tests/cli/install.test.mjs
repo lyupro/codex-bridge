@@ -77,13 +77,13 @@ test('install copies the exact plan, expands placeholders, and writes a valid re
   const rulesBytes = await fs.readFile(record.rules.path);
   assert.deepEqual(rulesBytes, await fs.readFile('src/rules/codex-bridge.rules'));
   assert.equal(record.rules.fingerprint, createHash('sha256').update(rulesBytes).digest('hex'));
-  assert.deepEqual(record.hooks.map(({ event }) => event), ['SubagentStop', 'PreToolUse']);
+  assert.deepEqual(record.hooks.map(({ event }) => event), ['SubagentStop', 'PreToolUse', 'PreToolUse']);
   const settings = JSON.parse(await fs.readFile(host.settingsPath, 'utf8'));
   // Read from the definitions rather than restated: the PreToolUse matcher lists every name a
   // host gives the subagent tool, and a literal here would have to be edited — or silently
   // contradict the installer — the first time that list grows.
   for (const definition of HOOK_DEFINITIONS) {
-    assert.equal(settings.hooks[definition.event][0].matcher, definition.matcher);
+    assert.ok(settings.hooks[definition.event].some((group) => group.matcher === definition.matcher));
   }
   const installed = await allFiles(host.root);
   for (const file of record.files) assert.ok(installed.includes(file), file);
@@ -299,6 +299,9 @@ test('uninstall removes only recorded files and hook while preserving foreign ho
   const settings = JSON.parse(await fs.readFile(host.settingsPath, 'utf8'));
   assert.deepEqual(settings.hooks.SubagentStop[0].hooks, [{ type: 'command', command: 'dacapo hook claude' }]);
   assert.deepEqual(settings.hooks.PreToolUse[0].hooks, [{ type: 'command', command: 'foreign pre-tool hook' }]);
+  const remainingBridgeHooks = settings.hooks.PreToolUse.flatMap(({ hooks }) => hooks)
+    .filter(({ command }) => /order-gate|worktree-lock/.test(command));
+  assert.deepEqual(remainingBridgeHooks, []);
   await assert.rejects(() => fs.access(host.commandsDir), { code: 'ENOENT' });
 });
 

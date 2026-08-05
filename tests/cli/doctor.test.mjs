@@ -28,6 +28,8 @@ async function installedFixture(t) {
     'agents/codex/required-inputs.mjs',
     'agents/codex/hooks/reply-guard.mjs',
     'agents/codex/hooks/order-gate.mjs',
+    'agents/codex/hooks/live-runs.mjs',
+    'agents/codex/hooks/worktree-lock.mjs',
   ];
   for (const relative of files) {
     const target = path.join(host.root, relative);
@@ -42,19 +44,22 @@ async function installedFixture(t) {
     hooks: [
       { event: 'SubagentStop', path: 'agents/codex/hooks/reply-guard.mjs' },
       { event: 'PreToolUse', path: 'agents/codex/hooks/order-gate.mjs' },
+      { event: 'PreToolUse', path: 'agents/codex/hooks/worktree-lock.mjs' },
     ],
   };
   await writeInstallRecord(host, record);
   // Registered from the definitions, not from literals: doctor compares the matcher it finds
   // against the one the installer would write, so a fixture with its own copy would report a
   // healthy host green while the real one drifted.
-  const hooks = Object.fromEntries(HOOK_DEFINITIONS.map((definition) => {
-    const recorded = record.hooks.find((hook) => hook.event === definition.event);
-    return [definition.event, [{
+  const hooks = {};
+  for (const definition of HOOK_DEFINITIONS) {
+    const recorded = record.hooks.find((hook) => path.basename(hook.path) === definition.file);
+    hooks[definition.event] ??= [];
+    hooks[definition.event].push({
       matcher: definition.matcher,
       hooks: [{ type: 'command', command: `node "${path.join(host.root, recorded.path)}"` }],
-    }]];
-  }));
+    });
+  }
   await fs.writeFile(host.settingsPath, JSON.stringify({ hooks }));
   return { host, record };
 }
@@ -98,7 +103,9 @@ test('complete installation with all files exits zero', async (t) => {
   assert.equal(result.exitCode, 0);
   assert.equal(result.checks.find((item) => item.key === 'files').status, 'ok');
   assert.equal(result.checks.find((item) => item.key === 'hook:SubagentStop').status, 'ok');
-  assert.equal(result.checks.find((item) => item.key === 'hook:PreToolUse').status, 'ok');
+  const preToolUse = result.checks.filter((item) => item.key === 'hook:PreToolUse');
+  assert.equal(preToolUse.length, 2);
+  assert.ok(preToolUse.every((item) => item.status === 'ok'));
 });
 
 test('rules cannot be checked before installation', async (t) => {

@@ -57,13 +57,24 @@ function groupHooks(group) {
   return Array.isArray(group?.hooks) ? group.hooks : [];
 }
 
+const hasOwnCommand = (group, command) =>
+  groupHooks(group).some((hook) => hook?.type === 'command' && hook.command === command);
+
+/**
+ * Presence is decided by the command, not by the matcher it currently sits under.
+ *
+ * The matcher is generated from the tool list in hook-definitions.mjs, so it changes whenever a
+ * host spelling is added — `Agent` became `Agent|Task` in one release, and the write-tool matcher
+ * will grow the same way. A host installed under the old matcher would then be invisible to the
+ * new lookup: update would register a duplicate and uninstall would leave a hook pointing at a
+ * deleted file. The command is this package's own absolute path, so it identifies our entry
+ * wherever the group ended up.
+ */
 export async function inspectHook(settingsPath, specOrPath) {
   const state = await readSettings(settingsPath);
   const spec = normalizeSpec(specOrPath);
   const present = groups(state.settings, spec.event)
-    .filter((group) => group?.matcher === spec.matcher)
-    .some((group) => groupHooks(group)
-      .some((hook) => hook?.type === 'command' && hook.command === spec.command));
+    .some((group) => hasOwnCommand(group, spec.command));
   return { ...state, ...spec, present };
 }
 
@@ -110,9 +121,12 @@ export async function removeHook(settingsPath, specOrPath, { createdGroup = fals
   if (!state.present) return { changed: false };
   const settings = structuredClone(state.settings);
   const eventGroups = groups(settings, spec.event);
+  // Removal follows the same rule as the lookup above: our command, whatever matcher it is
+  // filed under. A foreign hook is left alone because its command is not ours, not because it
+  // sits in another group.
   for (let index = eventGroups.length - 1; index >= 0; index -= 1) {
     const group = eventGroups[index];
-    if (group?.matcher !== spec.matcher) continue;
+    if (!hasOwnCommand(group, spec.command)) continue;
     if (!Array.isArray(group?.hooks)) continue;
     group.hooks = group.hooks.filter((hook) =>
       !(hook?.type === 'command' && hook.command === spec.command));

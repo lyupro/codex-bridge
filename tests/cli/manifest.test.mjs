@@ -105,6 +105,23 @@ test('installation record without fingerprints remains valid', () => {
   assert.equal(validateInstallRecord(record), record);
 });
 
+test('installation record validates multiple hooks sharing one event by filename', () => {
+  const multiHook = {
+    ...record,
+    files: [
+      ...record.files,
+      'agents/codex/hooks/order-gate.mjs',
+      'agents/codex/hooks/worktree-lock.mjs',
+    ],
+    hooks: [
+      ...record.hooks,
+      { event: 'PreToolUse', path: 'agents/codex/hooks/order-gate.mjs' },
+      { event: 'PreToolUse', path: 'agents/codex/hooks/worktree-lock.mjs' },
+    ],
+  };
+  assert.equal(validateInstallRecord(multiHook), multiHook);
+});
+
 test('installation record accepts an optional absolute rules fingerprint', () => {
   const withRules = {
     ...record,

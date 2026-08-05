@@ -19,7 +19,18 @@ export const SUBAGENT_TOOLS = Object.freeze(['Agent', 'Task']);
 /** A PreToolUse matcher is a regular expression over tool names, so alternation covers both. */
 export const SUBAGENT_TOOL_MATCHER = SUBAGENT_TOOLS.join('|');
 
+/**
+ * File-writing tools differ across Claude Code hosts just like subagent tools do. Register every
+ * host spelling here so the worktree lock receives the edit before it can enter a live runner's
+ * before/after snapshot; a list kept only in the hook would leave one host silently unlocked.
+ */
+export const WRITE_TOOLS = Object.freeze(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
+
+/** A PreToolUse matcher is a regular expression over tool names, so alternation covers all four. */
+export const WRITE_TOOL_MATCHER = WRITE_TOOLS.join('|');
+
 export const HOOK_DEFINITIONS = Object.freeze([
   Object.freeze({ event: 'SubagentStop', matcher: '*', file: 'reply-guard.mjs' }),
   Object.freeze({ event: 'PreToolUse', matcher: SUBAGENT_TOOL_MATCHER, file: 'order-gate.mjs' }),
+  Object.freeze({ event: 'PreToolUse', matcher: WRITE_TOOL_MATCHER, file: 'worktree-lock.mjs' }),
 ]);

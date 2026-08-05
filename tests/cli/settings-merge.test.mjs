@@ -91,3 +91,20 @@ test('named matcher operations leave a foreign matcher in the same event untouch
     { matcher: '*' , hooks: [{ type: 'command', command: 'foreign pre-tool hook' }] },
   ]);
 });
+
+test('same-event hook removal follows the owned command when the matcher lookup is stale', async (t) => {
+  const target = await fixture(t);
+  const gate = spec(target, 'PreToolUse', 'Agent', path.join(target.root, 'agents', 'codex', 'hooks', 'order-gate.mjs'));
+  const lock = spec(target, 'PreToolUse', 'Write', path.join(target.root, 'agents', 'codex', 'hooks', 'worktree-lock.mjs'));
+  await mergeHook(target.settingsPath, gate);
+  await mergeHook(target.settingsPath, lock);
+
+  const staleLookup = { ...lock, matcher: gate.matcher };
+  assert.equal((await inspectHook(target.settingsPath, staleLookup)).present, true);
+  await removeHook(target.settingsPath, staleLookup, { createdGroup: true });
+  const settings = JSON.parse(await fs.readFile(target.settingsPath, 'utf8'));
+  assert.deepEqual(settings.hooks.PreToolUse, [{
+    matcher: gate.matcher,
+    hooks: [{ type: 'command', command: gate.command, timeout: 10 }],
+  }]);
+});

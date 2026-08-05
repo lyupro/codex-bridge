@@ -29,6 +29,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { isPidAlive, liveRuns, normalizePath } from './live-runs.mjs';
 
 const HOME = os.homedir();
 const LOG_DIR = path.join(HOME, '.claude', 'logs');
@@ -168,8 +169,9 @@ const blockState = (reason, stopReason) => {
  * verdict is the stdout of the attaching call. Matching only `RUN=` would block every honest
  * answer given under the new contract as "did not delegate at all".
  */
-const runMatch = reply.match(/(?:RUN|ATTACH)=(.+?)(?:\r?\n|$)/);
-const runDir = runMatch ? runMatch[1].trim().replace(/\s+started=\S*$/, '').replace(/[`"'*]+$/g, '') : null;
+const cleanRunDir = (value) => value.trim().replace(/\s+started=\S*$/, '').replace(/[`"'*]+$/g, '');
+const runDirs = [...reply.matchAll(/(?:RUN|ATTACH)=(.+?)(?:\r?\n|$)/g)].map((match) => cleanRunDir(match[1]));
+const runDir = runDirs[0] || null;
 
 if (!runDir || !fs.existsSync(runDir)) {
   blockForm(
@@ -181,34 +183,18 @@ if (!runDir || !fs.existsSync(runDir)) {
 }
 
 /**
- * Best-effort liveness probe: signal 0 sends nothing, it only tests that the pid exists.
- * EPERM means the process is there and owned by someone else — alive for our purposes, and
- * the same reading write-meta.mjs uses. Two answers to "is this run still going" would be
- * one answer too many.
- */
-const isPidAlive = (pid) => {
-  if (typeof pid !== 'number') return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (err) {
-    return err.code === 'EPERM';
-  }
-};
-
-/**
  * The text the operator reads when the state budget is gone. Everything in it is quoted
  * from status.json — the operator is being told to stop, and a stop justified by guesswork
  * is a stop he learns to ignore. `fact` names the missing field instead of inventing one.
  */
 const fact = (value) => (value === undefined || value === null || value === '' ? 'not recorded' : String(value));
 
-const stopText = (headline, observed, runStatus) =>
+const stopText = (headline, observed, runStatus, folder = runDir) =>
   [
     headline,
     `Run: slug ${fact(runStatus?.slug)}, agent ${fact(runStatus?.agent)}, repository ` +
       `${fact(runStatus?.repo)}, started ${fact(runStatus?.started_at)}.`,
-    `Run folder: ${runDir}. Read state from ${path.join(runDir, 'status.json')}; the verdict ` +
+    `Run folder: ${folder}. Read state from ${path.join(folder, 'status.json')}; the verdict ` +
       'will appear in the adjacent meta.json.',
     observed,
     `Worktree ${fact(runStatus?.repo)} is busy with this run: do not build, test, or commit until ` +
@@ -219,6 +205,43 @@ const stopText = (headline, observed, runStatus) =>
       'verdict will be there; there is no need to ask the dispatcher again. Repeating the same ' +
       'command with the same --order-id attaches to this run rather than starting another.',
   ].join(' ');
+
+/**
+ * The dispatcher must name every WRITING run the project has live, not just the one it chose to
+ * quote. The sibling scan is disk-only, so silence cannot hide a second runner; a scan failure
+ * remains fail-open because an uncertain diagnostic must never deny unrelated work.
+ *
+ * Only codex-build counts. Scout and review run in a read-only sandbox and leave the worktree
+ * alone, and launching them alongside other work is deliberate practice here — blocking a reply
+ * over a live reader would spend the state budget, and possibly the session, on a run that
+ * threatens nothing. What the 2026-08-05 incident cost was a hidden WRITER: the orchestrator
+ * edited files that landed in its before/after snapshot.
+ */
+const namedRunDirs = new Set(runDirs.map((dir) => normalizePath(dir)).filter(Boolean));
+let silentLiveSibling = null;
+try {
+  silentLiveSibling = liveRuns(path.dirname(runDir)).find((run) => {
+    if (run.status.agent !== 'codex-build') return false;
+    const normalized = normalizePath(run.dir);
+    return normalized && !namedRunDirs.has(normalized);
+  });
+} catch {
+  silentLiveSibling = null;
+}
+if (silentLiveSibling) {
+  const { dir, status } = silentLiveSibling;
+  blockState(
+    `Contract violated: the response names ${runDir} but omits live run folder ${dir}; report every `
+      + `live run with its agent ${status.agent}, slug ${status.slug}, and repository ${status.repo}.`,
+    stopText(
+      `The reply guard stopped the session: the dispatcher responded ${MAX_STATE_BLOCKS} times `
+        + 'while a live sibling Codex run was omitted from its reply.',
+      `status.json in ${dir} says state=running; process pid ${fact(status.pid)} is alive.`,
+      status,
+      dir,
+    ),
+  );
+}
 
 /**
  * status.json is written by run-codex.mjs before meta.json exists, so it catches the
