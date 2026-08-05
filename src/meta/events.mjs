@@ -18,14 +18,20 @@ const record = (value) => value && typeof value === 'object' && !Array.isArray(v
 const compact = (value, max = 300) =>
   String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
 
-/** A broken final line is expected when the runner is stopped while Codex is writing. */
+/**
+ * A broken final line is expected when the runner is stopped while Codex is writing.
+ *
+ * Whether the file was there at all is reported separately from what it held: a run killed
+ * before the CLI said one word leaves an empty stream, and telling the operator that such a
+ * run "predates the change" sends them looking for the wrong thing entirely.
+ */
 function readLines(runDir) {
-  if (!runDir) return [];
+  if (!runDir) return { exists: false, events: [] };
   let text;
   try {
     text = fs.readFileSync(path.join(runDir, 'events.jsonl'), 'utf8');
   } catch {
-    return [];
+    return { exists: false, events: [] };
   }
   const events = [];
   for (const raw of text.split(/\r?\n/)) {
@@ -38,7 +44,7 @@ function readLines(runDir) {
       // A line cut short by MAX_LOG or a killed process is not a transport verdict.
     }
   }
-  return events;
+  return { exists: true, events };
 }
 
 function usageOf(events) {
@@ -113,13 +119,17 @@ function transportErrorOf(event) {
  * and its fields exactly, while tokens intentionally count input plus output only.
  */
 export function readEvents(runDir) {
-  const events = readLines(runDir);
+  const { exists, events } = readLines(runDir);
   const accounting = usageOf(events);
   const started = events.find((event) => event.type === 'thread.started' && event.thread_id);
   const errors = events.map(transportErrorOf).filter(Boolean);
   const transport_error = errors.find((error) => error.quota) || errors[0] || null;
   return {
     events,
+    // The file was written, whatever it holds. Pass 2 judges a run by this: a stream the
+    // runner promised in its own arguments and did not leave behind is damaged evidence,
+    // not an archived run.
+    hasStream: exists,
     hasEvents: events.length > 0,
     tokens: accounting.tokens,
     usage: accounting.usage,
