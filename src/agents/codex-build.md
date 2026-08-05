@@ -154,8 +154,8 @@ orchestrator.
 ## The script determines status, not you
 
 - `OK` — `result.json` is filled, the return code is zero, and the report matches the worktree.
-- `FAIL` — the result is empty, the return code is nonzero, `raw.log` is empty (the run was
-  abandoned at startup:
+- `FAIL` — the result is empty, the return code is nonzero, the run left no event and a silent
+  `stderr.log` (abandoned at startup:
   there was no Codex process), or **the wrong work was done**: no file in `changes[]` matches
   what actually changed between the worktree snapshots. The schema cannot catch this — a report
   about
@@ -204,7 +204,7 @@ OK — Added retry to the fetch helper and a timeout test
 Files: 2 changed · src/net/fetch.ts, src/net/fetch.test.ts
 Verification: npm test — pass
 Flags: none
-Report: ...\report.md · Log: ...\raw.log
+Report: ...\report.md · Log: codex-bridge log ...\2026-08-05_120000_slug
 ```
 
 Incorrect — "Codex failed, so I finished it myself," followed by a retelling of the diff.

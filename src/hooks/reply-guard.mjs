@@ -284,7 +284,7 @@ if (fs.existsSync(statusPath)) {
           `status.json currently says state=running, but process pid ${fact(runStatus.pid)} is ` +
             'dead and meta.json is missing: an interrupted Bash call killed the runner. Codex ' +
             'survives the runner and keeps editing the tree — in run 2026-07-31_114736, changes ' +
-            'in 11+ files survived while raw.log and meta.json were never recorded.',
+            'in 11+ files survived while no run artifact and no meta.json were ever recorded.',
           runStatus,
         ),
       );
@@ -300,7 +300,7 @@ if (fs.existsSync(statusPath)) {
         `status.json currently says state=abandoned (${fact(runStatus.abandoned_reason)}, ` +
           `${fact(runStatus.abandoned_at)}): the runner died without recording a verdict. Codex ` +
           'survives the runner and keeps editing the tree — in run 2026-07-31_114736, changes in ' +
-          '11+ files survived while raw.log and meta.json were never recorded.',
+          '11+ files survived while no run artifact and no meta.json were ever recorded.',
         runStatus,
       ),
     );

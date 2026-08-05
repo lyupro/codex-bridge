@@ -16,9 +16,10 @@ The root of the run folders comes from `CODEX_RUNS_ROOT` when it is set, otherwi
 would stop seeing runs whenever the root is overridden.
 
 The source is the `meta.json` in each run folder: it holds the spending, the model and the sandbox.
-The `raw.log` itself is not kept in git and may be deleted, so parsing it is not allowed — the
-accounting has to survive a transcript cleanup. For older runs without `meta.json` there is a
-fallback log parser.
+Transport files are not kept in git and may be deleted, so parsing them is not allowed — the
+accounting has to survive a transcript cleanup. Runs from before `meta.json` existed keep a
+fallback parser for the `raw.log` those folders still contain; current runs no longer write that
+file, and their spending comes from the CLI's own `turn.completed` events.
 
 `codex exec review` prints no spending at all, so such runs land in the "unaccounted" line. Counting
 them as zero is not allowed — that would silently understate the total.

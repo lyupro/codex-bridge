@@ -137,9 +137,8 @@ An empty `answer` is FAIL with a path to the log, not a reason to choose differe
 ## The script determines status, not you
 
 - `OK` — `result.json` is filled, and the return code is zero.
-- `FAIL` — the result is empty, the return code is nonzero, or `raw.log` is empty (the run was
-  abandoned
-  at startup: there was no Codex process).
+- `FAIL` — the result is empty, the return code is nonzero, or the run left no event and a
+  silent `stderr.log` (abandoned at startup: there was no Codex process).
 - `LIMIT` — the result is empty and the log signals a limit. The ChatGPT quota is exhausted, and the
   task was not
   completed; this is not a task failure and not a reason to restart.
@@ -172,7 +171,7 @@ ATTACH=<artifact root>\myproject\2026-07-30_1412_hooks started=2026-07-30T14:12:
 OK — The settings.json hook loads twice: from the plugin and the local config
 Key finding: duplicate loader (src/hooks/loader.ts:42)
 Unresolved: why the second load is needed
-Report: ...\report.md · Log: ...\raw.log
+Report: ...\report.md · Log: codex-bridge log ...\2026-08-05_120000_slug
 ```
 
 Incorrect — "Codex started in the background (PID recorded). Waiting for scouting to finish — it

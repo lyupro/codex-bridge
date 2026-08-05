@@ -129,9 +129,8 @@ and the wait can be repeated for free, so neither has any reason to restart anyt
 ## The script determines status, not you
 
 - `OK` — `review.json` is filled, and the return code is zero.
-- `FAIL` — the result is empty, the return code is nonzero, or `raw.log` is empty (the run was
-  abandoned
-  at startup: there was no Codex process).
+- `FAIL` — the result is empty, the return code is nonzero, or the run left no event and a
+  silent `stderr.log` (abandoned at startup: there was no Codex process).
 - `LIMIT` — the result is empty and the log signals a limit. The ChatGPT quota is exhausted, and the
   review was not
   completed; this is not a review failure and not a reason to restart.
@@ -163,7 +162,7 @@ ATTACH=<artifact root>\myproject\2026-07-30_1412_review-auth started=2026-07-30T
 OK — verdict needs-attention
 Findings: critical 0 · high 1 · medium 2 · low 3
 Top: high src/api/auth.ts:88 — The promise is not awaited, and the error is lost
-Report: ...\review.json · Log: ...\raw.log
+Report: ...\review.json · Log: codex-bridge log ...\2026-08-05_120000_slug
 ```
 
 Incorrect — "I analyzed the changes manually because Codex did not perform the review correctly,"
@@ -175,4 +174,4 @@ the status from the runner and stop.
 
 Incorrect — "The review started in the background; I will notify you when it finishes." There will
 be no notification: the agent
-terminates with the response, and an abandoned run leaves an empty `raw.log` — this is FAIL.
+terminates with the response, and an abandoned run leaves no event at all — this is FAIL.
