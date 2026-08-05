@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] - 2026-08-05
+
+### Added
+
+- A continuation has to prove the orchestrator ordered it. `--continue` is refused unless the task text carries a `continue:` grant naming the run being continued and why, and the refusal costs nothing: no run folder is created and Codex is never started. The grant is single-use by construction rather than by a counter — continuing the last run of a chain appends a later one, so the same line stops matching by itself. Until this release a dispatcher could decide on a second pass alone: one did, spent 75 691 tokens of the Codex subscription and created a module the order never asked for.
+- A reply that stays silent about a live `codex-build` run of the same project is blocked. The guard reads the project's runs folder from disk instead of trusting the paths the reply chose to mention, so a second run can no longer be left working in the background while the verdict of the first is handed back. Runs of `codex-scout` and `codex-review` are not counted: they hold a read-only sandbox, and blocking a reply over one would spend the guard's budget on a run that touches nothing.
+- A `PreToolUse` lock refuses file edits inside a repository held by a live `codex-build` run. Knowing that a run is live is not the same as being unable to disturb it — edits made during that window land in the runner's before/after snapshot and fail an honest run for work it never did. An edit made through `Bash` still walks past the lock; parsing a command line is not something a guard can do reliably.
+
+### Fixed
+
+- `doctor` names the file each hook was registered for. With two hooks on one event it matched the installation record by event alone and reported the worktree lock's matcher as pointing at `order-gate.mjs` — the one line where an operator can check what is installed, showing the wrong file.
+- Hook presence is decided by this package's own command rather than by the matcher it currently sits under. The matcher is generated from the list of host tool names and grows whenever a spelling is added, so a host installed under the previous matcher would collect a duplicate hook on update and keep a hook pointing at a deleted file after uninstall.
+
 ## [0.1.3] - 2026-08-05
 
 ### Added
