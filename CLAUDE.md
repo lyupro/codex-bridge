@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this package is
 
 `@lyupro/codex-bridge` installs three Claude Code dispatcher agents (`codex-scout`, `codex-build`,
-`codex-review`), a delegating runner and a `SubagentStop` guard into a Claude Code host, so
+`codex-review`), a delegating runner and three guard hooks into a Claude Code host, so
 implementation work runs on a Codex CLI subscription instead of the Claude one.
 
 Zero runtime dependencies, plain `.mjs` on the Node standard library, no build step — installing
@@ -34,8 +34,9 @@ Two independent halves share the repository:
 **Package/installer** — `bin/codex-bridge.mjs` (argument dispatch only) over `cli/`:
 `manifest.mjs` owns the install table, the seeded-file list and the `.codex-bridge-install.json`
 record schema; `install/update/uninstall/doctor.mjs` are one command each; `hosts.mjs` resolves host
-paths without touching disk; `settings-merge.mjs` registers the hook without destroying foreign
-hooks. `update` compares sha256 fingerprints from the record: outdated files refresh silently,
+paths without touching disk; `settings-merge.mjs` registers the hooks without destroying foreign
+ones, and finds its own by command rather than by matcher — the matcher is generated from a tool
+list and changes whenever a host spelling is added. `update` compares sha256 fingerprints from the record: outdated files refresh silently,
 hand-edited files stop the run unless `--force`.
 
 **Runtime runner** — `src/`, installed into the host's `agents/codex/`:
@@ -51,7 +52,12 @@ hand-edited files stop the run unless `--force`.
 - `write-meta.mjs` is the only reader of a finished run's artifacts. `meta/` splits it: `paths`
   (artifact reads and path matching), `chain` (earlier passes of the same task), `run-state`
   (`status.json` honesty, abandoned runs), `verdict` (OK/FAIL/LIMIT), `reply` (the printed lines).
-- `hooks/reply-guard.mjs` rejects a dispatcher reply that `meta.json` does not support.
+- `hooks/` holds the three guards, all fail-open on anything they do not recognise:
+  `reply-guard.mjs` (SubagentStop) rejects a dispatcher reply that `meta.json` does not support or
+  that stays silent about a live `codex-build` run of the same project; `order-gate.mjs`
+  (PreToolUse) refuses a dispatcher call whose task text names no order id; `worktree-lock.mjs`
+  (PreToolUse) refuses a file edit inside a repository a live `codex-build` run holds.
+  `live-runs.mjs` is the one answer to "is this run alive" both guards ask.
 
 Importers name `run-codex.mjs` and `write-meta.mjs`, never a module below them.
 
