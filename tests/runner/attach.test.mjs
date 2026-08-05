@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { attach } from '../../src/runner/attach.mjs';
-import { continuationRefusal } from '../../src/runner/launcher.mjs';
+import { continuationRefusal } from '../../src/runner/continuation.mjs';
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'attach-'));
@@ -134,7 +134,7 @@ test('the first --continue is allowed after exactly one finished run', (t) => {
     'meta.json': JSON.stringify({ status: 'LIMIT' }),
   });
 
-  assert.equal(continuationRefusal(runsRoot, [name], true, 'order-1'), null);
+  assert.equal(continuationRefusal(runsRoot, [name], true, 'order-1', { run: name, reason: 'LIMIT' }), null);
 });
 
 test('a second --continue names the runs already spent and requires a new order id', (t) => {
@@ -148,7 +148,10 @@ test('a second --continue names the runs already spent and requires a new order 
     });
   }
 
-  const message = continuationRefusal(runsRoot, [first, second], true, 'order-1');
+  const message = continuationRefusal(runsRoot, [first, second], true, 'order-1', {
+    run: second,
+    reason: 'FAIL requires another pass',
+  });
 
   assert.match(message, new RegExp(first));
   assert.match(message, new RegExp(second));
@@ -171,7 +174,13 @@ test('a fresh order id is not charged for the runs of the previous one', (t) => 
     });
   }
 
-  assert.equal(continuationRefusal(runsRoot, [first, second], true, 'order-2'), null);
+  assert.equal(
+    continuationRefusal(runsRoot, [first, second], true, 'order-2', {
+      run: second,
+      reason: 'FAIL requires another pass',
+    }),
+    null,
+  );
 });
 
 test('--continue behind a run without a verdict is refused before another folder is made', (t) => {
@@ -180,7 +189,10 @@ test('--continue behind a run without a verdict is refused before another folder
   const name = '2026-08-04_090000_async-start';
   run(runsRoot, name, running(repo));
 
-  const message = continuationRefusal(runsRoot, [name], true, 'order-1');
+  const message = continuationRefusal(runsRoot, [name], true, 'order-1', {
+    run: name,
+    reason: 'continue the unfinished work',
+  });
 
   assert.match(message, /no finished verdict/);
   assert.match(message, /Repeat without --continue to attach/);

@@ -96,6 +96,19 @@ test('a valid dispatcher call passes and keeps the last payload', async (t) => {
   );
 });
 
+test('a conditional continuation grant is not an order-gate requirement', async (t) => {
+  const root = await fixture(t);
+  const result = runGate(
+    root,
+    payload(
+      'codex-build',
+      'order id: plan-13-build-20260804\nscope: src/hooks/order-gate.mjs\ncontinue: TODO',
+    ),
+  );
+  assert.equal(result.status, 0);
+  assert.equal(result.stdout, '');
+});
+
 test('non-Codex subagents pass silently', async (t) => {
   const root = await fixture(t);
   const result = runGate(root, payload('Explore', ''));

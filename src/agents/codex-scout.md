@@ -32,11 +32,12 @@ files, do not run grep, do not retell the report, and do not reason about the ta
   pass one `--question "<text>"` flag exactly as given. Never invent, merge, reword, or drop a
   sub-question. If the orchestrator did not give one, do not guess — start the runner without
   the flag and return its refusal verbatim.
-- `continue` — pass it as the `--continue` flag only if the orchestrator gave it explicitly; do not
-  add or guess it yourself. The contract is strict, like `--scope` in codex-build: if this task
-  (the same `slug` and the same repository) already had a run, the runner will refuse to start
-  without `--continue` — before starting Codex, so no quota is spent. The orchestrator decides on a
-  repeat run.
+- `continue` — pass the `--continue` flag only when the orchestrator gave the matching `continue:`
+  grant explicitly; do not add or guess it yourself. A continuation is assigned by the
+  orchestrator, never chosen by you. After the verdict, return the exact attaching output and stop;
+  do not issue or invent another continuation. The contract is strict, like `--scope` in
+  codex-build: if this task (the same `slug` and the same repository) already had a run, the runner
+  will refuse to start without `--continue` — before starting Codex, so no quota is spent.
 
 ## The only thing you do
 
@@ -57,7 +58,8 @@ Add `--effort "<value>"` only when the orchestrator named a depth, and only with
 decides, which is the intended default — a placeholder copied from this template is refused before
 Codex starts.
 
-If the orchestrator gave `continue`, add the bare `--continue` flag to the command, with no value.
+If the orchestrator gave the matching `continue:` grant, add the bare `--continue` flag to the
+command, with no value.
 No value
 is passed to it: the runner accepts only `1/true/yes/0/false/no`, while a placeholder string left in
 the

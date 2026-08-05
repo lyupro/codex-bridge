@@ -28,6 +28,8 @@ import { attach } from './attach.mjs';
 import { setRun } from './run-context.mjs';
 import { loadRunEnv, RUN_ENV } from './run-env.mjs';
 import { parseArgs, die } from './args.mjs';
+import { parseContinuationGrant } from '../required-inputs.mjs';
+import { continuationRefusal } from './continuation.mjs';
 import { SCHEMAS } from './schemas.mjs';
 import { INSTRUCTIONS } from './prompts.mjs';
 import { git, headSha, branchName, worktreeSnapshot, reviewScope } from './git-state.mjs';
@@ -114,6 +116,7 @@ export async function launcher() {
   // like --scope.
   const taskHash = taskFingerprint(taskText);
   const chain = chainRuns(projectRunsRoot, repoRoot, opts.slug, taskHash, opts.orderId);
+  const continuationGrant = opts.continue ? parseContinuationGrant(taskText) : null;
 
   // One order produced six Codex runs on 2026-08-03 because the caller's time ceiling made it
   // restart the synchronous launcher. A live same-order run is now the repeat target: attach
@@ -132,7 +135,13 @@ export async function launcher() {
   // markAbandoned() ran before this gate, so a dead runner already has meta.json with FAIL.
   // A run without a verdict can therefore only still be in flight; ordinary repeats go through
   // attach(), while --continue must refuse to overlap that live work.
-  const continuationError = continuationRefusal(projectRunsRoot, chain, opts.continue, opts.orderId);
+  const continuationError = continuationRefusal(
+    projectRunsRoot,
+    chain,
+    opts.continue,
+    opts.orderId,
+    continuationGrant,
+  );
   if (continuationError) die(continuationError);
 
   if (chain.length && !opts.continue) {
@@ -183,6 +192,8 @@ export async function launcher() {
     // Which run of this task started the chain — the base every later pass is measured
     // against. Absent means this is the first pass.
     ...(chain.length ? { continues: chain[0] } : {}),
+    // `continued_from` is the exact run the orchestrator named; `continues` above remains the chain base.
+    ...(continuationGrant ? { continued_from: continuationGrant.run } : {}),
   });
 
   // Printed before anything can go wrong: even a dispatcher that dies mid-run leaves the
@@ -332,43 +343,4 @@ export async function launcher() {
     'To get the verdict, repeat the identical command with the same --order-id; it will attach to this run and will not start a second run.',
   );
   process.exit(0);
-}
-
-/**
- * Applies the one-continuation limit and the in-flight safety gate before a folder is created.
- *
- * The limit is counted over the runs carrying THIS order id, not over the whole chain. The chain
- * also ties runs together by slug and by the fingerprint of the task text, which is what catches a
- * repeat that renamed itself — but counting continuations that way makes the escape hatch
- * unreachable: the operator's rule is "more passes than one need a new order id", and a new order
- * id lands in the same chain through the task hash. A task would then be refused with --continue
- * for having spent its continuation and refused without it for already having runs — permanently
- * unrunnable, which is a worse failure than the retry storm this limit exists to stop.
- */
-export function continuationRefusal(runsRootPath, chain, isContinue, orderId) {
-  if (!isContinue || chain.length === 0) return null;
-  const wanted = String(orderId ?? '').trim();
-  const ofThisOrder = chain.filter(
-    (run) => String(readJson(path.join(runsRootPath, run, 'status.json'))?.order_id ?? '').trim() === wanted,
-  );
-  if (ofThisOrder.length === 0) return null;
-  if (ofThisOrder.length > 1) {
-    const spent = ofThisOrder.map((run) => path.join(runsRootPath, run)).join(', ');
-    return (
-      `--continue is refused: order “${wanted}” already spent its allowed continuation on ${spent}. ` +
-      'A further pass needs a new order id from the orchestrator. The run folder was not ' +
-      'created; quota was not spent.'
-    );
-  }
-  const previous = path.join(runsRootPath, ofThisOrder[0]);
-  const status = readJson(path.join(previous, 'status.json'));
-  const meta = readJson(path.join(previous, 'meta.json'));
-  if (!meta?.status || status?.state === 'running') {
-    return (
-      `--continue is refused: previous run ${previous} has no finished verdict and may still ` +
-      'be editing the worktree. Repeat without --continue to attach to it. The run folder was ' +
-      'not created; quota was not spent.'
-    );
-  }
-  return null;
 }

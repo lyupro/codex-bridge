@@ -6,8 +6,10 @@ import path from 'node:path';
 import { replacePlaceholders } from '../cli/manifest.mjs';
 import { AGENTS } from '../src/write-meta.mjs';
 import {
+  CONTINUATION_INPUT,
   REQUIRED_INPUTS,
   missingInputs,
+  parseContinuationGrant,
   renderRequiredInputSummary,
   renderRequiredInputs,
 } from '../src/required-inputs.mjs';
@@ -30,7 +32,7 @@ test('the immutable table lists each dispatcher input', () => {
     assert.equal(Object.isFrozen(entries), true);
     for (const entry of entries) assert.equal(Object.isFrozen(entry), true);
   }
-  assert.deepEqual(REQUIRED_INPUTS['codex-build'].map((entry) => entry.label), ['order id', 'scope']);
+  assert.deepEqual(REQUIRED_INPUTS['codex-build'].map((entry) => entry.label), ['order id', 'scope', 'continue']);
 });
 
 test('missingInputs reports every required value for every dispatcher', () => {
@@ -48,6 +50,41 @@ test('template placeholders are missing even when their labels are present', () 
   assert.deepEqual(missingInputs('codex-scout', 'order id: LABEL').map((entry) => entry.label), ['order id']);
 });
 
+test('conditional continuation entries stay out of the order-gate input contract', () => {
+  for (const [agentType, entries] of Object.entries(REQUIRED_INPUTS)) {
+    const unconditional = entries.filter((entry) => !entry.conditional);
+    const conditional = entries.filter((entry) => entry.conditional);
+    assert.deepEqual(conditional, [CONTINUATION_INPUT]);
+    assert.deepEqual(missingInputs(agentType, '').map((entry) => entry.label), unconditional.map((entry) => entry.label));
+    assert.deepEqual(
+      missingInputs(agentType, `continue: ${CONTINUATION_INPUT.example}`).map((entry) => entry.label),
+      unconditional.map((entry) => entry.label),
+    );
+  }
+});
+
+test('continuation grants parse with the accepted separators', () => {
+  const run = '2026-08-05_092913_plan14-build';
+  const reason = 'LIMIT at step 3, tests unwritten';
+  for (const separator of [' — ', ' - ', ': ']) {
+    assert.deepEqual(parseContinuationGrant(`continue: ${run}${separator}${reason}`), { run, reason });
+  }
+});
+
+test('continuation grants reject placeholders and incomplete values', () => {
+  const run = '2026-08-05_092913_plan14-build';
+  const invalid = [
+    '',
+    'continue: TODO',
+    'continue: <run> — reason',
+    `continue: ${run} — TODO`,
+    `continue: ${run}`,
+    `continue: ${run} — <reason>`,
+    `continue: ${run} —`,
+  ];
+  for (const taskText of invalid) assert.equal(parseContinuationGrant(taskText), null, taskText);
+});
+
 test('valid values pass and the renderer uses the same entries', () => {
   assert.deepEqual(
     missingInputs('codex-build', 'order id: plan-13-build-20260804\nscope: src/runner/**,tests/runner/**'),
@@ -57,6 +94,7 @@ test('valid values pass and the renderer uses the same entries', () => {
   // text into the agent markdown, and a test that restates the examples would keep passing
   // while the two drifted apart — the exact failure mode this contract exists to remove.
   const rendered = renderRequiredInputs('codex-build');
+  assert.match(rendered, /Condition: when --continue is passed\./);
   for (const entry of REQUIRED_INPUTS['codex-build']) {
     assert.ok(
       rendered.includes(`- ${entry.label}: ${entry.explanation} Example: \`${entry.example}\`.`),
