@@ -1,6 +1,6 @@
 /**
  * Everything about invoking the `codex` CLI: which flags a run gets, whether the CLI is
- * there at all, and how its output reaches raw.log and stderr.log.
+ * there at all, and how its output reaches raw.log, events.jsonl and stderr.log.
  *
  * The flag sets below are the ones the three agent files carried before, verbatim.
  * Sandboxes especially must not drift: codex-scout is read-only through
@@ -54,7 +54,8 @@ export function stopCodex(child, onWindows = process.platform === 'win32') {
  * outside spawnSync. MAX_LOG stays the ceiling; past it the log is cut with a note rather
  * than the run being killed — a huge log is a diagnosis, not a reason to lose the work.
  * stderr is also copied to its own bounded file: raw.log deliberately mixes both streams for
- * human diagnosis, but a large stdout must not hide a transport error from the verdict.
+ * human diagnosis, but a large stdout must not hide a transport error from the verdict. The
+ * JSONL stream gets a separate file because a line cut in half cannot be parsed back safely.
  */
 export function runCodex(args, taskText, logPath, budgetMinutes) {
   const onWindows = process.platform === 'win32';
@@ -64,6 +65,7 @@ export function runCodex(args, taskText, logPath, budgetMinutes) {
       : null;
   const log = fs.createWriteStream(logPath, { flags: 'a' });
   const stderrLog = fs.createWriteStream(path.join(path.dirname(logPath), 'stderr.log'), { flags: 'a' });
+  const eventsLog = fs.createWriteStream(path.join(path.dirname(logPath), 'events.jsonl'), { flags: 'a' });
   const appendTo = (stream, label) => {
     let written = 0;
     let cut = false;
@@ -84,6 +86,38 @@ export function runCodex(args, taskText, logPath, budgetMinutes) {
   };
   const append = appendTo(log, 'log');
   const appendStderr = appendTo(stderrLog, 'stderr log');
+  const appendEvents = (() => {
+    let pending = Buffer.alloc(0);
+    let written = 0;
+    let cut = false;
+    const append = (chunk) => {
+      if (cut) return;
+      const incoming = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), 'utf8');
+      pending = pending.length ? Buffer.concat([pending, incoming]) : incoming;
+      let newline = pending.indexOf(0x0a);
+      while (newline !== -1) {
+        const line = pending.subarray(0, newline + 1);
+        pending = pending.subarray(newline + 1);
+        if (written + line.length > MAX_LOG) {
+          cut = true;
+          pending = Buffer.alloc(0);
+          return;
+        }
+        written += line.length;
+        eventsLog.write(line);
+        newline = pending.indexOf(0x0a);
+      }
+      if (pending.length > MAX_LOG - written) {
+        cut = true;
+        pending = Buffer.alloc(0);
+      }
+    };
+    const finish = () => {
+      if (!cut && pending.length && written + pending.length <= MAX_LOG) eventsLog.write(pending);
+      pending = Buffer.alloc(0);
+    };
+    return { append, finish };
+  })();
 
   let child;
   if (onWindows) {
@@ -109,6 +143,8 @@ export function runCodex(args, taskText, logPath, budgetMinutes) {
     let elapsedMs = 0;
     const startedAt = Date.now();
     child.stdout.on('data', append);
+    child.stdout.on('data', appendEvents.append);
+    child.stdout.on('end', appendEvents.finish);
     child.stderr.on('data', (chunk) => {
       append(chunk);
       appendStderr(chunk);
@@ -125,6 +161,7 @@ export function runCodex(args, taskText, logPath, budgetMinutes) {
     };
     log.on('error', onStreamError('raw.log'));
     stderrLog.on('error', onStreamError('stderr.log'));
+    eventsLog.on('error', onStreamError('events.jsonl'));
     child.on('error', (err) => {
       failed = true;
       append(`\nrun-codex: ${err.message}\n`);
@@ -174,6 +211,7 @@ export function runCodex(args, taskText, logPath, budgetMinutes) {
       const exit = failed || code === null ? 1 : code;
       await close(log);
       await close(stderrLog);
+      await close(eventsLog);
       resolve({ exit, stoppedOnDeadline, elapsedMs });
     });
   });
@@ -247,6 +285,7 @@ export function codexArgs(opts, runDir, isGitRepo) {
   if (opts.agent === 'codex-scout') {
     return [
       'exec',
+      '--json',
       ...CLEAN_ENV,
       '--ignore-user-config',
       '-c',
@@ -270,6 +309,7 @@ export function codexArgs(opts, runDir, isGitRepo) {
     // every edit is rejected ("writing is blocked by read-only sandbox").
     return [
       'exec',
+      '--json',
       ...CLEAN_ENV,
       '-c',
       effort,
@@ -300,6 +340,7 @@ export function codexArgs(opts, runDir, isGitRepo) {
   // --ignore-user-config, same as scout: review never needs write access.
   return [
     'exec',
+    '--json',
     ...CLEAN_ENV,
     '--ignore-user-config',
     '-c',

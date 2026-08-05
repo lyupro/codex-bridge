@@ -207,3 +207,126 @@ test('a new run missing its stderr.log is a failure, not an archived run', () =>
   assert.equal(meta.status, 'FAIL');
   assert.match(meta.reason, /artifacts disagree/);
 });
+
+test('a turn.failed status 429 event is LIMIT', () => {
+  const dir = makeRun({
+    log: 'codex started\n',
+    events: [
+      {
+        type: 'turn.failed',
+        error: {
+          message: JSON.stringify({
+            status: 429,
+            error: { type: 'server_error', message: 'request refused' },
+          }),
+        },
+      },
+    ],
+    result: emptyBuild,
+  });
+
+  const { meta } = collect(dir, 'codex-build', 1);
+
+  assert.equal(meta.status, 'LIMIT');
+  assert.match(meta.reason, /status 429/);
+});
+
+test('an item.completed quotation about a quota is not LIMIT', () => {
+  const dir = makeRun({
+    log: 'agent quoted: rate limit exceeded\n',
+    events: [{ type: 'item.completed', item: { type: 'agent_message', text: 'rate limit exceeded' } }],
+    result: emptyBuild,
+  });
+
+  const { meta } = collect(dir, 'codex-build', 1);
+
+  assert.equal(meta.status, 'FAIL');
+});
+
+test('an error type naming a limit is LIMIT without status 429', () => {
+  const dir = makeRun({
+    log: 'codex started\n',
+    events: [
+      {
+        type: 'error',
+        message: JSON.stringify({
+          status: 400,
+          error: { type: 'rate_limit_error', message: 'provider refused the request' },
+        }),
+      },
+    ],
+    result: emptyBuild,
+  });
+
+  const { meta } = collect(dir, 'codex-build', 1);
+
+  assert.equal(meta.status, 'LIMIT');
+  assert.match(meta.reason, /rate_limit_error/);
+});
+
+test('a non-quota transport event supplies the FAIL reason before raw text', () => {
+  const dir = makeRun({
+    log: 'raw text says rate limit exceeded\n',
+    events: [
+      {
+        type: 'error',
+        message: JSON.stringify({
+          status: 400,
+          error: { type: 'invalid_request_error', message: 'request body is invalid' },
+        }),
+      },
+    ],
+    result: emptyBuild,
+  });
+
+  const { meta } = collect(dir, 'codex-build', 1);
+
+  assert.equal(meta.status, 'FAIL');
+  assert.match(meta.reason, /request body is invalid/);
+  assert.doesNotMatch(meta.reason, /rate limit exceeded/);
+});
+
+test('a transport error the run recovered from does not fail a completed run', () => {
+  const dir = makeRun({
+    result: build([{ file: 'src/a.ts', what: 'change', why: 'task' }]),
+    before: '',
+    after: 'U\t10\tsrc/a.ts\n',
+    events: [
+      {
+        type: 'error',
+        message: JSON.stringify({
+          status: 503,
+          error: { type: 'server_error', message: 'stream disconnected before completion' },
+        }),
+      },
+      { type: 'turn.completed', usage: { input_tokens: 10, output_tokens: 5 } },
+    ],
+  });
+
+  const { meta } = collect(dir, 'codex-build', 0);
+
+  assert.equal(meta.status, 'OK');
+});
+
+test('an error about a context length limit is not read as a quota refusal', () => {
+  const dir = makeRun({
+    log: 'codex started\n',
+    events: [
+      {
+        type: 'turn.failed',
+        error: {
+          message: JSON.stringify({
+            status: 400,
+            error: { type: 'invalid_request_error', message: 'context length limit exceeded' },
+          }),
+        },
+      },
+    ],
+    result: emptyBuild,
+  });
+
+  const { meta } = collect(dir, 'codex-build', 1);
+
+  assert.equal(meta.status, 'FAIL');
+  assert.match(meta.reason, /context length limit/);
+});

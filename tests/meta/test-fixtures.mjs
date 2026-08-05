@@ -50,10 +50,21 @@ export function makeRun({
   branchBefore,
   branchAfter,
   status,
+  events,
+  args,
 } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-run-'));
   fs.writeFileSync(path.join(dir, 'raw.log'), log);
-  if (stderr !== undefined) fs.writeFileSync(path.join(dir, 'stderr.log'), stderr);
+  if (stderr !== undefined || events !== undefined) {
+    fs.writeFileSync(path.join(dir, 'stderr.log'), stderr ?? '');
+  }
+  if (events !== undefined) {
+    const jsonl = Array.isArray(events)
+      ? events.map((event) => JSON.stringify(event)).join('\n') + (events.length ? '\n' : '')
+      : String(events);
+    fs.writeFileSync(path.join(dir, 'events.jsonl'), jsonl);
+  }
+  if (args !== undefined) fs.writeFileSync(path.join(dir, 'worker.json'), JSON.stringify({ args }));
   if (status !== undefined) fs.writeFileSync(path.join(dir, 'status.json'), JSON.stringify(status));
   if (result !== undefined) fs.writeFileSync(path.join(dir, file), JSON.stringify(result));
   fs.writeFileSync(path.join(dir, 'state-before.txt'), before);

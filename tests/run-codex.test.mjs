@@ -264,6 +264,15 @@ test('runner modes omit the model flag when their model is not configured', () =
   }
 });
 
+test('all runner modes request the structured JSON event stream', () => {
+  loadRunEnv();
+  const runDir = path.join(os.tmpdir(), 'codex-run');
+  for (const agent of ['codex-scout', 'codex-build', 'codex-review']) {
+    const args = codexArgs({ agent, effort: 'medium', repo: process.cwd() }, runDir, true);
+    assert.equal(args.filter((arg) => arg === '--json').length, 1, agent);
+  }
+});
+
 /**
  * A repository that physically contains the run folders, with homedir() pointed at the
  * fixture for as long as `body` runs. Git is cut off from the operator's own config too, so

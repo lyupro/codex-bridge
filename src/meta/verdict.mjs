@@ -22,6 +22,7 @@ import {
 } from './paths.mjs';
 import { chainBaseline } from './chain.mjs';
 import { splitRunChanges } from './environment.mjs';
+import { readEvents } from './events.mjs';
 import { outcomeGap } from './outcome.mjs';
 import { deadlineReason } from './deadline.mjs';
 import { limitSignal, transportGap } from './transport.mjs';
@@ -262,7 +263,7 @@ function branchDuringRun(runDir) {
  * zero bytes, and that is a FAIL with its own reason — not a retry hint. An empty
  * result with a quota signal in the log is LIMIT; without one it is FAIL.
  */
-export function resolveStatus({ log, logBytes, resultOk, exit, agent, result, runDir }) {
+export function resolveStatus({ log, logBytes, resultOk, exit, agent, result, runDir, events }) {
   if (!logBytes) {
     return {
       status: 'FAIL',
@@ -284,9 +285,24 @@ export function resolveStatus({ log, logBytes, resultOk, exit, agent, result, ru
   // the fallback it guards is what LIMIT would otherwise use.
   const transport = transportGap(runDir);
   if (transport) return { status: 'FAIL', reason: transport };
+  const eventData = events ?? readEvents(runDir);
+  // Only a run with nothing to show is judged by its transport errors. The CLI prints an error
+  // event for a dropped stream and then retries it, so a run that recovered, filled its result
+  // and exited zero did the job — turning that survived error into a verdict would fail honest
+  // work, the mirror image of the false LIMIT this whole module exists to remove.
+  const transportError =
+    eventData.hasEvents && (!resultOk || exit !== 0) ? eventData.transport_error : null;
+  if (transportError) {
+    return {
+      status: transportError.quota ? 'LIMIT' : 'FAIL',
+      reason: transportError.reason,
+    };
+  }
   if (!resultOk) {
-    const limit = limitSignal(runDir, log);
-    if (limit) return { status: 'LIMIT', reason: limit };
+    if (!eventData.hasEvents) {
+      const limit = limitSignal(runDir, log);
+      if (limit) return { status: 'LIMIT', reason: limit };
+    }
     return { status: 'FAIL', reason: reasonFrom(log) || `result is empty, exit=${exit}` };
   }
   if (exit !== 0) {

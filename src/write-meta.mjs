@@ -24,6 +24,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { changedPaths, readJson, readText, size } from './meta/paths.mjs';
 import { splitRunChanges } from './meta/environment.mjs';
+import { readEvents } from './meta/events.mjs';
 import { writeStatus } from './meta/run-state.mjs';
 import { resolveStatus } from './meta/verdict.mjs';
 import { AGENTS, failReply, limitReply } from './meta/reply.mjs';
@@ -56,17 +57,35 @@ export function collect(runDir, agent, exitCode) {
   const result = readJson(resultPath);
   const resultOk = Boolean(result) && cfg.filled(result);
   const exit = exitCode === undefined || exitCode === null ? null : Number(exitCode);
+  const events = readEvents(runDir);
+  const worker = readJson(path.join(runDir, 'worker.json'));
 
   // "tokens used" is followed by the count on the next line, with a non-breaking
   // thousands separator — strip every non-digit rather than trusting the spacing.
-  const usage = [...log.matchAll(/tokens used[\r\n]+([^\r\n]+)/g)].pop();
+  const legacyUsage = [...log.matchAll(/tokens used[\r\n]+([^\r\n]+)/g)].pop();
 
   // `codex exec review` reports no usage at all. Null, never 0: a zero would silently
   // understate the total in /codex:usage.
-  const tokens = usage ? parseInt(usage[1].replace(/\D/g, ''), 10) || null : null;
+  const legacyTokens = legacyUsage ? parseInt(legacyUsage[1].replace(/\D/g, ''), 10) || null : null;
+  const tokens = events.hasEvents ? events.tokens : legacyTokens;
+  const usage = events.hasEvents ? events.usage : null;
 
   const pick = (re) => (log.match(re) || [])[1] || null;
-  const { status, reason, carried } = resolveStatus({ log, logBytes, resultOk, exit, agent, result, runDir });
+  const args = Array.isArray(worker?.args) ? worker.args : [];
+  const argValue = (flag) => {
+    const index = args.indexOf(flag);
+    return index >= 0 && typeof args[index + 1] === 'string' ? args[index + 1] : null;
+  };
+  const { status, reason, carried } = resolveStatus({
+    log,
+    logBytes,
+    resultOk,
+    exit,
+    agent,
+    result,
+    runDir,
+    events,
+  });
 
   const meta = {
     agent,
@@ -91,11 +110,12 @@ export function collect(runDir, agent, exitCode) {
     log_bytes: logBytes,
     tokens,
     tokens_reported: tokens !== null,
-    model: pick(/^model:\s*(\S+)/m),
-    sandbox: pick(/^sandbox:\s*(\S+)/m),
+    usage,
+    model: argValue('-m') || pick(/^model:\s*(\S+)/m),
+    sandbox: argValue('--sandbox') || pick(/^sandbox:\s*(\S+)/m),
     // Null for runs made before env.json existed: absence is not the same as "both off".
     env: readJson(path.join(runDir, 'env.json')),
-    session_id: pick(/^session id:\s*(\S+)/m),
+    session_id: events.hasEvents ? events.session_id : pick(/^session id:\s*(\S+)/m),
   };
 
   fs.writeFileSync(path.join(runDir, 'meta.json'), `${JSON.stringify(meta, null, 2)}\n`);
