@@ -1,8 +1,8 @@
 /**
  * Reads the runner-owned deadline fact from status.json.
  *
- * raw.log is workspace-readable text and can contain a quoted copy of the runner's own
- * message, so it cannot prove that the runner actually stopped the process (Plan_15).
+ * stderr.log is diagnostic text and can contain a quoted copy of the runner's own message,
+ * so it cannot prove that the runner actually stopped the process (Plan_15).
  */
 import path from 'node:path';
 import { readJson } from './paths.mjs';

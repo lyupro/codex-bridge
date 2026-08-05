@@ -3,9 +3,9 @@
  * Turns one Codex run directory into accounting plus a verdict:
  *   node write-meta.mjs <runDir> <agent> <exitCode>
  *
- * This is the only entry point that reads a run's artifacts. It writes meta.json — quota
- * accounting that survives deletion of the gitignored raw.log — and derives the run
- * status from what is actually on disk: exit code, log size, result file, git state.
+ * This is the only entry point that reads a run's artifacts. It writes meta.json — accounting
+ * for the two transport files — and derives the run status from what is actually on disk:
+ * exit code, structured events, result file, git state.
  * A dispatcher agent therefore cannot report an outcome its own run does not support.
  *
  * The reply lines printed here ARE the reply. Agents forward this stdout verbatim
@@ -50,35 +50,23 @@ export function collect(runDir, agent, exitCode) {
   const cfg = AGENTS[agent];
   if (!cfg) throw new Error(`unknown agent: ${agent} (expected one of ${Object.keys(AGENTS).join(', ')})`);
 
-  const logPath = path.join(runDir, 'raw.log');
+  const eventsPath = path.join(runDir, 'events.jsonl');
+  const stderrPath = path.join(runDir, 'stderr.log');
   const resultPath = path.join(runDir, cfg.result);
-  const log = readText(logPath);
-  const logBytes = size(logPath);
+  const eventsBytes = size(eventsPath);
+  const stderrBytes = size(stderrPath);
   const result = readJson(resultPath);
   const resultOk = Boolean(result) && cfg.filled(result);
   const exit = exitCode === undefined || exitCode === null ? null : Number(exitCode);
   const events = readEvents(runDir);
   const worker = readJson(path.join(runDir, 'worker.json'));
 
-  // "tokens used" is followed by the count on the next line, with a non-breaking
-  // thousands separator — strip every non-digit rather than trusting the spacing.
-  const legacyUsage = [...log.matchAll(/tokens used[\r\n]+([^\r\n]+)/g)].pop();
-
-  // `codex exec review` reports no usage at all. Null, never 0: a zero would silently
-  // understate the total in /codex:usage.
-  const legacyTokens = legacyUsage ? parseInt(legacyUsage[1].replace(/\D/g, ''), 10) || null : null;
-  const tokens = events.hasEvents ? events.tokens : legacyTokens;
-  const usage = events.hasEvents ? events.usage : null;
-
-  const pick = (re) => (log.match(re) || [])[1] || null;
   const args = Array.isArray(worker?.args) ? worker.args : [];
   const argValue = (flag) => {
     const index = args.indexOf(flag);
     return index >= 0 && typeof args[index + 1] === 'string' ? args[index + 1] : null;
   };
   const { status, reason, carried } = resolveStatus({
-    log,
-    logBytes,
     resultOk,
     exit,
     agent,
@@ -107,15 +95,16 @@ export function collect(runDir, agent, exitCode) {
       changedPaths(readText(path.join(runDir, 'state-before.txt')), readText(path.join(runDir, 'state-after.txt'))),
     ).environment,
     result_ok: resultOk,
-    log_bytes: logBytes,
-    tokens,
-    tokens_reported: tokens !== null,
-    usage,
-    model: argValue('-m') || pick(/^model:\s*(\S+)/m),
-    sandbox: argValue('--sandbox') || pick(/^sandbox:\s*(\S+)/m),
+    events_bytes: eventsBytes,
+    stderr_bytes: stderrBytes,
+    tokens: events.tokens,
+    tokens_reported: events.tokens !== null,
+    usage: events.usage,
+    model: argValue('-m'),
+    sandbox: argValue('--sandbox'),
     // Null for runs made before env.json existed: absence is not the same as "both off".
     env: readJson(path.join(runDir, 'env.json')),
-    session_id: events.hasEvents ? events.session_id : pick(/^session id:\s*(\S+)/m),
+    session_id: events.session_id,
   };
 
   fs.writeFileSync(path.join(runDir, 'meta.json'), `${JSON.stringify(meta, null, 2)}\n`);

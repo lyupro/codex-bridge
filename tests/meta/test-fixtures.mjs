@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-/** A raw.log shape collect() reads as a clean, successful run. */
+/** Diagnostic text retained as an input for archived-run compatibility cases. */
 export const OK_LOG = 'model: gpt-5.6-sol\nsandbox: workspace-write\ntokens used\n104 098\n';
 
 /** A build result that satisfies the schema, so a test can vary only what it is about. */
@@ -54,15 +54,22 @@ export function makeRun({
   args,
 } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-run-'));
-  fs.writeFileSync(path.join(dir, 'raw.log'), log);
-  if (stderr !== undefined || events !== undefined) {
-    fs.writeFileSync(path.join(dir, 'stderr.log'), stderr ?? '');
+  const writesDiagnostic = stderr === undefined && log !== OK_LOG;
+  const quotaEvent = writesDiagnostic && args === undefined && /rate.?limit|quota|429/i.test(log)
+    ? { type: 'error', message: log.trim() }
+    : null;
+  if (stderr !== undefined || events !== undefined || writesDiagnostic) {
+    fs.writeFileSync(path.join(dir, 'stderr.log'), stderr ?? (writesDiagnostic ? log : ''));
   }
   if (events !== undefined) {
-    const jsonl = Array.isArray(events)
+    const jsonl = events === null
+      ? null
+      : Array.isArray(events)
       ? events.map((event) => JSON.stringify(event)).join('\n') + (events.length ? '\n' : '')
       : String(events);
-    fs.writeFileSync(path.join(dir, 'events.jsonl'), jsonl);
+    if (jsonl !== null) fs.writeFileSync(path.join(dir, 'events.jsonl'), jsonl);
+  } else if (quotaEvent) {
+    fs.writeFileSync(path.join(dir, 'events.jsonl'), `${JSON.stringify(quotaEvent)}\n`);
   }
   if (args !== undefined) fs.writeFileSync(path.join(dir, 'worker.json'), JSON.stringify({ args }));
   if (status !== undefined) fs.writeFileSync(path.join(dir, 'status.json'), JSON.stringify(status));
@@ -119,7 +126,8 @@ export function makeChainRoot(runs) {
     if (run.after !== undefined) fs.writeFileSync(path.join(dir, 'state-after.txt'), run.after);
     if (run.branchBefore !== undefined) fs.writeFileSync(path.join(dir, 'branch-before.txt'), run.branchBefore);
     if (run.result !== undefined) {
-      fs.writeFileSync(path.join(dir, 'raw.log'), OK_LOG);
+      fs.writeFileSync(path.join(dir, 'events.jsonl'), `${JSON.stringify({ type: 'thread.started', thread_id: 'fixture' })}\n`);
+      fs.writeFileSync(path.join(dir, 'stderr.log'), '');
       fs.writeFileSync(path.join(dir, 'result.json'), JSON.stringify(run.result));
     }
   }

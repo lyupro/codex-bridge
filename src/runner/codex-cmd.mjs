@@ -1,6 +1,6 @@
 /**
  * Everything about invoking the `codex` CLI: which flags a run gets, whether the CLI is
- * there at all, and how its output reaches raw.log, events.jsonl and stderr.log.
+ * there at all, and how its JSONL stdout reaches events.jsonl while stderr stays separate.
  *
  * The flag sets below are the ones the three agent files carried before, verbatim.
  * Sandboxes especially must not drift: codex-scout is read-only through
@@ -47,25 +47,23 @@ export function stopCodex(child, onWindows = process.platform === 'win32') {
  * shell. One command line through cmd.exe keeps a single code path; every argument is
  * quoted here, and unsafeForCmd() has already refused the ones that cannot be.
  *
- * The log is streamed, not collected: spawnSync kept every byte in memory and wrote the file
- * only on return, so a worker killed at minute twelve left raw.log missing entirely and the
- * run became unexplainable (2026-07-31, run 114736). Now whatever Codex has already said is
- * on disk, and the task text is pushed into stdin by hand since there is no `input` option
- * outside spawnSync. MAX_LOG stays the ceiling; past it the log is cut with a note rather
- * than the run being killed — a huge log is a diagnosis, not a reason to lose the work.
- * stderr is also copied to its own bounded file: raw.log deliberately mixes both streams for
- * human diagnosis, but a large stdout must not hide a transport error from the verdict. The
- * JSONL stream gets a separate file because a line cut in half cannot be parsed back safely.
+ * Stdout is streamed, not collected: spawnSync kept every byte in memory and wrote the file
+ * only on return, so a worker killed at minute twelve left events.jsonl missing entirely and
+ * the run became unexplainable (2026-07-31, run 114736). Now whatever Codex has already said
+ * is on disk, and the task text is pushed into stdin by hand since there is no `input` option
+ * outside spawnSync. MAX_LOG stays the ceiling; past it the stream is cut rather than the run
+ * being killed — a huge stream is a diagnosis, not a reason to lose the work. stderr has its
+ * own bounded file because text outside the JSONL protocol must remain distinguishable from
+ * protocol events, and a line cut in half cannot be parsed back safely.
  */
-export function runCodex(args, taskText, logPath, budgetMinutes) {
+export function runCodex(args, taskText, eventsPath, budgetMinutes) {
   const onWindows = process.platform === 'win32';
   const deadlineMs =
     typeof budgetMinutes === 'number' && Number.isFinite(budgetMinutes) && budgetMinutes > 0
       ? budgetMinutes * 60 * 1000
       : null;
-  const log = fs.createWriteStream(logPath, { flags: 'a' });
-  const stderrLog = fs.createWriteStream(path.join(path.dirname(logPath), 'stderr.log'), { flags: 'a' });
-  const eventsLog = fs.createWriteStream(path.join(path.dirname(logPath), 'events.jsonl'), { flags: 'a' });
+  const stderrLog = fs.createWriteStream(path.join(path.dirname(eventsPath), 'stderr.log'), { flags: 'a' });
+  const eventsLog = fs.createWriteStream(eventsPath, { flags: 'a' });
   const appendTo = (stream, label) => {
     let written = 0;
     let cut = false;
@@ -84,7 +82,6 @@ export function runCodex(args, taskText, logPath, budgetMinutes) {
       stream.write(slice);
     };
   };
-  const append = appendTo(log, 'log');
   const appendStderr = appendTo(stderrLog, 'stderr log');
   const appendEvents = (() => {
     let pending = Buffer.alloc(0);
@@ -142,11 +139,9 @@ export function runCodex(args, taskText, logPath, budgetMinutes) {
     let exited = false;
     let elapsedMs = 0;
     const startedAt = Date.now();
-    child.stdout.on('data', append);
     child.stdout.on('data', appendEvents.append);
     child.stdout.on('end', appendEvents.finish);
     child.stderr.on('data', (chunk) => {
-      append(chunk);
       appendStderr(chunk);
     });
     // A log file that cannot be opened must not leave Codex spending quota unattended. Without
@@ -156,15 +151,14 @@ export function runCodex(args, taskText, logPath, budgetMinutes) {
     const onStreamError = (which) => (err) => {
       failed = true;
       const note = `\nrun-codex: cannot write ${which}: ${err.message}\n`;
-      if (which !== 'raw.log' && log.writable) log.write(note);
+      if (which !== 'stderr.log' && stderrLog.writable) stderrLog.write(note);
       stopCodex(child, onWindows);
     };
-    log.on('error', onStreamError('raw.log'));
     stderrLog.on('error', onStreamError('stderr.log'));
     eventsLog.on('error', onStreamError('events.jsonl'));
     child.on('error', (err) => {
       failed = true;
-      append(`\nrun-codex: ${err.message}\n`);
+      appendStderr(`\nrun-codex: ${err.message}\n`);
     });
     // 'exit' fires when the process is gone; 'close' waits for stdio, which a grandchild can
     // hold open past the deadline. Judging by 'close' would let the timer brand a run that
@@ -186,7 +180,7 @@ export function runCodex(args, taskText, logPath, budgetMinutes) {
         if (!exited) {
           stoppedOnDeadline = true;
           elapsedMs = elapsed;
-          log.write(
+          stderrLog.write(
             `\nrun-codex: run stopped on its deadline after ${elapsed} ms (budget ${deadlineMs} ms)\n`,
           );
         }
@@ -209,7 +203,6 @@ export function runCodex(args, taskText, logPath, budgetMinutes) {
       if (deadlineTimer) clearTimeout(deadlineTimer);
       if (!stoppedOnDeadline) elapsedMs = Date.now() - startedAt;
       const exit = failed || code === null ? 1 : code;
-      await close(log);
       await close(stderrLog);
       await close(eventsLog);
       resolve({ exit, stoppedOnDeadline, elapsedMs });

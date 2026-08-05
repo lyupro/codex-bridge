@@ -22,6 +22,8 @@ const runChanges = (runDir) =>
     changedPaths(readText(path.join(runDir, 'state-before.txt')), readText(path.join(runDir, 'state-after.txt'))),
   );
 
+const logCommand = (runDir) => `codex-bridge log ${runDir}`;
+
 export const AGENTS = {
   'codex-scout': {
     result: 'result.json',
@@ -51,7 +53,7 @@ function scoutReply(ctx) {
     ...(coverage ? [`Coverage: ${coverage}`] : []),
     `Key finding: ${top ? `${line(top.fact, 130)} (${line(top.where, 60)})` : 'no findings listed'}`,
     `Unresolved: ${unknowns.length ? line(unknowns.join('; '), 160) : 'none'}`,
-    `Report: ${ctx.file('report.md')} · Log: ${ctx.file('raw.log')}`,
+    `Report: ${ctx.file('report.md')} · Log: ${logCommand(ctx.runDir)}`,
   ];
 }
 
@@ -91,7 +93,7 @@ function buildReply(ctx) {
       : []),
     `Verification: ${verify} — ${verdict}`,
     `Flags: ${flags.length ? `${flags.length} TODO/skip — ${line(flags.slice(0, 3).join(' | '), 140)}` : 'none'}`,
-    `Report: ${ctx.file('report.md')} · Log: ${ctx.file('raw.log')}`,
+    `Report: ${ctx.file('report.md')} · Log: ${logCommand(ctx.runDir)}`,
   ];
 }
 
@@ -106,20 +108,20 @@ function reviewReply(ctx) {
     `OK — verdict ${line(r.verdict, 40)}`,
     `Findings: critical ${counts.critical} · high ${counts.high} · medium ${counts.medium} · low ${counts.low}`,
     `Top: ${top ? `${top.severity} ${line(top.file, 80)}:${top.line_start} — ${line(top.title, 90)}` : 'no critical or high findings'}`,
-    `Report: ${ctx.file(path.basename(ctx.resultPath))} · Log: ${ctx.file('raw.log')}`,
+    `Report: ${ctx.file(path.basename(ctx.resultPath))} · Log: ${logCommand(ctx.runDir)}`,
   ];
 }
 
 export function failReply(ctx, meta) {
   return [
     `FAIL — ${line(meta.reason, 170)}`,
-    `Artifacts: raw.log ${meta.log_bytes} B · ${path.basename(ctx.resultPath)} ${meta.result_ok ? 'filled' : 'empty or missing'} · exit=${meta.exit}`,
+    `Artifacts: events.jsonl ${meta.events_bytes} B · stderr.log ${meta.stderr_bytes} B · ${path.basename(ctx.resultPath)} ${meta.result_ok ? 'filled' : 'empty or missing'} · exit=${meta.exit}`,
     // A failed build says what it left behind, exactly as a LIMIT does. "The work was not
     // done" is not "the tree is clean": a run can write half a change and then declare fail,
     // and the orchestrator has to know whether there is something to revert before it decides
     // anything else.
     ...(ctx.agent === 'codex-build' ? [`Worktree: ${worktreeState(ctx.runDir)}`] : []),
-    `Log: ${ctx.file('raw.log')}`,
+    `Log: ${logCommand(ctx.runDir)}`,
   ];
 }
 
@@ -151,6 +153,6 @@ export function limitReply(ctx, meta) {
       `Worktree: ${touched.length ? `has unfinished changes (${touched.length}), see git-after.txt` : 'no new changes'}`,
     );
   }
-  rows.push(`Log: ${ctx.file('raw.log')}`);
+  rows.push(`Log: ${logCommand(ctx.runDir)}`);
   return rows;
 }

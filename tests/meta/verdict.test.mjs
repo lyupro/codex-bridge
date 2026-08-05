@@ -5,6 +5,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import path from 'node:path';
 import { collect } from '../../src/write-meta.mjs';
 import { outOfScope, reportVersusWork } from '../../src/meta/verdict.mjs';
@@ -144,33 +145,62 @@ test('reportVersusWork fails a changed tree the report never mentions', () => {
 });
 
 // The incident behind Plan_15: the quota line came from this package's own test fixtures,
-// which a run had printed into raw.log while grepping the repository.
+// which a run had printed as diagnostic text while grepping the repository.
 const QUOTA = 'ERROR: rate limit exceeded for this account\n';
 const emptyBuild = { summary: '', changes: [], report_markdown: '' };
 
-test('a quoted quota error in raw.log is not a LIMIT when stderr.log exists', () => {
+test('stderr quoting a quota is not LIMIT when events carry no transport error', () => {
   const dir = makeRun({
-    log: `grep output: "${QUOTA.trim()}"\n`,
-    stderr: '',
+    stderr: QUOTA,
+    args: ['exec', '--json'],
+    events: [{ type: 'item.completed', item: { type: 'agent_message', text: QUOTA } }],
     result: emptyBuild,
   });
   const { meta } = collect(dir, 'codex-build', 1);
   assert.equal(meta.status, 'FAIL');
+  assert.doesNotMatch(meta.reason, /abandoned at startup/);
 });
 
-// The other half of the same rule: narrowing the search must not cost LIMIT its real cases,
-// or the runner would answer FAIL to a wall it cannot push and the orchestrator would retry.
-test('a quota error on the transport stream is still a LIMIT', () => {
-  const dir = makeRun({ log: 'reading files\n', stderr: QUOTA, result: emptyBuild });
+/**
+ * Order guard. "Abandoned at startup" sits above every accusation about the run's conduct,
+ * where the empty-raw.log check sat before it: HEAD moving in the window of a run that never
+ * started is somebody else's commit, and answering that with "commit made despite prohibition"
+ * would blame a run that did not exist.
+ */
+test('a run that never started is abandoned, not accused of the commit in its window', () => {
+  const dir = makeRun({
+    stderr: '',
+    args: ['exec', '--json'],
+    events: [],
+    result: emptyBuild,
+    headBefore: 'abcdef1234567890\n',
+    headAfter: 'fedcba0987654321\n',
+  });
+
+  const { meta } = collect(dir, 'codex-build', 1);
+
+  assert.equal(meta.status, 'FAIL');
+  assert.match(meta.reason, /abandoned at startup/);
+  assert.doesNotMatch(meta.reason, /commit made/);
+});
+
+test('a structured quota error is still a LIMIT', () => {
+  const dir = makeRun({
+    stderr: QUOTA,
+    args: ['exec', '--json'],
+    events: [{ type: 'error', message: QUOTA }],
+    result: emptyBuild,
+  });
   const { meta } = collect(dir, 'codex-build', 1);
   assert.equal(meta.status, 'LIMIT');
   assert.match(meta.reason, /rate limit/);
 });
 
-test('a deadline verdict outranks quota text in both logs', () => {
+test('a deadline verdict outranks a structured quota error', () => {
   const dir = makeRun({
-    log: QUOTA,
     stderr: QUOTA,
+    args: ['exec', '--json'],
+    events: [{ type: 'error', message: QUOTA }],
     status: { stopped_on_deadline: true, elapsed_ms: 60012 },
     result: emptyBuild,
   });
@@ -180,29 +210,51 @@ test('a deadline verdict outranks quota text in both logs', () => {
   assert.doesNotMatch(meta.reason, /rate limit/);
 });
 
-test('an archived run without stderr.log keeps the raw.log quota verdict', () => {
-  const dir = makeRun({ log: QUOTA, result: emptyBuild });
-  const { meta } = collect(dir, 'codex-build', 1);
-  assert.equal(meta.status, 'LIMIT');
-});
-
-// Existence is the contract marker, never size: a run whose stderr stayed silent is a new
-// run with nothing to report, not an old run to be judged by its stdout.
-test('an empty stderr.log is a silent new run, not an archived run', () => {
-  const dir = makeRun({ log: QUOTA, stderr: '', result: emptyBuild });
+test('an archived run without --json is judged without transport damage', () => {
+  const dir = makeRun({ args: ['exec'], stderr: '', result: emptyBuild });
   const { meta } = collect(dir, 'codex-build', 1);
   assert.equal(meta.status, 'FAIL');
+  assert.doesNotMatch(meta.reason, /artifacts disagree/);
 });
 
-// The archived-run fallback is the one way this fix can be undone from the outside: a NEW run
-// that lost its stderr.log would be judged by raw.log again, quietly. status.json proves which
-// contract the run ran under, so the two artifacts have to agree or neither is believed.
-test('a new run missing its stderr.log is a failure, not an archived run', () => {
+test('no events and empty stderr means abandoned at startup', () => {
+  const dir = makeRun({ args: ['exec', '--json'], events: [], stderr: '', result: emptyBuild });
+  const { meta } = collect(dir, 'codex-build', 1);
+  assert.equal(meta.status, 'FAIL');
+  assert.match(meta.reason, /abandoned at startup/);
+});
+
+test('no events but non-empty stderr is a plain FAIL with the stderr reason', () => {
   const dir = makeRun({
-    log: QUOTA,
+    args: ['exec', '--json'],
+    events: [],
+    stderr: 'panic: worker died before producing a result\n',
+    result: emptyBuild,
+  });
+  const { meta } = collect(dir, 'codex-build', 1);
+  assert.equal(meta.status, 'FAIL');
+  assert.match(meta.reason, /panic: worker died/);
+  assert.doesNotMatch(meta.reason, /abandoned at startup/);
+});
+
+test('a new run missing events.jsonl is a damaged-evidence failure', () => {
+  const dir = makeRun({ args: ['exec', '--json'], stderr: '', result: emptyBuild });
+  const { meta } = collect(dir, 'codex-build', 1);
+  assert.equal(meta.status, 'FAIL');
+  assert.match(meta.reason, /evidence was damaged/);
+  assert.match(meta.reason, /quota refusal cannot be told apart/);
+});
+
+// A deadline watcher and stderr.log are produced by the same worker. Removing stderr.log after
+// that fact is recorded must remain a consistency failure, even when the event stream exists.
+test('a deadline watcher without stderr.log is a damaged-evidence failure', () => {
+  const dir = makeRun({
+    args: ['exec', '--json'],
+    events: [],
     status: { stopped_on_deadline: false, elapsed_ms: 4200 },
     result: emptyBuild,
   });
+  fs.rmSync(path.join(dir, 'stderr.log'));
   const { meta } = collect(dir, 'codex-build', 1);
   assert.equal(meta.status, 'FAIL');
   assert.match(meta.reason, /artifacts disagree/);

@@ -25,7 +25,8 @@ import { splitRunChanges } from './environment.mjs';
 import { readEvents } from './events.mjs';
 import { outcomeGap } from './outcome.mjs';
 import { deadlineReason } from './deadline.mjs';
-import { limitSignal, transportGap } from './transport.mjs';
+import { startupGap } from './startup.mjs';
+import { transportGap } from './transport.mjs';
 
 // How much prose an answer must carry once coordinates and paths are subtracted. Measured
 // on the scout run of 2026-07-30 that replied with a table of `file.ts:60-79` rows: every
@@ -40,10 +41,11 @@ const MIN_SINGLE_SUBSTANCE_CHARS = 200;
  * the literally-last line is often just `}` — useless in a one-line reply. Prefer the
  * error message field, then any error line, then the last line that carries text.
  */
-const reasonFrom = (log) => {
-  const messages = [...log.matchAll(/"message"\s*:\s*"((?:[^"\\]|\\.)*)"/g)];
+const reasonFrom = (runDir) => {
+  const stderr = readText(path.join(runDir, 'stderr.log'));
+  const messages = [...stderr.matchAll(/"message"\s*:\s*"((?:[^"\\]|\\.)*)"/g)];
   if (messages.length) return line(messages[messages.length - 1][1].replace(/\\"/g, '"'));
-  const lines = log.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const lines = stderr.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   const errorLine = [...lines].reverse().find((l) => /error|failed|denied|refused/i.test(l));
   return line(errorLine || lines[lines.length - 1] || '');
 };
@@ -259,17 +261,18 @@ function branchDuringRun(runDir) {
 }
 
 /**
- * Status comes from artifacts, never from intent. An abandoned run leaves raw.log at
- * zero bytes, and that is a FAIL with its own reason — not a retry hint. An empty
- * result with a quota signal in the log is LIMIT; without one it is FAIL.
+ * Status comes from artifacts, never from intent. A current run with an events stream but no
+ * events and silent stderr is abandoned at startup; an empty result with no structured
+ * transport error is FAIL, because diagnostic text cannot turn a quoted limit into LIMIT.
  */
-export function resolveStatus({ log, logBytes, resultOk, exit, agent, result, runDir, events }) {
-  if (!logBytes) {
-    return {
-      status: 'FAIL',
-      reason: 'run abandoned at startup: raw.log is empty, Codex did not run',
-    };
-  }
+export function resolveStatus({ resultOk, exit, agent, result, runDir, events }) {
+  const eventData = events ?? readEvents(runDir);
+  // First, as the empty raw.log check was before it: a run that never started cannot be graded
+  // for what happened in its window. Below this line sit accusations about the run's conduct —
+  // a commit, a moved branch — and HEAD moving while Codex was absent is somebody else's doing.
+  // Blaming a run that did not exist is the same class of lie every other check here prevents.
+  const startup = startupGap(runDir, eventData);
+  if (startup) return { status: 'FAIL', reason: startup };
   // Ahead of everything else, including LIMIT: a commit under an explicit ban is a broken
   // contract, not a grade for the work. Whatever else the run produced, the orchestrator has
   // to learn first that history moved under it.
@@ -283,9 +286,8 @@ export function resolveStatus({ log, logBytes, resultOk, exit, agent, result, ru
   if (deadline) return { status: 'FAIL', reason: deadline };
   // Damaged transport evidence is not archived transport evidence. Checked before LIMIT, since
   // the fallback it guards is what LIMIT would otherwise use.
-  const transport = transportGap(runDir);
+  const transport = transportGap(runDir, eventData);
   if (transport) return { status: 'FAIL', reason: transport };
-  const eventData = events ?? readEvents(runDir);
   // Only a run with nothing to show is judged by its transport errors. The CLI prints an error
   // event for a dropped stream and then retries it, so a run that recovered, filled its result
   // and exited zero did the job — turning that survived error into a verdict would fail honest
@@ -299,14 +301,10 @@ export function resolveStatus({ log, logBytes, resultOk, exit, agent, result, ru
     };
   }
   if (!resultOk) {
-    if (!eventData.hasEvents) {
-      const limit = limitSignal(runDir, log);
-      if (limit) return { status: 'LIMIT', reason: limit };
-    }
-    return { status: 'FAIL', reason: reasonFrom(log) || `result is empty, exit=${exit}` };
+    return { status: 'FAIL', reason: reasonFrom(runDir) || `result is empty, exit=${exit}` };
   }
   if (exit !== 0) {
-    return { status: 'FAIL', reason: `result exists, but exit=${exit}: ${reasonFrom(log)}` };
+    return { status: 'FAIL', reason: `result exists, but exit=${exit}: ${reasonFrom(runDir)}` };
   }
   // A red verification is a failed job, not an OK with a footnote. The orchestrator
   // reads the first word; burying "fail" in line three is how a broken build passes.

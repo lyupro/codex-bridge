@@ -30,10 +30,10 @@ export async function worker(runDir) {
   const run = await runCodex(
     cfg.args,
     fs.readFileSync(path.join(runDir, 'task.md'), 'utf8'),
-    path.join(runDir, 'raw.log'),
+    path.join(runDir, 'events.jsonl'),
     cfg.budget_minutes,
   );
-  // This runner-owned fact cannot be forged through raw.log, which Codex can write (Plan_15).
+  // This runner-owned fact cannot be forged through events.jsonl, which Codex can write.
   // Written even when no deadline fired: `false` is the marker that a runner was watching,
   // and an archived run with no field at all must stay distinguishable from a run that lived.
   writeStatus(runDir, {

@@ -5,6 +5,8 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { readEvents } from '../../src/meta/events.mjs';
 import { buildResult, makeRun } from './test-fixtures.mjs';
 import { collect } from '../../src/write-meta.mjs';
@@ -69,4 +71,35 @@ test('model and sandbox come from the runner arguments when events are present',
 
   assert.equal(meta.model, 'configured-model');
   assert.equal(meta.sandbox, 'read-only');
+});
+
+test('readEvents distinguishes an empty stream from a missing stream', () => {
+  const empty = makeRun({ events: [], stderr: '' });
+  const missing = makeRun({ stderr: '' });
+
+  assert.deepEqual(
+    { hasStream: readEvents(empty).hasStream, hasEvents: readEvents(empty).hasEvents },
+    { hasStream: true, hasEvents: false },
+  );
+  assert.deepEqual(
+    { hasStream: readEvents(missing).hasStream, hasEvents: readEvents(missing).hasEvents },
+    { hasStream: false, hasEvents: false },
+  );
+});
+
+test('meta.json accounts for events.jsonl and stderr.log without log_bytes', () => {
+  const dir = makeRun({
+    args: ['exec', '--json'],
+    events: [{ type: 'thread.started', thread_id: 'meta-1' }],
+    stderr: 'diagnostic text\n',
+    result: buildResult([]),
+  });
+
+  collect(dir, 'codex-build', 0);
+  const meta = JSON.parse(fs.readFileSync(path.join(dir, 'meta.json'), 'utf8'));
+
+  assert.equal(meta.events_bytes, fs.statSync(path.join(dir, 'events.jsonl')).size);
+  assert.equal(meta.stderr_bytes, fs.statSync(path.join(dir, 'stderr.log')).size);
+  assert.equal('log_bytes' in meta, false);
+  assert.equal(fs.existsSync(path.join(dir, 'raw.log')), false);
 });

@@ -373,7 +373,7 @@ test('a run does not see its own artifacts as work in the tree it measures', () 
     fs.writeFileSync(path.join(runFolder, 'state-after.txt'), 'one\ntwo\n');
     // Untracked files on both sides of the prefix.
     fs.writeFileSync(path.join(repo, 'agents', 'fresh.md'), 'new\n');
-    fs.writeFileSync(path.join(runFolder, 'raw.log'), 'codex output\n');
+    fs.writeFileSync(path.join(runFolder, 'events.jsonl'), 'codex output\n');
 
     const snapshot = worktreeSnapshot(repo);
 

@@ -132,7 +132,7 @@ process.stderr.write('transport error\\n');
 setInterval(() => {}, 1000);
 `,
     async (root) => {
-      const logPath = path.join(root, 'raw.log');
+      const eventsPath = path.join(root, 'events.jsonl');
       const marker = path.join(root, 'grandchild-alive');
       const pidPath = path.join(root, 'grandchild.pid');
       const codexPidPath = path.join(root, 'codex.pid');
@@ -141,7 +141,7 @@ setInterval(() => {}, 1000);
       process.env.CODEX_DEADLINE_PID = pidPath;
       process.env.CODEX_DEADLINE_CODEX_PID = codexPidPath;
       try {
-        const result = runCodex([], 'deadline test', logPath, 0.01);
+        const result = runCodex([], 'deadline test', eventsPath, 0.01);
         assert.equal(await waitFor(() => fs.existsSync(pidPath)), true);
         const run = await result;
         assert.equal(run.exit, 1);
@@ -150,13 +150,13 @@ setInterval(() => {}, 1000);
         const pid = Number(fs.readFileSync(pidPath, 'utf8'));
         assert.equal(await waitFor(() => !processAlive(pid)), true);
         await wait(1_100);
-        const log = fs.readFileSync(logPath, 'utf8');
+        const events = fs.readFileSync(eventsPath, 'utf8');
         const stderr = fs.readFileSync(path.join(root, 'stderr.log'), 'utf8');
-        assert.match(log, /started/);
-        assert.match(log, /transport error/);
-        assert.equal(stderr, 'transport error\n');
+        assert.match(events, /started/);
+        assert.doesNotMatch(events, /transport error/);
+        assert.match(stderr, /transport error/);
+        assert.match(stderr, /run stopped on its deadline after \d+ ms/);
         assert.equal(fs.existsSync(path.join(root, 'stderr.log')), true);
-        assert.match(log, /run stopped on its deadline after \d+ ms/);
         assert.equal(fs.existsSync(marker), false);
         if (process.platform === 'win32') {
           assert.equal(taskkillCalls.length, 1);
@@ -178,13 +178,13 @@ test('an early exit is not replaced by a deadline kill', async () => {
   await withFakeCodex(
     "process.stdout.write('finished early\\n'); process.exit(23);\n",
     async (root) => {
-      const logPath = path.join(root, 'raw.log');
-      const run = await runCodex([], 'early exit test', logPath, 0.05);
+      const eventsPath = path.join(root, 'events.jsonl');
+      const run = await runCodex([], 'early exit test', eventsPath, 0.05);
       assert.equal(run.exit, 23);
       assert.equal(run.stoppedOnDeadline, false);
-      const log = fs.readFileSync(logPath, 'utf8');
-      assert.match(log, /finished early/);
-      assert.doesNotMatch(log, /stopped on its deadline/);
+      const events = fs.readFileSync(eventsPath, 'utf8');
+      assert.match(events, /finished early/);
+      assert.doesNotMatch(events, /stopped on its deadline/);
       assert.equal(fs.readFileSync(path.join(root, 'stderr.log'), 'utf8'), '');
     },
   );
@@ -206,11 +206,11 @@ process.stdout.write('parent done\\n');
 process.exit(7);
 `,
     async (root) => {
-      const logPath = path.join(root, 'raw.log');
-      const run = await runCodex([], 'late close test', logPath, 0.02);
+      const eventsPath = path.join(root, 'events.jsonl');
+      const run = await runCodex([], 'late close test', eventsPath, 0.02);
       assert.equal(run.exit, 7);
       assert.equal(run.stoppedOnDeadline, false);
-      assert.doesNotMatch(fs.readFileSync(logPath, 'utf8'), /stopped on its deadline/);
+      assert.doesNotMatch(fs.readFileSync(eventsPath, 'utf8'), /stopped on its deadline/);
     },
   );
 });
@@ -233,7 +233,7 @@ process.stderr.write('transport noise\\n');
 setInterval(() => {}, 1000);
 `,
     async (root) => {
-      const logPath = path.join(root, 'raw.log');
+      const eventsPath = path.join(root, 'events.jsonl');
       const pidPath = path.join(root, 'codex.pid');
       // A directory where the file belongs: createWriteStream fails with EISDIR, which is the
       // same event shape as a permission or disk failure and needs no privileges to stage.
@@ -243,7 +243,7 @@ setInterval(() => {}, 1000);
       try {
         // A short budget on purpose: if the stream failure stops stopping Codex, this test must
         // fail in seconds rather than hang the suite until a realistic deadline expires.
-        const run = await runCodex([], 'stderr failure test', logPath, 0.25);
+        const run = await runCodex([], 'stderr failure test', eventsPath, 0.25);
         assert.equal(run.exit, 1);
         assert.equal(run.stoppedOnDeadline, false);
         const pid = Number(fs.readFileSync(pidPath, 'utf8'));

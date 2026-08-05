@@ -29,7 +29,7 @@
  * tree and writes the verdict.
  *
  * The split exists because the caller dies long before a 20-25 minute run does. Run
- * `2026-07-31_114736_*` has no raw.log at all while 11+ files were written into the tree: the
+ * `2026-07-31_114736_*` has no events.jsonl at all while 11+ files were written into the tree: the
  * dispatcher's Bash call hit its two-minute timeout, node was killed, spawnSync's buffered
  * output died with it — and Codex kept going, unwatched and unrecorded. Killing that orphan
  * is not the fix either: its edits were the work, and later runs finished on top of them. So
@@ -84,9 +84,9 @@ if (invokedDirectly) {
     const { dir: currentRun, agent: currentAgent } = getRun();
     if (currentRun) {
       try {
-        fs.appendFileSync(path.join(currentRun, 'raw.log'), `\nrun-codex crash: ${err.stack}\n`);
+        fs.appendFileSync(path.join(currentRun, 'stderr.log'), `\nrun-codex crash: ${err.stack}\n`);
         const { reply } = writeFailure(currentRun, currentAgent, `Codex runner crashed: ${err.message}`, [
-          `Log: ${path.join(currentRun, 'raw.log')}`,
+          `Log: codex-bridge log ${currentRun}`,
         ]);
         emitReply(reply);
         process.exit(1);
