@@ -102,6 +102,7 @@ test('uses status facts when meta is missing and keeps unreadable runs as unknow
     verdict: 'finished',
     tokens: null,
     size: recursiveSize(path.join(root, 'legacy', '2026-08-05_110000_fallback')),
+    live: false,
   });
   assert.deepEqual(rows[1], {
     run: '2026-08-05_120000_damaged',
@@ -109,6 +110,7 @@ test('uses status facts when meta is missing and keeps unreadable runs as unknow
     verdict: null,
     tokens: null,
     size: recursiveSize(damaged),
+    live: false,
   });
 });
 

@@ -8,6 +8,7 @@ import { install } from '../cli/install.mjs';
 import { projects } from '../cli/projects.mjs';
 import { read } from '../cli/read.mjs';
 import { packageInfo } from '../cli/manifest.mjs';
+import { prune } from '../cli/prune.mjs';
 import { stop } from '../cli/stop.mjs';
 import { uninstall } from '../cli/uninstall.mjs';
 import { update } from '../cli/update.mjs';
@@ -20,6 +21,8 @@ Usage:
   codex-bridge uninstall [--scope user|project] [--host <path>] [--dry-run]
   codex-bridge doctor [--scope user|project] [--host <path>]
   codex-bridge projects [<name>] [--json]
+  codex-bridge prune <project> [<run>] [--purge] [--older-than <age>] [-f] [--json]
+  codex-bridge prune --all-projects [--older-than <age>] [-f] [--json]
   codex-bridge read <run>
   codex-bridge stop <run>
   codex-bridge --help
@@ -31,6 +34,7 @@ Commands:
   uninstall Remove installed files while preserving run artifacts
   doctor    Diagnose the selected Claude Code host
   projects  List projects or runs from the run store
+  prune     Remove archived transport, or purge selected run folders
   read      Render a run's structured event stream
   stop      Stop a running Codex run and record FAIL`;
 
@@ -93,6 +97,11 @@ export async function main(argv, io = console) {
   }
   if (command === 'projects') {
     const result = projects(rest);
+    io.log(result.output);
+    return result.exitCode;
+  }
+  if (command === 'prune') {
+    const result = await prune(rest);
     io.log(result.output);
     return result.exitCode;
   }

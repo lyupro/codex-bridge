@@ -122,6 +122,9 @@ function publicRun(run) {
     verdict: run.verdict,
     tokens: run.tokens,
     size: run.size,
+    // Liveness travels with the row because a caller must not re-derive it: an abandoned run also
+    // says `running` in its status.json, and only the pid probe tells the two apart.
+    live: run.live,
   };
 }
 
