@@ -105,6 +105,7 @@ export function runCodex(args, taskText, logPath, budgetMinutes) {
     let failed = false;
     let deadlineTimer;
     let stoppedOnDeadline = false;
+    let exited = false;
     let elapsedMs = 0;
     const startedAt = Date.now();
     child.stdout.on('data', append);
@@ -112,9 +113,27 @@ export function runCodex(args, taskText, logPath, budgetMinutes) {
       append(chunk);
       appendStderr(chunk);
     });
+    // A log file that cannot be opened must not leave Codex spending quota unattended. Without
+    // a listener the stream's 'error' event throws inside the worker, and the crash handler
+    // closes the run folder while the CLI keeps running — the orphan of 2026-07-31 with an
+    // extra step. The run dies, but it dies with its child: killing first, recording second.
+    const onStreamError = (which) => (err) => {
+      failed = true;
+      const note = `\nrun-codex: cannot write ${which}: ${err.message}\n`;
+      if (which !== 'raw.log' && log.writable) log.write(note);
+      stopCodex(child, onWindows);
+    };
+    log.on('error', onStreamError('raw.log'));
+    stderrLog.on('error', onStreamError('stderr.log'));
     child.on('error', (err) => {
       failed = true;
       append(`\nrun-codex: ${err.message}\n`);
+    });
+    // 'exit' fires when the process is gone; 'close' waits for stdio, which a grandchild can
+    // hold open past the deadline. Judging by 'close' would let the timer brand a run that
+    // finished honestly at minute 24 as one the runner killed.
+    child.on('exit', () => {
+      exited = true;
     });
     // Codex that dies before reading the order leaves an EPIPE here; the exit code and the
     // log already say what happened, and an unhandled stream error would replace that with
@@ -124,19 +143,38 @@ export function runCodex(args, taskText, logPath, budgetMinutes) {
     if (deadlineMs !== null) {
       deadlineTimer = setTimeout(() => {
         const elapsed = Date.now() - startedAt;
-        stoppedOnDeadline = true;
-        elapsedMs = elapsed;
-        log.write(
-          `\nrun-codex: run stopped on its deadline after ${elapsed} ms (budget ${deadlineMs} ms)\n`,
-        );
+        // The tree is stopped either way — a grandchild still holding stdio is exactly what
+        // the budget exists to end — but only a process that was still alive was killed by
+        // the deadline, and only that run may say so.
+        if (!exited) {
+          stoppedOnDeadline = true;
+          elapsedMs = elapsed;
+          log.write(
+            `\nrun-codex: run stopped on its deadline after ${elapsed} ms (budget ${deadlineMs} ms)\n`,
+          );
+        }
         stopCodex(child, onWindows);
       }, deadlineMs);
     }
-    child.on('close', (code) => {
+    // A stream that already failed never calls back from end(), so waiting on both callbacks in
+    // sequence hangs the worker until its own deadline — the run then costs a full budget and
+    // answers nothing. Closing is best-effort; the verdict is not.
+    const close = (stream) =>
+      new Promise((done) => {
+        if (stream.destroyed || stream.errored) {
+          stream.destroy();
+          done();
+          return;
+        }
+        stream.end(done);
+      });
+    child.on('close', async (code) => {
       if (deadlineTimer) clearTimeout(deadlineTimer);
       if (!stoppedOnDeadline) elapsedMs = Date.now() - startedAt;
       const exit = failed || code === null ? 1 : code;
-      log.end(() => stderrLog.end(() => resolve({ exit, stoppedOnDeadline, elapsedMs })));
+      await close(log);
+      await close(stderrLog);
+      resolve({ exit, stoppedOnDeadline, elapsedMs });
     });
   });
 }

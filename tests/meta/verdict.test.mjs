@@ -193,3 +193,17 @@ test('an empty stderr.log is a silent new run, not an archived run', () => {
   const { meta } = collect(dir, 'codex-build', 1);
   assert.equal(meta.status, 'FAIL');
 });
+
+// The archived-run fallback is the one way this fix can be undone from the outside: a NEW run
+// that lost its stderr.log would be judged by raw.log again, quietly. status.json proves which
+// contract the run ran under, so the two artifacts have to agree or neither is believed.
+test('a new run missing its stderr.log is a failure, not an archived run', () => {
+  const dir = makeRun({
+    log: QUOTA,
+    status: { stopped_on_deadline: false, elapsed_ms: 4200 },
+    result: emptyBuild,
+  });
+  const { meta } = collect(dir, 'codex-build', 1);
+  assert.equal(meta.status, 'FAIL');
+  assert.match(meta.reason, /artifacts disagree/);
+});

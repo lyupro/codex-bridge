@@ -20,10 +20,24 @@ if (process.platform === 'win32') {
     if (command !== 'taskkill') return realSpawnSync(command, args, options);
     taskkillCalls.push({ command, args });
     const pids = [Number(args[1])];
+    // The real /T flag walks the process tree at kill time; this stand-in can only read pids a
+    // fixture wrote down. A kill triggered within milliseconds of spawn (a stream that failed to
+    // open) arrives before the fixture has written its file, so the wait is what keeps the
+    // stand-in honest — without it the grandchild survives here and nowhere else.
+    const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
     for (const key of ['CODEX_DEADLINE_CODEX_PID', 'CODEX_DEADLINE_PID']) {
-      try {
-        pids.push(Number(fs.readFileSync(process.env[key], 'utf8')));
-      } catch {}
+      const file = process.env[key];
+      if (!file) continue;
+      const until = Date.now() + 2_000;
+      for (;;) {
+        try {
+          pids.push(Number(fs.readFileSync(file, 'utf8')));
+          break;
+        } catch {
+          if (Date.now() >= until) break;
+          sleep(25);
+        }
+      }
     }
     for (const pid of pids) {
       try {
@@ -172,6 +186,72 @@ test('an early exit is not replaced by a deadline kill', async () => {
       assert.match(log, /finished early/);
       assert.doesNotMatch(log, /stopped on its deadline/);
       assert.equal(fs.readFileSync(path.join(root, 'stderr.log'), 'utf8'), '');
+    },
+  );
+});
+
+// A process can be gone while its stdio is not: a detached grandchild holds the pipes open, so
+// 'close' arrives late. Judging the deadline by 'close' would brand an honest early exit as a
+// run the runner killed — and that claim is now what the verdict trusts.
+test('a run that exited before its deadline is not marked as stopped by it', async () => {
+  await withFakeCodex(
+    `import { spawn } from 'node:child_process';
+
+const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 3000)'], {
+  detached: true,
+  stdio: 'inherit',
+});
+child.unref();
+process.stdout.write('parent done\\n');
+process.exit(7);
+`,
+    async (root) => {
+      const logPath = path.join(root, 'raw.log');
+      const run = await runCodex([], 'late close test', logPath, 0.02);
+      assert.equal(run.exit, 7);
+      assert.equal(run.stoppedOnDeadline, false);
+      assert.doesNotMatch(fs.readFileSync(logPath, 'utf8'), /stopped on its deadline/);
+    },
+  );
+});
+
+// The orphan of 2026-07-31 with one more step in front of it: an unopenable log file throws a
+// stream 'error' the worker does not survive, the crash handler closes the folder, and Codex
+// keeps spending quota with nobody watching. The run must die WITH its child.
+test('a log file that cannot be opened stops Codex instead of orphaning it', async () => {
+  await withFakeCodex(
+    `import fs from 'node:fs';
+
+fs.writeFileSync(process.env.CODEX_DEADLINE_CODEX_PID, String(process.pid));
+if (process.platform === 'win32') {
+  fs.writeFileSync(process.env.CODEX_DEADLINE_PID, String(process.pid));
+}
+process.stdout.write('started\\n');
+// The failure surfaces on the first write, not on open: a run whose stderr stays silent never
+// touches the broken file at all.
+process.stderr.write('transport noise\\n');
+setInterval(() => {}, 1000);
+`,
+    async (root) => {
+      const logPath = path.join(root, 'raw.log');
+      const pidPath = path.join(root, 'codex.pid');
+      // A directory where the file belongs: createWriteStream fails with EISDIR, which is the
+      // same event shape as a permission or disk failure and needs no privileges to stage.
+      fs.mkdirSync(path.join(root, 'stderr.log'));
+      process.env.CODEX_DEADLINE_CODEX_PID = pidPath;
+      process.env.CODEX_DEADLINE_PID = path.join(root, 'shell.pid');
+      try {
+        // A short budget on purpose: if the stream failure stops stopping Codex, this test must
+        // fail in seconds rather than hang the suite until a realistic deadline expires.
+        const run = await runCodex([], 'stderr failure test', logPath, 0.25);
+        assert.equal(run.exit, 1);
+        assert.equal(run.stoppedOnDeadline, false);
+        const pid = Number(fs.readFileSync(pidPath, 'utf8'));
+        assert.equal(await waitFor(() => !processAlive(pid)), true);
+      } finally {
+        delete process.env.CODEX_DEADLINE_CODEX_PID;
+        delete process.env.CODEX_DEADLINE_PID;
+      }
     },
   );
 });

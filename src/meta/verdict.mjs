@@ -24,16 +24,7 @@ import { chainBaseline } from './chain.mjs';
 import { splitRunChanges } from './environment.mjs';
 import { outcomeGap } from './outcome.mjs';
 import { deadlineReason } from './deadline.mjs';
-
-/**
- * Quota exhaustion is a transport error, not a word. Both markers must sit on the same
- * line: a run whose review text merely discusses "quota exhaustion" is not a run that
- * hit the quota, and reporting LIMIT there tells the orchestrator not to retry when it
- * should. "try again later" is deliberately absent — it is a transient-failure phrase,
- * not a quota one.
- */
-const LIMIT_RE = /rate.?limit|usage limit|usage_limit|quota exceeded|quota exhausted|too many requests|\b429\b/i;
-const ERROR_RE = /\bERROR\b|error[:=]|stream error|"status"\s*:\s*429|rejected|refused|failed/i;
+import { limitSignal, transportGap } from './transport.mjs';
 
 // How much prose an answer must carry once coordinates and paths are subtracted. Measured
 // on the scout run of 2026-07-30 that replied with a table of `file.ts:60-79` rows: every
@@ -54,13 +45,6 @@ const reasonFrom = (log) => {
   const lines = log.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   const errorLine = [...lines].reverse().find((l) => /error|failed|denied|refused/i.test(l));
   return line(errorLine || lines[lines.length - 1] || '');
-};
-
-const limitSignal = (log, runDir) => {
-  const stderrPath = path.join(runDir, 'stderr.log');
-  const source = fs.existsSync(stderrPath) ? readText(stderrPath) : log;
-  const hit = source.split(/\r?\n/).find((l) => LIMIT_RE.test(l) && ERROR_RE.test(l));
-  return hit ? line(hit) : null;
 };
 
 /**
@@ -296,8 +280,12 @@ export function resolveStatus({ log, logBytes, resultOk, exit, agent, result, ru
   }
   const deadline = deadlineReason(runDir);
   if (deadline) return { status: 'FAIL', reason: deadline };
+  // Damaged transport evidence is not archived transport evidence. Checked before LIMIT, since
+  // the fallback it guards is what LIMIT would otherwise use.
+  const transport = transportGap(runDir);
+  if (transport) return { status: 'FAIL', reason: transport };
   if (!resultOk) {
-    const limit = limitSignal(log, runDir);
+    const limit = limitSignal(runDir, log);
     if (limit) return { status: 'LIMIT', reason: limit };
     return { status: 'FAIL', reason: reasonFrom(log) || `result is empty, exit=${exit}` };
   }
