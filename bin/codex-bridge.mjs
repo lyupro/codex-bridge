@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { diagnose, renderDoctor } from '../cli/doctor.mjs';
 import { resolveHost } from '../cli/hosts.mjs';
 import { install } from '../cli/install.mjs';
+import { projects } from '../cli/projects.mjs';
 import { read } from '../cli/read.mjs';
 import { packageInfo } from '../cli/manifest.mjs';
 import { stop } from '../cli/stop.mjs';
@@ -18,6 +19,7 @@ Usage:
   codex-bridge update [--scope user|project] [--host <path>] [--dry-run] [--force]
   codex-bridge uninstall [--scope user|project] [--host <path>] [--dry-run]
   codex-bridge doctor [--scope user|project] [--host <path>]
+  codex-bridge projects [<name>] [--json]
   codex-bridge read <run>
   codex-bridge stop <run>
   codex-bridge --help
@@ -28,6 +30,7 @@ Commands:
   update    Update a recorded codex-bridge installation
   uninstall Remove installed files while preserving run artifacts
   doctor    Diagnose the selected Claude Code host
+  projects  List projects or runs from the run store
   read      Render a run's structured event stream
   stop      Stop a running Codex run and record FAIL`;
 
@@ -85,6 +88,11 @@ export async function main(argv, io = console) {
       return 2;
     }
     const result = read({ run: rest[0] });
+    io.log(result.output);
+    return result.exitCode;
+  }
+  if (command === 'projects') {
+    const result = projects(rest);
     io.log(result.output);
     return result.exitCode;
   }
