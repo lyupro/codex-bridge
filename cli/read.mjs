@@ -1,4 +1,4 @@
-/** Renders a run's structured Codex transport as a readable event-by-event log. */
+/** Renders a run's structured Codex transport as a readable event-by-event report. */
 import { readEvents } from '../src/meta/events.mjs';
 import { runsRoot } from '../src/runner/runs-root.mjs';
 import { resolveRunFolder } from './run-lookup.mjs';
@@ -40,6 +40,16 @@ function usageSection(usage) {
   return `turn.completed\nUsage: ${numbers || 'unavailable'}`;
 }
 
+function serviceSection(event) {
+  if (event.type === 'thread.started') {
+    return `${event.type} · Thread ID: ${event.thread_id ?? 'unknown'}`;
+  }
+  if (event.type === 'item.started' && typeof event.item?.type === 'string' && event.item.type) {
+    return `${event.type} · Item: ${event.item.type}`;
+  }
+  return event.type;
+}
+
 function transportSection(event, transportError) {
   const nested = record(event.error) ? event.error : {};
   const status = event.status ?? nested.status ?? nested.status_code
@@ -56,7 +66,9 @@ function transportSection(event, transportError) {
 function renderEvent(event, transportError) {
   switch (event.type) {
     case 'thread.started':
-      return `thread.started\nThread ID: ${event.thread_id ?? 'unknown'}`;
+    case 'turn.started':
+    case 'item.started':
+      return serviceSection(event);
     case 'item.completed':
       return itemSection(event.item);
     case 'turn.completed':
@@ -65,12 +77,13 @@ function renderEvent(event, transportError) {
     case 'turn.failed':
       return transportSection(event, transportError);
     default:
-      return `${String(event.type || 'unknown event')}: ${compactJson(event)}`;
+      // Unknown events stay visible in full: a future CLI event must never disappear silently.
+      return `${String(event.type || 'unknown event')}: ${compactJson(event, Infinity)}`;
   }
 }
 
-export function log({ run, cwd = process.cwd(), runsRootPath = runsRoot() } = {}) {
-  const lookup = resolveRunFolder({ command: 'log', run, cwd, runsRootPath });
+export function read({ run, cwd = process.cwd(), runsRootPath = runsRoot() } = {}) {
+  const lookup = resolveRunFolder({ command: 'read', run, cwd, runsRootPath });
   if (lookup.error) return result(1, lookup.error);
 
   const eventData = readEvents(lookup.runDir);

@@ -16,7 +16,7 @@ function refusal(command, message) {
 
 /**
  * Resolves the same bare-name lookup for every run command. Keeping the existence check here
- * prevents log from reading a path that stop would reject, and the command parameter keeps
+ * prevents a read command from reading a path that stop would reject, and the command parameter keeps
  * malformed-input advice from naming the command the operator did not invoke.
  */
 export function resolveRunFolder({

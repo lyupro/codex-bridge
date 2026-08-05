@@ -22,7 +22,7 @@ const runChanges = (runDir) =>
     changedPaths(readText(path.join(runDir, 'state-before.txt')), readText(path.join(runDir, 'state-after.txt'))),
   );
 
-const logCommand = (runDir) => `codex-bridge log ${runDir}`;
+const readCommand = (runDir) => `codex-bridge read ${runDir}`;
 
 export const AGENTS = {
   'codex-scout': {
@@ -53,7 +53,7 @@ function scoutReply(ctx) {
     ...(coverage ? [`Coverage: ${coverage}`] : []),
     `Key finding: ${top ? `${line(top.fact, 130)} (${line(top.where, 60)})` : 'no findings listed'}`,
     `Unresolved: ${unknowns.length ? line(unknowns.join('; '), 160) : 'none'}`,
-    `Report: ${ctx.file('report.md')} · Log: ${logCommand(ctx.runDir)}`,
+    `Report: ${ctx.file('report.md')} · Log: ${readCommand(ctx.runDir)}`,
   ];
 }
 
@@ -93,7 +93,7 @@ function buildReply(ctx) {
       : []),
     `Verification: ${verify} — ${verdict}`,
     `Flags: ${flags.length ? `${flags.length} TODO/skip — ${line(flags.slice(0, 3).join(' | '), 140)}` : 'none'}`,
-    `Report: ${ctx.file('report.md')} · Log: ${logCommand(ctx.runDir)}`,
+    `Report: ${ctx.file('report.md')} · Log: ${readCommand(ctx.runDir)}`,
   ];
 }
 
@@ -108,7 +108,7 @@ function reviewReply(ctx) {
     `OK — verdict ${line(r.verdict, 40)}`,
     `Findings: critical ${counts.critical} · high ${counts.high} · medium ${counts.medium} · low ${counts.low}`,
     `Top: ${top ? `${top.severity} ${line(top.file, 80)}:${top.line_start} — ${line(top.title, 90)}` : 'no critical or high findings'}`,
-    `Report: ${ctx.file(path.basename(ctx.resultPath))} · Log: ${logCommand(ctx.runDir)}`,
+    `Report: ${ctx.file(path.basename(ctx.resultPath))} · Log: ${readCommand(ctx.runDir)}`,
   ];
 }
 
@@ -121,7 +121,7 @@ export function failReply(ctx, meta) {
     // and the orchestrator has to know whether there is something to revert before it decides
     // anything else.
     ...(ctx.agent === 'codex-build' ? [`Worktree: ${worktreeState(ctx.runDir)}`] : []),
-    `Log: ${logCommand(ctx.runDir)}`,
+    `Log: ${readCommand(ctx.runDir)}`,
   ];
 }
 
@@ -153,6 +153,6 @@ export function limitReply(ctx, meta) {
       `Worktree: ${touched.length ? `has unfinished changes (${touched.length}), see git-after.txt` : 'no new changes'}`,
     );
   }
-  rows.push(`Log: ${logCommand(ctx.runDir)}`);
+  rows.push(`Log: ${readCommand(ctx.runDir)}`);
   return rows;
 }

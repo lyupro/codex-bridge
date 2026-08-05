@@ -48,6 +48,17 @@ test('sums turn usage, preserves the full usage object, and reads thread id', ()
   assert.equal(parsed.session_id, 'thread-16');
 });
 
+test('exposes the last model content error and falls back to item text', () => {
+  const dir = makeRun({
+    events: [
+      { type: 'item.completed', item: { type: 'error', message: 'first complaint' } },
+      { type: 'item.completed', item: { type: 'error', text: 'last complaint' } },
+    ],
+  });
+
+  assert.equal(readEvents(dir).content_error, 'last complaint');
+});
+
 test('a truncated final JSONL line does not hide earlier events', () => {
   const complete = JSON.stringify({ type: 'thread.started', thread_id: 'thread-17' });
   const dir = makeRun({ events: `${complete}\n{"type":"turn.completed","usage":{"input_tokens":` });

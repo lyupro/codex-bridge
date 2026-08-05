@@ -86,7 +86,7 @@ if (invokedDirectly) {
       try {
         fs.appendFileSync(path.join(currentRun, 'stderr.log'), `\nrun-codex crash: ${err.stack}\n`);
         const { reply } = writeFailure(currentRun, currentAgent, `Codex runner crashed: ${err.message}`, [
-          `Log: codex-bridge log ${currentRun}`,
+          `Log: codex-bridge read ${currentRun}`,
         ]);
         emitReply(reply);
         process.exit(1);

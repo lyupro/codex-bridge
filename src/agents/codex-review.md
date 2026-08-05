@@ -162,7 +162,7 @@ ATTACH=<artifact root>\myproject\2026-07-30_1412_review-auth started=2026-07-30T
 OK — verdict needs-attention
 Findings: critical 0 · high 1 · medium 2 · low 3
 Top: high src/api/auth.ts:88 — The promise is not awaited, and the error is lost
-Report: ...\review.json · Log: codex-bridge log ...\2026-08-05_120000_slug
+Report: ...\review.json · Log: codex-bridge read ...\2026-08-05_120000_slug
 ```
 
 Incorrect — "I analyzed the changes manually because Codex did not perform the review correctly,"

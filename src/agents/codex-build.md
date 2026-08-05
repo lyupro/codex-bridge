@@ -204,7 +204,7 @@ OK — Added retry to the fetch helper and a timeout test
 Files: 2 changed · src/net/fetch.ts, src/net/fetch.test.ts
 Verification: npm test — pass
 Flags: none
-Report: ...\report.md · Log: codex-bridge log ...\2026-08-05_120000_slug
+Report: ...\report.md · Log: codex-bridge read ...\2026-08-05_120000_slug
 ```
 
 Incorrect — "Codex failed, so I finished it myself," followed by a retelling of the diff.

@@ -71,6 +71,22 @@ function usageOf(events) {
   return { tokens, usage };
 }
 
+/**
+ * Finds the last content error emitted by the model.
+ *
+ * The 2026-08-05 live probe put policy rejections in stderr on a healthy run, so the
+ * model's own complaint must stay separate from that noisy diagnostic stream.
+ */
+export function contentErrorOf(events) {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event?.type !== 'item.completed' || !record(event.item) || event.item.type !== 'error') continue;
+    const value = typeof event.item.message === 'string' ? event.item.message : event.item.text;
+    return typeof value === 'string' ? compact(value) : '';
+  }
+  return null;
+}
+
 function payloadOf(event) {
   const source =
     event.type === 'error'
@@ -134,6 +150,7 @@ export function readEvents(runDir) {
     tokens: accounting.tokens,
     usage: accounting.usage,
     session_id: started ? String(started.thread_id) : null,
+    content_error: contentErrorOf(events),
     transport_error,
   };
 }

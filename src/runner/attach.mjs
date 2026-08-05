@@ -112,7 +112,7 @@ export async function attach({ runsRoot, repo, slug, taskHash, orderId, chain, i
     return exitCodeFor(meta.status);
   }
   const { reply } = writeFailure(runDir, candidate.status.agent, 'run worker process died without recording a verdict', [
-    `Log: codex-bridge log ${runDir}`,
+    `Log: codex-bridge read ${runDir}`,
     'Any Codex changes remain in the tree — check them with git status',
   ]);
   console.log(reply);

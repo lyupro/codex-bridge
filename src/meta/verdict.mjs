@@ -27,6 +27,7 @@ import { outcomeGap } from './outcome.mjs';
 import { deadlineReason } from './deadline.mjs';
 import { startupGap } from './startup.mjs';
 import { transportGap } from './transport.mjs';
+import { reasonFrom } from './reason.mjs';
 
 // How much prose an answer must carry once coordinates and paths are subtracted. Measured
 // on the scout run of 2026-07-30 that replied with a table of `file.ts:60-79` rows: every
@@ -35,20 +36,6 @@ import { transportGap } from './transport.mjs';
 // the single-question mode, where one question means the whole answer is the essay.
 const MIN_SUBSTANCE_CHARS = 80;
 const MIN_SINGLE_SUBSTANCE_CHARS = 200;
-
-/**
- * The honest reason for a failure. Codex prints API errors as pretty-printed JSON, so
- * the literally-last line is often just `}` — useless in a one-line reply. Prefer the
- * error message field, then any error line, then the last line that carries text.
- */
-const reasonFrom = (runDir) => {
-  const stderr = readText(path.join(runDir, 'stderr.log'));
-  const messages = [...stderr.matchAll(/"message"\s*:\s*"((?:[^"\\]|\\.)*)"/g)];
-  if (messages.length) return line(messages[messages.length - 1][1].replace(/\\"/g, '"'));
-  const lines = stderr.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-  const errorLine = [...lines].reverse().find((l) => /error|failed|denied|refused/i.test(l));
-  return line(errorLine || lines[lines.length - 1] || '');
-};
 
 /**
  * Which touched paths the task never authorised. The scope exists because prose does not
@@ -295,16 +282,20 @@ export function resolveStatus({ resultOk, exit, agent, result, runDir, events })
   const transportError =
     eventData.hasEvents && (!resultOk || exit !== 0) ? eventData.transport_error : null;
   if (transportError) {
+    // This branch already knows why the run died: the CLI said so itself, with a status. Letting
+    // the ordered reason speak here would answer a transport question with the model's older
+    // complaint about the task — a LIMIT that never mentions quota is the same "verdict says the
+    // wrong thing" defect this module exists to remove.
     return {
       status: transportError.quota ? 'LIMIT' : 'FAIL',
       reason: transportError.reason,
     };
   }
   if (!resultOk) {
-    return { status: 'FAIL', reason: reasonFrom(runDir) || `result is empty, exit=${exit}` };
+    return { status: 'FAIL', reason: reasonFrom(runDir, eventData) || `result is empty, exit=${exit}` };
   }
   if (exit !== 0) {
-    return { status: 'FAIL', reason: `result exists, but exit=${exit}: ${reasonFrom(runDir)}` };
+    return { status: 'FAIL', reason: `result exists, but exit=${exit}: ${reasonFrom(runDir, eventData)}` };
   }
   // A red verification is a failed job, not an OK with a footnote. The orchestrator
   // reads the first word; burying "fail" in line three is how a broken build passes.

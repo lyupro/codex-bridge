@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { diagnose, renderDoctor } from '../cli/doctor.mjs';
 import { resolveHost } from '../cli/hosts.mjs';
 import { install } from '../cli/install.mjs';
-import { log } from '../cli/log.mjs';
+import { read } from '../cli/read.mjs';
 import { packageInfo } from '../cli/manifest.mjs';
 import { stop } from '../cli/stop.mjs';
 import { uninstall } from '../cli/uninstall.mjs';
@@ -18,7 +18,7 @@ Usage:
   codex-bridge update [--scope user|project] [--host <path>] [--dry-run] [--force]
   codex-bridge uninstall [--scope user|project] [--host <path>] [--dry-run]
   codex-bridge doctor [--scope user|project] [--host <path>]
-  codex-bridge log <run>
+  codex-bridge read <run>
   codex-bridge stop <run>
   codex-bridge --help
   codex-bridge --version
@@ -28,7 +28,7 @@ Commands:
   update    Update a recorded codex-bridge installation
   uninstall Remove installed files while preserving run artifacts
   doctor    Diagnose the selected Claude Code host
-  log       Render a run's structured event stream
+  read      Render a run's structured event stream
   stop      Stop a running Codex run and record FAIL`;
 
 function commandOptions(command, argv) {
@@ -79,12 +79,12 @@ export async function main(argv, io = console) {
     io.log(result.output);
     return result.exitCode;
   }
-  if (command === 'log') {
+  if (command === 'read') {
     if (rest.length !== 1) {
-      io.error('codex-bridge log requires exactly one run folder (full path or bare name).');
+      io.error('codex-bridge read requires exactly one run folder (full path or bare name).');
       return 2;
     }
-    const result = log({ run: rest[0] });
+    const result = read({ run: rest[0] });
     io.log(result.output);
     return result.exitCode;
   }

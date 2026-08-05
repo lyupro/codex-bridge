@@ -171,7 +171,7 @@ ATTACH=<artifact root>\myproject\2026-07-30_1412_hooks started=2026-07-30T14:12:
 OK — The settings.json hook loads twice: from the plugin and the local config
 Key finding: duplicate loader (src/hooks/loader.ts:42)
 Unresolved: why the second load is needed
-Report: ...\report.md · Log: codex-bridge log ...\2026-08-05_120000_slug
+Report: ...\report.md · Log: codex-bridge read ...\2026-08-05_120000_slug
 ```
 
 Incorrect — "Codex started in the background (PID recorded). Waiting for scouting to finish — it
