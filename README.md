@@ -14,6 +14,7 @@ node bin/codex-bridge.mjs update        # bring an installation up to the curren
 node bin/codex-bridge.mjs doctor        # what is installed, where it points, is codex alive
 node bin/codex-bridge.mjs uninstall     # removes exactly what was installed
 node bin/codex-bridge.mjs stop <run>    # close a hanging run by hand, without hunting for a pid
+node bin/codex-bridge.mjs log <run>     # read a run: its events rendered as text, on demand
 ```
 
 `install` copies the package into the host's `agents/codex/`, its slash commands into
