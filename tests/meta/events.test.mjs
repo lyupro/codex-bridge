@@ -51,12 +51,40 @@ test('sums turn usage, preserves the full usage object, and reads thread id', ()
 test('exposes the last model content error and falls back to item text', () => {
   const dir = makeRun({
     events: [
+      { type: 'turn.started' },
       { type: 'item.completed', item: { type: 'error', message: 'first complaint' } },
       { type: 'item.completed', item: { type: 'error', text: 'last complaint' } },
     ],
   });
 
   assert.equal(readEvents(dir).content_error, 'last complaint');
+});
+
+// codex-cli 0.146.0 reports its own deprecated-config warning as an item error before the turn
+// opens. Reading it as the model's complaint made "`[features].codex_hooks` is deprecated" the
+// stated reason a run failed — the verdict naming something other than what happened.
+test('a CLI error before the turn opens is not the model complaining about the order', () => {
+  const dir = makeRun({
+    events: [
+      { type: 'thread.started', thread_id: 'thread-19' },
+      { type: 'item.completed', item: { type: 'error', message: 'config key is deprecated' } },
+      { type: 'turn.started' },
+      { type: 'item.completed', item: { type: 'agent_message', text: 'working' } },
+    ],
+  });
+
+  assert.equal(readEvents(dir).content_error, null);
+});
+
+test('a run that never opened a turn has no content error to report', () => {
+  const dir = makeRun({
+    events: [
+      { type: 'thread.started', thread_id: 'thread-20' },
+      { type: 'item.completed', item: { type: 'error', message: 'config key is deprecated' } },
+    ],
+  });
+
+  assert.equal(readEvents(dir).content_error, null);
 });
 
 test('a truncated final JSONL line does not hide earlier events', () => {

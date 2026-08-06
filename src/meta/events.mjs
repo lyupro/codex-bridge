@@ -76,9 +76,19 @@ function usageOf(events) {
  *
  * The 2026-08-05 live probe put policy rejections in stderr on a healthy run, so the
  * model's own complaint must stay separate from that noisy diagnostic stream.
+ *
+ * Only what follows the first `turn.started` is the model's. codex-cli 0.146.0 announces its
+ * own configuration warnings through the same `item.completed` error shape before the turn
+ * begins: on 2026-08-06 every run of this host carried "`[features].codex_hooks` is
+ * deprecated" as its first item, and a failed run would have named that as the reason it
+ * failed. A complaint about the order cannot predate the model's first thought — so a run
+ * that never opened a turn has no content error at all, and falls back to the transport
+ * error or stderr the way it did before this stream existed.
  */
 export function contentErrorOf(events) {
-  for (let index = events.length - 1; index >= 0; index -= 1) {
+  const turn = events.findIndex((event) => event?.type === 'turn.started');
+  if (turn < 0) return null;
+  for (let index = events.length - 1; index > turn; index -= 1) {
     const event = events[index];
     if (event?.type !== 'item.completed' || !record(event.item) || event.item.type !== 'error') continue;
     const value = typeof event.item.message === 'string' ? event.item.message : event.item.text;

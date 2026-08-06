@@ -32,6 +32,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - A run killed by its time budget says so. It records `stopped_on_deadline` and answers `FAIL — run stopped on its deadline`, instead of inventing a reason out of whatever text was nearest.
 - A log file that cannot be written no longer leaves Codex orphaned. An unhandled stream error used to kill the worker while the CLI kept burning quota with nothing left to close it; now either stream failing takes down the process tree, so the run dies with its process rather than instead of it.
 - A run that exited honestly is no longer marked as killed by its deadline. The timer judged by `close`, which a grandchild process can hold open long after the run is over; it now watches `exit`.
+- The CLI's own warnings are no longer read as the model's complaint about the order. `codex-cli` announces a deprecated configuration key through the same event shape the model uses for a content error, before the turn even opens — so a failed run on such a host would have answered "`[features].codex_hooks` is deprecated" when asked why it failed. Only events after the first `turn.started` are the model's; a complaint about the order cannot predate the model's first thought.
 
 ## [0.1.4] - 2026-08-05
 

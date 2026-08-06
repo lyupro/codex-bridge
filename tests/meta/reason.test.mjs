@@ -12,6 +12,7 @@ test('the last model content error wins over stderr policy noise', () => {
     args: ['exec', '--json'],
     stderr: 'ERROR codex_core::tools::router: rejected: blocked by policy\n',
     events: [
+      { type: 'turn.started' },
       { type: 'item.completed', item: { type: 'error', message: 'first complaint' } },
       { type: 'item.completed', item: { type: 'error', message: 'actual task complaint' } },
     ],
@@ -28,7 +29,10 @@ test('a model content error falls back from message to text', () => {
   const dir = makeRun({
     args: ['exec', '--json'],
     stderr: 'ERROR policy noise\n',
-    events: [{ type: 'item.completed', item: { type: 'error', text: 'text complaint' } }],
+    events: [
+      { type: 'turn.started' },
+      { type: 'item.completed', item: { type: 'error', text: 'text complaint' } },
+    ],
     result: emptyBuild,
   });
 
