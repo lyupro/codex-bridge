@@ -29,6 +29,11 @@ export const pidAlive = (pid) => {
  * Run state on disk, merged over whatever is already there. A killed runner leaves no
  * report and no meta.json, and four abandoned folders from one order were indistinguishable
  * from four runs still working — status.json is what makes that difference visible.
+ *
+ * It writes status.json and nothing else. Housekeeping facts such as `retention` live here and
+ * are read from here; an earlier attempt also appended them to meta.json, which would have made
+ * two functions write the same artifact and put the documented artifact order (meta.json before
+ * status.json is closed) at the mercy of whoever ran last.
  */
 export function writeStatus(runDir, patch) {
   const current = readJson(path.join(runDir, 'status.json')) || {};

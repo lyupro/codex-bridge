@@ -16,6 +16,10 @@ import {
 import { copyPlannedFile, targetMatches } from './copy.mjs';
 import { commandFor, inspectHook, mergeHook } from './settings-merge.mjs';
 import { addRulesOwner, readRulesRegistry } from './rules-owners.mjs';
+import { readRunConfig, retentionNotice } from '../src/run-config.mjs';
+
+const WARNING = '\u001b[33m';
+const RESET = '\u001b[0m';
 
 async function targetExists(target) {
   try {
@@ -45,9 +49,19 @@ function recordHasHooks(record, targets) {
       hook.event === definition.event && hook.path === relative));
 }
 
+function retentionLine(host) {
+  const notice = retentionNotice(readRunConfig(path.join(host.agentsDir, 'run-config.json')));
+  return notice.enabled ? `${WARNING}${notice.text}${RESET}` : notice.text;
+}
+
+function retentionOutput(line, output) {
+  return `${output}\n${line}`;
+}
+
 export async function install({ host, dryRun = false, force = false, packageRoot } = {}) {
   // Validate the shared registry before writes; package removal on a broken registry left the host without its watchdog.
   await readRulesRegistry(host);
+  const configuredRetentionLine = retentionLine(host);
   const plan = await buildInstallPlan(host, packageRoot);
   const rule = { ...rulesPlan(host, packageRoot), processing: 'copy' };
   const currentPackage = await packageInfo(packageRoot);
@@ -83,7 +97,7 @@ export async function install({ host, dryRun = false, force = false, packageRoot
     const files = conflicts.map(({ item }) => `  ${item.relativeToHost || item.name}`).join('\n');
     return {
       exitCode: 1,
-      output: `Conflicting files:\n${files}\nRun install again with --force to overwrite them.`,
+      output: retentionOutput(configuredRetentionLine, `Conflicting files:\n${files}\nRun install again with --force to overwrite them.`),
     };
   }
 
@@ -95,7 +109,7 @@ export async function install({ host, dryRun = false, force = false, packageRoot
   if (!changedFiles.length && !changedRule && inspectedHooks.every((state) => state.present)
     && recordHasHooks(record, targets) && sameRecord) {
     if (!dryRun) await addRulesOwner(host);
-    return { exitCode: 0, output: 'codex-bridge is already installed; nothing to do.' };
+    return { exitCode: 0, output: retentionOutput(configuredRetentionLine, 'codex-bridge is already installed; nothing to do.') };
   }
 
   if (dryRun) {
@@ -111,7 +125,7 @@ export async function install({ host, dryRun = false, force = false, packageRoot
         : `Would register ${definition.event} hook for matcher ${definition.matcher}.`);
     });
     lines.push('Would write installation record.');
-    return { exitCode: 0, output: lines.join('\n') };
+    return { exitCode: 0, output: retentionOutput(configuredRetentionLine, lines.join('\n')) };
   }
 
   // Claim ownership of the shared rules file before writing anything. Claiming it last meant a
@@ -146,6 +160,6 @@ export async function install({ host, dryRun = false, force = false, packageRoot
   });
   return {
     exitCode: 0,
-    output: `Installed ${plan.length + 1} files and registered the ${targets.map(({ definition }) => definition.event).join(' and ')} hooks.`,
+    output: retentionOutput(configuredRetentionLine, `Installed ${plan.length + 1} files and registered the ${targets.map(({ definition }) => definition.event).join(' and ')} hooks.`),
   };
 }

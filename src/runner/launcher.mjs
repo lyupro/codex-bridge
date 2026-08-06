@@ -36,6 +36,7 @@ import { git, headSha, branchName, worktreeSnapshot, reviewScope } from './git-s
 import { codexArgs, requireCodex, runMode, unsafeForCmd } from './codex-cmd.mjs';
 import { runsRoot } from './runs-root.mjs';
 import { resolveProjectRunsDir } from './project-dir.mjs';
+import { cleanupRetention } from '../retention.mjs';
 
 /**
  * The worker is this same program re-invoked as `--worker <runDir>`, so the path spawned
@@ -166,6 +167,15 @@ export async function launcher() {
   // first one's edits, and an honest run gets failed for work it never did.
   const busy = opts.agent === 'codex-build' ? activeRun(projectRunsRoot, repoRoot) : null;
 
+  let retention = null;
+  try {
+    retention = cleanupRetention(projectRunsRoot, RUN_ENV?.retention);
+  } catch {
+    // Plan_17 step 4 makes retention advisory housekeeping: one broken filesystem call must never
+    // block a new run.
+    retention = null;
+  }
+
   const runDir = makeRunDir(path.join(projectRunsRoot, `${stamp()}_${opts.slug}`));
   setRun(runDir, opts.agent);
 
@@ -194,6 +204,7 @@ export async function launcher() {
     ...(chain.length ? { continues: chain[0] } : {}),
     // `continued_from` is the exact run the orchestrator named; `continues` above remains the chain base.
     ...(continuationGrant ? { continued_from: continuationGrant.run } : {}),
+    ...(retention ? { retention } : {}),
   });
 
   // Printed before anything can go wrong: even a dispatcher that dies mid-run leaves the

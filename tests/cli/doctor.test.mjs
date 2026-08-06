@@ -295,3 +295,34 @@ test('version mismatch is visible without treating intact files as broken', asyn
   assert.equal(result.exitCode, 0);
   assert.equal(result.checks.find((item) => item.key === 'installation').status, 'warn');
 });
+
+test('doctor warns in color with the configured automatic cleanup age', async (t) => {
+  const { host } = await installedFixture(t);
+  await fs.writeFile(
+    path.join(host.agentsDir, 'run-config.json'),
+    JSON.stringify({ retention: { enabled: true, days: 7 } }),
+  );
+
+  const rendered = renderDoctor(await diagnose({ host, codexProbe, currentPackage: ownPackage }));
+
+  assert.match(rendered, /Automatic cleanup is ON — run transport older than 7 days is removed to reclaim disk space\. Accounting and reports are never touched\. Change or disable: retention in run-config\.json\./);
+  const retentionLine = rendered.split('\n').find((line) => line.includes('retention:'));
+  assert.match(retentionLine, /^\u001b\[33m/);
+  assert.match(retentionLine, /\u001b\[0m$/);
+});
+
+test('doctor reports disabled cleanup without warning color', async (t) => {
+  const { host } = await installedFixture(t);
+  await fs.writeFile(
+    path.join(host.agentsDir, 'run-config.json'),
+    JSON.stringify({ retention: { enabled: false, days: 'not read' } }),
+  );
+
+  const result = await diagnose({ host, codexProbe, currentPackage: ownPackage });
+  const rendered = renderDoctor(result);
+  const retentionLine = rendered.split('\n').find((line) => line.includes('retention:'));
+
+  assert.equal(result.checks.find((item) => item.key === 'retention').status, 'ok');
+  assert.match(retentionLine, /Automatic cleanup is OFF/);
+  assert.doesNotMatch(retentionLine, /\u001b/);
+});

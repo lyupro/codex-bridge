@@ -26,6 +26,9 @@ export const CONFIG_PATH = path.join(HERE, 'run-config.json');
 const BUDGET_KEY = 'budgets';
 const BUDGET_MODES = ['scout', 'build', 'review'];
 const DEFAULT_BUDGETS = { scout: 15, build: 25, review: 20 };
+const RETENTION_KEY = 'retention';
+const RETENTION_FIELDS = ['enabled', 'days'];
+const DEFAULT_RETENTION = { enabled: true, days: 30 };
 
 /**
  * Files the surrounding tooling writes on its own, in any repository a run touches.
@@ -52,6 +55,7 @@ export const DEFAULTS = {
   plugins: false,
   models: {},
   budgets: DEFAULT_BUDGETS,
+  retention: DEFAULT_RETENTION,
   environmentPaths: DEFAULT_ENVIRONMENT_PATHS,
   answerLanguage: 'English',
 };
@@ -75,7 +79,51 @@ export const ALLOWED_EFFORTS = Object.freeze(['none', 'minimal', 'low', 'medium'
  * two languages. English is the default because the package is read by strangers.
  */
 const STRING_KEYS = ['answerLanguage'];
-const KEYS = [...SWITCH_KEYS, ...LIST_KEYS, ...OBJECT_KEYS, ...STRING_KEYS, BUDGET_KEY];
+const KEYS = [...SWITCH_KEYS, ...LIST_KEYS, ...OBJECT_KEYS, ...STRING_KEYS, BUDGET_KEY, RETENTION_KEY];
+
+function readRetention(file, value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(
+      `${file}: key “${RETENTION_KEY}” must be an object with enabled and days, not ${JSON.stringify(value)}`,
+    );
+  }
+  for (const key of Object.keys(value)) {
+    if (!RETENTION_FIELDS.includes(key)) {
+      throw new Error(
+        `${file}: key “${RETENTION_KEY}” has unknown field “${key}”. ` +
+          `Only ${RETENTION_FIELDS.join(', ')} are allowed`,
+      );
+    }
+  }
+  if (typeof value.enabled !== 'boolean') {
+    throw new Error(
+      `${file}: key “${RETENTION_KEY}.enabled” must be true or false, not ${JSON.stringify(value.enabled)}`,
+    );
+  }
+  // Plan_17 step 4 does not read days when disabled, so stale values cannot revive deletion after
+  // the step 3 incident where a copied default silently turned cleanup back on.
+  if (!value.enabled) return { enabled: false };
+  if (typeof value.days !== 'number' || !Number.isFinite(value.days) || value.days <= 0) {
+    throw new Error(
+      `${file}: key “${RETENTION_KEY}.days” must be a positive number of days, not ${JSON.stringify(value.days)}`,
+    );
+  }
+  return { enabled: true, days: value.days };
+}
+
+export function retentionNotice(config) {
+  if (config?.retention?.enabled) {
+    const days = config.retention.days;
+    return {
+      enabled: true,
+      text: `Automatic cleanup is ON — run transport older than ${days} days is removed to reclaim disk space. Accounting and reports are never touched. Change or disable: retention in run-config.json.`,
+    };
+  }
+  return {
+    enabled: false,
+    text: 'Automatic cleanup is OFF — run transport is retained until manually pruned.',
+  };
+}
 
 /**
  * A run gets a hard wall-clock budget, because the caller's timeout is not a run contract:
@@ -150,6 +198,10 @@ export function readRunConfig(file = CONFIG_PATH) {
     }
     if (key === BUDGET_KEY) {
       config[key] = readBudgets(file, value);
+      continue;
+    }
+    if (key === RETENTION_KEY) {
+      config[key] = readRetention(file, value);
       continue;
     }
     if (LIST_KEYS.includes(key)) {
@@ -252,6 +304,7 @@ const state = (config) => [
     return `${key}: ${model}${profile.effort ? ` at ${profile.effort} effort` : ''}`;
   }).join('; ')}`,
   `budgets: ${BUDGET_MODES.map((mode) => `${mode}: ${config.budgets?.[mode] ?? DEFAULT_BUDGETS[mode]} minutes`).join('; ')}`,
+  `retention: ${config.retention?.enabled ? `on — transport older than ${config.retention.days} days` : 'off — automatic cleanup disabled'}`,
 ];
 
 function main(argv) {

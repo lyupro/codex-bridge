@@ -10,8 +10,12 @@ import {
 } from './manifest.mjs';
 import { commandFor, inspectHook } from './settings-merge.mjs';
 import { readRulesRegistry } from './rules-owners.mjs';
+import { readRunConfig, retentionNotice } from '../src/run-config.mjs';
 import { runsRoot } from '../src/runner/runs-root.mjs';
 import { resolveProjectRunsDir } from '../src/runner/project-dir.mjs';
+
+const WARNING = '\u001b[33m';
+const RESET = '\u001b[0m';
 
 async function exists(target) {
   try {
@@ -32,6 +36,15 @@ async function isFile(target) {
 
 function check(key, status, value) {
   return { key, status, value };
+}
+
+function retentionCheck(host) {
+  try {
+    const notice = retentionNotice(readRunConfig(path.join(host.agentsDir, 'run-config.json')));
+    return check('retention', notice.enabled ? 'warn' : 'ok', notice.text);
+  } catch (err) {
+    return check('retention', 'fail', `invalid configuration: ${err.message}`);
+  }
 }
 
 /**
@@ -158,6 +171,8 @@ export async function diagnose({ host, codexProbe = probeCodex, currentPackage }
   const rules = await rulesCheck(host, record);
   checks.push(rules);
   checks.push(...await hookChecks(host, record));
+  const retention = retentionCheck(host);
+  checks.push(retention);
 
   const codex = codexProbe();
   checks.push(check('codex', codex.available ? 'ok' : 'warn', codex.value || 'available'));
@@ -169,7 +184,7 @@ export async function diagnose({ host, codexProbe = probeCodex, currentPackage }
 
   return {
     exitCode: !record || recordBroken || missingFiles.length || rules.status === 'fail'
-      || projectRuns.status === 'fail' ? 1 : 0,
+      || retention.status === 'fail' || projectRuns.status === 'fail' ? 1 : 0,
     checks,
     record,
     missingFiles,
@@ -177,5 +192,8 @@ export async function diagnose({ host, codexProbe = probeCodex, currentPackage }
 }
 
 export function renderDoctor(result) {
-  return result.checks.map(({ key, status, value }) => `[${status}] ${key}: ${value}`).join('\n');
+  return result.checks.map(({ key, status, value }) => {
+    const rendered = `[${status}] ${key}: ${value}`;
+    return key === 'retention' && status === 'warn' ? `${WARNING}${rendered}${RESET}` : rendered;
+  }).join('\n');
 }

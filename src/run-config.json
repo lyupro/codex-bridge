@@ -1,4 +1,8 @@
 {
   "hooks": false,
-  "plugins": false
+  "plugins": false,
+  "retention": {
+    "enabled": true,
+    "days": 30
+  }
 }

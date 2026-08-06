@@ -4,8 +4,9 @@ import path from 'node:path';
 import { listProjectRuns, listProjects, recursiveSize } from './runs-inventory.mjs';
 import { parseOlderThan } from './prune-args.mjs';
 import { runsRoot } from '../src/runner/runs-root.mjs';
+import { runIsOlderThan, TRANSPORT_FILES } from '../src/retention.mjs';
 
-export const TRANSPORT_FILES = Object.freeze(['events.jsonl', 'stderr.log', 'raw.log']);
+export { runIsOlderThan, TRANSPORT_FILES };
 
 function safeFolderName(value) {
   return typeof value === 'string'
@@ -14,46 +15,6 @@ function safeFolderName(value) {
     && value !== '..'
     && !path.isAbsolute(value)
     && path.dirname(value) === '.';
-}
-
-function ageDate(name) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})_(\d{2})(\d{2})(\d{2})(?:_|$)/.exec(name);
-  if (!match) return null;
-  const [, year, month, day, hour, minute, second] = match;
-  const timestamp = Date.UTC(
-    Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second),
-  );
-  const date = new Date(timestamp);
-  if (date.getUTCFullYear() !== Number(year)
-    || date.getUTCMonth() !== Number(month) - 1
-    || date.getUTCDate() !== Number(day)
-    || date.getUTCHours() !== Number(hour)
-    || date.getUTCMinutes() !== Number(minute)
-    || date.getUTCSeconds() !== Number(second)) return null;
-  return timestamp;
-}
-
-function nowTimestamp(value) {
-  if (value instanceof Date) return value.getTime();
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  const parsed = Date.parse(value ?? '');
-  return Number.isNaN(parsed) ? Date.now() : parsed;
-}
-
-function ageCutoff(olderThan, now) {
-  if (!olderThan) return null;
-  if (olderThan.kind === 'duration') {
-    const unit = olderThan.unit === 'h' ? 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
-    return now - olderThan.amount * unit;
-  }
-  return Date.parse(`${olderThan.date}T00:00:00.000Z`);
-}
-
-/** Returns whether a run is older than a parsed threshold, using only its folder name. */
-export function runIsOlderThan(runName, olderThan, now = Date.now()) {
-  const timestamp = ageDate(runName);
-  if (timestamp === null || !olderThan) return false;
-  return timestamp < ageCutoff(olderThan, nowTimestamp(now));
 }
 
 function normalizeOlderThan(value) {
@@ -204,9 +165,6 @@ export function prunePlan(args = {}, options = {}) {
   const root = path.resolve(options.runsRootPath || args.runsRootPath || runsRoot());
   const now = options.now ?? Date.now();
   const scope = args.allProjects ? 'all-projects' : args.runName ? 'run' : 'project';
-  // The default age lives in the parser and only there. It stood in both places until 2026-08-06,
-  // and the two copies disagreed the moment one of them learned that a purge is never implicitly
-  // aged — the planner silently restored the filter the parser had just dropped.
   const age = normalizeOlderThan(args.olderThan);
 
   let actions = [];

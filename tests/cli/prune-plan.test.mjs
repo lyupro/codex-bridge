@@ -7,6 +7,7 @@ import path from 'node:path';
 import { parsePruneArgs } from '../../cli/prune-args.mjs';
 import { prunePlan, runIsOlderThan, TRANSPORT_FILES } from '../../cli/prune-plan.mjs';
 import { recursiveSize } from '../../cli/runs-inventory.mjs';
+import { TRANSPORT_FILES as RETENTION_FILES } from '../../src/retention.mjs';
 
 const NOW = Date.parse('2026-08-06T12:00:00.000Z');
 
@@ -25,6 +26,7 @@ function makeRun(root, project, run, files = {}) {
 
 test('gentle plans name only transport files and leave the rest outside targets', (t) => {
   const root = fixture(t);
+  assert.strictEqual(TRANSPORT_FILES, RETENTION_FILES);
   const run = makeRun(root, 'alpha', '2026-07-01_090000_old', {
     'events.jsonl': 'events',
     'stderr.log': 'stderr',

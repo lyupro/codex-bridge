@@ -11,7 +11,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { changedPaths, line, readText } from './paths.mjs';
+import { changedPaths, line, readJson, readText } from './paths.mjs';
 import { splitRunChanges } from './environment.mjs';
 import { scoutCoverage } from './verdict.mjs';
 
@@ -23,6 +23,27 @@ const runChanges = (runDir) =>
   );
 
 const readCommand = (runDir) => `codex-bridge read ${runDir}`;
+
+function formatBytes(bytes) {
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let value = bytes;
+  let index = 0;
+  while (value >= 1024 && index < units.length - 1) {
+    value /= 1024;
+    index += 1;
+  }
+  return `${value.toFixed(1)} ${units[index]}`;
+}
+
+function retentionReply(runDir) {
+  const retention = readJson(path.join(runDir, 'status.json'))?.retention;
+  const bytes = Number(retention?.bytes_freed);
+  const runs = Number(retention?.runs);
+  const days = Number(retention?.days);
+  if (!Number.isFinite(bytes) || bytes <= 0 || !Number.isFinite(runs) || runs <= 0
+    || !Number.isFinite(days) || days <= 0) return null;
+  return `Retention: freed ${formatBytes(bytes)} from ${runs} runs older than ${days} days`;
+}
 
 export const AGENTS = {
   'codex-scout': {
@@ -47,12 +68,14 @@ function scoutReply(ctx) {
   const top = (r.findings || [])[0];
   const unknowns = (r.unknowns || []).filter(Boolean);
   const coverage = scoutCoverage(ctx.runDir, r);
+  const retention = retentionReply(ctx.runDir);
   return [
     `OK — ${line(r.answer, 160)}`,
     // Any explicit question gets a coverage line, including a valid one-question order.
     ...(coverage ? [`Coverage: ${coverage}`] : []),
     `Key finding: ${top ? `${line(top.fact, 130)} (${line(top.where, 60)})` : 'no findings listed'}`,
     `Unresolved: ${unknowns.length ? line(unknowns.join('; '), 160) : 'none'}`,
+    ...(retention ? [retention] : []),
     `Report: ${ctx.file('report.md')} · Log: ${readCommand(ctx.runDir)}`,
   ];
 }
@@ -83,6 +106,7 @@ function buildReply(ctx) {
   const files = ctx.carried
     ? `${paths ? `${paths} · ` : ''}changes were made by an earlier run of this task`
     : paths || 'worktree untouched';
+  const retention = retentionReply(ctx.runDir);
   return [
     `OK — ${line(r.summary, 160)}`,
     `Files: ${touchedPaths.length} changed · ${files}`,
@@ -93,6 +117,7 @@ function buildReply(ctx) {
       : []),
     `Verification: ${verify} — ${verdict}`,
     `Flags: ${flags.length ? `${flags.length} TODO/skip — ${line(flags.slice(0, 3).join(' | '), 140)}` : 'none'}`,
+    ...(retention ? [retention] : []),
     `Report: ${ctx.file('report.md')} · Log: ${readCommand(ctx.runDir)}`,
   ];
 }
@@ -104,15 +129,18 @@ function reviewReply(ctx) {
     if (counts[f.severity] !== undefined) counts[f.severity] += 1;
   });
   const top = (r.findings || []).find((f) => f.severity === 'critical' || f.severity === 'high');
+  const retention = retentionReply(ctx.runDir);
   return [
     `OK — verdict ${line(r.verdict, 40)}`,
     `Findings: critical ${counts.critical} · high ${counts.high} · medium ${counts.medium} · low ${counts.low}`,
     `Top: ${top ? `${top.severity} ${line(top.file, 80)}:${top.line_start} — ${line(top.title, 90)}` : 'no critical or high findings'}`,
+    ...(retention ? [retention] : []),
     `Report: ${ctx.file(path.basename(ctx.resultPath))} · Log: ${readCommand(ctx.runDir)}`,
   ];
 }
 
 export function failReply(ctx, meta) {
+  const retention = retentionReply(ctx.runDir);
   return [
     `FAIL — ${line(meta.reason, 170)}`,
     `Artifacts: events.jsonl ${meta.events_bytes} B · stderr.log ${meta.stderr_bytes} B · ${path.basename(ctx.resultPath)} ${meta.result_ok ? 'filled' : 'empty or missing'} · exit=${meta.exit}`,
@@ -121,6 +149,7 @@ export function failReply(ctx, meta) {
     // and the orchestrator has to know whether there is something to revert before it decides
     // anything else.
     ...(ctx.agent === 'codex-build' ? [`Worktree: ${worktreeState(ctx.runDir)}`] : []),
+    ...(retention ? [retention] : []),
     `Log: ${readCommand(ctx.runDir)}`,
   ];
 }
@@ -143,6 +172,7 @@ function worktreeState(runDir) {
 }
 
 export function limitReply(ctx, meta) {
+  const retention = retentionReply(ctx.runDir);
   const rows = [
     'LIMIT — ChatGPT quota exhausted, work not completed',
     `Signal: ${line(meta.reason, 170)}`,
@@ -153,6 +183,7 @@ export function limitReply(ctx, meta) {
       `Worktree: ${touched.length ? `has unfinished changes (${touched.length}), see git-after.txt` : 'no new changes'}`,
     );
   }
+  if (retention) rows.push(retention);
   rows.push(`Log: ${readCommand(ctx.runDir)}`);
   return rows;
 }
