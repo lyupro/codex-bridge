@@ -14,12 +14,13 @@ node bin/codex-bridge.mjs update        # bring an installation up to the curren
 node bin/codex-bridge.mjs doctor        # what is installed, where it points, is codex alive
 node bin/codex-bridge.mjs uninstall     # removes exactly what was installed
 node bin/codex-bridge.mjs stop <run>    # close a hanging run by hand, without hunting for a pid
-node bin/codex-bridge.mjs log <run>     # read a run: its events rendered as text, on demand
+node bin/codex-bridge.mjs read <run>   # read a run: its events rendered as text, on demand
+node bin/codex-bridge.mjs projects     # what the run store holds: projects, runs, weight, tokens
+node bin/codex-bridge.mjs prune <project>   # reclaim disk space, transport only unless told otherwise
 ```
 
 `install` copies the package into the host's `agents/codex/`, its slash commands into
-`commands/codex/`, and registers both the stop hook and the pre-dispatch order gate in
-`settings.json` — **merged**, so hooks that
+`commands/codex/`, and registers its four hooks in `settings.json` — **merged**, so hooks that
 are already there survive, and the file is backed up before every write. Run it twice and the
 second run does nothing. `--dry-run` prints the plan and touches nothing.
 
@@ -43,6 +44,16 @@ Run artifacts live in `codex-runs/<project>/`, one folder per repository, marked
 different `api` — therefore get `api` and `api-2` instead of one mixed history. `doctor` prints
 which folder the current repository writes to.
 
+`projects` reads that store back: without an argument, one line per project — runs, weight, tokens
+spent, how many are running right now; with a project name, one line per run. `prune` is the only
+command in the package that destroys data, and it is built to be hard to fire by accident: without
+`-f` it prints a plan and deletes nothing, `-f` still asks before each step, and with no terminal
+it refuses outright, because deletion is an operator action and there is no flag around it.
+By default it removes transport only — event streams and stderr, the megabytes — and leaves
+accounting, reports and worktree snapshots alone; `--purge` is what takes a folder whole.
+The same transport is dropped automatically from runs older than 30 days when a new run starts,
+which the reply says out loud; `retention` in `run-config.json` changes the age or turns it off.
+
 ## What it gives you
 
 - **Three dispatcher agents** for Claude Code — reconnaissance (read-only), implementation
@@ -53,8 +64,10 @@ which folder the current repository writes to.
 - **A verdict that checks the report against the worktree.** The agent's own account of what
   it changed is compared with what git says actually changed, and a mismatch is a failed run
   rather than a nicer-sounding summary.
-- **A stop hook** that refuses a dispatcher reply which does not match the recorded state of
-  the run.
+- **Four hooks that hold the rules the prompts only ask for**: a reply is refused when it does not
+  match the recorded state of the run, a dispatcher call is refused when it carries no order id, a
+  file edit is refused inside a repository a live run holds, and deletion of the run store is
+  refused when an agent is the one asking.
 
 ## Requirements
 

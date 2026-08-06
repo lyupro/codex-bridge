@@ -4,6 +4,35 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-08-06
+
+### Added
+
+- `codex-bridge projects` gives the run store a way to look at itself: one line per project — runs, weight, tokens spent, how many are running right now, when the last one started — and one line per run under a project name, plus `--json` for scripts. The store had grown to 12 projects, 152 runs and 80 MB with no command that could answer "what has Codex been working on"; the only way in was a file manager. The count of live runs is computed by the same module the reply guard and the worktree lock use, because a second detector of a live run sitting next to the first would drift from it silently.
+- `codex-bridge prune` reclaims that space, and it is built to be hard to fire by accident: without `-f` it prints a plan and deletes nothing, `-f` still asks before each step, and with no terminal it refuses outright — deletion is an operator action, and the bypass flag that would undo this is deliberately absent. A gentle prune removes transport only (event streams, stderr, the archived `raw.log` of older runs) and leaves accounting, reports and worktree snapshots in place, so a task can still be continued and still be read after its megabytes are gone; `--purge` is what takes a folder whole, and it is refused together with `--all-projects`, because deleting a dozen projects with one command has no second line of defence. A live run is never a target — it is recognised by its process, not by a status file, since the file that would be deleted is the verdict being written right now.
+- Run transport is dropped automatically from runs older than 30 days when a new run starts, and the dispatcher's reply says how much was freed: a rare event that goes unexplained sends someone looking for a fault. Automatic cleanup can only shed weight — the code to remove `meta.json` or a folder does not exist on that path at all, so it cannot be switched on by mistake — and `retention` in `run-config.json` changes the age or turns it off. Both `install` and `doctor` say out loud that it is on, because an installer that quietly starts deleting files is a surprise, not a convenience.
+- A fourth hook refuses `codex-bridge prune` in an agent's shell command before the deleting process exists. Mentioning the command is not calling it: heredoc bodies and quoted text are stripped before the check, after the guard rejected the very commit that introduced it over a command name in the message. `git prune` and `npm prune` are left alone — a guard that breaks unrelated work is a guard that gets removed, and then it protects nothing.
+- `codex-bridge read <run>` renders a run's events as text on demand. Readability is now something the package produces when asked rather than a file it keeps, and a rendering that is not stored cannot disagree with the facts.
+
+### Changed
+
+- Runs go through `codex exec --json`, and `events.jsonl` is the single source of the quota signal, the token count, the session id and the failure reason. The stream is written by the CLI, not by the model, so a quotation out of a source file can no longer reach it. `tokens` is input plus output with the CLI's whole `usage` object beside it, and `session_id` comes from `thread.started` instead of a line matched in a log.
+- The reason for a `FAIL` is taken from the run's own error event rather than from `stderr.log`. A live probe showed `stderr.log` is not empty even for a clean run — 488 bytes of execpolicy refusals, repository paths included — which made the reason a random blocked call instead of the real one. The transport branch keeps the reason the CLI itself gave with its status code: a `LIMIT` whose reason does not mention the quota is the same class of defect.
+- A run that never began is one with no events *and* no stderr. Stderr with no events is a CLI that did not understand a flag — a different diagnosis, calling for a different action, and the two no longer collapse into one.
+- `log_bytes` in `meta.json` is replaced by `events_bytes` and `stderr_bytes`.
+
+### Removed
+
+- `raw.log` is gone. Under `--json` it would have been a byte-for-byte copy of `events.jsonl` — a second source of truth with no role of its own — and the package already declared it ephemeral and safe to delete while resting the "abandoned at start" verdict on it. An artifact one is allowed to remove cannot be the ground of a verdict.
+- The text detector of the quota signal is removed entirely rather than kept as a fallback. While the regular expressions live, so does the class of defect they caused.
+
+### Fixed
+
+- `LIMIT` is set only by an error event from the CLI carrying `status: 429` or an error type naming the limit. A `codex-build` run that had finished its work grepped the package's own test fixtures, printed a line where `ERROR` and `rate limit` stand together, and was closed as quota-exhausted — the work was complete and the suite was green, and the verdict threw it away.
+- A run killed by its time budget says so. It records `stopped_on_deadline` and answers `FAIL — run stopped on its deadline`, instead of inventing a reason out of whatever text was nearest.
+- A log file that cannot be written no longer leaves Codex orphaned. An unhandled stream error used to kill the worker while the CLI kept burning quota with nothing left to close it; now either stream failing takes down the process tree, so the run dies with its process rather than instead of it.
+- A run that exited honestly is no longer marked as killed by its deadline. The timer judged by `close`, which a grandchild process can hold open long after the run is over; it now watches `exit`.
+
 ## [0.1.4] - 2026-08-05
 
 ### Added
