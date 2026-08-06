@@ -33,7 +33,9 @@ Two independent halves share the repository:
 
 **Package/installer** — `bin/codex-bridge.mjs` (argument dispatch only) over `cli/`:
 `manifest.mjs` owns the install table, the seeded-file list and the `.codex-bridge-install.json`
-record schema; `install/update/uninstall/doctor.mjs` are one command each; `hosts.mjs` resolves host
+record schema; `install/update/uninstall/doctor.mjs` are one command each, as are the run-store
+commands `read` (renders one run), `projects` (inventory over `runs-inventory`/`table`) and `prune`
+(`prune-args` refuses, `prune-plan` decides, `prune.mjs` deletes); `hosts.mjs` resolves host
 paths without touching disk; `settings-merge.mjs` registers the hooks without destroying foreign
 ones, and finds its own by command rather than by matcher — the matcher is generated from a tool
 list and changes whenever a host spelling is added. `update` compares sha256 fingerprints from the record: outdated files refresh silently,
@@ -54,12 +56,16 @@ hand-edited files stop the run unless `--force`.
   (`status.json` honesty, abandoned runs), `events` (the JSONL stream — the only module that knows
   it is JSONL), `startup` (a run that never began), `transport`/`deadline`/`outcome` (damaged
   evidence, killed runs, the declared outcome), `verdict` (OK/FAIL/LIMIT), `reply` (printed lines).
-- `hooks/` holds the three guards, all fail-open on anything they do not recognise:
+- `hooks/` holds the four guards, all fail-open on anything they do not recognise:
   `reply-guard.mjs` (SubagentStop) rejects a dispatcher reply that `meta.json` does not support or
   that stays silent about a live `codex-build` run of the same project; `order-gate.mjs`
   (PreToolUse) refuses a dispatcher call whose task text names no order id; `worktree-lock.mjs`
-  (PreToolUse) refuses a file edit inside a repository a live `codex-build` run holds.
-  `live-runs.mjs` is the one answer to "is this run alive" both guards ask.
+  (PreToolUse) refuses a file edit inside a repository a live `codex-build` run holds;
+  `prune-guard.mjs` (PreToolUse) refuses an agent-issued `codex-bridge prune`, matching the command
+  line by spelling — so a new CLI name has to be added here too, or the alias walks past it.
+  `live-runs.mjs` is the one answer to "is this run alive" the guards ask.
+- `retention.mjs` owns the list of transport files and the age rule, because `cli/` is not copied
+  into the host and the runner could not import the pruning planner otherwise.
 
 Importers name `run-codex.mjs` and `write-meta.mjs`, never a module below them.
 
