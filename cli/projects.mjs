@@ -33,10 +33,14 @@ const PROJECT_COLUMNS = [
   { key: 'lastRun', header: 'last run', kind: 'date', value: (row) => formatStamp(row.lastRun) },
 ];
 
+// The verdict is never shortened, for the same reason numbers and dates are not: it is one whole
+// word from a known set, and half of it is not half an answer. A narrow terminal turned `running`
+// into `…nning`, which reads as damage rather than as a run in flight. The agent column keeps the
+// tail because that is exactly what tells `codex-build` from `codex-scout`.
 const RUN_COLUMNS = [
   { key: 'run', header: 'run', truncate: 'start' },
   { key: 'agent', header: 'agent', truncate: 'start' },
-  { key: 'verdict', header: 'verdict', truncate: 'start' },
+  { key: 'verdict', header: 'verdict', fixed: true },
   { key: 'tokens', header: 'tokens', kind: 'number' },
   { key: 'size', header: 'size', kind: 'number', value: (row) => formatSize(row.size) },
 ];

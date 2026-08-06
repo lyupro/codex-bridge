@@ -46,6 +46,26 @@ test('a project name renders its run rows', (t) => {
   assert.match(result.output, /PASS/);
 });
 
+// A narrow terminal printed `running` as `…nning`, which reads as a damaged run rather than one
+// still in flight. Long names are what a narrow table shortens; a verdict is one whole word.
+test('a narrow table shortens the run name, never the verdict', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'projects-narrow-'));
+  const run = path.join(root, 'sample', '2026-08-06_090000_a-deliberately-long-run-name');
+  fs.mkdirSync(run, { recursive: true });
+  fs.writeFileSync(path.join(run, 'meta.json'), JSON.stringify({
+    agent: 'codex-build',
+    status: 'running',
+    tokens: 21,
+  }));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  const result = projects(['sample'], { runsRootPath: root, terminalWidth: 40 });
+
+  assert.match(result.output, /\brunning\b/);
+  assert.doesNotMatch(result.output, /…\w*nning/);
+  assert.match(result.output, /…/, 'the run name is what a narrow table gives up');
+});
+
 test('--json emits the same project row shape as the inventory', (t) => {
   const root = fixture(t);
 
