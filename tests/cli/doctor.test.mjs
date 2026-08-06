@@ -30,6 +30,7 @@ async function installedFixture(t) {
     'agents/codex/hooks/order-gate.mjs',
     'agents/codex/hooks/live-runs.mjs',
     'agents/codex/hooks/worktree-lock.mjs',
+    'agents/codex/hooks/prune-guard.mjs',
   ];
   for (const relative of files) {
     const target = path.join(host.root, relative);
@@ -45,6 +46,7 @@ async function installedFixture(t) {
       { event: 'SubagentStop', path: 'agents/codex/hooks/reply-guard.mjs' },
       { event: 'PreToolUse', path: 'agents/codex/hooks/order-gate.mjs' },
       { event: 'PreToolUse', path: 'agents/codex/hooks/worktree-lock.mjs' },
+      { event: 'PreToolUse', path: 'agents/codex/hooks/prune-guard.mjs' },
     ],
   };
   await writeInstallRecord(host, record);
@@ -104,12 +106,15 @@ test('complete installation with all files exits zero', async (t) => {
   assert.equal(result.checks.find((item) => item.key === 'files').status, 'ok');
   assert.equal(result.checks.find((item) => item.key === 'hook:SubagentStop').status, 'ok');
   const preToolUse = result.checks.filter((item) => item.key === 'hook:PreToolUse');
-  assert.equal(preToolUse.length, 2);
+  assert.equal(
+    preToolUse.length,
+    HOOK_DEFINITIONS.filter(({ event }) => event === 'PreToolUse').length,
+  );
   assert.ok(preToolUse.every((item) => item.status === 'ok'));
   // Each line must name its own file. Matching the record by event alone reported the worktree
   // lock's matcher as pointing at order-gate.mjs, which is exactly the lie an operator reading
   // doctor cannot catch.
-  for (const file of ['order-gate.mjs', 'worktree-lock.mjs']) {
+  for (const file of ['order-gate.mjs', 'worktree-lock.mjs', 'prune-guard.mjs']) {
     assert.equal(preToolUse.filter((item) => item.value.endsWith(file)).length, 1);
   }
 });

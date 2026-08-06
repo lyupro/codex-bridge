@@ -77,7 +77,12 @@ test('install copies the exact plan, expands placeholders, and writes a valid re
   const rulesBytes = await fs.readFile(record.rules.path);
   assert.deepEqual(rulesBytes, await fs.readFile('src/rules/codex-bridge.rules'));
   assert.equal(record.rules.fingerprint, createHash('sha256').update(rulesBytes).digest('hex'));
-  assert.deepEqual(record.hooks.map(({ event }) => event), ['SubagentStop', 'PreToolUse', 'PreToolUse']);
+  // From the definitions, not restated: a literal list here has to be edited every time the
+  // package registers another hook, and until someone remembers, it contradicts the installer.
+  assert.deepEqual(
+    record.hooks.map(({ event }) => event),
+    HOOK_DEFINITIONS.map(({ event }) => event),
+  );
   const settings = JSON.parse(await fs.readFile(host.settingsPath, 'utf8'));
   // Read from the definitions rather than restated: the PreToolUse matcher lists every name a
   // host gives the subagent tool, and a literal here would have to be edited — or silently
