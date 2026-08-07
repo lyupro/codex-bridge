@@ -1,6 +1,6 @@
 {
   "name": "@lyupro/codex-bridge",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Delegate implementation, reconnaissance and code review from Claude Code to the Codex CLI: dispatcher agents, a runner that survives a dropped call, and a verdict that checks the report against the worktree.",
   "keywords": [
     "claude-code",
