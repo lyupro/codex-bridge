@@ -66,7 +66,12 @@ process.stdout.write(JSON.stringify({
     permissionDecision: 'deny',
     permissionDecisionReason: `Worktree lock denied ${input.tool_name}: ${targetPath} is inside repository `
       + `${status.repo}, held by live run folder ${dir} (agent ${status.agent}, slug ${status.slug}). `
-      + `The run has been silent for ${formatSilence(heartbeatAge(dir))}. `
-      + `End it with: codex-bridge stop ${path.basename(dir)}.`,
+      // "Working, last progress X ago" rather than "silent for X": this hook only ever denies a
+      // run whose heartbeat is still fresh — a stale one is not live here and the edit passes. The
+      // first live probe printed "silent for 10 seconds" next to a stop command on a perfectly
+      // healthy run, which reads as "it hung, kill it" and would cost the operator 20 minutes of
+      // work they meant to keep.
+      + `It is working; last progress ${formatSilence(heartbeatAge(dir))} ago. `
+      + `To take the repository back before it finishes: codex-bridge stop ${path.basename(dir)}.`,
   },
 }));

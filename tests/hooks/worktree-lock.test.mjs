@@ -84,7 +84,10 @@ test('the lock denies writes inside a live codex-build repository for every writ
   }
 });
 
-test('the denial reports heartbeat silence and the exact release command', async (t) => {
+// The run this hook denies for is always a working one — a stale heartbeat is not live here, so
+// the edit would pass instead. The wording has to say that, or an operator reading "silent" beside
+// a stop command kills a healthy run.
+test('the denial reports last progress and the exact release command', async (t) => {
   const { root, runsRoot } = await fixture(t);
   const repo = path.join(root, 'repository');
   const runDir = await liveRun(runsRoot, { repo });
@@ -95,9 +98,10 @@ test('the denial reports heartbeat silence and the exact release command', async
 
   const result = runLock(root, runsRoot, 'Write', path.join(repo, 'file.txt'));
   const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
-  assert.match(reason, /silent for \d+ seconds/);
+  assert.match(reason, /It is working; last progress \d+ seconds ago/);
   assert.match(reason, new RegExp(`codex-bridge stop ${path.basename(runDir)}`));
   assert.doesNotMatch(reason, /Wait for status\.json/);
+  assert.doesNotMatch(reason, /silent for/);
 });
 
 test('the lock allows writes when no run is live', async (t) => {

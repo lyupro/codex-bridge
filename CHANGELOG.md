@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-08-07
+
+### Added
+
+- `codex-bridge sweep [<project>]` closes running records whose runner pid is dead, across the whole store or one project. It changes state but deletes no run folder or transport, never touches a live pid, and lists every stalled-but-live run with the exact `codex-bridge stop <run>` line that ends it. A dead record can therefore be cleared without paying for another run, while a live worker remains the sole writer until `stop` kills it first.
+- Every new run folder carries a `heartbeat` file, and `status.json` carries `stdio_drained`. The heartbeat records movement from Codex output and the still-running child rather than a timer that would keep an orphan alive; `stdio_drained` says whether stdout/stderr closed normally or the bounded drain grace had to end the run.
+
+### Changed
+
+- Hook liveness now requires `state: running`, a live runner pid and a heartbeat no older than five minutes. A stalled run therefore stops holding the worktree lock instead of holding it until the deadline; the refusal that remains — always about a working run — says how long ago it last made progress and prints `codex-bridge stop <run>` for taking the repository back early. Record cleanup and the second-writing-run check still judge by pid alone, so a stale but live run is released to the operator, not closed underneath its worker.
+- The worker closes a run after `exit` with a bounded 30-second grace for stdio drain instead of waiting for `close`, which a grandchild can hold open forever. Healthy runs keep the event tail that carries their result and record `stdio_drained: true`; only the fallback records `false`.
+- The three dispatcher prompts now open with one shared no-self-execution block rendered through `{{CODEX_NO_SELF_EXECUTION}}`. If `run-codex.mjs` does not start a run, the dispatcher must return `FAIL` and stop, and a reply with no run folder is blocked by the guard. The installed prompts change only when the host runs `codex-bridge update`; a host that does not update keeps the old prompts.
+
+### Fixed
+
+- A dispatcher that cannot start Codex can no longer read the code, write the files or fix the tests itself and claim a result. The guard also rejects a made-up reply with no `RUN=` or `ATTACH=` behind it: no run, no result.
+
 ## [0.2.0] - 2026-08-06
 
 ### Added
