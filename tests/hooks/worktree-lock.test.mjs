@@ -84,6 +84,22 @@ test('the lock denies writes inside a live codex-build repository for every writ
   }
 });
 
+test('the denial reports heartbeat silence and the exact release command', async (t) => {
+  const { root, runsRoot } = await fixture(t);
+  const repo = path.join(root, 'repository');
+  const runDir = await liveRun(runsRoot, { repo });
+  const heartbeat = path.join(runDir, 'heartbeat');
+  await fs.writeFile(heartbeat, 'progress\n');
+  const staleAt = new Date(Date.now() - 7000);
+  await fs.utimes(heartbeat, staleAt, staleAt);
+
+  const result = runLock(root, runsRoot, 'Write', path.join(repo, 'file.txt'));
+  const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+  assert.match(reason, /silent for \d+ seconds/);
+  assert.match(reason, new RegExp(`codex-bridge stop ${path.basename(runDir)}`));
+  assert.doesNotMatch(reason, /Wait for status\.json/);
+});
+
 test('the lock allows writes when no run is live', async (t) => {
   const { root, runsRoot } = await fixture(t);
   const repo = path.join(root, 'repository');

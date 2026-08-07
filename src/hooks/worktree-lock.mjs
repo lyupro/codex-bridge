@@ -10,6 +10,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { formatSilence, heartbeatAge } from '../heartbeat.mjs';
 import { WRITE_TOOLS } from '../hook-definitions.mjs';
 import { runsRoot } from '../runner/runs-root.mjs';
 import { allLiveRuns, normalizePath } from './live-runs.mjs';
@@ -65,6 +66,7 @@ process.stdout.write(JSON.stringify({
     permissionDecision: 'deny',
     permissionDecisionReason: `Worktree lock denied ${input.tool_name}: ${targetPath} is inside repository `
       + `${status.repo}, held by live run folder ${dir} (agent ${status.agent}, slug ${status.slug}). `
-      + 'Wait for status.json to change state before editing this repository.',
+      + `The run has been silent for ${formatSilence(heartbeatAge(dir))}. `
+      + `End it with: codex-bridge stop ${path.basename(dir)}.`,
   },
 }));

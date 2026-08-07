@@ -17,6 +17,7 @@ node bin/codex-bridge.mjs stop <run>    # close a hanging run by hand, without h
 node bin/codex-bridge.mjs read <run>   # read a run: its events rendered as text, on demand
 node bin/codex-bridge.mjs projects     # what the run store holds: projects, runs, weight, tokens
 node bin/codex-bridge.mjs prune <project>   # reclaim disk space, transport only unless told otherwise
+node bin/codex-bridge.mjs sweep [<project>] # close running records whose runner is gone
 ```
 
 `install` copies the package into the host's `agents/codex/`, its slash commands into
@@ -53,6 +54,12 @@ By default it removes transport only — event streams and stderr, the megabytes
 accounting, reports and worktree snapshots alone; `--purge` is what takes a folder whole.
 The same transport is dropped automatically from runs older than 30 days when a new run starts,
 which the reply says out loud; `retention` in `run-config.json` changes the age or turns it off.
+
+`sweep` is housekeeping for records left by a dead runner. With no project it scans the whole
+store; with one project it limits the scan to that folder. It uses the same dead-pid decision as
+start-of-run cleanup, never closes a live pid even when its heartbeat is stale, and never deletes
+run artifacts. A stale live-pid record is named with the exact `codex-bridge stop <run>` command
+needed to close it.
 
 ## What it gives you
 

@@ -50,6 +50,27 @@ export function heartbeatAge(runDir, now = Date.now()) {
 }
 
 /**
+ * How long a run has been silent, in words. It lives beside the age it formats because both the
+ * worktree lock's refusal and `sweep`'s report have to name the same silence to the same operator;
+ * two copies of this drifted apart the moment they were written.
+ */
+export function formatSilence(age) {
+  if (age === null || !Number.isFinite(age)) return 'an unknown duration';
+  const seconds = Math.floor(Math.max(0, age) / 1000);
+  if (seconds < 60) return `${seconds} second${seconds === 1 ? '' : 's'}`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  if (minutes < 60) {
+    return `${minutes} minute${minutes === 1 ? '' : 's'}`
+      + (remainingSeconds ? ` ${remainingSeconds} second${remainingSeconds === 1 ? '' : 's'}` : '');
+  }
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  return `${hours} hour${hours === 1 ? '' : 's'}`
+    + (remainingMinutes ? ` ${remainingMinutes} minute${remainingMinutes === 1 ? '' : 's'}` : '');
+}
+
+/**
  * A running record is live when its heartbeat is fresh. Missing heartbeats remain live only for
  * pre-Plan_20 records, an explicit fail-closed compatibility choice that preserves their lock.
  */
