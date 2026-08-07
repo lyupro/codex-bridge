@@ -5,6 +5,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { replacePlaceholders } from '../cli/manifest.mjs';
 import { AGENTS } from '../src/write-meta.mjs';
+import { renderNoSelfExecution } from '../src/no-self-execution.mjs';
 import {
   CONTINUATION_INPUT,
   REQUIRED_INPUTS,
@@ -13,6 +14,8 @@ import {
   renderRequiredInputSummary,
   renderRequiredInputs,
 } from '../src/required-inputs.mjs';
+
+const agentDirectory = path.join('src', 'agents');
 
 /**
  * The runner's refusals read their example and source straight out of this table
@@ -100,6 +103,25 @@ test('valid values pass and the renderer uses the same entries', () => {
       rendered.includes(`- ${entry.label}: ${entry.explanation} Example: \`${entry.example}\`.`),
       `${entry.label} must be rendered from its own table entry`,
     );
+  }
+});
+
+test('every dispatcher markdown file carries the shared no-self-execution placeholder first', async () => {
+  const files = (await fs.readdir(agentDirectory)).filter((file) => file.endsWith('.md')).sort();
+  assert.deepEqual(files, Object.keys(AGENTS).map((agentType) => `${agentType}.md`).sort());
+  for (const file of files) {
+    const source = await fs.readFile(path.join(agentDirectory, file), 'utf8');
+    const body = source.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '').trimStart();
+    assert.match(body, /^\{\{CODEX_NO_SELF_EXECUTION\}\}/, `${file} must put the shared block first`);
+  }
+});
+
+test('placeholder expansion renders the complete no-self-execution prohibition', async () => {
+  for (const agentType of Object.keys(AGENTS)) {
+    const source = await fs.readFile(path.join(agentDirectory, `${agentType}.md`), 'utf8');
+    const rendered = replacePlaceholders(source, path.resolve('installed', 'agents'));
+    assert.ok(rendered.includes(renderNoSelfExecution()), `${agentType} must render the prohibition`);
+    assert.doesNotMatch(rendered, /\{\{CODEX_NO_SELF_EXECUTION\}\}/);
   }
 });
 

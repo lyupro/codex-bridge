@@ -53,6 +53,16 @@ function replyFor(runDir, extra = '') {
   return `RUN=${runDir}\nOK — run finished.${extra}`;
 }
 
+test('an invented reply without any run folder is fail-closed', async (t) => {
+  const { root } = await fixture(t);
+  const result = runGuard(root, 'OK — files were created.');
+  assert.equal(result.status, 0);
+  const decision = JSON.parse(result.stdout);
+  assert.equal(decision.decision, 'block');
+  assert.match(decision.reason, /no RUN= or ATTACH=/);
+  assert.match(decision.reason, /prohibited/);
+});
+
 test('a reply that names every live run passes', async (t) => {
   const { root, runs } = await fixture(t);
   const own = await createRun(runs, 'own', ownStatus(), { status: 'OK' });

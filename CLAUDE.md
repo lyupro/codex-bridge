@@ -34,8 +34,9 @@ Two independent halves share the repository:
 **Package/installer** — `bin/codex-bridge.mjs` (argument dispatch only) over `cli/`:
 `manifest.mjs` owns the install table, the seeded-file list and the `.codex-bridge-install.json`
 record schema; `install/update/uninstall/doctor.mjs` are one command each, as are the run-store
-commands `read` (renders one run), `projects` (inventory over `runs-inventory`/`table`) and `prune`
-(`prune-args` refuses, `prune-plan` decides, `prune.mjs` deletes); `hosts.mjs` resolves host
+commands `read` (renders one run), `projects` (inventory over `runs-inventory`/`table`), `prune`
+(`prune-args` refuses, `prune-plan` decides, `prune.mjs` deletes) and `sweep` (closes running
+records whose pid is dead, deletes nothing, never touches a live pid); `hosts.mjs` resolves host
 paths without touching disk; `settings-merge.mjs` registers the hooks without destroying foreign
 ones, and finds its own by command rather than by matcher — the matcher is generated from a tool
 list and changes whenever a host spelling is added. `update` compares sha256 fingerprints from the record: outdated files refresh silently,
@@ -63,7 +64,15 @@ hand-edited files stop the run unless `--force`.
   (PreToolUse) refuses a file edit inside a repository a live `codex-build` run holds;
   `prune-guard.mjs` (PreToolUse) refuses an agent-issued `codex-bridge prune`, matching the command
   line by spelling — so a new CLI name has to be added here too, or the alias walks past it.
-  `live-runs.mjs` is the one answer to "is this run alive" the guards ask.
+  `live-runs.mjs` is the one answer to "is this run alive" the guards ask — pid plus a fresh
+  heartbeat. `meta/run-state.mjs` deliberately answers it by pid alone; the comment there says why
+  merging the two broke both.
+- `heartbeat.mjs` stamps that a run is *moving*, not that a process exists: a worker outliving its
+  Codex kept a repository locked for seven minutes on 2026-08-06. Guards require it; the modules
+  that close records or refuse a second writing run do not.
+- `no-self-execution.mjs` is the first block of all three agent prompts, rendered through
+  `{{CODEX_NO_SELF_EXECUTION}}`. One copy, because a dispatcher that could not start its run once
+  did the work itself on the Claude quota.
 - `retention.mjs` owns the list of transport files and the age rule, because `cli/` is not copied
   into the host and the runner could not import the pruning planner otherwise.
 

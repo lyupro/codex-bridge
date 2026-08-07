@@ -10,6 +10,7 @@ import {
   renderRequiredInputSummary,
   renderRequiredInputs,
 } from '../src/required-inputs.mjs';
+import { renderNoSelfExecution } from '../src/no-self-execution.mjs';
 
 export { HOOK_DEFINITIONS };
 
@@ -42,7 +43,8 @@ export function replacePlaceholders(content, agentsDir) {
   return content
     .replaceAll('{{CODEX_BRIDGE_DIR}}', posix(path.resolve(agentsDir)))
     .replaceAll('{{CODEX_REQUIRED_INPUTS_SUMMARY}}', renderRequiredInputSummary(agentType))
-    .replaceAll('{{CODEX_REQUIRED_INPUTS}}', renderRequiredInputs(agentType));
+    .replaceAll('{{CODEX_REQUIRED_INPUTS}}', renderRequiredInputs(agentType))
+    .replaceAll('{{CODEX_NO_SELF_EXECUTION}}', renderNoSelfExecution());
 }
 
 export async function packageInfo(packageRoot = PACKAGE_ROOT) {
