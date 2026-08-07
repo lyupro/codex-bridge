@@ -15,13 +15,26 @@ function formatSize(bytes) {
   return `${bytes} B`;
 }
 
-/** Both timestamp shapes in the store: an ISO stamp from artifacts, a folder name otherwise. */
+const pad = (value) => String(value).padStart(2, '0');
+
+/**
+ * Both timestamp shapes in the store, printed on one clock. A run folder is named in local time
+ * (`2026-08-07_144243`); `meta.finished_at` is an ISO stamp in UTC. Reading the ISO one with a
+ * regular expression printed its UTC hours in the same column as local ones, and the 2026-08-07
+ * live check (Plan_17-1 §1) saw the run whose folder says `144243` listed as `12:46` — the
+ * operator's own zone offset, looking exactly like a different run. Slicing a timestamp is cheaper
+ * than parsing it only until the value carries a zone. The folder name stays text because it is
+ * already local; parsing it would invent a zone it never had.
+ */
 function formatStamp(value) {
   if (typeof value !== 'string' || !value.trim()) return null;
-  const iso = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/.exec(value);
-  if (iso) return `${iso[1]} ${iso[2]}`;
   const folder = /^(\d{4}-\d{2}-\d{2})_(\d{2})(\d{2})/.exec(value);
-  return folder ? `${folder[1]} ${folder[2]}:${folder[3]}` : value;
+  if (folder) return `${folder[1]} ${folder[2]}:${folder[3]}`;
+  const moment = Date.parse(value);
+  if (Number.isNaN(moment)) return value;
+  const at = new Date(moment);
+  return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`
+    + ` ${pad(at.getHours())}:${pad(at.getMinutes())}`;
 }
 
 const PROJECT_COLUMNS = [

@@ -66,6 +66,39 @@ test('a narrow table shortens the run name, never the verdict', (t) => {
   assert.match(result.output, /…/, 'the run name is what a narrow table gives up');
 });
 
+// A folder name is written in local time, `finished_at` in UTC, and each used to reach the column
+// through its own branch: the 2026-08-07 live check (Plan_17-1 §1) read a run whose folder says
+// 14:42 as `12:46`, which is the machine's zone offset wearing the face of a different run. One
+// moment, two shapes, one column — the printed strings have to agree, on any machine.
+test('a UTC stamp and a folder name of the same moment print alike', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'projects-clock-'));
+  const iso = '2026-08-06T09:00:00.000Z';
+  const at = new Date(iso);
+  const pad = (value) => String(value).padStart(2, '0');
+  const day = `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
+  const folder = `${day}_${pad(at.getHours())}${pad(at.getMinutes())}${pad(at.getSeconds())}_run`;
+
+  const stamped = path.join(root, 'stamped', folder);
+  fs.mkdirSync(stamped, { recursive: true });
+  fs.writeFileSync(path.join(stamped, 'meta.json'), JSON.stringify({
+    agent: 'codex-build',
+    status: 'OK',
+    tokens: 1,
+    finished_at: iso,
+  }));
+  // No artifacts at all, so this project's timestamp can only come from the folder name.
+  fs.mkdirSync(path.join(root, 'bare', folder), { recursive: true });
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  const output = projects([], { runsRootPath: root, terminalWidth: 120 }).output;
+  const stamps = [...output.matchAll(/(\d{4}-\d{2}-\d{2} \d{2}:\d{2})/g)].map(([, stamp]) => stamp);
+
+  assert.equal(stamps.length, 2, 'both projects must show a last run');
+  assert.equal(stamps[0], stamps[1], 'the same moment must not print as two different times');
+  assert.equal(stamps[0], `${day} ${pad(at.getHours())}:${pad(at.getMinutes())}`,
+    'the column shows local time, the clock the folder names are written in');
+});
+
 test('--json emits the same project row shape as the inventory', (t) => {
   const root = fixture(t);
 
