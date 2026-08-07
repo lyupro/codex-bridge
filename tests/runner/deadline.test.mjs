@@ -207,10 +207,19 @@ process.exit(7);
 `,
     async (root) => {
       const eventsPath = path.join(root, 'events.jsonl');
-      const run = await runCodex([], 'late close test', eventsPath, 0.02);
+      const started = Date.now();
+      // 250ms stands in for the production grace: the fallback is what is under test, not how
+      // long a real run waits for its pipes. The default is deliberately far larger, because
+      // cutting stdio early loses the tail of events.jsonl that carries the run's own result.
+      const run = await runCodex([], 'late close test', eventsPath, 0.02, 250);
+      assert.ok(Date.now() - started < 2_000);
       assert.equal(run.exit, 7);
       assert.equal(run.stoppedOnDeadline, false);
+      assert.equal(run.stdioDrained, false);
       assert.doesNotMatch(fs.readFileSync(eventsPath, 'utf8'), /stopped on its deadline/);
+      // The fixture grandchild intentionally keeps the inherited Windows cwd open; let it
+      // finish so cleanup can remove the temporary tree after proving the run closed early.
+      await wait(3_100);
     },
   );
 });

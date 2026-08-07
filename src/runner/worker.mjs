@@ -36,9 +36,12 @@ export async function worker(runDir) {
   // This runner-owned fact cannot be forged through events.jsonl, which Codex can write.
   // Written even when no deadline fired: `false` is the marker that a runner was watching,
   // and an archived run with no field at all must stay distinguishable from a run that lived.
+  // `stdio_drained: false` separately records an exit that needed the grace fallback because
+  // a grandchild kept a pipe open, the distinction the 2026-08-06 incident made necessary.
   writeStatus(runDir, {
     stopped_on_deadline: run.stoppedOnDeadline,
     elapsed_ms: run.elapsedMs,
+    stdio_drained: run.stdioDrained,
   });
 
   if (cfg.agent === 'codex-build') {

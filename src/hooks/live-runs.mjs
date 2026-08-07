@@ -2,12 +2,18 @@
  * Shared, fail-open knowledge of live Codex runs.
  *
  * The reply guard and the worktree lock must answer the same question: a status.json is live
- * only while it says `running` and its runner pid accepts signal 0. Keeping that probe and the
- * directory scan here prevents the two protections from disagreeing about a run, which would
- * recreate the incident where the dispatcher reported while another run still edited the tree.
+ * only while it says `running`, its runner pid accepts signal 0, and its progress heartbeat is
+ * fresh. Keeping those probes and the directory scan here prevents the two protections from
+ * disagreeing about a run, which would recreate the 2026-08-06 incident where a dead Codex
+ * child left its worker and lock looking live through a grandchild-held stdio pipe.
+ *
+ * The heartbeat is required here and deliberately NOT in meta/run-state.mjs: releasing a lock
+ * early costs an operator one knowing edit, while closing a record early makes a second writer
+ * of its meta.json. See the comment above pidAlive() there.
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { isHeartbeatFresh } from '../heartbeat.mjs';
 
 /** Signal 0 tests existence without stopping the process; EPERM still means that it exists. */
 export const isPidAlive = (pid) => {
@@ -41,7 +47,7 @@ function isNonEmptyString(value) {
   return typeof value === 'string' && Boolean(value.trim());
 }
 
-function recognizedStatus(status) {
+function recognizedStatus(runDir, status) {
   return Boolean(status)
     && typeof status === 'object'
     && !Array.isArray(status)
@@ -50,7 +56,8 @@ function recognizedStatus(status) {
     && isNonEmptyString(status.agent)
     && isNonEmptyString(status.slug)
     && isNonEmptyString(status.repo)
-    && isPidAlive(status.pid);
+    && isPidAlive(status.pid)
+    && isHeartbeatFresh(runDir);
 }
 
 function readStatus(runDir) {
@@ -75,7 +82,7 @@ export function liveRuns(runsDir) {
     if (!entry.isDirectory()) continue;
     const dir = path.join(runsDir, entry.name);
     const status = readStatus(dir);
-    if (recognizedStatus(status)) result.push({ dir, status });
+    if (recognizedStatus(dir, status)) result.push({ dir, status });
   }
   return result;
 }

@@ -26,6 +26,22 @@ export const pidAlive = (pid) => {
 };
 
 /**
+ * This module deliberately judges by the pid alone, while hooks/live-runs.mjs also requires a
+ * fresh progress heartbeat. The two answer different questions, and merging them broke both:
+ *
+ * - a hook asks "may the operator edit this tree", and a stalled run must stop holding that
+ *   lock — the operator is editing knowingly, and a stale run should not cost them 25 minutes;
+ * - this module asks "may a second paid run write into this tree" and "is this folder finished".
+ *   Closing a run whose pid still lives makes markAbandoned the second writer of its meta.json:
+ *   the live worker reaches collect() afterwards and overwrites the verdict, so the documented
+ *   artifact order stops being a contract. Letting activeRun() past a live pid starts a second
+ *   writing run in one worktree, which is the 2026-08-05 incident this whole lock exists for.
+ *
+ * A stalled-but-live run is closed by `stop`, which kills the process first and only then
+ * records the verdict — one writer, in the right order.
+ */
+
+/**
  * Run state on disk, merged over whatever is already there. A killed runner leaves no
  * report and no meta.json, and four abandoned folders from one order were indistinguishable
  * from four runs still working — status.json is what makes that difference visible.
@@ -131,7 +147,8 @@ export function activeRun(runsRoot, repo, agent = 'codex-build') {
   const wanted = normalizePath(repo);
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
-    const status = readJson(path.join(runsRoot, entry.name, 'status.json'));
+    const runDir = path.join(runsRoot, entry.name);
+    const status = readJson(path.join(runDir, 'status.json'));
     if (!status || status.state !== 'running' || status.agent !== agent) continue;
     if (normalizePath(status.repo) !== wanted) continue;
     if (pidAlive(status.pid)) return entry.name;

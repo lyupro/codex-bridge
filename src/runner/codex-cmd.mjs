@@ -11,9 +11,17 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
+import { createHeartbeat, HEARTBEAT_INTERVAL_MS } from '../heartbeat.mjs';
 import { writeFailure } from '../write-meta.mjs';
 import { MAX_LOG } from './git-state.mjs';
 import { CLEAN_ENV, RUN_ENV } from './run-env.mjs';
+
+// Thirty seconds, not a fraction of one: after `exit` the pipe still holds whatever Codex wrote
+// last, and that tail carries `item.completed` — the result the verdict is read from. A quarter
+// of a second is enough to lose it on a loaded Windows host, turning a finished run into "the run
+// left no event". The grace exists to bound a grandchild holding stdio open forever (2026-08-06,
+// run 2026-08-06_204007_build waited 25 minutes), and thirty seconds bounds that just as well.
+const STDIO_DRAIN_GRACE_MS = 30_000;
 
 /**
  * An argument cmd.exe cannot be handed safely, or undefined. `%` is fatal because cmd
@@ -56,18 +64,24 @@ export function stopCodex(child, onWindows = process.platform === 'win32') {
  * own bounded file because text outside the JSONL protocol must remain distinguishable from
  * protocol events, and a line cut in half cannot be parsed back safely.
  */
-export function runCodex(args, taskText, eventsPath, budgetMinutes) {
+export function runCodex(args, taskText, eventsPath, budgetMinutes, graceMs = STDIO_DRAIN_GRACE_MS) {
   const onWindows = process.platform === 'win32';
   const deadlineMs =
     typeof budgetMinutes === 'number' && Number.isFinite(budgetMinutes) && budgetMinutes > 0
       ? budgetMinutes * 60 * 1000
       : null;
+  let exited = false;
+  const heartbeat = createHeartbeat(path.dirname(eventsPath));
+  const stampHeartbeat = () => {
+    if (!exited) heartbeat.stamp();
+  };
   const stderrLog = fs.createWriteStream(path.join(path.dirname(eventsPath), 'stderr.log'), { flags: 'a' });
   const eventsLog = fs.createWriteStream(eventsPath, { flags: 'a' });
   const appendTo = (stream, label) => {
     let written = 0;
     let cut = false;
     return (chunk) => {
+      stampHeartbeat();
       const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), 'utf8');
       if (written >= MAX_LOG) {
         if (!cut) {
@@ -88,6 +102,7 @@ export function runCodex(args, taskText, eventsPath, budgetMinutes) {
     let written = 0;
     let cut = false;
     const append = (chunk) => {
+      stampHeartbeat();
       if (cut) return;
       const incoming = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), 'utf8');
       pending = pending.length ? Buffer.concat([pending, incoming]) : incoming;
@@ -135,10 +150,15 @@ export function runCodex(args, taskText, eventsPath, budgetMinutes) {
   return new Promise((resolve) => {
     let failed = false;
     let deadlineTimer;
+    let heartbeatTimer;
+    let stdioGraceTimer;
     let stoppedOnDeadline = false;
-    let exited = false;
+    let exitCode;
+    let settled = false;
     let elapsedMs = 0;
     const startedAt = Date.now();
+    stampHeartbeat();
+    heartbeatTimer = setInterval(stampHeartbeat, HEARTBEAT_INTERVAL_MS);
     child.stdout.on('data', appendEvents.append);
     child.stdout.on('end', appendEvents.finish);
     child.stderr.on('data', (chunk) => {
@@ -159,12 +179,6 @@ export function runCodex(args, taskText, eventsPath, budgetMinutes) {
     child.on('error', (err) => {
       failed = true;
       appendStderr(`\nrun-codex: ${err.message}\n`);
-    });
-    // 'exit' fires when the process is gone; 'close' waits for stdio, which a grandchild can
-    // hold open past the deadline. Judging by 'close' would let the timer brand a run that
-    // finished honestly at minute 24 as one the runner killed.
-    child.on('exit', () => {
-      exited = true;
     });
     // Codex that dies before reading the order leaves an EPIPE here; the exit code and the
     // log already say what happened, and an unhandled stream error would replace that with
@@ -199,14 +213,39 @@ export function runCodex(args, taskText, eventsPath, budgetMinutes) {
         }
         stream.end(done);
       });
-    child.on('close', async (code) => {
+
+    // 'exit' fires when Codex is gone; 'close' waits for stdio, which the 2026-08-06 incident
+    // showed a grandchild can hold open forever. A bounded drain grace keeps normal logs intact,
+    // then closes the run with an explicit marker instead of waiting for an unbounded pipe.
+    const finish = async (code, stdioDrained) => {
+      if (settled) return;
+      settled = true;
       if (deadlineTimer) clearTimeout(deadlineTimer);
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
+      if (stdioGraceTimer) clearTimeout(stdioGraceTimer);
       if (!stoppedOnDeadline) elapsedMs = Date.now() - startedAt;
       const exit = failed || code === null ? 1 : code;
+      appendEvents.finish();
+      if (!stdioDrained) {
+        try { child.stdout.destroy(); } catch {}
+        try { child.stderr.destroy(); } catch {}
+      }
       await close(stderrLog);
       await close(eventsLog);
-      resolve({ exit, stoppedOnDeadline, elapsedMs });
+      resolve({ exit, stoppedOnDeadline, elapsedMs, stdioDrained });
+    };
+
+    child.on('exit', (code) => {
+      exited = true;
+      exitCode = code;
+      if (deadlineTimer) clearTimeout(deadlineTimer);
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
+      // The grace is an argument only so tests can prove the fallback without waiting it out;
+      // a run never passes one, because a per-run grace is a second place to configure a
+      // contract that must be identical for every run.
+      stdioGraceTimer = setTimeout(() => finish(exitCode, false), graceMs);
     });
+    child.on('close', (code) => finish(code, true));
   });
 }
 

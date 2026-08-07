@@ -16,11 +16,19 @@ import {
   abandonedBranchDrift,
   writeFailure,
 } from '../../src/meta/run-state.mjs';
+import { HEARTBEAT_FILE, HEARTBEAT_STALE_MS } from '../../src/heartbeat.mjs';
 import { makeChainRoot } from './test-fixtures.mjs';
 
 // A dispatcher pid this OS will never hand out, so pidAlive() reads it as dead everywhere
 // these tests run (verified against the real implementation, not assumed).
 const DEAD_PID = 999999999;
+
+function setHeartbeatAge(runDir, age) {
+  const heartbeat = path.join(runDir, HEARTBEAT_FILE);
+  fs.writeFileSync(heartbeat, 'progress\n');
+  const at = new Date(Date.now() - age);
+  fs.utimesSync(heartbeat, at, at);
+}
 
 test('writeFailure() leaves status.json in the failed state', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-run-'));
@@ -99,7 +107,7 @@ test('markAbandoned repairs a dead running run that already has a meta.json to f
   assert.equal(fs.readFileSync(path.join(runDir, 'meta.json'), 'utf8'), metaText);
 });
 
-test('markAbandoned leaves a running run alone while its pid is alive', () => {
+test('markAbandoned keeps a pre-Plan_20 running record without heartbeat alive', () => {
   const runsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-runs-'));
   const runDir = path.join(runsRoot, 'run3');
   fs.mkdirSync(runDir);
@@ -112,13 +120,41 @@ test('markAbandoned leaves a running run alone while its pid is alive', () => {
   assert.deepEqual(status, before);
 });
 
-test('activeRun finds a live build run against the same repo', () => {
+// A stale heartbeat releases the hooks' lock, never this record. Closing a run whose pid still
+// lives would make markAbandoned the second writer of its meta.json — the live worker reaches
+// collect() afterwards and overwrites the verdict. `stop` closes stalled runs, killing first.
+test('markAbandoned leaves a live-pid run alone even when its heartbeat is stale', () => {
+  const runsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-runs-'));
+  const runDir = path.join(runsRoot, 'stalled');
+  fs.mkdirSync(runDir);
+  writeStatus(runDir, { state: 'running', pid: process.pid, repo: '/repo', agent: 'codex-build' });
+  setHeartbeatAge(runDir, HEARTBEAT_STALE_MS + 1_000);
+
+  assert.deepEqual(markAbandoned(runsRoot), []);
+  const status = JSON.parse(fs.readFileSync(path.join(runDir, 'status.json'), 'utf8'));
+  assert.equal(status.state, 'running');
+  assert.equal(status.abandoned_reason, undefined);
+});
+
+test('activeRun keeps a pre-Plan_20 build run without heartbeat live', () => {
   const runsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-runs-'));
   const runDir = path.join(runsRoot, 'build-alive');
   fs.mkdirSync(runDir);
   writeStatus(runDir, { state: 'running', pid: process.pid, repo: '/repo/a', agent: 'codex-build' });
 
   assert.equal(activeRun(runsRoot, '/repo/a'), 'build-alive');
+});
+
+// Two writing runs in one worktree is the 2026-08-05 incident. A stalled run still owns the
+// tree while its process can wake up; the operator ends it with `stop`, which kills it first.
+test('activeRun still refuses a second writing run while the pid lives', () => {
+  const runsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-runs-'));
+  const runDir = path.join(runsRoot, 'build-stalled');
+  fs.mkdirSync(runDir);
+  writeStatus(runDir, { state: 'running', pid: process.pid, repo: '/repo/a', agent: 'codex-build' });
+  setHeartbeatAge(runDir, HEARTBEAT_STALE_MS + 1_000);
+
+  assert.equal(activeRun(runsRoot, '/repo/a'), 'build-stalled');
 });
 
 test('activeRun ignores a live build run against a different repo', () => {
