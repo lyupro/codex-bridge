@@ -121,7 +121,12 @@ import { spawn } from 'node:child_process';
 const marker = process.env.CODEX_DEADLINE_MARKER;
 fs.writeFileSync(process.env.CODEX_DEADLINE_CODEX_PID, String(process.pid));
 if (process.platform === 'win32') {
-  const code = 'setTimeout(() => require("node:fs").writeFileSync(' + JSON.stringify(marker) + ', "alive"), 1000);';
+  // Ten seconds, not one. The proof here is "the grandchild died before it could write", and a
+  // one-second fuse left ~400ms of headroom over the 600ms deadline — less than the taskkill
+  // stand-in may spend waiting for a pid file, so the whole suite under load turned this into a
+  // failure once in three runs. The wait below is on the process actually being gone, so a wider
+  // fuse costs no wall-clock: a run that never got killed fails on that wait, naming the reason.
+  const code = 'setTimeout(() => require("node:fs").writeFileSync(' + JSON.stringify(marker) + ', "alive"), 10000);';
   const grandchild = spawn(process.execPath, ['-e', code], { stdio: 'ignore' });
   fs.writeFileSync(process.env.CODEX_DEADLINE_PID, String(grandchild.pid));
 } else {
@@ -149,7 +154,10 @@ setInterval(() => {}, 1000);
         assert.ok(run.elapsedMs >= 0);
         const pid = Number(fs.readFileSync(pidPath, 'utf8'));
         assert.equal(await waitFor(() => !processAlive(pid)), true);
-        await wait(1_100);
+        // The grandchild is confirmed dead with its fuse still running, so the absent marker below
+        // proves it was killed rather than that the test outran it. Only the runner's own writes
+        // are still in flight.
+        await wait(200);
         const events = fs.readFileSync(eventsPath, 'utf8');
         const stderr = fs.readFileSync(path.join(root, 'stderr.log'), 'utf8');
         assert.match(events, /started/);
