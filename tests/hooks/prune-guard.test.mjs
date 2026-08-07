@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { CLI_NAMES } from '../../src/cli-names.mjs';
 import { SHELL_TOOLS } from '../../src/hook-definitions.mjs';
 
 const HOOK = path.join(
@@ -26,20 +27,23 @@ function run(payload) {
 
 const decision = (result) => result?.hookSpecificOutput?.permissionDecision ?? null;
 
-test('denies a prune call in every shell tool a host may use', () => {
-  for (const tool of SHELL_TOOLS) {
-    const result = run({ tool_name: tool, tool_input: { command: 'codex-bridge prune codex-bridge -f' } });
-    assert.equal(decision(result), 'deny', `${tool} should be denied`);
-    assert.match(result.hookSpecificOutput.permissionDecisionReason, /operator action/);
+test('denies every CLI spelling in every shell tool a host may use', () => {
+  for (const name of CLI_NAMES) {
+    for (const tool of SHELL_TOOLS) {
+      const result = run({ tool_name: tool, tool_input: { command: `${name} prune codex-bridge -f` } });
+      assert.equal(decision(result), 'deny', `${name} via ${tool} should be denied`);
+      assert.match(result.hookSpecificOutput.permissionDecisionReason, /operator action/);
+    }
   }
 });
 
-test('denies prune hidden behind a chain or a subshell', () => {
-  const commands = [
-    'cd /tmp && codex-bridge prune alpha --purge -f',
-    'echo hi; codex-bridge prune alpha',
-    'node bin/codex-bridge.mjs prune alpha -f',
-  ];
+test('denies prune hidden behind a chain, a subshell, or a path', () => {
+  const commands = CLI_NAMES.flatMap((name) => [
+    `cd /tmp && ${name} prune alpha --purge -f`,
+    `echo hi; ${name} prune alpha`,
+    `node bin/${name}.mjs prune alpha -f`,
+    `C:\\tools\\${name} prune alpha -f`,
+  ]);
   for (const command of commands) {
     assert.equal(decision(run({ tool_name: 'Bash', tool_input: { command } })), 'deny', command);
   }
@@ -47,7 +51,12 @@ test('denies prune hidden behind a chain or a subshell', () => {
 
 test('passes commands that merely contain the word prune', () => {
   // A guard that denied these would break unrelated host work, which is how a guard gets removed.
-  const commands = ['git prune', 'npm prune --production', 'echo "codex-bridge pruning notes"'];
+  const commands = [
+    'git prune',
+    'npm prune --production',
+    'codexb projects',
+    'echo "codex-bridge pruning notes"',
+  ];
   for (const command of commands) {
     assert.equal(run({ tool_name: 'Bash', tool_input: { command } }), null, command);
   }
@@ -69,8 +78,10 @@ test('a mention is not an invocation: quoted text and heredoc bodies are data', 
   // The guard denied the very commit that introduced it, because the message quoted the command.
   const mentions = [
     `git commit -F - <<'EOF'\nfeat: refuse the prune call\n\nThe command codex-bridge prune deletes artifacts.\nEOF`,
-    `git commit -m 'docs: explain codex-bridge prune -f'`,
-    `echo "run codex-bridge prune alpha -f yourself"`,
+    ...CLI_NAMES.flatMap((name) => [
+      `git commit -m 'docs: explain ${name} prune -f'`,
+      `echo "run ${name} prune alpha -f yourself"`,
+    ]),
   ];
   for (const command of mentions) {
     assert.equal(run({ tool_name: 'Bash', tool_input: { command } }), null, command.slice(0, 40));

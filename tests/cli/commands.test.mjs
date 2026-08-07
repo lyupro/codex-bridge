@@ -5,6 +5,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { CLI_NAMES } from '../../src/cli-names.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..', '..');
@@ -26,11 +27,26 @@ function helpCommands(help) {
     .map(([, command]) => command);
 }
 
-function readmeCommands(readme) {
+function installBlock(readme) {
   const block = readme.match(/## Install[\s\S]*?```[^\r\n]*\r?\n([\s\S]*?)\r?\n```/);
   assert.ok(block, 'README.md must contain an install command block.');
-  return unique([...block[1].matchAll(/(?:npx @lyupro\/codex-bridge|node bin\/codex-bridge\.mjs)\s+([a-z][\w-]*)/g)]
+  return block[1];
+}
+
+function readmeCommands(readme) {
+  const block = installBlock(readme);
+  return unique([...block.matchAll(/(?:npx @lyupro\/codex-bridge|node bin\/codex-bridge\.mjs)\s+([a-z][\w-]*)/g)]
     .map(([, command]) => command));
+}
+
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function readmeBinaries(readme) {
+  const block = installBlock(readme);
+  return unique(CLI_NAMES.filter((name) =>
+    new RegExp(`^${escapeRegex(name)}\\s+[a-z][\\w-]*`, 'm').test(block)));
 }
 
 function sorted(commands) {
@@ -48,4 +64,27 @@ test('dispatcher, --help, and README expose the same command list', async () => 
   const expected = sorted(dispatcherCommands(dispatcher));
   assert.deepEqual(sorted(helpCommands(result.stdout)), expected, '--help command list is stale.');
   assert.deepEqual(sorted(readmeCommands(readme)), expected, 'README.md command list is stale.');
+});
+
+test('package.json, --help, and README expose the same binary names', async () => {
+  const [packageSource, readme] = await Promise.all([
+    fs.readFile(path.join(ROOT, 'package.json'), 'utf8'),
+    fs.readFile(path.join(ROOT, 'README.md'), 'utf8'),
+  ]);
+  const packageJson = JSON.parse(packageSource);
+  const packageNames = Object.keys(packageJson.bin);
+  assert.deepEqual(sorted(packageNames), sorted(CLI_NAMES), 'package.json#bin names are stale.');
+  assert.ok(
+    packageNames.every((name) => packageJson.bin[name] === './bin/codex-bridge.mjs'),
+    'Every binary name must point to the dispatcher entry point.',
+  );
+
+  const result = spawnSync(process.execPath, [BIN, '--help'], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  for (const name of packageNames) {
+    assert.match(result.stdout, new RegExp(`^  ${escapeRegex(name)}\\s`, 'm'),
+      `--help does not mention ${name}.`);
+  }
+  assert.deepEqual(sorted(readmeBinaries(readme)), sorted(packageNames),
+    'README.md binary names are stale.');
 });

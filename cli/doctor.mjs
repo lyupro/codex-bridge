@@ -1,6 +1,7 @@
 /** Diagnoses a Claude Code host without modifying it. */
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import {
   fileFingerprint,
@@ -45,6 +46,20 @@ function retentionCheck(host) {
   } catch (err) {
     return check('retention', 'fail', `invalid configuration: ${err.message}`);
   }
+}
+
+/**
+ * Which copy of the package is answering. Plan_19 gives the CLI a second name, and a global install
+ * puts a second copy of the package on the machine beside any clone. `update` copies host files
+ * from whichever copy launched it, so `codexb update` from PATH silently reverts a host that
+ * `npm run dev:install` from the clone had just refreshed — and every line below this one describes
+ * the host as seen by THIS copy. An operator comparing two diagnoses has no other way to tell them
+ * apart.
+ */
+function sourceCheck() {
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const installed = root.split(/[\\/]/).includes('node_modules');
+  return check('source', 'ok', `${root} (${installed ? 'installed package' : 'clone'})`);
 }
 
 /**
@@ -134,7 +149,7 @@ async function rulesCheck(host, record) {
 }
 
 export async function diagnose({ host, codexProbe = probeCodex, currentPackage } = {}) {
-  const checks = [];
+  const checks = [sourceCheck()];
   const hostExists = await exists(host.root);
   checks.push(check('host', hostExists ? 'ok' : 'warn', `${host.root} (${host.scope}, ${hostExists ? 'exists' : 'absent'})`));
 

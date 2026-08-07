@@ -119,6 +119,19 @@ test('complete installation with all files exits zero', async (t) => {
   }
 });
 
+// A global install puts a second copy of the package beside any clone, and `update` copies host
+// files from whichever copy was launched (Plan_19). Every other line here describes the host as
+// seen by THIS copy, so the diagnosis has to say which one answered.
+test('doctor names the copy of the package that answered', async (t) => {
+  const host = await hostFixture(t);
+  const result = await diagnose({ host, codexProbe, currentPackage: ownPackage });
+  const source = result.checks.find((item) => item.key === 'source');
+  assert.equal(source.status, 'ok');
+  assert.match(source.value, /\((clone|installed package)\)$/);
+  assert.ok(path.isAbsolute(source.value.replace(/\s+\((clone|installed package)\)$/, '')));
+  assert.equal(result.checks[0].key, 'source', 'the copy speaking comes before what it reports');
+});
+
 test('rules cannot be checked before installation', async (t) => {
   const host = await hostFixture(t);
   const result = await diagnose({ host, codexProbe, currentPackage: ownPackage });
@@ -177,7 +190,7 @@ test('corrupt rules registry fails only the rules check and keeps all diagnostic
   );
   const result = await diagnose({ host, codexProbe, currentPackage: ownPackage });
   const rendered = renderDoctor(result);
-  for (const key of ['host', 'installation', 'files', 'rules', 'hook:SubagentStop', 'hook:PreToolUse', 'codex', 'node', 'runsRoot', 'projectRuns']) {
+  for (const key of ['source', 'host', 'installation', 'files', 'rules', 'hook:SubagentStop', 'hook:PreToolUse', 'codex', 'node', 'runsRoot', 'projectRuns']) {
     assert.match(rendered, new RegExp(`\\] ${key}:`));
   }
   const rules = result.checks.find((item) => item.key === 'rules');

@@ -11,6 +11,7 @@
  * Anything unrecognised passes. A guard that misreads its input must not break unrelated host work.
  */
 import fs from 'node:fs';
+import { CLI_NAMES } from '../cli-names.mjs';
 import { SHELL_TOOLS } from '../hook-definitions.mjs';
 
 const SHELL_TOOL_NAMES = new Set(SHELL_TOOLS);
@@ -18,10 +19,17 @@ const pass = () => process.exit(0);
 
 // The binary, then the verb, with any path in front of it: an agent reaches the CLI as
 // `codex-bridge`, as `node bin/codex-bridge.mjs`, or through an absolute path, and a guard that
-// only knew the bare name would be bypassed by the spelling everyone uses inside a clone. Matching
-// a lone `prune` is not an option either — `git prune` and `npm prune` are not this package's
-// business, and a guard that breaks unrelated work is a guard that gets uninstalled.
-const PRUNE_CALL = /(^|[\s;&|(`])(\S*[\\/])?codex-bridge(\.mjs)?\s+prune(\s|$)/;
+// only knew the bare name would be bypassed by the spelling everyone uses inside a clone. Plan_19
+// adds a second executable spelling, so build this matcher from the shared list instead of
+// repeating names here. Matching a lone `prune` is not an option either — `git prune` and
+// `npm prune` are not this package's business, and a guard that breaks unrelated work is a guard
+// that gets uninstalled.
+const escapeRegex = (name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const CLI_NAME_PATTERN = CLI_NAMES.map(escapeRegex).join('|');
+const PRUNE_CALL = new RegExp(
+  '(^|[\\s;&|(`])(\\S*[\\\\/])?(?:' + CLI_NAME_PATTERN
+    + ')(\\.mjs)?\\s+prune(\\s|$)',
+);
 
 let input;
 try {

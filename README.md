@@ -7,7 +7,10 @@ subscription instead of the Claude one.
 ## Install
 
 ```bash
-npx @lyupro/codex-bridge install        # into ~/.claude
+npx @lyupro/codex-bridge install        # one-off, into ~/.claude
+npm i -g @lyupro/codex-bridge           # install both command names globally
+codex-bridge install                    # full name, from any directory
+codexb install                          # short name, same command
 node bin/codex-bridge.mjs install       # from a clone, same thing
 node bin/codex-bridge.mjs install --scope project   # into <repo>/.claude
 node bin/codex-bridge.mjs update        # bring an installation up to the current version
@@ -19,6 +22,10 @@ node bin/codex-bridge.mjs projects     # what the run store holds: projects, run
 node bin/codex-bridge.mjs prune <project>   # reclaim disk space, transport only unless told otherwise
 node bin/codex-bridge.mjs sweep [<project>] # close running records whose runner is gone
 ```
+
+When a global install and a clone coexist, there are two copies of the package. `codex-bridge update`
+and `codexb update` copy host files from whichever copy launched the command, so `codexb update`
+from `PATH` can silently revert a host that `npm run dev:install` from the clone just updated.
 
 `install` copies the package into the host's `agents/codex/`, its slash commands into
 `commands/codex/`, and registers its four hooks in `settings.json` — **merged**, so hooks that

@@ -23,7 +23,8 @@
   "homepage": "https://github.com/lyupro/codex-bridge#readme",
   "type": "module",
   "bin": {
-    "codex-bridge": "./bin/codex-bridge.mjs"
+    "codex-bridge": "./bin/codex-bridge.mjs",
+    "codexb": "./bin/codex-bridge.mjs"
   },
   "engines": {
     "node": ">=24.0.0"

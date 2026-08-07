@@ -27,6 +27,7 @@ Usage:
   codex-bridge sweep [<project>]
   codex-bridge read <run>
   codex-bridge stop <run>
+  codexb <same command forms as codex-bridge>
   codex-bridge --help
   codex-bridge --version
 
