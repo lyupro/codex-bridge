@@ -7,11 +7,13 @@ import path from 'node:path';
 import { resolveHost } from '../../cli/hosts.mjs';
 import {
   INSTALL_TABLE,
+  SEEDED_SOURCES,
   buildInstallPlan,
   fileFingerprint,
   readInstallRecord,
   replacePlaceholders,
   rulesPlan,
+  seedPlan,
   validateInstallRecord,
   writeInstallRecord,
 } from '../../cli/manifest.mjs';
@@ -47,6 +49,22 @@ test('installation table is exported data', () => {
     { source: 'src/agents/*.md', target: 'agentsDir', processing: 'placeholders' },
     { source: 'src/commands/*.md', target: 'commandsDir', processing: 'placeholders' },
     { source: 'src/**', target: 'agentsDir', processing: 'copy' },
+  ]);
+});
+
+test('seed plan includes the editable host conventions beside run-config', async (t) => {
+  const { packageRoot, host } = await fixture(t);
+  await fs.writeFile(path.join(packageRoot, 'src', 'run-config.json'), '{}\n');
+  await fs.writeFile(path.join(packageRoot, 'src', 'conventions.md'), '# conventions\n');
+
+  assert.deepEqual(SEEDED_SOURCES, ['src/run-config.json', 'src/conventions.md']);
+  assert.deepEqual(seedPlan(host, packageRoot).map((item) => ({
+    source: path.relative(packageRoot, item.source).split(path.sep).join('/'),
+    target: path.relative(host.root, item.target).split(path.sep).join('/'),
+    processing: item.processing,
+  })), [
+    { source: 'src/run-config.json', target: 'agents/codex/run-config.json', processing: 'copy' },
+    { source: 'src/conventions.md', target: 'agents/codex/conventions.md', processing: 'copy' },
   ]);
 });
 

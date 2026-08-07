@@ -48,6 +48,20 @@ function retentionCheck(host) {
   }
 }
 
+async function conventionsCheck(host) {
+  const file = path.join(host.agentsDir, 'conventions.md');
+  let content;
+  try {
+    content = await fs.readFile(file, 'utf8');
+  } catch (err) {
+    if (err.code === 'ENOENT') return check('conventions', 'ok', `${file} (not found; optional)`);
+    return check('conventions', 'fail', `cannot read ${file}: ${err.message}`);
+  }
+  return content.trim()
+    ? check('conventions', 'ok', `${file} (found)`)
+    : check('conventions', 'warn', `${file} (found but empty)`);
+}
+
 /**
  * Which copy of the package is answering. Plan_19 gives the CLI a second name, and a global install
  * puts a second copy of the package on the machine beside any clone. `update` copies host files
@@ -188,6 +202,8 @@ export async function diagnose({ host, codexProbe = probeCodex, currentPackage }
   checks.push(...await hookChecks(host, record));
   const retention = retentionCheck(host);
   checks.push(retention);
+  const conventions = await conventionsCheck(host);
+  checks.push(conventions);
 
   const codex = codexProbe();
   checks.push(check('codex', codex.available ? 'ok' : 'warn', codex.value || 'available'));
@@ -199,7 +215,7 @@ export async function diagnose({ host, codexProbe = probeCodex, currentPackage }
 
   return {
     exitCode: !record || recordBroken || missingFiles.length || rules.status === 'fail'
-      || retention.status === 'fail' || projectRuns.status === 'fail' ? 1 : 0,
+      || retention.status === 'fail' || conventions.status === 'fail' || projectRuns.status === 'fail' ? 1 : 0,
     checks,
     record,
     missingFiles,
@@ -209,6 +225,8 @@ export async function diagnose({ host, codexProbe = probeCodex, currentPackage }
 export function renderDoctor(result) {
   return result.checks.map(({ key, status, value }) => {
     const rendered = `[${status}] ${key}: ${value}`;
-    return key === 'retention' && status === 'warn' ? `${WARNING}${rendered}${RESET}` : rendered;
+    return ['retention', 'conventions'].includes(key) && status === 'warn'
+      ? `${WARNING}${rendered}${RESET}`
+      : rendered;
   }).join('\n');
 }

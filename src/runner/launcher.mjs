@@ -37,6 +37,7 @@ import { codexArgs, requireCodex, runMode, unsafeForCmd } from './codex-cmd.mjs'
 import { runsRoot } from './runs-root.mjs';
 import { resolveProjectRunsDir } from './project-dir.mjs';
 import { cleanupRetention } from '../retention.mjs';
+import { renderConventions } from './conventions.mjs';
 
 /**
  * The worker is this same program re-invoked as `--worker <runDir>`, so the path spawned
@@ -279,6 +280,8 @@ export async function launcher() {
       ].join('\n'),
     );
   }
+  const conventions = renderConventions(repoRoot);
+  if (conventions) sections.push(conventions);
   sections.push(`## Instructions for Codex\n\n${INSTRUCTIONS[opts.agent](opts, scope, questions)}`);
   fs.writeFileSync(path.join(runDir, 'task.md'), `${sections.join('\n\n')}\n`);
   fs.writeFileSync(

@@ -22,10 +22,11 @@ const RULES_SOURCE = `src/rules/${RULES_NAME}`;
 /**
  * Files the operator owns once they exist. Seeded on first install so the defaults are
  * visible and editable, then never written, never compared, never removed: run-config.json
- * is where a host states which model each mode runs on, and an installer that overwrites it
- * would erase that on the next update — the same way overwriting a .env would.
+ * is where a host states which model each mode runs on, conventions.md is the rule set it hands
+ * every run, and an installer that overwrites either would erase host decisions on the next
+ * update — the same way overwriting a .env would.
  */
-export const SEEDED_SOURCES = Object.freeze(['src/run-config.json']);
+export const SEEDED_SOURCES = Object.freeze(['src/run-config.json', 'src/conventions.md']);
 const seededTargets = (host) =>
   new Set(SEEDED_SOURCES.map((source) => posix(
     path.relative(host.root, path.join(host.agentsDir, path.relative('src', source))),

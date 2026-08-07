@@ -106,6 +106,7 @@ test('install copies the exact plan, expands placeholders, and writes a valid re
   }
 });
 
+test('fresh install seeds conventions and update preserves an edited copy', async (t) => { const { host } = await fixture(t); await install({ host }); const target = path.join(host.agentsDir, 'conventions.md'); assert.deepEqual(await fs.readFile(target), await fs.readFile('src/conventions.md')); const edited = '# host-specific rules\n\nKeep this wording.\n'; await fs.writeFile(target, edited); assert.equal((await update({ host })).exitCode, 0); assert.equal(await fs.readFile(target, 'utf8'), edited); });
 test('a corrupt rules registry aborts install before writing any files', async (t) => {
   const { root, host } = await fixture(t);
   await fs.mkdir(host.codexRulesDir, { recursive: true });
@@ -393,6 +394,6 @@ test('uninstall without a record is nonzero and dry-run uninstall changes nothin
   assert.equal((await uninstall({ host: installed.host })).exitCode, 0);
   // The agents directory outlives an uninstall by exactly one file: the config the operator
   // owns. Everything the package put there is gone, and the commands directory with it.
-  assert.deepEqual(await fs.readdir(installed.host.agentsDir), ['run-config.json']);
+  assert.deepEqual((await fs.readdir(installed.host.agentsDir)).sort(), ['conventions.md', 'run-config.json']);
   await assert.rejects(() => fs.access(installed.host.commandsDir), { code: 'ENOENT' });
 });

@@ -132,6 +132,38 @@ test('doctor names the copy of the package that answered', async (t) => {
   assert.equal(result.checks[0].key, 'source', 'the copy speaking comes before what it reports');
 });
 
+test('doctor reports an optional host conventions file when it is present', async (t) => {
+  const { host } = await installedFixture(t);
+  const file = path.join(host.agentsDir, 'conventions.md');
+  await fs.writeFile(file, '# operator rules\n');
+
+  const result = await diagnose({ host, codexProbe, currentPackage: ownPackage });
+  assert.deepEqual(result.checks.find((item) => item.key === 'conventions'), {
+    key: 'conventions',
+    status: 'ok',
+    value: `${file} (found)`,
+  });
+  assert.match(renderDoctor(result), /conventions: .*\(found\)/);
+});
+
+test('doctor warns when the host conventions file is empty', async (t) => {
+  const { host } = await installedFixture(t);
+  const file = path.join(host.agentsDir, 'conventions.md');
+  await fs.writeFile(file, ' \n\t');
+
+  const result = await diagnose({ host, codexProbe, currentPackage: ownPackage });
+  assert.deepEqual(result.checks.find((item) => item.key === 'conventions'), {
+    key: 'conventions',
+    status: 'warn',
+    value: `${file} (found but empty)`,
+  });
+  assert.equal(result.exitCode, 0);
+  const line = renderDoctor(result).split('\n').find((entry) => entry.includes('conventions:'));
+  assert.match(line, /^\u001b\[33m/);
+  assert.match(line, /found but empty/);
+  assert.match(line, /\u001b\[0m$/);
+});
+
 test('rules cannot be checked before installation', async (t) => {
   const host = await hostFixture(t);
   const result = await diagnose({ host, codexProbe, currentPackage: ownPackage });
