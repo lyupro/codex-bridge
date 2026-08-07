@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- The CLI answers to `codexb` as well as `codex-bridge`, and README now documents the global install that puts both names on `PATH`. Every spelling that can reach deletion comes from one frozen list, and the prune guard builds its matcher from that list rather than repeating the names — two independent lists drift silently, which is exactly how the installer and test hook lists had already drifted. The full name stays primary: the docs, checklists and three agent prompts are written with it.
+- Every run carries the rules it is judged by. A seeded `conventions.md` beside `run-config.json` and an optional `.codex-conventions.md` in the repository being worked on are pasted into `task.md` verbatim, under one `## Conventions` section. Either file missing is not an error, and a blank one produces no section at all — rules handed over as an empty heading read as rules ignored. Until now project rules reached a run only when the orchestrator remembered to write "read CLAUDE.md" into the task, and six acceptance passes in a row caught the same class of violation: the rule existed, applied, and had not travelled. Pasting rather than referencing is the point — "read file X" is hope, and a run is free not to.
+- `doctor` opens with the path of the package copy answering, marked `clone` or `installed package`, and reports whether the host conventions file was found, warning when it exists but is empty. A global install puts a second copy of the package beside any clone, and `update` copies host files from whichever copy launched it — so two diagnoses of the same host were previously indistinguishable.
+
+### Fixed
+
+- `codex-bridge projects` printed the `last run` column on two clocks. Folder names are written in local time and `meta.finished_at` is an ISO stamp in UTC, and each reached the column through its own branch, so a run whose folder says `144243` was listed as `12:46` — the operator's own zone offset, indistinguishable from a different run. Which run is newest was never affected, only how it printed.
+
 ## [0.3.0] - 2026-08-07
 
 ### Added
