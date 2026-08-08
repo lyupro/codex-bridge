@@ -31,7 +31,8 @@ git config core.hooksPath .githooks        # enable the pre-commit size gate (on
 
 Two independent halves share the repository:
 
-**Package/installer** — `bin/codex-bridge.mjs` (argument dispatch only) over `cli/`:
+**Package/installer** — `bin/codex-bridge.mjs` (argument dispatch only), reachable as both
+`codex-bridge` and the short `codexb`, over `cli/`:
 `manifest.mjs` owns the install table, the seeded-file list and the `.codex-bridge-install.json`
 record schema; `install/update/uninstall/doctor.mjs` are one command each, as are the run-store
 commands `read` (renders one run), `projects` (inventory over `runs-inventory`/`table`), `prune`
@@ -51,7 +52,9 @@ hand-edited files stop the run unless `--force`.
 - `runner/` is one concern per module: `run-context` holds the run in progress, `run-env` reads
   `run-config.json`, `args` refuses the command line, `schemas`/`prompts` are what each agent is
   asked for, `git-state` snapshots the tree, `codex-cmd` invokes the CLI, `project-dir`/`runs-root`
-  place the artifacts.
+  place the artifacts, `conventions` pastes the rules a run is judged by into `task.md` — the
+  seeded host-wide `conventions.md` and the worked repository's optional `.codex-conventions.md`,
+  verbatim under one heading, because "read file X" is hope and a run is free not to.
 - `write-meta.mjs` is the only reader of a finished run's artifacts. `meta/` splits it: `paths`
   (artifact reads and path matching), `chain` (earlier passes of the same task), `run-state`
   (`status.json` honesty, abandoned runs), `events` (the JSONL stream — the only module that knows
@@ -97,6 +100,9 @@ Importers name `run-codex.mjs` and `write-meta.mjs`, never a module below them.
 - **`codex-runs/` is user data.** Uninstall never touches it; the install record is forbidden from
   naming it.
 - **Model ids live only in `run-config.json`.** No model literal belongs in `.mjs` code.
+- **`src/cli-names.mjs` is the only list of CLI spellings.** `bin`, the prune guard's matcher and
+  anything else that has to recognise a call read it from there. Two independent lists drift
+  silently — exactly how the installer and test hook lists had already drifted before Plan_19.
 - **Windows paths are compared normalized** (forward slashes, no trailing slash, case-insensitive)
   and symlinks are deliberately not resolved: `realpath` returns `\\?\` and UNC forms.
 - **Agent and command markdown is placeholder-processed** on install: `{{CODEX_BRIDGE_DIR}}` becomes
