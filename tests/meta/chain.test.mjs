@@ -114,6 +114,15 @@ test('the baseline is the first pass snapshot, even when a later pass has none a
   assert.equal(chainBaseline(root, CHAIN_REPO, CHAIN_SLUG), 'U\t10\tsrc/a.ts\n');
 });
 
+test('the baseline skips a pre-start folder that sorts before the first started run', () => {
+  const root = makeChainRoot([
+    { name: 'a-pre-start', at: '2026-08-01T09:00:00Z', state: 'aborted_pre_start' },
+    { name: 'b-started', at: '2026-08-01T10:00:00Z', before: 'U\t10\tsrc/a.ts\n' },
+  ]);
+
+  assert.equal(chainBaseline(root, CHAIN_REPO, CHAIN_SLUG), 'U\t10\tsrc/a.ts\n');
+});
+
 test('the baseline can be found through the order id alone', () => {
   const root = makeChainRoot([
     { name: 'a-first', at: '2026-08-02T01:42:00Z', slug: 'old-slug', before: 'U\t10\tsrc/a.ts\n', orderId: 'order-42' },

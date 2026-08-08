@@ -263,7 +263,7 @@ export function requireCodex(runDir, agent) {
     const why = (probe.stderr || probe.error?.message || 'codex --version is not responding').trim();
     const { reply } = writeFailure(runDir, agent, `Codex CLI unavailable: ${why}`, [
       'Operator check: codex --version (and codex login if authorization is rejected)',
-    ]);
+    ], true);
     console.log(reply);
     process.exit(1);
   }

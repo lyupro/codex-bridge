@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- A run a guard refused before Codex ever started no longer costs the next attempt a round trip. Such a folder now closes as `aborted_pre_start` instead of the same `failed` a twenty-minute paid run gets, and the chain gate, the continuation limit and the tree baseline all skip it: the same order id starts as a first run, silently, with no `continue:` grant. Reported from a parallel `codex-build` launch — the second run was correctly refused with "two writing runs in one tree are prohibited", and its one-millisecond folder then made the retry demand a grant for work that never happened. Folders written before this release are recognised by what `meta.json` records — `exit`, `session_id`, `events_bytes`, `stderr_bytes`, `tokens_reported` — rather than by whether `events.jsonl` is still on disk, because retention deletes that file from paid runs too. The folder itself is kept: it is the audit trail of who was refused and why.
+- `chainBaseline()` takes the first run of the chain that actually started, so a pre-start folder sorting first no longer leaves the next pass without the `state-before.txt` its work is measured against.
+
 ## [0.3.1] - 2026-08-07
 
 ### Added

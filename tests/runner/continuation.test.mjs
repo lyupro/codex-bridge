@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { continuationRefusal } from '../../src/runner/continuation.mjs';
+import { startedRuns } from '../../src/write-meta.mjs';
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'continuation-'));
@@ -84,4 +85,18 @@ test('an explicit grant for the current finished run permits the first continuat
   run(runsRoot, name);
 
   assert.equal(continuationRefusal(runsRoot, [name], true, 'order-1', grant(name)), null);
+});
+
+test('a retroactive pre-start folder leaves the same order eligible for its first launch', (t) => {
+  const runsRoot = fixture(t);
+  const name = '2026-08-05_092913_plan14-build';
+  run(runsRoot, name, { state: 'failed' }, false);
+  fs.writeFileSync(
+    path.join(runsRoot, name, 'meta.json'),
+    JSON.stringify({ exit: null, session_id: null, events_bytes: 0, stderr_bytes: 0, tokens_reported: false }),
+  );
+
+  const started = startedRuns(runsRoot, [name]);
+  assert.deepEqual(started, []);
+  assert.equal(continuationRefusal(runsRoot, started, false, 'order-1'), null);
 });

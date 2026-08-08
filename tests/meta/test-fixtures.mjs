@@ -125,6 +125,7 @@ export function makeChainRoot(runs) {
     if (run.before !== undefined) fs.writeFileSync(path.join(dir, 'state-before.txt'), run.before);
     if (run.after !== undefined) fs.writeFileSync(path.join(dir, 'state-after.txt'), run.after);
     if (run.branchBefore !== undefined) fs.writeFileSync(path.join(dir, 'branch-before.txt'), run.branchBefore);
+    if (run.meta !== undefined) fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify(run.meta));
     if (run.result !== undefined) {
       fs.writeFileSync(path.join(dir, 'events.jsonl'), `${JSON.stringify({ type: 'thread.started', thread_id: 'fixture' })}\n`);
       fs.writeFileSync(path.join(dir, 'stderr.log'), '');

@@ -39,6 +39,18 @@ test('writeFailure() leaves status.json in the failed state', () => {
   assert.equal(status.status, 'FAIL');
 });
 
+test('writeFailure() can record a refusal that never started Codex', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-run-'));
+  const { meta } = writeFailure(dir, 'codex-build', 'Codex was not started', [], true);
+  const status = JSON.parse(fs.readFileSync(path.join(dir, 'status.json'), 'utf8'));
+
+  assert.equal(status.state, 'aborted_pre_start');
+  assert.equal(status.status, 'FAIL');
+  assert.equal(meta.session_id, null);
+  assert.equal(meta.events_bytes, 0);
+  assert.equal(meta.stderr_bytes, 0);
+});
+
 test('markAbandoned marks a dead, meta-less running run as abandoned', () => {
   const runsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-runs-'));
   const runDir = path.join(runsRoot, 'run1');

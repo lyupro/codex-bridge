@@ -31,6 +31,7 @@ import { AGENTS, failReply, limitReply } from './meta/reply.mjs';
 
 export { expandDeclared, globToRegExp, readJson } from './meta/paths.mjs';
 export { chainBaseline, chainRuns, taskFingerprint } from './meta/chain.mjs';
+export { abortedPreStart, startedRuns } from './meta/pre-start.mjs';
 export { abandonedBranchDrift, activeRun, markAbandoned, writeFailure } from './meta/run-state.mjs';
 export { outOfScope, reportVersusWork } from './meta/verdict.mjs';
 export { AGENTS, writeStatus };

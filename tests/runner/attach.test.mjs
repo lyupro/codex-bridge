@@ -7,6 +7,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { attach } from '../../src/runner/attach.mjs';
 import { continuationRefusal } from '../../src/runner/continuation.mjs';
+import { chainRuns } from '../../src/meta/chain.mjs';
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'attach-'));
@@ -84,6 +85,26 @@ test('a live run of the same order is joined and its verdict printed', async (t)
   assert.equal(code, 0);
   assert.equal(lines[0], `ATTACH=${dir} started=2026-08-04T09:00:00.000Z`);
   assert.match(lines[1], /OK — the work landed/);
+});
+
+test('a live run still answers when a pre-start folder leads the full chain', async (t) => {
+  const runsRoot = fixture(t);
+  const repo = path.join(runsRoot, 'repo');
+  run(runsRoot, '2026-08-04_080000_pre-start', {
+    ...running(repo, { state: 'aborted_pre_start', started_at: '2026-08-04T08:00:00.000Z' }),
+  });
+  const live = run(runsRoot, '2026-08-04_090000_async-start', running(repo), {
+    'reply.txt': 'OK — the live work landed\nRun: somewhere\n',
+    'meta.json': JSON.stringify({ status: 'OK' }),
+  });
+  const chain = chainRuns(runsRoot, repo, 'async-start', 'hash-1', 'order-1');
+
+  const { code, lines } = await attaching(order(runsRoot, repo, { chain }));
+
+  assert.deepEqual(chain, ['2026-08-04_080000_pre-start', '2026-08-04_090000_async-start']);
+  assert.equal(code, 0);
+  assert.equal(lines[0], `ATTACH=${live} started=2026-08-04T09:00:00.000Z`);
+  assert.match(lines[1], /OK — the live work landed/);
 });
 
 test('the exit code of an attach is the verdict of the run it joined', async (t) => {

@@ -21,6 +21,7 @@ import {
   abandonedBranchDrift,
   activeRun,
   chainRuns,
+  startedRuns,
   taskFingerprint,
   readJson,
 } from '../write-meta.mjs';
@@ -118,6 +119,7 @@ export async function launcher() {
   // like --scope.
   const taskHash = taskFingerprint(taskText);
   const chain = chainRuns(projectRunsRoot, repoRoot, opts.slug, taskHash, opts.orderId);
+  const startedChain = startedRuns(projectRunsRoot, chain);
   const continuationGrant = opts.continue ? parseContinuationGrant(taskText) : null;
 
   // One order produced six Codex runs on 2026-08-03 because the caller's time ceiling made it
@@ -139,15 +141,15 @@ export async function launcher() {
   // attach(), while --continue must refuse to overlap that live work.
   const continuationError = continuationRefusal(
     projectRunsRoot,
-    chain,
+    startedChain,
     opts.continue,
     opts.orderId,
     continuationGrant,
   );
   if (continuationError) die(continuationError);
 
-  if (chain.length && !opts.continue) {
-    const last = chain[chain.length - 1];
+  if (startedChain.length && !opts.continue) {
+    const last = startedChain[startedChain.length - 1];
     const lastSlug = String(readJson(path.join(projectRunsRoot, last, 'status.json'))?.slug || '');
     const renamed = lastSlug && lastSlug.toLowerCase() !== String(opts.slug).toLowerCase();
     die(
@@ -155,7 +157,7 @@ export async function launcher() {
         renamed
           ? `this task already ran in this repository under the name “${lastSlug}”`
           : `runs for task “${opts.slug}” already exist in this repository`
-      } (${chain.length}), latest: ${path.join(projectRunsRoot, last)}. ` +
+      } (${startedChain.length}), latest: ${path.join(projectRunsRoot, last)}. ` +
         'A repeat run is allowed, but the orchestrator decides, not the runner: it read the ' +
         'previous response and knows whether work remains. Add --continue if you are finishing ' +
         'the same task; changing --slug with the same task text does not stop it being a repeat. ' +
@@ -202,7 +204,7 @@ export async function launcher() {
     started_at: new Date().toISOString(),
     // Which run of this task started the chain — the base every later pass is measured
     // against. Absent means this is the first pass.
-    ...(chain.length ? { continues: chain[0] } : {}),
+    ...(startedChain.length ? { continues: startedChain[0] } : {}),
     // `continued_from` is the exact run the orchestrator named; `continues` above remains the chain base.
     ...(continuationGrant ? { continued_from: continuationGrant.run } : {}),
     ...(retention ? { retention } : {}),
@@ -219,6 +221,7 @@ export async function launcher() {
       opts.agent,
       `run ${busy} is already active for this repository; two writing runs in one tree are prohibited`,
       [`Active run: ${path.join(projectRunsRoot, busy)}`, 'Codex was not started; quota was not spent'],
+      true,
     );
     console.log(reply);
     process.exit(1);
@@ -307,6 +310,7 @@ export async function launcher() {
       opts.agent,
       `argument cannot be passed through cmd.exe (contains % or "): ${unsafe}`,
       ['Codex was not started; quota was not spent'],
+      true,
     );
     console.log(reply);
     process.exit(1);
@@ -343,7 +347,7 @@ export async function launcher() {
   worker.on('error', (err) => {
     const { reply } = writeFailure(runDir, opts.agent, `run worker process failed to start: ${err.message}`, [
       'Codex was not started; quota was not spent',
-    ]);
+    ], true);
     console.log(reply);
     process.exit(1);
   });

@@ -194,7 +194,9 @@ export function abandonedBranchDrift(runsRoot, repo, currentBranch) {
  * the runner itself. It still goes through meta.json, so there is no second path by
  * which a reply could exist without an artifact backing it.
  */
-export function writeFailure(runDir, agent, reason, extraLines = []) {
+// The marker is reserved for refusals before Codex starts; Plan_23 showed that calling those
+// ordinary failures makes a no-quota folder consume the same continuation slot as paid work.
+export function writeFailure(runDir, agent, reason, extraLines = [], preStart = false) {
   const meta = {
     agent,
     project: path.basename(path.dirname(runDir)),
@@ -214,7 +216,11 @@ export function writeFailure(runDir, agent, reason, extraLines = []) {
     env: readJson(path.join(runDir, 'env.json')),
   };
   fs.writeFileSync(path.join(runDir, 'meta.json'), `${JSON.stringify(meta, null, 2)}\n`);
-  writeStatus(runDir, { state: 'failed', status: 'FAIL', finished_at: meta.finished_at });
+  writeStatus(runDir, {
+    state: preStart ? 'aborted_pre_start' : 'failed',
+    status: 'FAIL',
+    finished_at: meta.finished_at,
+  });
   const reply = [`FAIL — ${meta.reason}`, ...extraLines, `Run: ${runDir}`].join('\n');
   return { meta, reply };
 }

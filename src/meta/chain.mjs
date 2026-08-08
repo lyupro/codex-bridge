@@ -9,6 +9,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
+import { startedRuns } from './pre-start.mjs';
 import { normalizePath, readJson } from './paths.mjs';
 
 /**
@@ -69,15 +70,16 @@ export function chainRuns(runsRoot, repo, slug, taskHash = '', orderId = '') {
 }
 
 /**
- * The tree as it stood before the task began: state-before.txt of the FIRST run of the
- * chain. The first and not the previous one, because a middle run can end without an
- * "after" snapshot at all — 2026-07-31_114736 wrote eleven files and left neither
- * state-after.txt nor meta.json — and its own "before" is then the last honest base.
- * null when there is no chain or that first run never got a snapshot; an existing but
+ * The tree as it stood before the task began: state-before.txt of the FIRST STARTED run of the
+ * chain. A pre-start folder has no snapshot, so treating it as first made the next pass lose
+ * its baseline in the Plan_23 incident; after that, the first started run is still preferred
+ * over a later one because a middle run can end without an "after" snapshot at all.
+ * null when there is no started run or that first run never got a snapshot; an existing but
  * empty snapshot is a clean tree, which is data, not absence.
  */
 export function chainBaseline(runsRoot, repo, slug, taskHash = '', orderId = '') {
-  const [first] = chainRuns(runsRoot, repo, slug, taskHash, orderId);
+  const chain = chainRuns(runsRoot, repo, slug, taskHash, orderId);
+  const [first] = startedRuns(runsRoot, chain);
   if (!first) return null;
   try {
     return fs.readFileSync(path.join(runsRoot, first, 'state-before.txt'), 'utf8');
