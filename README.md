@@ -14,6 +14,9 @@ codexb install                          # short name, same command
 node bin/codex-bridge.mjs install       # from a clone, same thing
 node bin/codex-bridge.mjs install --scope project   # into <repo>/.claude
 node bin/codex-bridge.mjs update        # bring an installation up to the current version
+node bin/codex-bridge.mjs permissions   # show optional shell permission rules
+node bin/codex-bridge.mjs permissions add # add the complete allow/deny rule set
+node bin/codex-bridge.mjs permissions remove # remove only codex-bridge's rule strings
 node bin/codex-bridge.mjs doctor        # what is installed, where it points, is codex alive
 node bin/codex-bridge.mjs uninstall     # removes exactly what was installed
 node bin/codex-bridge.mjs stop <run>    # close a hanging run by hand, without hunting for a pid
@@ -37,6 +40,13 @@ as it was installed, so it can tell a file you edited on the host from one left 
 version: outdated files are refreshed silently, files you changed by hand stop the run and are
 named, and `--force` is what overwrites them. A file the package no longer ships is removed only
 if you never touched it.
+
+`permissions` manages the optional shell rules in the selected host's `settings.json`. `add`
+merges the exact allow and deny strings for both CLI names, the clone entry point, Bash and
+PowerShell; it preserves foreign rules and is safe to repeat. `remove` takes back those exact
+strings from `allow`, `deny`, or `ask`, so an operator-authored lookalike is left alone. With no
+action it reports whether the rule set is installed, partial, or absent. The command accepts the
+same `--scope` and `--host` selectors as `install`, and `uninstall` removes the same strings too.
 
 `uninstall` removes only what the install recorded: a file you put in `agents/codex/` yourself
 stays, and `codex-runs/` is never touched — those are your run artifacts, not the package.

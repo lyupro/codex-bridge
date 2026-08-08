@@ -9,6 +9,7 @@ import {
   readInstallRecord,
   packageInfo,
 } from './manifest.mjs';
+import { inspectPermissions } from './permissions.mjs';
 import { commandFor, inspectHook } from './settings-merge.mjs';
 import { readRulesRegistry } from './rules-owners.mjs';
 import { readRunConfig, retentionNotice } from '../src/run-config.mjs';
@@ -162,6 +163,21 @@ async function rulesCheck(host, record) {
     : check('rules', 'warn', `${record.rules.path} (modified after installation${ownerNote})`);
 }
 
+async function permissionsCheck(host) {
+  try {
+    const status = await inspectPermissions(host.settingsPath);
+    // Permission rules are an optional operator action; Plan_22 keeps their absence a warning so
+    // doctor does not turn a healthy installation red merely because hardening was not requested.
+    // The ask count is part of the line because a full set shadowed by `ask` reads as working and
+    // is not: the live run of Plan_22-1 found this line saying `installed (24/24)` over it.
+    const shadow = status.askCount ? `, ${status.askCount} shadowed by ask` : '';
+    return check('permissions', status.state === 'installed' ? 'ok' : 'warn',
+      `${status.state} (${status.present}/${status.total} own strings in allow/deny${shadow})`);
+  } catch (err) {
+    return check('permissions', 'warn', `cannot inspect permission rules: ${err.message}`);
+  }
+}
+
 export async function diagnose({ host, codexProbe = probeCodex, currentPackage } = {}) {
   const checks = [sourceCheck()];
   const hostExists = await exists(host.root);
@@ -199,6 +215,7 @@ export async function diagnose({ host, codexProbe = probeCodex, currentPackage }
   ));
   const rules = await rulesCheck(host, record);
   checks.push(rules);
+  checks.push(await permissionsCheck(host));
   checks.push(...await hookChecks(host, record));
   const retention = retentionCheck(host);
   checks.push(retention);
@@ -225,7 +242,7 @@ export async function diagnose({ host, codexProbe = probeCodex, currentPackage }
 export function renderDoctor(result) {
   return result.checks.map(({ key, status, value }) => {
     const rendered = `[${status}] ${key}: ${value}`;
-    return ['retention', 'conventions'].includes(key) && status === 'warn'
+    return ['retention', 'conventions', 'permissions'].includes(key) && status === 'warn'
       ? `${WARNING}${rendered}${RESET}`
       : rendered;
   }).join('\n');

@@ -19,6 +19,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readJsonFileSync } from './json-file.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const CONFIG_PATH = path.join(HERE, 'run-config.json');
@@ -163,18 +164,13 @@ function readBudgets(file, value) {
 }
 
 export function readRunConfig(file = CONFIG_PATH) {
-  let raw;
-  try {
-    raw = fs.readFileSync(file, 'utf8');
-  } catch {
-    return { ...DEFAULTS };
-  }
   let parsed;
   try {
-    parsed = JSON.parse(raw);
+    parsed = readJsonFileSync(file);
   } catch (err) {
+    if (err.code) return { ...DEFAULTS };
     throw new Error(
-      `${file} cannot be parsed as JSON (${err.message}). Fix or delete the file — without it, ` +
+      `${file} cannot be parsed as JSON (${err.cause?.message || err.message}). Fix or delete the file — without it, ` +
         'the default mode applies: hooks and plugins are disabled.',
     );
   }

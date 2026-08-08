@@ -6,8 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `codex-bridge permissions` reports, adds, and removes the optional shell permission rules for
+  both CLI names and the clone entry point. The exact allow and deny strings merge into
+  `settings.json`, preserve foreign rules, and are also removed by `uninstall`; `doctor` reports
+  an absent or partial set as an optional warning.
+
 ### Fixed
 
+- JSON files written by PowerShell with a UTF-8 BOM are now read consistently by the CLI and
+  installed hooks, and one command run creates at most one settings backup without deleting older
+  backups.
 - A run a guard refused before Codex ever started no longer costs the next attempt a round trip. Such a folder now closes as `aborted_pre_start` instead of the same `failed` a twenty-minute paid run gets, and the chain gate, the continuation limit and the tree baseline all skip it: the same order id starts as a first run, silently, with no `continue:` grant. Reported from a parallel `codex-build` launch — the second run was correctly refused with "two writing runs in one tree are prohibited", and its one-millisecond folder then made the retry demand a grant for work that never happened. Folders written before this release are recognised by what `meta.json` records — `exit`, `session_id`, `events_bytes`, `stderr_bytes`, `tokens_reported` — rather than by whether `events.jsonl` is still on disk, because retention deletes that file from paid runs too. The folder itself is kept: it is the audit trail of who was refused and why.
 - `chainBaseline()` takes the first run of the chain that actually started, so a pre-start folder sorting first no longer leaves the next pass without the `state-before.txt` its work is measured against.
 

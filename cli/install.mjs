@@ -14,7 +14,7 @@ import {
   writeInstallRecord,
 } from './manifest.mjs';
 import { copyPlannedFile, targetMatches } from './copy.mjs';
-import { commandFor, inspectHook, mergeHook } from './settings-merge.mjs';
+import { commandFor, inspectHook, mergeHook, withSettingsRun } from './settings-merge.mjs';
 import { addRulesOwner, readRulesRegistry } from './rules-owners.mjs';
 import { readRunConfig, retentionNotice } from '../src/run-config.mjs';
 
@@ -58,7 +58,7 @@ function retentionOutput(line, output) {
   return `${output}\n${line}`;
 }
 
-export async function install({ host, dryRun = false, force = false, packageRoot } = {}) {
+async function installInRun({ host, dryRun = false, force = false, packageRoot } = {}) {
   // Validate the shared registry before writes; package removal on a broken registry left the host without its watchdog.
   await readRulesRegistry(host);
   const configuredRetentionLine = retentionLine(host);
@@ -162,4 +162,10 @@ export async function install({ host, dryRun = false, force = false, packageRoot
     exitCode: 0,
     output: retentionOutput(configuredRetentionLine, `Installed ${plan.length + 1} files and registered the ${targets.map(({ definition }) => definition.event).join(' and ')} hooks.`),
   };
+}
+
+export async function install(options = {}) {
+  const host = options?.host;
+  if (!host?.settingsPath) return installInRun(options);
+  return withSettingsRun(host.settingsPath, () => installInRun(options));
 }

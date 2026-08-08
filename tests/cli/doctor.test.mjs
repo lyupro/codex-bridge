@@ -8,6 +8,7 @@ import { spawnSync } from 'node:child_process';
 import { diagnose, renderDoctor } from '../../cli/doctor.mjs';
 import { resolveHost } from '../../cli/hosts.mjs';
 import { fileFingerprint, HOOK_DEFINITIONS, writeInstallRecord } from '../../cli/manifest.mjs';
+import { addPermissionRules } from '../../cli/permissions.mjs';
 import { RULES_REGISTRY_NAME } from '../../cli/rules-owners.mjs';
 import { normalizeRepoPath, PROJECT_MARKER } from '../../src/runner/project-dir.mjs';
 import { projectFolder } from '../../src/write-meta.mjs';
@@ -119,6 +120,26 @@ test('complete installation with all files exits zero', async (t) => {
   }
 });
 
+test('doctor warns for optional permissions without changing the exit code', async (t) => {
+  const { host } = await installedFixture(t);
+  const absent = await diagnose({ host, codexProbe, currentPackage: ownPackage });
+  assert.equal(absent.exitCode, 0);
+  assert.equal(absent.checks.find((item) => item.key === 'permissions').status, 'warn');
+  assert.match(renderDoctor(absent), /permissions: absent/);
+
+  await addPermissionRules(host.settingsPath);
+  const installed = await diagnose({ host, codexProbe, currentPackage: ownPackage });
+  assert.equal(installed.exitCode, 0);
+  assert.equal(installed.checks.find((item) => item.key === 'permissions').status, 'ok');
+
+  const settings = JSON.parse(await fs.readFile(host.settingsPath, 'utf8'));
+  settings.permissions.allow.pop();
+  await fs.writeFile(host.settingsPath, `${JSON.stringify(settings)}\n`);
+  const partial = await diagnose({ host, codexProbe, currentPackage: ownPackage });
+  assert.equal(partial.exitCode, 0);
+  assert.equal(partial.checks.find((item) => item.key === 'permissions').status, 'warn');
+  assert.match(renderDoctor(partial), /permissions: partially installed/);
+});
 // A global install puts a second copy of the package beside any clone, and `update` copies host
 // files from whichever copy was launched (Plan_19). Every other line here describes the host as
 // seen by THIS copy, so the diagnosis has to say which one answered.

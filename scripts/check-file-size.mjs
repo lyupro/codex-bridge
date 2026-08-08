@@ -21,6 +21,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readJsonFile } from '../src/json-file.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(HERE, '..');
@@ -31,17 +32,14 @@ const VALID_MODES = ['error', 'warning'];
 
 /** Reads and structurally validates .file-size-limit.json. Throws on anything wrong. */
 export async function loadConfig(configPath = CONFIG_PATH) {
-  let raw;
-  try {
-    raw = await fs.readFile(configPath, 'utf8');
-  } catch (err) {
-    throw new Error(`cannot read ${configPath}: ${err.message}`);
-  }
   let parsed;
   try {
-    parsed = JSON.parse(raw);
+    parsed = await readJsonFile(configPath);
   } catch (err) {
-    throw new Error(`${configPath} is not valid JSON: ${err.message}`);
+    if (err.cause) {
+      throw new Error(`${configPath} is not valid JSON: ${err.cause.message}`, { cause: err.cause });
+    }
+    throw new Error(`cannot read ${configPath}: ${err.message}`);
   }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     throw new Error(`${configPath} must contain a JSON object`);

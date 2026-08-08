@@ -1,6 +1,7 @@
 /** Assigns a stable runs directory to one repository. */
 import fs from 'node:fs';
 import path from 'node:path';
+import { readJsonFileSync } from '../json-file.mjs';
 import { projectFolder } from '../write-meta.mjs';
 
 export const PROJECT_MARKER = '.project.json';
@@ -18,9 +19,9 @@ function readMarker(dir) {
   if (!fs.existsSync(markerPath)) return null;
   let marker;
   try {
-    marker = JSON.parse(fs.readFileSync(markerPath, 'utf8'));
+    marker = readJsonFileSync(markerPath);
   } catch (err) {
-    throw new Error(`Cannot read project marker ${markerPath}: ${err.message}`);
+    throw new Error(`Cannot read project marker ${markerPath}: ${err.cause?.message || err.message}`);
   }
   if (!marker || typeof marker.repo !== 'string' || !marker.repo) {
     throw new Error(`Project marker ${markerPath} must contain a non-empty repo path`);
@@ -65,7 +66,7 @@ function legacyOwner(dir) {
     .sort((a, b) => a.name.localeCompare(b.name));
   const statuses = entries.map((entry) => {
     try {
-      return JSON.parse(fs.readFileSync(path.join(dir, entry.name, 'status.json'), 'utf8'));
+      return readJsonFileSync(path.join(dir, entry.name, 'status.json'));
     } catch {
       return null;
     }

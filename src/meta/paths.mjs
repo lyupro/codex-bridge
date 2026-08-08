@@ -4,9 +4,10 @@
  * Two sides spell the same file differently — git prints repo-relative paths with forward
  * slashes, Codex writes whatever it likes — so nothing above this module compares a path
  * before it has been through here. This is also the only module that touches the
- * filesystem for reading: everything else receives text, JSON or a byte count from it.
+ * filesystem for reading artifacts: everything else receives text, JSON or a byte count from it.
  */
 import fs from 'node:fs';
+import { readJsonFileSync } from '../json-file.mjs';
 
 /** One line, no newlines, bounded length — a five-line reply must stay five lines. */
 export const line = (value, max = 200) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
@@ -20,17 +21,12 @@ export const readText = (file) => {
 };
 
 /**
- * A run's JSON artifact, or null when there is none to read. The byte-order mark is stripped
- * first: JSON.parse rejects it, and a status.json rewritten by a Windows editor or by
- * PowerShell's `Set-Content -Encoding utf8` would then read as "no such run" — silently
- * excusing that run from every check that looks it up.
+ * A run's JSON artifact, or null when there is none to read. The shared reader strips the
+ * byte-order mark that PowerShell's `Out-File -Encoding utf8` added in the Plan_24 incident.
  */
 export const readJson = (file) => {
   try {
-    const text = fs.readFileSync(file, 'utf8');
-    // Compared by code point rather than matched by a literal: a byte-order mark in the
-    // source of this file would be invisible to the next reader.
-    return JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text);
+    return readJsonFileSync(file);
   } catch {
     return null;
   }

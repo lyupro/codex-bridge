@@ -14,6 +14,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { isHeartbeatFresh } from '../heartbeat.mjs';
+import { readJsonFileSync } from '../json-file.mjs';
 
 /** Signal 0 tests existence without stopping the process; EPERM still means that it exists. */
 export const isPidAlive = (pid) => {
@@ -62,7 +63,7 @@ function recognizedStatus(runDir, status) {
 
 function readStatus(runDir) {
   try {
-    return JSON.parse(fs.readFileSync(path.join(runDir, 'status.json'), 'utf8'));
+    return readJsonFileSync(path.join(runDir, 'status.json'));
   } catch {
     return null;
   }

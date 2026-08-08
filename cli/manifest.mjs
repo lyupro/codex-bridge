@@ -11,6 +11,7 @@ import {
   renderRequiredInputs,
 } from '../src/required-inputs.mjs';
 import { renderNoSelfExecution } from '../src/no-self-execution.mjs';
+import { readJsonFile } from '../src/json-file.mjs';
 
 export { HOOK_DEFINITIONS };
 
@@ -49,7 +50,7 @@ export function replacePlaceholders(content, agentsDir) {
 }
 
 export async function packageInfo(packageRoot = PACKAGE_ROOT) {
-  const parsed = JSON.parse(await fs.readFile(path.join(packageRoot, 'package.json'), 'utf8'));
+  const parsed = await readJsonFile(path.join(packageRoot, 'package.json'));
   return { name: parsed.name, version: parsed.version };
 }
 
@@ -191,18 +192,15 @@ export function normalizeInstallRecord(record) {
 }
 
 export async function readInstallRecord(host) {
-  let raw;
-  try {
-    raw = await fs.readFile(installRecordPath(host), 'utf8');
-  } catch (err) {
-    if (err.code === 'ENOENT') return null;
-    throw err;
-  }
   let parsed;
   try {
-    parsed = JSON.parse(raw);
+    parsed = await readJsonFile(installRecordPath(host));
   } catch (err) {
-    throw new Error(`invalid installation record JSON: ${err.message}`);
+    if (err.code === 'ENOENT') return null;
+    if (err.cause) {
+      throw new Error(`invalid installation record JSON: ${err.cause.message}`, { cause: err.cause });
+    }
+    throw err;
   }
   const record = normalizeInstallRecord(parsed);
   // Earlier versions installed the config as a package file and recorded it. Dropping it here

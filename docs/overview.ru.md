@@ -245,6 +245,23 @@ codex-bridge prune --all-projects               # снять вес везде; 
 чистку предупреждают и `install`, и `doctor` — установщик, молча заводящий удаляющее поведение, это
 сюрприз, а не удобство.
 
+## Права команд оболочки
+
+Необязательные правила для команд `codex-bridge` можно включить отдельно от установки:
+
+```bash
+node bin/codex-bridge.mjs permissions
+node bin/codex-bridge.mjs permissions add
+node bin/codex-bridge.mjs permissions remove
+```
+
+Без аргумента команда показывает состояние набора: `installed`, `partially installed` или
+`absent`. `add` добавляет в `settings.json` выбранного хоста точные allow- и deny-строки для
+обоих имён CLI, пути `node bin/codex-bridge.mjs`, Bash и PowerShell, не трогая чужие правила.
+`remove` удаляет только эти строки из `allow`, `deny` и `ask`, поэтому похожая строка оператора
+остаётся на месте. Доступны те же `--scope` и `--host`, что и у `install`; `uninstall` забирает
+эти правила автоматически.
+
 ## Настройка среды
 
 `run-config.json` управляет окружением делегированного Codex. По умолчанию `hooks` и `plugins`

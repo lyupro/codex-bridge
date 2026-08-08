@@ -2,13 +2,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { liveRuns } from '../src/hooks/live-runs.mjs';
+import { readJsonFileSync } from '../src/json-file.mjs';
 import { runsRoot } from '../src/runner/runs-root.mjs';
 
 const record = (value) => value && typeof value === 'object' && !Array.isArray(value);
 
 function readRecord(file) {
   try {
-    const value = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const value = readJsonFileSync(file);
     return record(value) ? value : null;
   } catch {
     return null;

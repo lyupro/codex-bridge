@@ -8,6 +8,7 @@ import { install } from '../cli/install.mjs';
 import { projects } from '../cli/projects.mjs';
 import { read } from '../cli/read.mjs';
 import { packageInfo } from '../cli/manifest.mjs';
+import { permissions } from '../cli/permissions.mjs';
 import { prune } from '../cli/prune.mjs';
 import { stop } from '../cli/stop.mjs';
 import { sweep } from '../cli/sweep.mjs';
@@ -19,6 +20,7 @@ export const HELP = `codex-bridge — Claude Code dispatchers for Codex
 Usage:
   codex-bridge install [--scope user|project] [--host <path>] [--dry-run] [--force]
   codex-bridge update [--scope user|project] [--host <path>] [--dry-run] [--force]
+  codex-bridge permissions [add|remove] [--scope user|project] [--host <path>]
   codex-bridge uninstall [--scope user|project] [--host <path>] [--dry-run]
   codex-bridge doctor [--scope user|project] [--host <path>]
   codex-bridge projects [<name>] [--json]
@@ -34,6 +36,7 @@ Usage:
 Commands:
   install   Install codex-bridge into the selected Claude Code host
   update    Update a recorded codex-bridge installation
+  permissions Show, add, or remove optional shell permission rules
   uninstall Remove installed files while preserving run artifacts
   doctor    Diagnose the selected Claude Code host
   projects  List projects or runs from the run store
@@ -111,6 +114,22 @@ export async function main(argv, io = console) {
   }
   if (command === 'sweep') {
     const result = sweep(rest);
+    io.log(result.output);
+    return result.exitCode;
+  }
+  if (command === 'permissions') {
+    let action;
+    let optionArgs = rest;
+    if (rest[0] && !rest[0].startsWith('-')) {
+      action = rest[0];
+      optionArgs = rest.slice(1);
+    }
+    if (action && !['add', 'remove'].includes(action)) {
+      throw new Error(`unknown permissions action "${action}"`);
+    }
+    const options = commandOptions(command, optionArgs);
+    const host = resolveHost(options);
+    const result = await permissions({ host, action });
     io.log(result.output);
     return result.exitCode;
   }

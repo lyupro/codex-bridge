@@ -1,9 +1,12 @@
 /** Merges and removes named codex-bridge hooks without disturbing host settings. */
+import { AsyncLocalStorage } from 'node:async_hooks';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { readJsonFileWithRaw } from '../src/json-file.mjs';
 
 const LEGACY_SPEC = { event: 'SubagentStop', matcher: '*' };
+const settingsRuns = new AsyncLocalStorage();
 
 export function commandFor(guardPath) {
   return `node "${path.resolve(guardPath)}"`;
@@ -26,18 +29,13 @@ function normalizeSpec(specOrPath) {
   };
 }
 
-async function readSettings(settingsPath) {
+export async function readSettings(settingsPath) {
   try {
-    const raw = await fs.readFile(settingsPath, 'utf8');
-    try {
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        throw new Error('top level must be an object');
-      }
-      return { exists: true, raw, settings: parsed };
-    } catch (err) {
-      throw new Error(`cannot parse ${settingsPath}: ${err.message}`);
+    const { raw, value: settings } = await readJsonFileWithRaw(settingsPath);
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+      throw new Error(`cannot parse ${settingsPath}: top level must be an object`);
     }
+    return { exists: true, raw, settings };
   } catch (err) {
     if (err.code === 'ENOENT') return { exists: false, raw: null, settings: {} };
     throw err;
@@ -83,9 +81,38 @@ function backupName(settingsPath) {
   return `${settingsPath}.codex-bridge-backup-${stamp}-${randomUUID()}`;
 }
 
+function runKey(settingsPath) {
+  return path.resolve(settingsPath);
+}
+
+/**
+ * A command gets one in-memory backup scope. AsyncLocalStorage keeps concurrent commands separate
+ * in one process, while nested install calls reuse their caller's scope (Plan_24).
+ */
+export async function withSettingsRun(settingsPath, action) {
+  if (typeof action !== 'function') throw new TypeError('settings run action must be a function');
+  const key = runKey(settingsPath);
+  const active = settingsRuns.getStore();
+  if (active?.key === key) return action();
+  return settingsRuns.run({ key, backupTaken: false }, action);
+}
+
+function withMutationRun(settingsPath, action) {
+  const active = settingsRuns.getStore();
+  return active?.key === runKey(settingsPath)
+    ? action()
+    : withSettingsRun(settingsPath, action);
+}
+
 async function atomicWrite(settingsPath, settings, previous) {
   await fs.mkdir(path.dirname(settingsPath), { recursive: true });
-  if (previous.exists) await fs.writeFile(backupName(settingsPath), previous.raw, { flag: 'wx' });
+  const active = settingsRuns.getStore();
+  const ownsScope = active?.key === runKey(settingsPath);
+  const shouldBackup = !ownsScope || !active.backupTaken;
+  if (ownsScope) active.backupTaken = true;
+  if (shouldBackup && previous.exists) {
+    await fs.writeFile(backupName(settingsPath), previous.raw, { flag: 'wx' });
+  }
   const temporary = `${settingsPath}.${randomUUID()}.tmp`;
   try {
     await fs.writeFile(temporary, `${JSON.stringify(settings, null, 2)}\n`, { flag: 'wx' });
@@ -96,42 +123,63 @@ async function atomicWrite(settingsPath, settings, previous) {
   }
 }
 
+/**
+ * Runs a settings mutation through the hook writer's backup and atomic-write boundary.
+ * Plan_22 requires permissions to preserve the same recovery guarantee after the settings merge
+ * incident: a second writer must not grow its own backup or serialization path.
+ */
+export async function updateSettings(settingsPath, edit) {
+  if (typeof edit !== 'function') throw new TypeError('settings edit must be a function');
+  return withMutationRun(settingsPath, async () => {
+    const previous = await readSettings(settingsPath);
+    const settings = structuredClone(previous.settings);
+    const result = await edit(settings);
+    if (!result?.changed) return result || { changed: false };
+    await atomicWrite(settingsPath, settings, previous);
+    return result;
+  });
+}
+
 export async function mergeHook(settingsPath, specOrPath, inspected) {
-  const spec = normalizeSpec(specOrPath);
-  const state = inspected || await inspectHook(settingsPath, spec);
-  if (state.present) return { changed: false, createdGroup: false };
-  const settings = structuredClone(state.settings);
-  settings.hooks ??= {};
-  if (!Array.isArray(settings.hooks[spec.event])) settings.hooks[spec.event] = [];
-  let group = settings.hooks[spec.event].find((entry) => entry?.matcher === spec.matcher);
-  const createdGroup = !group;
-  if (!group) {
-    group = { matcher: spec.matcher, hooks: [] };
-    settings.hooks[spec.event].push(group);
-  }
-  if (!Array.isArray(group.hooks)) group.hooks = [];
-  group.hooks.push(ownHook(spec.command));
-  await atomicWrite(settingsPath, settings, state);
-  return { changed: true, createdGroup };
+  return withMutationRun(settingsPath, async () => {
+    const spec = normalizeSpec(specOrPath);
+    const state = inspected || await inspectHook(settingsPath, spec);
+    if (state.present) return { changed: false, createdGroup: false };
+    const settings = structuredClone(state.settings);
+    settings.hooks ??= {};
+    if (!Array.isArray(settings.hooks[spec.event])) settings.hooks[spec.event] = [];
+    let group = settings.hooks[spec.event].find((entry) => entry?.matcher === spec.matcher);
+    const createdGroup = !group;
+    if (!group) {
+      group = { matcher: spec.matcher, hooks: [] };
+      settings.hooks[spec.event].push(group);
+    }
+    if (!Array.isArray(group.hooks)) group.hooks = [];
+    group.hooks.push(ownHook(spec.command));
+    await atomicWrite(settingsPath, settings, state);
+    return { changed: true, createdGroup };
+  });
 }
 
 export async function removeHook(settingsPath, specOrPath, { createdGroup = false } = {}) {
-  const spec = normalizeSpec(specOrPath);
-  const state = await inspectHook(settingsPath, spec);
-  if (!state.present) return { changed: false };
-  const settings = structuredClone(state.settings);
-  const eventGroups = groups(settings, spec.event);
-  // Removal follows the same rule as the lookup above: our command, whatever matcher it is
-  // filed under. A foreign hook is left alone because its command is not ours, not because it
-  // sits in another group.
-  for (let index = eventGroups.length - 1; index >= 0; index -= 1) {
-    const group = eventGroups[index];
-    if (!hasOwnCommand(group, spec.command)) continue;
-    if (!Array.isArray(group?.hooks)) continue;
-    group.hooks = group.hooks.filter((hook) =>
-      !(hook?.type === 'command' && hook.command === spec.command));
-    if (createdGroup && group.hooks.length === 0) eventGroups.splice(index, 1);
-  }
-  await atomicWrite(settingsPath, settings, state);
-  return { changed: true };
+  return withMutationRun(settingsPath, async () => {
+    const spec = normalizeSpec(specOrPath);
+    const state = await inspectHook(settingsPath, spec);
+    if (!state.present) return { changed: false };
+    const settings = structuredClone(state.settings);
+    const eventGroups = groups(settings, spec.event);
+    // Removal follows the same rule as the lookup above: our command, whatever matcher it is
+    // filed under. A foreign hook is left alone because its command is not ours, not because it
+    // sits in another group.
+    for (let index = eventGroups.length - 1; index >= 0; index -= 1) {
+      const group = eventGroups[index];
+      if (!hasOwnCommand(group, spec.command)) continue;
+      if (!Array.isArray(group?.hooks)) continue;
+      group.hooks = group.hooks.filter((hook) =>
+        !(hook?.type === 'command' && hook.command === spec.command));
+      if (createdGroup && group.hooks.length === 0) eventGroups.splice(index, 1);
+    }
+    await atomicWrite(settingsPath, settings, state);
+    return { changed: true };
+  });
 }

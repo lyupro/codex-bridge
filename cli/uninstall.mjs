@@ -7,7 +7,8 @@ import {
   installRecordPath,
   readInstallRecord,
 } from './manifest.mjs';
-import { commandFor, removeHook } from './settings-merge.mjs';
+import { removePermissionRules } from './permissions.mjs';
+import { commandFor, removeHook, withSettingsRun } from './settings-merge.mjs';
 import { readRulesRegistry, removeRulesOwner, remainingRulesOwners } from './rules-owners.mjs';
 
 async function removeEmpty(directory) {
@@ -34,7 +35,13 @@ function hookDefinition(event) {
   return HOOK_DEFINITIONS.find((definition) => definition.event === event);
 }
 
-export async function uninstall({ host, dryRun = false } = {}) {
+function permissionOutput(host, removed, dryRun) {
+  const verb = dryRun ? 'Would remove' : 'Removed';
+  const plural = removed === 1 ? 'string' : 'strings';
+  return `${verb} ${removed} permission rule ${plural} from ${host.settingsPath}.`;
+}
+
+async function uninstallInRun({ host, dryRun = false } = {}) {
   // Preflight before removing the hook: package removal on a broken registry left the host without its watchdog.
   let registry = null;
   let registryError = null;
@@ -43,13 +50,17 @@ export async function uninstall({ host, dryRun = false } = {}) {
   } catch (err) {
     registryError = err;
   }
+  const permissionResult = await removePermissionRules(host.settingsPath, { dryRun });
+  const permissionLine = permissionOutput(host, permissionResult.removed, dryRun);
   const record = await readInstallRecord(host);
   const preservation = `Run artifacts in ${path.join(host.root, 'codex-runs')} and the run `
     + `configuration in ${path.join(host.agentsDir, 'run-config.json')} are preserved.`;
-  if (!record) return { exitCode: 1, output: `codex-bridge is not installed.\n${preservation}` };
+  if (!record) {
+    return { exitCode: 1, output: `${permissionLine}\ncodex-bridge is not installed.\n${preservation}` };
+  }
 
   if (dryRun) {
-    const lines = record.files.map((file) => `Would remove ${file}`);
+    const lines = [permissionLine, ...record.files.map((file) => `Would remove ${file}`)];
     if (record.rules) {
       if (registryError) {
         lines.push(`Would leave ${record.rules.path} because the rules ownership registry is invalid; ownership is unknown.`);
@@ -127,6 +138,12 @@ export async function uninstall({ host, dryRun = false } = {}) {
   await removeEmpty(host.agentsDir);
   return {
     exitCode: 0,
-    output: [`Uninstalled codex-bridge.`, ...rulesOutput, preservation].join('\n'),
+    output: [`Uninstalled codex-bridge.`, permissionLine, ...rulesOutput, preservation].join('\n'),
   };
+}
+
+export async function uninstall(options = {}) {
+  const host = options?.host;
+  if (!host?.settingsPath) return uninstallInRun(options);
+  return withSettingsRun(host.settingsPath, () => uninstallInRun(options));
 }

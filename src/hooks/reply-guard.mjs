@@ -29,6 +29,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { readJsonFileSync } from '../json-file.mjs';
 import { isPidAlive, liveRuns, normalizePath } from './live-runs.mjs';
 
 const HOME = os.homedir();
@@ -120,7 +121,7 @@ const takeTry = (agentId, kind) => {
   if (!agentId) return 'untracked';
   let seen;
   try {
-    seen = JSON.parse(fs.readFileSync(BLOCKED_FILE, 'utf8'));
+    seen = readJsonFileSync(BLOCKED_FILE);
   } catch {
     seen = {};
   }
@@ -253,7 +254,7 @@ const statusPath = path.join(runDir, 'status.json');
 if (fs.existsSync(statusPath)) {
   let runStatus = null;
   try {
-    runStatus = JSON.parse(fs.readFileSync(statusPath, 'utf8'));
+    runStatus = readJsonFileSync(statusPath);
   } catch {
     runStatus = null;
   }
@@ -317,7 +318,7 @@ if (!fs.existsSync(metaPath)) {
 
 let meta;
 try {
-  meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+  meta = readJsonFileSync(metaPath);
 } catch {
   pass();
 }

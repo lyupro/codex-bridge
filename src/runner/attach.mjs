@@ -1,6 +1,7 @@
 /** Finds a live run for an order and waits for its verdict when a repeated launcher call attaches. */
 import fs from 'node:fs';
 import path from 'node:path';
+import { readJsonFileSync } from '../json-file.mjs';
 import { exitCodeFor, writeFailure, chainRuns } from '../write-meta.mjs';
 
 // The attach call is the only process that waits for a worker it did not spawn. Keeping that
@@ -10,7 +11,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export const readJsonFile = (file) => {
   try {
-    return JSON.parse(fs.readFileSync(file, 'utf8'));
+    return readJsonFileSync(file);
   } catch {
     return null;
   }

@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { normalizeRepoPath } from '../src/runner/project-dir.mjs';
+import { readJsonFile } from '../src/json-file.mjs';
 
 export const RULES_REGISTRY_NAME = '.codex-bridge-rules.json';
 export const RULES_REGISTRY_VERSION = 1;
@@ -40,18 +41,15 @@ function validateRegistry(parsed) {
 }
 
 async function loadRulesRegistry(host) {
-  let raw;
-  try {
-    raw = await fs.readFile(rulesRegistryPath(host), 'utf8');
-  } catch (err) {
-    if (err.code === 'ENOENT') return null;
-    throw err;
-  }
   let parsed;
   try {
-    parsed = JSON.parse(raw);
+    parsed = await readJsonFile(rulesRegistryPath(host));
   } catch (err) {
-    throw new Error(`invalid rules ownership registry JSON: ${err.message}`);
+    if (err.code === 'ENOENT') return null;
+    if (err.cause) {
+      throw new Error(`invalid rules ownership registry JSON: ${err.cause.message}`, { cause: err.cause });
+    }
+    throw err;
   }
   return { raw: parsed, registry: validateRegistry(parsed) };
 }

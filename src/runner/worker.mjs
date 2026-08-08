@@ -12,6 +12,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { readJsonFileSync } from '../json-file.mjs';
 import { collect, exitCodeFor, AGENTS } from '../write-meta.mjs';
 import { writeStatus } from '../meta/run-state.mjs';
 import { setRun, emitReply } from './run-context.mjs';
@@ -23,7 +24,7 @@ import { runCodex } from './codex-cmd.mjs';
  * may depend on anyone still being on the other end of a pipe.
  */
 export async function worker(runDir) {
-  const cfg = JSON.parse(fs.readFileSync(path.join(runDir, 'worker.json'), 'utf8'));
+  const cfg = readJsonFileSync(path.join(runDir, 'worker.json'));
   const repoRoot = cfg.repo;
   setRun(runDir, cfg.agent);
 
@@ -58,7 +59,7 @@ export async function worker(runDir) {
   const resultPath = path.join(runDir, AGENTS[cfg.agent].result);
   if (cfg.agent !== 'codex-review') {
     try {
-      const result = JSON.parse(fs.readFileSync(resultPath, 'utf8'));
+      const result = readJsonFileSync(resultPath);
       if (result.report_markdown) fs.writeFileSync(path.join(runDir, 'report.md'), `${result.report_markdown}\n`);
     } catch {
       // No parseable result — write-meta.mjs turns that into FAIL with the log reason.
