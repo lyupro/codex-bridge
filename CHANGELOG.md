@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-09
+
 ### Added
 
 - Scope patterns are checked before Codex starts. A pattern that cannot match anything — an
@@ -41,6 +43,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   and a lookup by event alone reported `Agent|Task` for the worktree lock and the prune guard too —
   in the one line an operator reads to see what a removal is about to touch. The removal itself was
   never affected: hooks are found by command, not by matcher.
+- The order gate's refusal now shows the line it found. A caller who wrote
+  `scope (you may create/modify ONLY these):` was told scope was missing, re-read their own prompt,
+  saw it written there, and had nothing to act on; an autonomous run rewrites the same text forever.
+  The refusal names the candidate line under the input it belongs to and says why it was not
+  accepted — a qualifier between the label and the colon, a value that is still a placeholder, or no
+  separator at all — and stays silent when no candidate exists, because then "the input is missing"
+  is the truth. The parser accepts exactly what it accepted before: deriving scope from prose would
+  give away the only guarantee that a run cannot touch files nobody listed.
 
 ## [0.3.1] - 2026-08-07
 
