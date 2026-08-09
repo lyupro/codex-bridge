@@ -20,6 +20,12 @@ function buildRules(commandTransform) {
  * The executable names stay owned by cli-names.mjs; only the clone entry point is derived here.
  * Plan_22 records the incident because repeating the node spelling in CLI_NAMES would make the
  * source list answer two different questions and let a future alias bypass one of them.
+ *
+ * The deny half subtracts `prune` from the allow half rather than guarding it: `Bash(codex-bridge:*)`
+ * would otherwise hand out the deletion this package refuses to give an agent. Its refusal is never
+ * seen in a live session — a PreToolUse hook answers before permissions are consulted, and
+ * prune-guard is installed always while these rules are optional. The 2026-08-09 run held that
+ * observation open as a checklist item until it turned out to be the answer, not the obstacle.
  */
 export const PERMISSION_RULES = Object.freeze({
   allow: buildRules((command) => command),
