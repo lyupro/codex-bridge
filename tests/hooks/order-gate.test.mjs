@@ -46,6 +46,7 @@ test('missing dispatcher inputs are denied with actionable details', async (t) =
   assert.match(decision.permissionDecisionReason, /plan-13-build-20260804/);
   assert.match(decision.permissionDecisionReason, /src\/runner\/\*\*/);
   assert.match(decision.permissionDecisionReason, /tool_input\.prompt/);
+  assert.doesNotMatch(decision.permissionDecisionReason, /found `/);
 });
 
 /**
@@ -82,6 +83,23 @@ test('placeholder values are denied as missing inputs', async (t) => {
   assert.equal(decision.permissionDecision, 'deny');
   assert.match(decision.permissionDecisionReason, /order id/);
   assert.match(decision.permissionDecisionReason, /scope/);
+});
+
+test('diagnosis appears only beneath the missing entry whose label has a candidate', async (t) => {
+  const root = await fixture(t);
+  const result = runGate(root, payload(
+    'codex-build',
+    'scope (you may create/modify ONLY these):\n- assets/vault/.claude/lib/sessions.py (new)',
+  ));
+  const decision = JSON.parse(result.stdout).hookSpecificOutput;
+  const reason = decision.permissionDecisionReason;
+  const scopeEntry = reason.indexOf('- scope:');
+  const diagnosis = reason.indexOf('found `scope (you may create/modify ONLY these):`, expected `scope:` with nothing between the label and the colon');
+  assert.equal(decision.permissionDecision, 'deny');
+  assert.match(reason, /- order id:/);
+  assert.ok(scopeEntry >= 0);
+  assert.ok(diagnosis > scopeEntry);
+  assert.equal(reason.indexOf('found `order id'), -1);
 });
 
 test('a valid dispatcher call passes and keeps the last payload', async (t) => {

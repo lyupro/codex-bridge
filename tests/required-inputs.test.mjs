@@ -9,6 +9,7 @@ import { renderNoSelfExecution } from '../src/no-self-execution.mjs';
 import {
   CONTINUATION_INPUT,
   REQUIRED_INPUTS,
+  diagnoseInput,
   missingInputs,
   parseContinuationGrant,
   renderRequiredInputSummary,
@@ -51,6 +52,37 @@ test('template placeholders are missing even when their labels are present', () 
   );
   assert.deepEqual(missing.map((entry) => entry.label), ['order id', 'scope']);
   assert.deepEqual(missingInputs('codex-scout', 'order id: LABEL').map((entry) => entry.label), ['order id']);
+});
+
+test('diagnosis explains a candidate with a parenthesised qualifier', () => {
+  assert.deepEqual(
+    diagnoseInput('scope (you may create/modify ONLY these):', 'scope'),
+    {
+      line: 'scope (you may create/modify ONLY these):',
+      reason: 'expected `scope:` with nothing between the label and the colon',
+    },
+  );
+});
+
+test('diagnosis names a placeholder candidate', () => {
+  assert.deepEqual(diagnoseInput('scope: TODO', 'scope'), {
+    line: 'scope: TODO',
+    reason: 'value `TODO` is a placeholder; replace it with a concrete value',
+  });
+});
+
+test('diagnosis stays empty when the label has no candidate line', () => {
+  assert.equal(diagnoseInput('the scope is described in the next section', 'scope'), null);
+});
+
+test('diagnosis reports the first candidate line', () => {
+  assert.deepEqual(
+    diagnoseInput('scope (first qualifier):\nscope (second qualifier):', 'scope'),
+    {
+      line: 'scope (first qualifier):',
+      reason: 'expected `scope:` with nothing between the label and the colon',
+    },
+  );
 });
 
 test('conditional continuation entries stay out of the order-gate input contract', () => {

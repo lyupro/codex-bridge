@@ -14,7 +14,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { missingInputs } from '../required-inputs.mjs';
+import { diagnoseInput, missingInputs } from '../required-inputs.mjs';
 import { SUBAGENT_TOOLS } from '../hook-definitions.mjs';
 
 const HOME = os.homedir();
@@ -56,7 +56,12 @@ if (!missing.length) pass();
 const reason = [
   'Order gate denied the Agent call because required dispatcher input(s) are missing or still placeholders.',
   'Write each value in tool_input.prompt using `label: value` before launching the dispatcher:',
-  ...missing.map((entry) => `- ${entry.label}: ${entry.explanation} Example: \`${entry.example}\`.`),
+  ...missing.flatMap((entry) => {
+    const lines = [`- ${entry.label}: ${entry.explanation} Example: \`${entry.example}\`.`];
+    const diagnosis = diagnoseInput(toolInput.prompt, entry.label);
+    if (diagnosis) lines.push(`  found \`${diagnosis.line}\`, ${diagnosis.reason}`);
+    return lines;
+  }),
 ].join('\n');
 
 process.stdout.write(JSON.stringify({

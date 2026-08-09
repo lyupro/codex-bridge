@@ -89,6 +89,48 @@ export function extractValue(promptText, label) {
   return cleanValue(flagMatch[1] ?? flagMatch[2] ?? flagMatch[3]);
 }
 
+const MAX_DIAGNOSIS_LINE_LENGTH = 160;
+
+function readableDiagnosisLine(line) {
+  const trimmed = line.trim();
+  if (trimmed.length <= MAX_DIAGNOSIS_LINE_LENGTH) return trimmed;
+  return `${trimmed.slice(0, MAX_DIAGNOSIS_LINE_LENGTH - 1)}…`;
+}
+
+/** Explains the Plan_28 incident without widening the strict input parser's accepted spellings. */
+export function diagnoseInput(promptText, label) {
+  if (typeof label !== 'string' || !label.trim()) return null;
+  const prompt = typeof promptText === 'string' ? promptText : '';
+  const labelPattern = escapeRegExp(label).replaceAll('\\ ', '\\s+');
+  const candidatePattern = new RegExp(
+    `^[ \\t]*(?:[-*][ \\t]*)?(?:[*_` + '`' + `]?${labelPattern}[*_` + '`' + `]?)(?=$|[^A-Za-z0-9_])[^\\r\\n]*`,
+    'i',
+  );
+  const candidateLine = prompt.split(/\r?\n/).find((line) => candidatePattern.test(line));
+  if (candidateLine === undefined) return null;
+
+  const value = extractValue(candidateLine, label);
+  if (value !== null && !isPlaceholder(value)) return null;
+
+  const line = readableDiagnosisLine(candidateLine);
+  if (value !== null && isPlaceholder(value)) {
+    const displayedValue = value.trim();
+    if (!displayedValue) return { line, reason: 'value is empty; replace it with a concrete value' };
+    return {
+      line,
+      reason: `value \`${displayedValue}\` is a placeholder; replace it with a concrete value`,
+    };
+  }
+
+  const labelTail = candidateLine.match(
+    new RegExp(`^[ \\t]*(?:[-*][ \\t]*)?(?:[*_` + '`' + `]?${labelPattern}[*_` + '`' + `]?)([^\\r\\n]*)$`, 'i'),
+  )?.[1] ?? '';
+  if (labelTail.includes(':')) {
+    return { line, reason: `expected \`${label}:\` with nothing between the label and the colon` };
+  }
+  return { line, reason: `expected \`${label}: value\` with a separator immediately after the label` };
+}
+
 /** Keeps the 2026-08-05 continuation incident's run and reason in the shared input parser. */
 export function parseContinuationGrant(promptText) {
   const prompt = typeof promptText === 'string' ? promptText : '';
