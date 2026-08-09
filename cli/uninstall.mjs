@@ -2,8 +2,8 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {
+  definitionForRecordedHook,
   fileFingerprint,
-  HOOK_DEFINITIONS,
   installRecordPath,
   readInstallRecord,
 } from './manifest.mjs';
@@ -29,10 +29,6 @@ async function removeEmptyParents(target, boundary) {
 
 function remainingOwnersText(count) {
   return `${count} other owner${count === 1 ? '' : 's'} ${count === 1 ? 'remains' : 'remain'}`;
-}
-
-function hookDefinition(event) {
-  return HOOK_DEFINITIONS.find((definition) => definition.event === event);
 }
 
 function permissionOutput(host, removed, dryRun) {
@@ -82,7 +78,7 @@ async function uninstallInRun({ host, dryRun = false } = {}) {
       }
     }
     for (const hook of record.hooks) {
-      const definition = hookDefinition(hook.event);
+      const definition = definitionForRecordedHook(hook);
       lines.push(`Would remove the ${hook.event} hook for matcher ${definition.matcher}.`);
     }
     lines.push('Would remove the installation record.');
@@ -91,7 +87,7 @@ async function uninstallInRun({ host, dryRun = false } = {}) {
   }
 
   for (const hook of record.hooks) {
-    const definition = hookDefinition(hook.event);
+    const definition = definitionForRecordedHook(hook);
     const target = path.join(host.root, hook.path);
     await removeHook(host.settingsPath, {
       event: hook.event,

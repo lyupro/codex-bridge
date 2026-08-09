@@ -15,6 +15,19 @@ import { readJsonFile } from '../src/json-file.mjs';
 
 export { HOOK_DEFINITIONS };
 
+/**
+ * Finds the definition a recorded hook belongs to. The event alone does not identify one: three of
+ * the four hooks are PreToolUse, so `find(d => d.event === hook.event)` returns the order gate for
+ * all three. `doctor` was fixed for exactly this and kept its own inline matching; `uninstall` was
+ * not, and its dry-run announced matcher `Agent|Task` for the worktree lock and the prune guard —
+ * the operator's only view of what a removal is about to touch. One function, so a third caller
+ * cannot repeat it.
+ */
+export function definitionForRecordedHook(hook) {
+  return HOOK_DEFINITIONS.find((definition) => definition.event === hook?.event
+    && path.basename(String(hook?.path ?? '')) === definition.file);
+}
+
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const PACKAGE_ROOT = path.resolve(HERE, '..');
 export const INSTALL_RECORD_NAME = '.codex-bridge-install.json';
