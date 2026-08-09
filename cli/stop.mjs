@@ -2,6 +2,13 @@
 import path from 'node:path';
 import { stopCodex } from '../src/runner/codex-cmd.mjs';
 import { git, worktreeSnapshot } from '../src/runner/git-state.mjs';
+import {
+  IDENTITY_ALIVE,
+  IDENTITY_FOREIGN,
+  IDENTITY_UNVERIFIED,
+  processAlive,
+  processIdentity,
+} from '../src/process-identity.mjs';
 import { markAbandoned, readJson } from '../src/write-meta.mjs';
 import { runsRoot } from '../src/runner/runs-root.mjs';
 import { resolveRunFolder } from './run-lookup.mjs';
@@ -32,27 +39,22 @@ function processHandle(pid) {
   };
 }
 
-function alive(pid) {
-  if (!Number.isInteger(pid) || pid <= 0) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (err) {
-    return err.code === 'EPERM';
-  }
-}
-
 async function waitForExit(pid) {
   const deadline = Date.now() + EXIT_WAIT_MS;
-  while (alive(pid) && Date.now() < deadline) await sleep(EXIT_POLL_MS);
-  return !alive(pid);
+  while (processAlive(pid) && Date.now() < deadline) await sleep(EXIT_POLL_MS);
+  return !processAlive(pid);
 }
 
 function result(exitCode, output) {
   return { exitCode, output };
 }
 
-export async function stop({ run, cwd = process.cwd(), runsRootPath = runsRoot() } = {}) {
+export async function stop({
+  run,
+  cwd = process.cwd(),
+  runsRootPath = runsRoot(),
+  commandRunner,
+} = {}) {
   const lookup = resolveRunFolder({ command: 'stop', run, cwd, runsRootPath });
   if (lookup.error) return result(1, lookup.error);
   const { runDir } = lookup;
@@ -70,13 +72,24 @@ export async function stop({ run, cwd = process.cwd(), runsRootPath = runsRoot()
     return result(1, `Run ${runDir} has no valid recorded pid; it was not changed.`);
   }
 
-  try {
-    stopCodex(processHandle(status.pid));
-    if (!(await waitForExit(status.pid))) {
-      return result(1, `Run ${runDir} did not stop within ${EXIT_WAIT_MS}ms; it was not closed.`);
+  const identity = processIdentity({ runDir, status, commandRunner });
+  if (identity === IDENTITY_UNVERIFIED || identity === IDENTITY_FOREIGN) {
+    return result(
+      1,
+      `Process identity could not be confirmed for run ${runDir} (${identity}); no signal was sent. ` +
+        '"codex-bridge sweep" closes the record without killing a process.',
+    );
+  }
+
+  if (identity === IDENTITY_ALIVE) {
+    try {
+      stopCodex(processHandle(status.pid));
+      if (!(await waitForExit(status.pid))) {
+        return result(1, `Run ${runDir} did not stop within ${EXIT_WAIT_MS}ms; it was not closed.`);
+      }
+    } catch (err) {
+      return result(1, `Could not stop run ${runDir}: ${err.message}; it was not closed.`);
     }
-  } catch (err) {
-    return result(1, `Could not stop run ${runDir}: ${err.message}; it was not closed.`);
   }
 
   // The snapshot is what turns the verdict from a bare label into a list of what the stopped run

@@ -3,7 +3,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { formatSilence, heartbeatAge, isHeartbeatFresh } from '../src/heartbeat.mjs';
-import { markAbandoned, pidAlive } from '../src/meta/run-state.mjs';
+import { markAbandoned } from '../src/meta/run-state.mjs';
+import {
+  IDENTITY_ALIVE,
+  IDENTITY_UNVERIFIED,
+  processIdentity,
+} from '../src/process-identity.mjs';
 import { runsRoot } from '../src/runner/runs-root.mjs';
 import { readJson } from '../src/write-meta.mjs';
 import { renderTable } from './table.mjs';
@@ -68,7 +73,9 @@ function staleLiveRuns(project) {
   for (const entry of directories(project.dir)) {
     const dir = path.join(project.dir, entry.name);
     const status = readJson(path.join(dir, 'status.json'));
-    if (!status || status.state !== 'running' || !pidAlive(status.pid) || isHeartbeatFresh(dir)) continue;
+    if (!status || status.state !== 'running') continue;
+    const identity = processIdentity({ runDir: dir, status });
+    if ((identity !== IDENTITY_ALIVE && identity !== IDENTITY_UNVERIFIED) || isHeartbeatFresh(dir)) continue;
     stale.push({
       project: project.name,
       run: entry.name,

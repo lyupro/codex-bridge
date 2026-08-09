@@ -46,6 +46,7 @@ function ownStatus(slug = 'own-run') {
     slug,
     repo: path.resolve('repository'),
     started_at: '2026-08-05T10:00:00.000Z',
+    process_started_at: performance.timeOrigin,
   };
 }
 
@@ -75,6 +76,7 @@ test('a reply that names every live run passes', async (t) => {
     slug: 'sibling-build',
     repo: path.resolve('repository'),
     started_at: '2026-08-05T10:01:00.000Z',
+    process_started_at: performance.timeOrigin,
   });
   const result = runGuard(root, replyFor(own, `\nATTACH=${sibling} started=2026-08-05T10:01:00.000Z`));
   assert.equal(result.status, 0);
@@ -91,6 +93,7 @@ test('a reply silent about a live writing sibling is blocked with status facts',
     slug: 'build-sibling',
     repo: path.resolve('repository'),
     started_at: '2026-08-05T10:01:00.000Z',
+    process_started_at: performance.timeOrigin,
   });
   const result = runGuard(root, replyFor(own));
   assert.equal(result.status, 0);
@@ -116,6 +119,7 @@ for (const reader of ['codex-scout', 'codex-review']) {
       slug: `${reader}-sibling`,
       repo: path.resolve('repository'),
       started_at: '2026-08-05T10:01:00.000Z',
+      process_started_at: performance.timeOrigin,
     });
     const result = runGuard(root, replyFor(own));
     assert.equal(result.status, 0);
@@ -133,6 +137,7 @@ test('a running sibling with a dead pid does not block', async (t) => {
     slug: 'dead-sibling',
     repo: path.resolve('repository'),
     started_at: '2026-08-05T10:01:00.000Z',
+    process_started_at: performance.timeOrigin,
   });
   const result = runGuard(root, replyFor(own));
   assert.equal(result.status, 0);
@@ -161,6 +166,7 @@ test('sibling blocks spend the STATE budget and then end the turn', async (t) =>
     slug: 'budget-sibling',
     repo: path.resolve('repository'),
     started_at: '2026-08-05T10:01:00.000Z',
+    process_started_at: performance.timeOrigin,
   });
   const results = [1, 2, 3, 4].map(() => runGuard(root, replyFor(own), 'budget-agent'));
   for (const result of results.slice(0, 3)) assert.equal(JSON.parse(result.stdout).decision, 'block');

@@ -10,24 +10,26 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { changedPaths, line, normalizePath, readJson, readText, size } from './paths.mjs';
+import {
+  IDENTITY_ALIVE,
+  IDENTITY_UNVERIFIED,
+  processIdentity,
+} from '../process-identity.mjs';
 
 /**
- * Is this pid still running? EPERM means the process exists and belongs to someone else,
- * which for our purposes is alive — treating it as dead would mark a live run abandoned.
+ * Is this pid still running for this run? Unknown identity remains live here: treating an
+ * unverified process as dead would mark a live run abandoned, and readers must fail open.
  */
-export const pidAlive = (pid) => {
-  if (!Number.isInteger(pid) || pid <= 0) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (err) {
-    return err.code === 'EPERM';
-  }
+const isAliveIdentity = (identity) => identity === IDENTITY_ALIVE || identity === IDENTITY_UNVERIFIED;
+
+const pidAlive = (pid, runDir, status = {}) => {
+  const identity = processIdentity({ runDir, status: { ...status, pid } });
+  return isAliveIdentity(identity);
 };
 
 /**
- * This module deliberately judges by the pid alone, while hooks/live-runs.mjs also requires a
- * fresh progress heartbeat. The two answer different questions, and merging them broke both:
+ * This module deliberately judges by the run's pid identity alone, while hooks/live-runs.mjs also
+ * requires a fresh progress heartbeat. The two answer different questions, and merging them broke both:
  *
  * - a hook asks "may the operator edit this tree", and a stalled run must stop holding that
  *   lock — the operator is editing knowingly, and a stale run should not cost them 25 minutes;
@@ -80,7 +82,8 @@ export function markAbandoned(runsRoot, currentTree) {
     if (!entry.isDirectory()) continue;
     const runDir = path.join(runsRoot, entry.name);
     const status = readJson(path.join(runDir, 'status.json'));
-    if (!status || status.state !== 'running' || pidAlive(status.pid)) continue;
+    if (!status || status.state !== 'running') continue;
+    if (pidAlive(status.pid, runDir, status)) continue;
     const metaPath = path.join(runDir, 'meta.json');
     const meta = readJson(metaPath);
     if (!meta && fs.existsSync(metaPath)) continue;
@@ -138,6 +141,11 @@ export function markAbandoned(runsRoot, currentTree) {
  * are not looked at — running scouting alongside a build is the normal way to work.
  */
 export function activeRun(runsRoot, repo, agent = 'codex-build') {
+  return activeRunDetails(runsRoot, repo, agent)?.run || null;
+}
+
+/** Finds the same active run while retaining identity uncertainty for a refusal message. */
+export function activeRunDetails(runsRoot, repo, agent = 'codex-build') {
   let entries;
   try {
     entries = fs.readdirSync(runsRoot, { withFileTypes: true });
@@ -151,7 +159,8 @@ export function activeRun(runsRoot, repo, agent = 'codex-build') {
     const status = readJson(path.join(runDir, 'status.json'));
     if (!status || status.state !== 'running' || status.agent !== agent) continue;
     if (normalizePath(status.repo) !== wanted) continue;
-    if (pidAlive(status.pid)) return entry.name;
+    const identity = processIdentity({ runDir, status });
+    if (isAliveIdentity(identity)) return { run: entry.name, identity };
   }
   return null;
 }

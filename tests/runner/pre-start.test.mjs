@@ -85,7 +85,7 @@ test('the busy refusal records aborted_pre_start', (t) => {
       slug: 'other-task',
       task_hash: 'other-hash',
       order_id: 'other-order',
-      started_at: '2026-08-08T08:00:00.000Z',
+      started_at: new Date().toISOString(),
     }),
   );
 

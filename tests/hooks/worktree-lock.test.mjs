@@ -33,6 +33,7 @@ async function liveRun(runsRoot, { agent = 'codex-build', repo, state = 'running
     slug: 'lock-test-run',
     repo,
     started_at: '2026-08-05T10:00:00.000Z',
+    process_started_at: performance.timeOrigin,
   })}\n`);
   return dir;
 }

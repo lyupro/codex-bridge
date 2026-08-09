@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { readJsonFileSync } from '../json-file.mjs';
+import { IDENTITY_DEAD, IDENTITY_FOREIGN, processAlive, processIdentity } from '../process-identity.mjs';
 import { exitCodeFor, writeFailure, chainRuns } from '../write-meta.mjs';
 
 // The attach call is the only process that waits for a worker it did not spawn. Keeping that
@@ -18,29 +19,33 @@ export const readJsonFile = (file) => {
 };
 
 /**
- * Is this pid still running? EPERM means the process exists and belongs to someone else,
- * which for our purposes is alive. Same reading write-meta.mjs uses — two answers to "is
- * this run still going" would be one answer too many.
+ * Is this pid still running for this run? Unknown identity remains live so an attach does not
+ * declare a worker dead merely because the identity probe was unavailable.
  */
-export const alive = (pid) => {
-  if (!Number.isInteger(pid) || pid <= 0) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (err) {
-    return err.code === 'EPERM';
-  }
+export const alive = (pid, runDir, status = {}) => {
+  const identity = processIdentity({ runDir, status: { ...status, pid } });
+  return identity !== IDENTITY_DEAD && identity !== IDENTITY_FOREIGN;
 };
 
-/** Blocks until the worker's reply exists, or until the worker is provably gone without one. */
-export async function waitForReply(runDir, workerPid) {
+/**
+ * Blocks until the worker's reply exists, or until the worker is provably gone without one.
+ *
+ * Identity is settled once, before the loop: a recycled pid would otherwise keep this call waiting
+ * for a reply nobody is going to write, and asking again every 500 ms would spawn the start-time
+ * probe for the whole length of a 20-minute run. Inside the loop the question is only whether the
+ * number is still busy, which signal 0 answers for free.
+ */
+export async function waitForReply(runDir, workerPid, status = {}) {
   const replyPath = path.join(runDir, 'reply.txt');
+  if (!alive(workerPid, runDir, status)) {
+    return fs.existsSync(replyPath) ? fs.readFileSync(replyPath, 'utf8').replace(/\s+$/, '') : null;
+  }
   let pollsSinceDeath = 0;
   for (;;) {
     if (fs.existsSync(replyPath)) return fs.readFileSync(replyPath, 'utf8').replace(/\s+$/, '');
     // A dead worker will never write it. Two extra polls before believing that: the pid is
     // released around the same moment as the last write, and the order is not guaranteed.
-    if (alive(workerPid)) {
+    if (processAlive(workerPid)) {
       pollsSinceDeath = 0;
     } else {
       pollsSinceDeath += 1;
@@ -85,7 +90,7 @@ export async function attach({ runsRoot, repo, slug, taskHash, orderId, chain, i
       console.log(fs.readFileSync(path.join(dir, 'reply.txt'), 'utf8').replace(/\s+$/, ''));
       return exitCodeFor(readJsonFile(path.join(dir, 'meta.json'))?.status);
     }
-    if (alive(entry.status.pid)) {
+    if (alive(entry.status.pid, dir, entry.status)) {
       candidate = entry;
       break;
     }
@@ -94,7 +99,7 @@ export async function attach({ runsRoot, repo, slug, taskHash, orderId, chain, i
 
   const runDir = path.join(runsRoot, candidate.run);
   console.log(`ATTACH=${runDir} started=${candidate.status.started_at}`);
-  const replyText = await waitForReply(runDir, candidate.status.pid);
+  const replyText = await waitForReply(runDir, candidate.status.pid, candidate.status);
   if (replyText !== null) {
     console.log(replyText);
     return exitCodeFor(readJsonFile(path.join(runDir, 'meta.json'))?.status);

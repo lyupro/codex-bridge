@@ -15,6 +15,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- Run records now verify that a pid still belongs to the process that started the run, using the
+  process start time and a fresh heartbeat before falling back to an OS probe. A reused or
+  unverified pid is never signalled by `stop`; `codex-bridge sweep` remains the non-killing way to
+  close a record whose process identity cannot be confirmed.
 - JSON files written by PowerShell with a UTF-8 BOM are now read consistently by the CLI and
   installed hooks, and one command run creates at most one settings backup without deleting older
   backups.

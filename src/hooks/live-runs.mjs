@@ -2,8 +2,8 @@
  * Shared, fail-open knowledge of live Codex runs.
  *
  * The reply guard and the worktree lock must answer the same question: a status.json is live
- * only while it says `running`, its runner pid accepts signal 0, and its progress heartbeat is
- * fresh. Keeping those probes and the directory scan here prevents the two protections from
+ * only while it says `running`, its runner pid is judged alive for this run, and its progress
+ * heartbeat is fresh. Keeping those probes and the directory scan here prevents the two protections from
  * disagreeing about a run, which would recreate the 2026-08-06 incident where a dead Codex
  * child left its worker and lock looking live through a grandchild-held stdio pipe.
  *
@@ -15,16 +15,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { isHeartbeatFresh } from '../heartbeat.mjs';
 import { readJsonFileSync } from '../json-file.mjs';
+import { IDENTITY_DEAD, IDENTITY_FOREIGN, processIdentity } from '../process-identity.mjs';
 
-/** Signal 0 tests existence without stopping the process; EPERM still means that it exists. */
-export const isPidAlive = (pid) => {
-  if (typeof pid !== 'number') return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (err) {
-    return err.code === 'EPERM';
-  }
+/**
+ * The hook requires pid judgment plus a fresh heartbeat. Identity uncertainty stays live here
+ * (fail-open), while the identity module deliberately treats a missing heartbeat as unverified;
+ * isHeartbeatFresh() keeps its pre-Plan_20 missing-file compatibility for this separate question.
+ */
+export const isPidAlive = (pid, runDir, status = {}) => {
+  const identity = processIdentity({ runDir, status: { ...status, pid } });
+  return identity !== IDENTITY_DEAD && identity !== IDENTITY_FOREIGN;
 };
 
 /**
@@ -57,8 +57,8 @@ function recognizedStatus(runDir, status) {
     && isNonEmptyString(status.agent)
     && isNonEmptyString(status.slug)
     && isNonEmptyString(status.repo)
-    && isPidAlive(status.pid)
-    && isHeartbeatFresh(runDir);
+    && isHeartbeatFresh(runDir)
+    && isPidAlive(status.pid, runDir, status);
 }
 
 function readStatus(runDir) {

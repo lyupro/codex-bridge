@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
+import { HEARTBEAT_FILE } from '../../src/heartbeat.mjs';
 import { resolveProjectRunsDir } from '../../src/runner/project-dir.mjs';
 
 const realSpawnSync = childProcess.spawnSync;
@@ -57,7 +58,7 @@ const liveStatus = (repo, pid) => ({
   slug: 'stop-test',
   order_id: 'order-stop',
   repo,
-  started_at: '2026-08-04T09:00:00.000Z',
+  started_at: new Date().toISOString(),
 });
 
 const alive = (pid) => {
@@ -106,6 +107,36 @@ test('stop kills a live process and closes the run with FAIL artifacts', async (
   assert.equal(status.state, 'abandoned');
   assert.equal(status.status, 'FAIL');
   assert.ok(status.abandoned_at);
+});
+
+test('stop does not probe while waiting for a confirmed process to die', async (t) => {
+  const { project, projectRuns, runsRoot } = fixture(t);
+  const child = liveProcess();
+  t.after(() => {
+    try {
+      child.kill('SIGKILL');
+    } catch {}
+  });
+  assert.equal(await waitFor(() => Number.isInteger(child.pid) && alive(child.pid)), true);
+  const runDir = path.join(projectRuns, '2026-08-04_090000_stop-no-probe');
+  writeRun(runDir, liveStatus(project, child.pid));
+  fs.writeFileSync(path.join(runDir, HEARTBEAT_FILE), 'progress\n');
+  let probes = 0;
+  const commandRunner = () => {
+    probes += 1;
+    throw new Error('process probe must not run while waiting for a confirmed stop');
+  };
+
+  const result = await stop({
+    run: path.basename(runDir),
+    cwd: project,
+    runsRootPath: runsRoot,
+    commandRunner,
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(probes, 0);
+  assert.equal(await waitFor(() => !alive(child.pid)), true);
 });
 
 test('stop leaves a finished run byte-for-byte unchanged', async (t) => {

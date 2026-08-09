@@ -39,6 +39,7 @@ const running = (repo, overrides = {}) => ({
   order_id: 'order-1',
   repo,
   started_at: '2026-08-04T09:00:00.000Z',
+  process_started_at: performance.timeOrigin,
   ...overrides,
 });
 

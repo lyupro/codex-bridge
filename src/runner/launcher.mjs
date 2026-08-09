@@ -19,7 +19,7 @@ import {
   writeStatus,
   markAbandoned,
   abandonedBranchDrift,
-  activeRun,
+  activeRunDetails,
   chainRuns,
   startedRuns,
   taskFingerprint,
@@ -168,7 +168,7 @@ export async function launcher() {
   // Asked before this run registers itself, so it cannot find itself. Two writing runs share
   // one worktree with no isolation: the second one's before/after snapshot picks up the
   // first one's edits, and an honest run gets failed for work it never did.
-  const busy = opts.agent === 'codex-build' ? activeRun(projectRunsRoot, repoRoot) : null;
+  const busy = opts.agent === 'codex-build' ? activeRunDetails(projectRunsRoot, repoRoot) : null;
 
   let retention = null;
   try {
@@ -194,6 +194,7 @@ export async function launcher() {
     state: 'running',
     pid: process.pid,
     launcher_pid: process.pid,
+    process_started_at: performance.timeOrigin,
     agent: opts.agent,
     slug: opts.slug,
     order_id: opts.orderId,
@@ -216,11 +217,14 @@ export async function launcher() {
 
   // Before requireCodex, so a blocked run costs nothing at all.
   if (busy) {
+    const identityNote = busy.identity === 'unverified'
+      ? '; process identity could not be confirmed'
+      : '';
     const { reply } = writeFailure(
       runDir,
       opts.agent,
-      `run ${busy} is already active for this repository; two writing runs in one tree are prohibited`,
-      [`Active run: ${path.join(projectRunsRoot, busy)}`, 'Codex was not started; quota was not spent'],
+      `run ${busy.run} is already active for this repository; two writing runs in one tree are prohibited${identityNote}`,
+      [`Active run: ${path.join(projectRunsRoot, busy.run)}`, 'Codex was not started; quota was not spent'],
       true,
     );
     console.log(reply);
@@ -352,7 +356,7 @@ export async function launcher() {
     process.exit(1);
   });
   worker.unref();
-  writeStatus(runDir, { pid: worker.pid, runner_pid: worker.pid });
+  writeStatus(runDir, { pid: worker.pid, runner_pid: worker.pid, process_started_at: null });
 
   console.log(
     `STARTED agent=${opts.agent} slug=${opts.slug} order-id=${opts.orderId} worker-pid=${worker.pid}`,

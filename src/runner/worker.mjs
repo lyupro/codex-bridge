@@ -27,6 +27,13 @@ export async function worker(runDir) {
   const cfg = readJsonFileSync(path.join(runDir, 'worker.json'));
   const repoRoot = cfg.repo;
   setRun(runDir, cfg.agent);
+  // The launcher cannot know this detached process's clock origin; takeover must record the
+  // worker's own identity before it starts producing the run's artifacts.
+  writeStatus(runDir, {
+    pid: process.pid,
+    runner_pid: process.pid,
+    process_started_at: performance.timeOrigin,
+  });
 
   const run = await runCodex(
     cfg.args,
