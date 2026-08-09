@@ -112,7 +112,7 @@ export function parsePruneArgs(argv = []) {
     if (invalid) return invalid;
   }
 
-  // The 30-day default belongs to the gentle sweep, which searches history for weight to shed.
+  // The 30-day default belongs to the gentle cleanup, which searches history for weight to shed.
   // A purge is never implicitly aged: `prune sbx2 --purge` means that folder, now. Defaulting it
   // made the plan's own fourth scenario unreachable — a young project answered "nothing to
   // remove", which reads as a broken command, not as a refusal.

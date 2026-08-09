@@ -13,7 +13,7 @@
  * error mode, 2 internal error (config missing/malformed, or an exclude entry has no
  * matching exclusionRationale).
  *
- * Every exclude entry is classified as either a "pattern" (contains a `*`, sweeps a
+ * Every exclude entry is classified as either a "pattern" (contains a `*`, covers a
  * whole category — e.g. `**\/node_modules/**`) or a "specific path" (no `*`, names one
  * file). Specific paths must carry an exclusionRationale entry; patterns are exempt. This
  * is the structural guard against silently hiding a file in exclude without saying why.
@@ -67,7 +67,7 @@ export async function loadConfig(configPath = CONFIG_PATH) {
   return parsed;
 }
 
-/** A pattern (contains `*`) sweeps a category; a specific path (no `*`) names one file. */
+/** A pattern (contains `*`) covers a category; a specific path (no `*`) names one file. */
 export function isSpecificExclude(entry) {
   return !entry.includes('*');
 }

@@ -51,7 +51,7 @@ export function heartbeatAge(runDir, now = Date.now()) {
 
 /**
  * How long a run has been silent, in words. It lives beside the age it formats because both the
- * worktree lock's refusal and `sweep`'s report have to name the same silence to the same operator;
+ * worktree lock's refusal and `unlock`'s report have to name the same silence to the same operator;
  * two copies of this drifted apart the moment they were written.
  */
 export function formatSilence(age) {

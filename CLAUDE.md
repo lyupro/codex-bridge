@@ -36,8 +36,8 @@ Two independent halves share the repository:
 `manifest.mjs` owns the install table, the seeded-file list and the `.codex-bridge-install.json`
 record schema; `install/update/uninstall/doctor.mjs` are one command each, as are the run-store
 commands `read` (renders one run), `projects` (inventory over `runs-inventory`/`table`), `prune`
-(`prune-args` refuses, `prune-plan` decides, `prune.mjs` deletes) and `sweep` (closes running
-records whose pid is dead, deletes nothing, never touches a live pid); `hosts.mjs` resolves host
+(`prune-args` refuses, `prune-plan` decides, `prune.mjs` deletes) and `unlock` (closes running
+records whose pid is dead or foreign, deletes nothing, never touches an alive pid); `hosts.mjs` resolves host
 paths without touching disk; `settings-merge.mjs` registers the hooks without destroying foreign
 ones, and finds its own by command rather than by matcher — the matcher is generated from a tool
 list and changes whenever a host spelling is added. `update` compares sha256 fingerprints from the record: outdated files refresh silently,

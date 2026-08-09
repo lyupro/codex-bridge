@@ -13,11 +13,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   `settings.json`, preserve foreign rules, and are also removed by `uninstall`; `doctor` reports
   an absent or partial set as an optional warning.
 
+### Changed
+
+- `codex-bridge sweep` is now `codex-bridge unlock`. The default scope is the current repository;
+  a bare project name remains addressable, and `--all` is now required for the whole store. The
+  report shows age, silence, and `alive` / `dead` / `foreign` / `unverified` identity verdicts;
+  confirmed-alive records are refused with `codex-bridge stop <run>` instead of being closed.
+
 ### Fixed
 
 - Run records now verify that a pid still belongs to the process that started the run, using the
   process start time and a fresh heartbeat before falling back to an OS probe. A reused or
-  unverified pid is never signalled by `stop`; `codex-bridge sweep` remains the non-killing way to
+  unverified pid is never signalled by `stop`; `codex-bridge unlock` remains the non-killing way to
   close a record whose process identity cannot be confirmed.
 - JSON files written by PowerShell with a UTF-8 BOM are now read consistently by the CLI and
   installed hooks, and one command run creates at most one settings backup without deleting older

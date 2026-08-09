@@ -23,7 +23,7 @@ node bin/codex-bridge.mjs stop <run>    # close a hanging run by hand, without h
 node bin/codex-bridge.mjs read <run>   # read a run: its events rendered as text, on demand
 node bin/codex-bridge.mjs projects     # what the run store holds: projects, runs, weight, tokens
 node bin/codex-bridge.mjs prune <project>   # reclaim disk space, transport only unless told otherwise
-node bin/codex-bridge.mjs sweep [<project>] # close running records whose runner is gone
+node bin/codex-bridge.mjs unlock [<project>|--all] # close records whose runner is gone
 ```
 
 When a global install and a clone coexist, there are two copies of the package. `codex-bridge update`
@@ -72,11 +72,14 @@ accounting, reports and worktree snapshots alone; `--purge` is what takes a fold
 The same transport is dropped automatically from runs older than 30 days when a new run starts,
 which the reply says out loud; `retention` in `run-config.json` changes the age or turns it off.
 
-`sweep` is housekeeping for records left by a dead runner. With no project it scans the whole
-store; with one project it limits the scan to that folder. It uses the same dead-pid decision as
-start-of-run cleanup, never closes a live pid even when its heartbeat is stale, and never deletes
-run artifacts. A stale live-pid record is named with the exact `codex-bridge stop <run>` command
-needed to close it.
+`unlock` is housekeeping for records left by a dead runner. With no argument it acts on the current
+repository; a bare project name limits the scan to that folder, and `--all` explicitly scans the
+whole store. It uses the same process-identity decision as start-of-run cleanup, closes only
+`dead` or `foreign` records, and reports each record's age, silence duration, and identity verdict.
+A confirmed `alive` record is refused rather than closed and is named with the exact
+`codex-bridge stop <run>` command needed to end it; `unverified` records stay untouched with the
+reason visible. The command never deletes run artifacts. The old spelling `sweep` is recognized and
+refused with the rename to `unlock`, rather than treated as an unknown command.
 
 ## What it gives you
 

@@ -1,4 +1,4 @@
-/** Stops a live run and records the same abandoned FAIL artifacts as the normal sweep. */
+/** Stops a live run and records the same abandoned FAIL artifacts as the normal unlock. */
 import path from 'node:path';
 import { stopCodex } from '../src/runner/codex-cmd.mjs';
 import { git, worktreeSnapshot } from '../src/runner/git-state.mjs';
@@ -77,7 +77,7 @@ export async function stop({
     return result(
       1,
       `Process identity could not be confirmed for run ${runDir} (${identity}); no signal was sent. ` +
-        '"codex-bridge sweep" closes the record without killing a process.',
+        '"codex-bridge unlock" closes the record without killing a process.',
     );
   }
 

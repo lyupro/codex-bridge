@@ -17,7 +17,9 @@ function unique(commands) {
 
 function dispatcherCommands(source) {
   return unique([...source.matchAll(/command\s*===\s*['"]([a-z][\w-]*)['"]/g)]
-    .map(([, command]) => command));
+    .map(([, command]) => command)
+    // A renamed command remains a migration refusal, not a public help entry.
+    .filter((command) => command !== 'sweep'));
 }
 
 function helpCommands(help) {

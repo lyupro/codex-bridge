@@ -24,7 +24,7 @@ test('--help and -h print the command list', () => {
   for (const flag of ['--help', '-h']) {
     const result = run([flag]);
     assert.equal(result.status, 0);
-    assert.match(result.stdout, /Commands:[\s\S]*install[\s\S]*update[\s\S]*uninstall[\s\S]*doctor/);
+    assert.match(result.stdout, /Commands:[\s\S]*install[\s\S]*update[\s\S]*uninstall[\s\S]*doctor[\s\S]*unlock/);
   }
 });
 
@@ -42,6 +42,13 @@ test('unknown command exits 2 with a useful error', () => {
   assert.equal(result.status, 2);
   assert.match(result.stderr, /unknown command "unknown"/);
   assert.match(result.stderr, /--help/);
+});
+
+test('the old sweep command refuses with the unlock rename', () => {
+  const result = run(['sweep']);
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /sweep was renamed to codex-bridge unlock/);
+  assert.match(result.stderr, /use the new command/);
 });
 
 test('shared option parser rejects flags outside each command contract', () => {

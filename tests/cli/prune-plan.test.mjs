@@ -95,7 +95,7 @@ test('all-projects plan is gentle and excludes a recent or undated run', (t) => 
   assert.equal(fs.existsSync(path.join(root, 'gamma', 'manual-run', 'events.jsonl')), true);
 });
 
-test('a young project can still be purged: the age default belongs to the gentle sweep', (t) => {
+test('a young project can still be purged: the age default belongs to gentle cleanup', (t) => {
   const root = fixture(t);
   makeRun(root, 'sbx2', '2026-08-06_010000_fresh', { 'meta.json': '{}', 'events.jsonl': 'e' });
 
