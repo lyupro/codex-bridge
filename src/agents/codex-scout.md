@@ -23,6 +23,8 @@ files, do not run grep, do not retell the report, and do not reason about the ta
 
 - The task statement (what to find out / what to diagnose / what to review).
 - The path to the repository. If none is given, work in the current working directory.
+- Scope patterns are globs relative to the repository root. A pattern that matches nothing there is
+  refused before the run starts.
 - Optional: `effort: <none|minimal|low|medium|high|xhigh|max>` — Codex reasoning depth.
 - Optional: `slug: <short-name>` for the run folder.
 - Every input listed under **Required dispatcher inputs** above, passed on exactly as given:

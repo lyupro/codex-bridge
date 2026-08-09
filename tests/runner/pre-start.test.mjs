@@ -71,6 +71,8 @@ test('the busy refusal records aborted_pre_start', (t) => {
   const repo = path.join(root, 'repo');
   const runsRoot = path.join(root, 'runs');
   fs.mkdirSync(repo);
+  fs.mkdirSync(path.join(repo, 'src'));
+  fs.writeFileSync(path.join(repo, 'src', 'existing.mjs'), 'export default 1;\n');
   const project = resolveProjectRunsDir(runsRoot, repo).dir;
   const holder = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
   t.after(() => holder.kill());

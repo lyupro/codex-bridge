@@ -4,11 +4,13 @@
  *
  * The order it leaves for the worker is worker.json in the run folder — after the split
  * that file is the only connection between the two halves. It is written here with
- * `agent`, `slug`, `order_id`, `repo`, `is_git_repo`, `launcher_pid`, `budget_minutes` and `args`;
- * worker.mjs reads `repo`, `agent`, `args`, `is_git_repo` and `budget_minutes`. The three extra fields are deliberate: `slug`,
- * `order_id` and `launcher_pid` are what a run folder read back months later needs in order to
- * explain itself — which order it belonged to included. Nothing may be dropped from this shape
- * without changing worker.mjs and saying so out loud.
+ * `agent`, `slug`, `order_id`, `repo`, `is_git_repo`, `launcher_pid`, `budget_minutes`, `scope_new`
+ * and `args`;
+ * worker.mjs reads `repo`, `agent`, `args`, `is_git_repo` and `budget_minutes`. The extra fields
+ * are deliberate: `slug`, `order_id`, `launcher_pid` and `scope_new` are what a run folder read
+ * back months later needs in order to explain itself — which order it belonged to and which new
+ * paths it declared included. Nothing may be dropped from this shape without changing worker.mjs
+ * and saying so out loud.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -39,6 +41,7 @@ import { runsRoot } from './runs-root.mjs';
 import { resolveProjectRunsDir } from './project-dir.mjs';
 import { cleanupRetention } from '../retention.mjs';
 import { renderConventions } from './conventions.mjs';
+import { validateScope } from './scope-check.mjs';
 
 /**
  * The worker is this same program re-invoked as `--worker <runDir>`, so the path spawned
@@ -89,6 +92,18 @@ export async function launcher() {
   const topLevel = git(opts.repo, ['rev-parse', '--show-toplevel']);
   const isGitRepo = topLevel.status === 0;
   const repoRoot = isGitRepo ? topLevel.stdout.trim() : opts.repo;
+  // Plan_27 moved impossible scope failures ahead of the run directory: an absolute pattern had
+  // already cost 18 minutes before the verdict could prove it matched nothing.
+  // Every agent, not only the writing one: a pattern that cannot match gives a scout empty coverage
+  // instead of an answer. Only codex-build may declare a not-yet-existing path, so only its scope
+  // carries --scope-new; for the other two the list is empty and every pattern must match.
+  const scopeRefusal = validateScope(repoRoot, opts.scopePatterns, opts.scopeNewPatterns);
+  if (scopeRefusal) {
+    die(
+      `--scope pattern ${JSON.stringify(scopeRefusal.pattern)} refused: ${scopeRefusal.reason}. ` +
+        `Action: ${scopeRefusal.action}. The run folder was not created; quota was not spent.`,
+    );
+  }
   const projectRunsRoot = resolveProjectRunsDir(runsRoot(), repoRoot).dir;
 
   // Folders left behind by a runner that was killed mid-run get an explicit state before
@@ -332,6 +347,7 @@ export async function launcher() {
         // The mode's wall-clock budget, resolved here and never re-read by the worker: a run
         // that consulted run-config.json twice could end up honouring two different limits.
         budget_minutes: RUN_ENV?.budgets?.[runMode(opts.agent)],
+        scope_new: opts.scopeNewPatterns,
         args: codexArgv,
       },
       null,

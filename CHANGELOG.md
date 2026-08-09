@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Scope patterns are checked before Codex starts. A pattern that cannot match anything — an
+  absolute or drive-qualified path, backslash separators, a `..` segment, or a spelling no
+  repository file answers to — is refused with no run folder and no quota spent, for all three
+  dispatchers. The file list comes from `git ls-files --cached --others --exclude-standard`, so
+  ignored output does not count as repository content. A file the run is meant to create is
+  declared with `--scope-new`, accepted only by `codex-build` and recorded in `worker.json`.
 - `codex-bridge permissions` reports, adds, and removes the optional shell permission rules for
   both CLI names and the clone entry point. The exact allow and deny strings merge into
   `settings.json`, preserve foreign rules, and are also removed by `uninstall`; `doctor` reports
@@ -31,6 +37,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   backups.
 - A run a guard refused before Codex ever started no longer costs the next attempt a round trip. Such a folder now closes as `aborted_pre_start` instead of the same `failed` a twenty-minute paid run gets, and the chain gate, the continuation limit and the tree baseline all skip it: the same order id starts as a first run, silently, with no `continue:` grant. Reported from a parallel `codex-build` launch — the second run was correctly refused with "two writing runs in one tree are prohibited", and its one-millisecond folder then made the retry demand a grant for work that never happened. Folders written before this release are recognised by what `meta.json` records — `exit`, `session_id`, `events_bytes`, `stderr_bytes`, `tokens_reported` — rather than by whether `events.jsonl` is still on disk, because retention deletes that file from paid runs too. The folder itself is kept: it is the audit trail of who was refused and why.
 - `chainBaseline()` takes the first run of the chain that actually started, so a pre-start folder sorting first no longer leaves the next pass without the `state-before.txt` its work is measured against.
+- `uninstall --dry-run` names each hook by its own matcher. Three of the four hooks are PreToolUse,
+  and a lookup by event alone reported `Agent|Task` for the worktree lock and the prune guard too —
+  in the one line an operator reads to see what a removal is about to touch. The removal itself was
+  never affected: hooks are found by command, not by matcher.
 
 ## [0.3.1] - 2026-08-07
 

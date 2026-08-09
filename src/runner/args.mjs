@@ -103,11 +103,25 @@ export function parseArgs(argv) {
   // told in prose not to touch them: prose does not bind, a file list does. Required rather
   // than defaulted to "everything", and checked here — before the folder exists and before a
   // single token of someone else's quota is spent.
-  opts.scopePatterns = String(opts.scope || '')
+  const declaredScopePatterns = String(opts.scope || '')
     .split(',')
     .map((p) => p.trim())
     .filter(Boolean);
-  if (opts.agent === 'codex-build' && !opts.scopePatterns.length) {
+  opts.scopeNewPatterns = String(opts['scope-new'] || '')
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean);
+  // Plan_27 keeps ordinary patterns strict: only paths named explicitly as new may be absent.
+  opts.scopePatterns = [...declaredScopePatterns, ...opts.scopeNewPatterns];
+  // Only the writing agent creates files, so only its scope may name one that does not exist yet.
+  // Accepting the flag elsewhere would hand scout and review a way to waive the check for nothing.
+  if (opts.agent !== 'codex-build' && opts.scopeNewPatterns.length) {
+    die(
+      `--scope-new is only for codex-build: ${opts.agent} does not create files. ` +
+        'Action: drop --scope-new and pass every path through --scope.',
+    );
+  }
+  if (opts.agent === 'codex-build' && !declaredScopePatterns.length) {
     const scopeInput = requiredInput(opts.agent, 'scope');
     die(
       `--scope is required for codex-build: ${scopeInput.source} supplies the ${scopeInput.label}. ` +

@@ -28,6 +28,8 @@ job is to report the run status honestly, including failure.
 
 - The task statement: what to change and the completion criteria.
 - The path to the repository. If none is given, use the current working directory.
+- Scope patterns are globs relative to the repository root. A pattern that matches nothing there is
+  refused before the run starts; a file this task is meant to create is declared with `--scope-new`.
 - Every input listed under **Required dispatcher inputs** above, passed on exactly as given:
   `order id` as `--order-id`, `scope` as `--scope`. Never invent a value, never edit one, never
   reuse an order id from another order — the runner chains runs by that label, and a made-up label
