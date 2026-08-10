@@ -62,6 +62,30 @@ test('a grant naming a missing run is refused in the project runs directory', (t
   assert.deepEqual(fs.readdirSync(runsRoot), []);
 });
 
+test('a missing-folder grant refusal names the last outcome and ready grant line', (t) => {
+  const runsRoot = fixture(t);
+  const last = '2026-08-10_220535_plan25-2-install-table-two-roots';
+  const reason = 'LIMIT at step 3, tests unwritten';
+  run(runsRoot, last);
+  fs.writeFileSync(
+    path.join(runsRoot, last, 'meta.json'),
+    JSON.stringify({ status: 'FAIL', reason: 'run stopped on its deadline' }) + '\n',
+  );
+
+  const message = continuationRefusal(
+    runsRoot,
+    [last],
+    true,
+    'order-1',
+    { run: '2026-08-10_220535_plan25-2-install-table-two-root', reason },
+  );
+
+  assert.match(message, new RegExp(`Last run: ${last}`));
+  assert.match(message, /Outcome: FAIL — run stopped on its deadline/);
+  assert.match(message, new RegExp(`Ready grant line: continue: ${last} — ${reason}`));
+  assert.deepEqual(fs.readdirSync(runsRoot), [last]);
+});
+
 test('a grant for an earlier chain run is refused as single-use', (t) => {
   const runsRoot = fixture(t);
   const first = '2026-08-05_090000_plan14-build';

@@ -34,10 +34,12 @@ opinion, not a verdict.
   another order — the runner chains runs by that label, and a made-up label is how a repeat run
   hides. If the orchestrator did not give a required input, do not guess — start the runner without
   its flag and return the runner's refusal verbatim.
-- `continue` is conditional — pass the `--continue` flag only when the orchestrator gave the
-  matching `continue:` grant explicitly; do not add or guess it yourself. A continuation is
+- `continue` — when the task text contains a line beginning with the `continue:` label, pass the
+  bare `--continue` flag even when its run name or reason looks malformed. Do not inspect, repair,
+  or swallow this grant; pass it through and let the runner issue the refusal. A continuation is
   assigned by the orchestrator, never chosen by you. After the verdict, return the exact attaching
-  output and stop; do not issue or invent another continuation.
+  output and stop; do not issue or invent another continuation. If no such grant line is present,
+  the flag must not be present.
 - Optional: review focus as text ("look for races and error handling"), `slug:` (by default, the
   slug is taken from the order id), `effort: <none|minimal|low|medium|high|xhigh|max>`.
 
@@ -61,8 +63,10 @@ line. To get the verdict, run the **identical command a second time** — same `
 `--slug`, same flags. That second call does not start a second run and costs no quota: it attaches
 to the run already in flight, prints `ATTACH=<path>`, blocks until the verdict exists and prints it.
 
-If the orchestrator gave the matching `continue:` grant, add the bare `--continue` flag to the
-command, with no value. If it was not given, the flag must not be present in the command at all.
+If the task text contains a line beginning with the `continue:` label, add the bare `--continue`
+flag even when its run name or reason looks malformed. Do not inspect, repair, or swallow the line;
+the runner parses it and issues the refusal. If no such grant line is present, the flag must not be
+present in the command at all.
 
 Background execution (`run_in_background`, `&`, `nohup`) is prohibited. Interruption is no longer a
 problem worth handling: if the attaching call is killed by a time ceiling, repeat it — every repeat

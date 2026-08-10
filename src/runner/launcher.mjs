@@ -135,7 +135,21 @@ export async function launcher() {
   const taskHash = taskFingerprint(taskText);
   const chain = chainRuns(projectRunsRoot, repoRoot, opts.slug, taskHash, opts.orderId);
   const startedChain = startedRuns(projectRunsRoot, chain);
-  const continuationGrant = opts.continue ? parseContinuationGrant(taskText) : null;
+  const continuationGrant = parseContinuationGrant(taskText);
+
+  // The 2026-08-10_220535_plan25-2-install-table-two-roots incident exposed this ordering:
+  // a grant without its flag must refuse before attach can print an older run's verdict.
+  // markAbandoned() ran before this gate, so a dead runner already has meta.json with FAIL.
+  // A run without a verdict can therefore only still be in flight; ordinary repeats go through
+  // attach(), while --continue must refuse to overlap that live work.
+  const continuationError = continuationRefusal(
+    projectRunsRoot,
+    startedChain,
+    opts.continue,
+    opts.orderId,
+    continuationGrant,
+  );
+  if (continuationError) die(continuationError);
 
   // One order produced six Codex runs on 2026-08-03 because the caller's time ceiling made it
   // restart the synchronous launcher. A live same-order run is now the repeat target: attach
@@ -150,18 +164,6 @@ export async function launcher() {
     isContinue: opts.continue,
   });
   if (attachedExitCode !== null) process.exit(attachedExitCode);
-
-  // markAbandoned() ran before this gate, so a dead runner already has meta.json with FAIL.
-  // A run without a verdict can therefore only still be in flight; ordinary repeats go through
-  // attach(), while --continue must refuse to overlap that live work.
-  const continuationError = continuationRefusal(
-    projectRunsRoot,
-    startedChain,
-    opts.continue,
-    opts.orderId,
-    continuationGrant,
-  );
-  if (continuationError) die(continuationError);
 
   if (startedChain.length && !opts.continue) {
     const last = startedChain[startedChain.length - 1];

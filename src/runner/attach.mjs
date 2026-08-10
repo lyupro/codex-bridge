@@ -10,6 +10,13 @@ import { exitCodeFor, writeFailure, chainRuns } from '../write-meta.mjs';
 const POLL_MS = 500;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// The 2026-08-10_220535_plan25-2-install-table-two-roots incident showed that ATTACH alone
+// can be mistaken for this pass; state the previous run and the fact that no work was started.
+function announceAttach(runDir, startedAt) {
+  console.log(`ATTACH=${runDir} started=${startedAt}`);
+  console.log(`This is the answer of the previous run started at ${startedAt}; no new work was started.`);
+}
+
 export const readJsonFile = (file) => {
   try {
     return readJsonFileSync(file);
@@ -86,7 +93,7 @@ export async function attach({ runsRoot, repo, slug, taskHash, orderId, chain, i
     const entry = sameOrder[i];
     const dir = path.join(runsRoot, entry.run);
     if (fs.existsSync(path.join(dir, 'reply.txt'))) {
-      console.log(`ATTACH=${dir} started=${entry.status.started_at}`);
+      announceAttach(dir, entry.status.started_at);
       console.log(fs.readFileSync(path.join(dir, 'reply.txt'), 'utf8').replace(/\s+$/, ''));
       return exitCodeFor(readJsonFile(path.join(dir, 'meta.json'))?.status);
     }
@@ -98,7 +105,7 @@ export async function attach({ runsRoot, repo, slug, taskHash, orderId, chain, i
   if (!candidate) return null;
 
   const runDir = path.join(runsRoot, candidate.run);
-  console.log(`ATTACH=${runDir} started=${candidate.status.started_at}`);
+  announceAttach(runDir, candidate.status.started_at);
   const replyText = await waitForReply(runDir, candidate.status.pid, candidate.status);
   if (replyText !== null) {
     console.log(replyText);

@@ -85,7 +85,8 @@ test('a live run of the same order is joined and its verdict printed', async (t)
 
   assert.equal(code, 0);
   assert.equal(lines[0], `ATTACH=${dir} started=2026-08-04T09:00:00.000Z`);
-  assert.match(lines[1], /OK — the work landed/);
+  assert.match(lines[1], /previous run started at 2026-08-04T09:00:00.000Z; no new work was started/);
+  assert.match(lines[2], /OK — the work landed/);
 });
 
 test('a live run still answers when a pre-start folder leads the full chain', async (t) => {
@@ -105,7 +106,8 @@ test('a live run still answers when a pre-start folder leads the full chain', as
   assert.deepEqual(chain, ['2026-08-04_080000_pre-start', '2026-08-04_090000_async-start']);
   assert.equal(code, 0);
   assert.equal(lines[0], `ATTACH=${live} started=2026-08-04T09:00:00.000Z`);
-  assert.match(lines[1], /OK — the live work landed/);
+  assert.match(lines[1], /previous run started at 2026-08-04T09:00:00.000Z; no new work was started/);
+  assert.match(lines[2], /OK — the live work landed/);
 });
 
 test('the exit code of an attach is the verdict of the run it joined', async (t) => {
@@ -132,7 +134,8 @@ test('a run that already answered replies from disk rather than refusing the rep
   const { code, lines } = await attaching(order(runsRoot, repo));
 
   assert.equal(code, 0);
-  assert.match(lines[1], /OK — done/);
+  assert.match(lines[1], /previous run started at 2026-08-04T09:00:00.000Z; no new work was started/);
+  assert.match(lines[2], /OK — done/);
 });
 
 test('--continue never attaches: the orchestrator asked for another pass', async (t) => {
@@ -235,7 +238,8 @@ test('a verdict written before the reply still answers the repeat', async (t) =>
   const { code, lines } = await attaching(order(runsRoot, repo));
 
   assert.equal(code, 0);
-  assert.match(lines[1], /OK — closed late/);
+  assert.match(lines[1], /previous run started at 2026-08-04T09:00:00.000Z; no new work was started/);
+  assert.match(lines[2], /OK — closed late/);
 });
 
 test('an abandoned run is not joined: a dead pid will never write a reply', async (t) => {
@@ -294,7 +298,8 @@ test('the newest run of an order answers the repeat, not the pass before it', as
   const { lines } = await attaching(order(runsRoot, repo));
 
   assert.equal(lines[0], `ATTACH=${second} started=2026-08-04T09:15:00.000Z`);
-  assert.equal(lines[1], 'OK — second');
+  assert.match(lines[1], /previous run started at 2026-08-04T09:15:00.000Z; no new work was started/);
+  assert.equal(lines[2], 'OK — second');
 });
 
 test('a continuation still running is joined instead of the answered pass before it', async (t) => {
@@ -317,7 +322,8 @@ test('a continuation still running is joined instead of the answered pass before
   const { lines } = await attaching(order(runsRoot, repo));
 
   assert.equal(lines[0], `ATTACH=${second} started=2026-08-04T09:15:00.000Z`);
-  assert.equal(lines[1], 'OK — the continuation');
+  assert.match(lines[1], /previous run started at 2026-08-04T09:15:00.000Z; no new work was started/);
+  assert.equal(lines[2], 'OK — the continuation');
 });
 
 test('an attach creates no run folder of its own', async (t) => {
