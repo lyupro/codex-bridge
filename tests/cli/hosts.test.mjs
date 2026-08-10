@@ -6,6 +6,23 @@ import os from 'node:os';
 import path from 'node:path';
 import { resolveHost } from '../../cli/hosts.mjs';
 
+/**
+ * Removes the suite's own CODEX_BRIDGE_HOME for the duration of one test.
+ *
+ * The default brand root can only be asserted with the override absent, and the override is always
+ * present here: the suite sets it precisely so a fixture that forgets to name a root cannot write
+ * into the operator's real ~/.lyupro/.codex-bridge — which is what these two tests did until
+ * 2026-08-11.
+ */
+function withoutBrandOverride(t) {
+  const previous = process.env.CODEX_BRIDGE_HOME;
+  delete process.env.CODEX_BRIDGE_HOME;
+  t.after(() => {
+    if (previous === undefined) delete process.env.CODEX_BRIDGE_HOME;
+    else process.env.CODEX_BRIDGE_HOME = previous;
+  });
+}
+
 function assertBrandPaths(host, brandRoot) {
   assert.equal(host.brandRoot, brandRoot);
   assert.equal(host.brandHooksDir, path.join(brandRoot, 'hooks'));
@@ -15,7 +32,8 @@ function assertBrandPaths(host, brandRoot) {
   assert.equal(host.brandInstallRecordPath, path.join(brandRoot, '.installed.json'));
 }
 
-test('user scope resolves beneath the supplied home directory', () => {
+test('user scope resolves beneath the supplied home directory', (t) => {
+  withoutBrandOverride(t);
   const homedir = path.join(os.tmpdir(), 'bridge-home');
   const host = resolveHost({ homedir });
   assert.equal(host.root, path.join(homedir, '.claude'));
@@ -36,7 +54,8 @@ test('project scope finds the repository root above cwd', (t) => {
   assert.equal(resolveHost({ scope: 'project', cwd: nested }).root, path.join(root, '.claude'));
 });
 
-test('explicit host overrides both scope choices', () => {
+test('explicit host overrides both scope choices', (t) => {
+  withoutBrandOverride(t);
   const explicit = path.join(os.tmpdir(), 'bridge-explicit');
   const codexHome = path.join(os.tmpdir(), 'bridge-codex-home');
   const host = resolveHost({ scope: 'ignored', host: explicit, cwd: path.parse(explicit).root, codexHome });
@@ -44,8 +63,22 @@ test('explicit host overrides both scope choices', () => {
   assert.equal(host.agentsDir, path.join(host.root, 'agents', 'codex-bridge'));
   assert.equal(host.commandsDir, path.join(host.root, 'commands', 'codex-bridge'));
   assert.equal(host.codexRulesDir, path.join(codexHome, 'rules'));
+  // An explicit host root says nothing about the brand root: it stays the default, which is the
+  // whole point of the two roots being independent.
   assertBrandPaths(host, path.join(os.homedir(), '.lyupro', '.codex-bridge'));
   assert.equal(host.scope, 'host');
+});
+
+test('the environment override wins over the default brand root', () => {
+  const override = path.join(os.tmpdir(), 'bridge-env-brand-root');
+  const previous = process.env.CODEX_BRIDGE_HOME;
+  process.env.CODEX_BRIDGE_HOME = override;
+  try {
+    assertBrandPaths(resolveHost({ homedir: path.join(os.tmpdir(), 'bridge-ignored-home') }), override);
+  } finally {
+    if (previous === undefined) delete process.env.CODEX_BRIDGE_HOME;
+    else process.env.CODEX_BRIDGE_HOME = previous;
+  }
 });
 
 test('brand root override is independent from an explicit host root', () => {
