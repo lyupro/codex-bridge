@@ -25,6 +25,7 @@ test('--help and -h print the command list', () => {
     const result = run([flag]);
     assert.equal(result.status, 0);
     assert.match(result.stdout, /Commands:[\s\S]*install[\s\S]*update[\s\S]*uninstall[\s\S]*doctor[\s\S]*unlock/);
+    assert.match(result.stdout, /codex-bridge hook <name>/);
   }
 });
 

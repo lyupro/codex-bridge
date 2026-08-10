@@ -6,12 +6,24 @@ import os from 'node:os';
 import path from 'node:path';
 import { resolveHost } from '../../cli/hosts.mjs';
 
+function assertBrandPaths(host, brandRoot) {
+  assert.equal(host.brandRoot, brandRoot);
+  assert.equal(host.brandHooksDir, path.join(brandRoot, 'hooks'));
+  assert.equal(host.brandRunnerDir, path.join(brandRoot, 'lib'));
+  assert.equal(host.brandConfigPath, path.join(brandRoot, 'config.json'));
+  assert.equal(host.brandConventionsPath, path.join(brandRoot, 'conventions.md'));
+  assert.equal(host.brandInstallRecordPath, path.join(brandRoot, '.installed.json'));
+}
+
 test('user scope resolves beneath the supplied home directory', () => {
-  const host = resolveHost({ homedir: path.join(os.tmpdir(), 'bridge-home') });
-  assert.equal(host.root, path.join(os.tmpdir(), 'bridge-home', '.claude'));
+  const homedir = path.join(os.tmpdir(), 'bridge-home');
+  const host = resolveHost({ homedir });
+  assert.equal(host.root, path.join(homedir, '.claude'));
   assert.equal(host.agentsDir, path.join(host.root, 'agents', 'codex'));
   assert.equal(host.commandsDir, path.join(host.root, 'commands', 'codex'));
   assert.equal(host.settingsPath, path.join(host.root, 'settings.json'));
+  assertBrandPaths(host, path.join(homedir, '.lyupro', '.codex-bridge'));
+  assert.equal(fs.existsSync(host.brandRoot), false);
   assert.equal(host.scope, 'user');
 });
 
@@ -30,7 +42,17 @@ test('explicit host overrides both scope choices', () => {
   const host = resolveHost({ scope: 'ignored', host: explicit, cwd: path.parse(explicit).root, codexHome });
   assert.equal(host.root, path.resolve(explicit));
   assert.equal(host.codexRulesDir, path.join(codexHome, 'rules'));
+  assertBrandPaths(host, path.join(os.homedir(), '.lyupro', '.codex-bridge'));
   assert.equal(host.scope, 'host');
+});
+
+test('brand root override is independent from an explicit host root', () => {
+  const homedir = path.join(os.tmpdir(), 'bridge-brand-home');
+  const explicit = path.join(os.tmpdir(), 'bridge-brand-host');
+  const brandRoot = path.join(os.tmpdir(), 'bridge-brand-root');
+  const host = resolveHost({ homedir, host: explicit, brandRoot });
+  assert.equal(host.root, path.resolve(explicit));
+  assertBrandPaths(host, path.resolve(brandRoot));
 });
 
 test('Codex rules use CODEX_HOME independently of the Claude Code host', (t) => {

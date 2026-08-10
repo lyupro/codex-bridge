@@ -3,6 +3,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { diagnose, renderDoctor } from '../cli/doctor.mjs';
+import { hook } from '../cli/hook.mjs';
 import { resolveHost } from '../cli/hosts.mjs';
 import { install } from '../cli/install.mjs';
 import { projects } from '../cli/projects.mjs';
@@ -29,6 +30,7 @@ Usage:
   codex-bridge unlock [<project>|--all]
   codex-bridge read <run>
   codex-bridge stop <run>
+  codex-bridge hook <name>
   codexb <same command forms as codex-bridge>
   codex-bridge --help
   codex-bridge --version
@@ -43,7 +45,12 @@ Commands:
   prune     Remove archived transport, or purge selected run folders
   unlock    Close running records whose runner is gone
   read      Render a run's structured event stream
-  stop      Stop a running Codex run and record FAIL`;
+  stop      Stop a running Codex run and record FAIL
+
+Hook dispatch:
+  codex-bridge hook <name>  Dispatch a registered guard with stdin unchanged`;
+
+const HOOK_COMMAND = 'hook';
 
 function commandOptions(command, argv) {
   const options = {};
@@ -93,6 +100,7 @@ export async function main(argv, io = console) {
     io.log(result.output);
     return result.exitCode;
   }
+  if (command === HOOK_COMMAND) return hook(rest, io);
   if (command === 'read') {
     if (rest.length !== 1) {
       io.error('codex-bridge read requires exactly one run folder (full path or bare name).');

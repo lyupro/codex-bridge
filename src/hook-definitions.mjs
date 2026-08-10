@@ -46,10 +46,15 @@ export const STOP_TOOLS = Object.freeze(['TaskStop']);
 /** A PreToolUse matcher is a regular expression over tool names, so the list remains authoritative. */
 export const STOP_TOOL_MATCHER = STOP_TOOLS.join('|');
 
+/**
+ * Stable CLI names live beside each event and file because the Plan_19 drift incident left
+ * registration, diagnostics, and the guard itself carrying different hook identities. The
+ * dispatcher must consume this one list instead of guessing a name from a path at its call site.
+ */
 export const HOOK_DEFINITIONS = Object.freeze([
-  Object.freeze({ event: 'SubagentStop', matcher: '*', file: 'reply-guard.mjs' }),
-  Object.freeze({ event: 'PreToolUse', matcher: SUBAGENT_TOOL_MATCHER, file: 'order-gate.mjs' }),
-  Object.freeze({ event: 'PreToolUse', matcher: WRITE_TOOL_MATCHER, file: 'worktree-lock.mjs' }),
-  Object.freeze({ event: 'PreToolUse', matcher: SHELL_TOOL_MATCHER, file: 'prune-guard.mjs' }),
-  Object.freeze({ event: 'PreToolUse', matcher: STOP_TOOL_MATCHER, file: 'stop-guard.mjs' }),
+  Object.freeze({ name: 'reply-guard', event: 'SubagentStop', matcher: '*', file: 'reply-guard.mjs' }),
+  Object.freeze({ name: 'order-gate', event: 'PreToolUse', matcher: SUBAGENT_TOOL_MATCHER, file: 'order-gate.mjs' }),
+  Object.freeze({ name: 'worktree-lock', event: 'PreToolUse', matcher: WRITE_TOOL_MATCHER, file: 'worktree-lock.mjs' }),
+  Object.freeze({ name: 'prune-guard', event: 'PreToolUse', matcher: SHELL_TOOL_MATCHER, file: 'prune-guard.mjs' }),
+  Object.freeze({ name: 'stop-guard', event: 'PreToolUse', matcher: STOP_TOOL_MATCHER, file: 'stop-guard.mjs' }),
 ]);
