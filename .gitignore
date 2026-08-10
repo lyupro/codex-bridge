@@ -37,3 +37,6 @@ desktop.ini
 # Agent session state (per-session, not tracked)
 **/.omc/
 .claude/settings.local.json
+
+# rtk wrapper state: history.db holds the operator's shell history and absolute local paths
+rtk/

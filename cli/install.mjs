@@ -83,11 +83,16 @@ async function migrateLegacySeed(host, seed) {
   const legacyName = path.basename(seed.target) === 'config.json' ? 'run-config.json' : path.basename(seed.target);
   const legacy = path.join(host.legacyAgentsDir, legacyName);
   if (legacy === seed.target || !(await targetExists(legacy))) return;
-  // Existing seeded files hold operator decisions. Copying a legacy one to the new root preserves
-  // those decisions during Plan_25 migration; the old copy is deliberately left untouched because
-  // seeded files are never removed by the installer.
+  // Existing seeded files hold operator decisions, so Plan_25 moves them rather than reading a
+  // fresh default: copy first, compare the bytes, and only then drop the old path. Leaving the old
+  // copy behind — the first version of this migration did — keeps agents/codex non-empty forever,
+  // so the previous layout is never taken down and the operator goes on editing a file nothing
+  // reads. If the comparison fails the old file stays: a half-copied config is the one case where
+  // having two is better than having none.
   await fs.mkdir(path.dirname(seed.target), { recursive: true });
   await fs.copyFile(legacy, seed.target);
+  if (await fileFingerprint(legacy) !== await fileFingerprint(seed.target)) return;
+  await fs.rm(legacy, { force: true });
 }
 
 async function installInRun({ host, dryRun = false, force = false, packageRoot, env = process.env } = {}) {

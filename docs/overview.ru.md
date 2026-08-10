@@ -31,12 +31,14 @@
 ## Запуск
 
 Задача поступает в `run-codex.mjs` через stdin. Примеры ниже предполагают установку пакета в
-`~/.claude/agents/codex/`.
+`~/.lyupro/.codex-bridge/` — раннер и его модули лежат в подкаталоге `lib/`. До миграции Plan_25
+(2026-08-11) они жили в `~/.claude/agents/codex/`; старые чеклисты и планы сохранили те пути
+намеренно, как запись того, что было правдой на момент прогона.
 
 Разведка:
 
 ```bash
-node ~/.claude/agents/codex/run-codex.mjs \
+node ~/.lyupro/.codex-bridge/lib/run-codex.mjs \
   --agent codex-scout \
   --repo . \
   --slug auth-flow \
@@ -46,7 +48,7 @@ node ~/.claude/agents/codex/run-codex.mjs \
 Имплементация:
 
 ```bash
-node ~/.claude/agents/codex/run-codex.mjs \
+node ~/.lyupro/.codex-bridge/lib/run-codex.mjs \
   --agent codex-build \
   --repo . \
   --slug auth-flow \
@@ -57,7 +59,7 @@ node ~/.claude/agents/codex/run-codex.mjs \
 Ревью незакоммиченных правок:
 
 ```bash
-node ~/.claude/agents/codex/run-codex.mjs \
+node ~/.lyupro/.codex-bridge/lib/run-codex.mjs \
   --agent codex-review \
   --repo . \
   --slug auth-flow-review \
@@ -124,7 +126,7 @@ scope и соответствие отчёта проверяются дальш
 присоединения, создания папки и квоты, а не старый ответ как результат нового заказа:
 
 ```bash
-node ~/.claude/agents/codex/run-codex.mjs \
+node ~/.lyupro/.codex-bridge/lib/run-codex.mjs \
   --agent codex-build \
   --repo . \
   --slug auth-flow \
@@ -300,10 +302,10 @@ node bin/codex-bridge.mjs permissions remove
 или изменить без ручного редактирования:
 
 ```bash
-node ~/.claude/agents/codex/run-config.mjs
-node ~/.claude/agents/codex/run-config.mjs plugins on
-node ~/.claude/agents/codex/run-config.mjs hooks off
-node ~/.claude/agents/codex/run-config.mjs reset
+node ~/.lyupro/.codex-bridge/lib/run-config.mjs
+node ~/.lyupro/.codex-bridge/lib/run-config.mjs plugins on
+node ~/.lyupro/.codex-bridge/lib/run-config.mjs hooks off
+node ~/.lyupro/.codex-bridge/lib/run-config.mjs reset
 ```
 
 `models` задаёт, на чём идёт каждый режим: объект с ключами `scout`, `build`, `review`, в каждом
@@ -387,7 +389,7 @@ Codex читает каталог целиком и применяет стро�
 нарушений шесть заходов подряд. Теперь свод вклеивается в `task.md` каждого прогона отдельной
 секцией `## Conventions`, в двух слоях:
 
-- `~/.claude/agents/codex/conventions.md` — общий свод хоста. Файл **seeded**: установщик кладёт
+- `~/.lyupro/.codex-bridge/conventions.md` — общий свод хоста. Файл **seeded**: установщик кладёт
   его один раз и больше не трогает, как `run-config.json`. Правится оператором без релиза пакета.
 - `.codex-conventions.md` в корне самого репозитория — необязательный слой особенностей проекта.
   Едет вместе с проектом; нет файла — слой молча пропускается.
@@ -442,16 +444,26 @@ Codex читает каталог целиком и применяет стро�
 
 ## Установка в другую конфигурацию Claude Code
 
-1. Скопируйте весь каталог `agents/codex/` в `~/.claude/agents/codex/`. В него входят три
-   определения агентов, раннер, модули вердикта, guard и конфиг.
-2. Зарегистрируйте `agents/codex/hooks/reply-guard.mjs` в `settings.json` как command-hook группы
-   `hooks.SubagentStop`. Matcher может охватывать всех субагентов: guard сам пропускает типы,
-   отличные от `codex-scout`, `codex-build` и `codex-review`.
-3. Скопируйте каталог `commands/codex/` в `~/.claude/commands/codex/`, если нужны команды
-   `/codex:env` и `/codex:usage`.
-4. Проверьте `codex --version` и авторизацию Codex CLI.
+Раскладывает файлы установщик — `codexb install` (или `npm run dev:install` из клона). Копировать
+каталоги руками больше нечего: с Plan_25 (2026-08-11) пакет живёт в двух корнях, и знать оба
+наизусть должен установщик, а не оператор.
 
-Минимальный фрагмент регистрации guard:
+| Корень | Что там лежит |
+| --- | --- |
+| `~/.lyupro/.codex-bridge/` | раннер и его модули (`lib/`), сторожа (`hooks/`), `config.json`, `conventions.md`, запись установки `.installed.json` |
+| `~/.claude/agents/codex-bridge/` | три определения агентов — Claude Code читает их только отсюда |
+| `~/.claude/commands/codex-bridge/` | два файла команд: `/codex-bridge:env` и `/codex-bridge:usage` |
+| `~/.codex/rules/` | файл правил Codex CLI, каталог не наш |
+
+В чужих каталогах остаётся ровно этот минимум: файл агента в другом месте означает, что агента не
+существует. Симлинки из `~/.claude` на наш каталог отклонены — на Windows их создание требует прав
+администратора, то есть установка падала бы у обычного пользователя.
+
+Файлы команд едут именно копией. Claude Code определяет namespace команды по физическому
+расположению файла и не понимает симлинки или файлы-указатели для этой задачи — поэтому
+переименование каталога и меняет префикс команды.
+
+Хуки регистрируются в `settings.json` **вызовом**, а не путём к файлу:
 
 ```json
 {
@@ -462,7 +474,7 @@ Codex читает каталог целиком и применяет стро�
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$HOME/.claude/agents/codex/hooks/reply-guard.mjs\"",
+            "command": "codex-bridge hook reply-guard",
             "timeout": 10
           }
         ]
@@ -472,11 +484,20 @@ Codex читает каталог целиком и применяет стро�
 }
 ```
 
-Если в `settings.json` уже есть `SubagentStop`, добавьте command-hook в существующую структуру,
-не заменяя другие hooks.
+Так переезд файлов и смена версии рантайма перестают быть правкой чужого конфига. Имена сторожей —
+`reply-guard`, `order-gate`, `worktree-lock`, `prune-guard`, `stop-guard`; matcher каждого задаёт
+сам пакет. Matcher `SubagentStop` может охватывать всех субагентов: сторож сам пропускает типы,
+отличные от `codex-scout`, `codex-build` и `codex-review`.
 
-Файлы `commands/codex/` должны ехать именно копией. Claude Code определяет namespace команды по
-физическому расположению файла и не понимает симлинки или файлы-указатели для этой задачи.
+Если команда не видна из `PATH` (установка через `npx`, клон без `npm link`), установщик пишет
+полный путь к копии сторожа в `~/.lyupro/.codex-bridge/hooks/`. Какая форма записана и почему —
+печатает `doctor`, вместе с версией, которую эта форма фактически запустит: командная форма
+исполняет код глобально установленного пакета, путевая — копию, положенную последней установкой.
+
+Если в `settings.json` уже есть группа `SubagentStop`, установщик добавляет command-hook в
+существующую структуру, не заменяя чужие hooks, и делает бэкап файла перед записью.
+
+Остаётся проверить `codex --version` и авторизацию Codex CLI — их пакет не ставит.
 
 ## Документация для сопровождающих
 

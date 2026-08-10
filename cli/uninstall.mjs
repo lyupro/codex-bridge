@@ -144,8 +144,8 @@ async function uninstallInRun({ host, dryRun = false } = {}) {
   await fs.rm(installRecordPath(host), { force: true });
   await fs.rm(legacyInstallRecordPath(host), { force: true });
   await removeEmpty(host.agentsDir);
-  await removeEmptyLayout(host.legacyAgentsDir, host.root);
-  await removeEmptyLayout(host.legacyCommandsDir, host.root);
+  await removeEmptyLayout(host.legacyAgentsDir);
+  await removeEmptyLayout(host.legacyCommandsDir);
   await removeEmpty(host.brandRoot);
   return {
     exitCode: 0,

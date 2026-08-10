@@ -22,6 +22,29 @@ async function fixture(t) {
 
 const CONFIGURED = '{\n  "hooks": false,\n  "plugins": false,\n  "models": {"build": {"model": "m", "effort": "max"}}\n}\n';
 
+test('a seeded file from the previous layout moves rather than being copied', async (t) => {
+  // Copying and leaving the original behind kept agents/codex non-empty forever, so the previous
+  // layout was never taken down and the operator went on editing a file nothing reads.
+  const host = await fixture(t);
+  const legacy = path.join(host.legacyAgentsDir, 'run-config.json');
+  await fs.mkdir(host.legacyAgentsDir, { recursive: true });
+  await fs.writeFile(legacy, CONFIGURED);
+  await install({ host });
+  const [seed] = seedPlan(host);
+  assert.equal(await fs.readFile(seed.target, 'utf8'), CONFIGURED);
+  await assert.rejects(() => fs.access(legacy), { code: 'ENOENT' });
+});
+
+test('the previous layout keeps conventions.md decisions through the move', async (t) => {
+  const host = await fixture(t);
+  const legacy = path.join(host.legacyAgentsDir, 'conventions.md');
+  await fs.mkdir(host.legacyAgentsDir, { recursive: true });
+  await fs.writeFile(legacy, '## Conventions\n\nnever push\n');
+  await install({ host });
+  assert.equal(await fs.readFile(host.brandConventionsPath, 'utf8'), '## Conventions\n\nnever push\n');
+  await assert.rejects(() => fs.access(legacy), { code: 'ENOENT' });
+});
+
 test('install seeds the config once and never records it as a package file', async (t) => {
   const host = await fixture(t);
   await install({ host });

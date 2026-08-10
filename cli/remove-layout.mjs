@@ -45,8 +45,15 @@ export function claudeBoundary(host, target) {
     || target.startsWith(`${directory}${path.sep}`)) || host.root;
 }
 
-/** Takes down one layout directory and whatever it leaves empty behind it, up to the boundary. */
-export async function removeEmptyLayout(directory, boundary) {
+/**
+ * Takes down one emptied package-owned layout directory — and stops there.
+ *
+ * It deliberately does not walk into the parent: the parents here are `~/.claude/agents` and
+ * `~/.claude/commands`, which belong to Claude Code and are shared with every other agent the
+ * operator has. An operator whose only agents were ours would have had those directories deleted
+ * out from under Claude Code by an uninstall that was asked to remove our files. Directories
+ * *inside* our own are a different case and are still walked, bounded by claudeBoundary().
+ */
+export async function removeEmptyLayout(directory) {
   await removeEmpty(directory);
-  await removeEmptyParents(directory, boundary);
 }

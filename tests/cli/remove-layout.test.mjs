@@ -84,14 +84,27 @@ test('the walk stops as soon as a directory still holds something', async (t) =>
   await fs.access(path.join(kept, 'operator-file.md'));
 });
 
-test('removeEmptyLayout takes down the directory and what it leaves empty behind it', async (t) => {
+test('removeEmptyLayout takes down the emptied package directory', async (t) => {
   const homedir = await tempHome(t);
   const host = hostFor(homedir);
   await fs.mkdir(host.legacyAgentsDir, { recursive: true });
-  await removeEmptyLayout(host.legacyAgentsDir, host.root);
+  await removeEmptyLayout(host.legacyAgentsDir);
   await assert.rejects(() => fs.access(host.legacyAgentsDir), { code: 'ENOENT' });
-  await assert.rejects(() => fs.access(path.join(host.root, 'agents')), { code: 'ENOENT' });
-  await fs.access(host.root);
+});
+
+test('the shared agents and commands directories survive their emptied package subdirectory', async (t) => {
+  // Claude Code owns ~/.claude/agents and ~/.claude/commands and shares them with every other
+  // agent the operator has. An operator whose only agents were ours would have had those two
+  // directories deleted out from under Claude Code by an uninstall that walked up one level too
+  // far, so this is asserted rather than left to the boundary argument.
+  const homedir = await tempHome(t);
+  const host = hostFor(homedir);
+  await fs.mkdir(host.legacyAgentsDir, { recursive: true });
+  await fs.mkdir(host.legacyCommandsDir, { recursive: true });
+  await removeEmptyLayout(host.legacyAgentsDir);
+  await removeEmptyLayout(host.legacyCommandsDir);
+  await fs.access(path.join(host.root, 'agents'));
+  await fs.access(path.join(host.root, 'commands'));
 });
 
 test('removeEmptyLayout keeps a previous-layout directory holding a foreign file', async (t) => {
@@ -100,6 +113,6 @@ test('removeEmptyLayout keeps a previous-layout directory holding a foreign file
   const foreign = path.join(host.legacyCommandsDir, 'operator-command.md');
   await fs.mkdir(host.legacyCommandsDir, { recursive: true });
   await fs.writeFile(foreign, 'mine\n');
-  await removeEmptyLayout(host.legacyCommandsDir, host.root);
+  await removeEmptyLayout(host.legacyCommandsDir);
   await fs.access(foreign);
 });

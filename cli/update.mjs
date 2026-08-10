@@ -36,6 +36,13 @@ async function exists(target) {
   }
 }
 
+/** Drops the previous layout's record and its emptied directories; safe to run when both are gone. */
+async function retireLegacyLayout(host) {
+  await fs.rm(legacyInstallRecordPath(host), { force: true });
+  await removeEmptyLayout(host.legacyAgentsDir);
+  await removeEmptyLayout(host.legacyCommandsDir);
+}
+
 function displayFile(file) {
   const entry = fileEntry(file);
   return `${entry.root}/${entry.path}`;
@@ -219,7 +226,14 @@ async function updateInRun({ host, dryRun = false, force = false, packageRoot, e
   const changed = states.some((state) => state.status !== 'up-to-date') || oldHooks.length > 0;
   if (!changed && inspectedHooks.every(({ state }) => state.present)
     && recordHasHooks(record, targets) && recordCurrent) {
-    if (!dryRun) await addRulesOwner(host);
+    if (!dryRun) {
+      await addRulesOwner(host);
+      // An update that installed the new layout but stopped before retiring the old one used to
+      // land here forever after: everything it compares is current, so it reported "up to date"
+      // while agents/codex sat next to agents/codex-bridge. Retirement is idempotent, so running
+      // it on this path costs nothing when there is nothing left to retire.
+      await retireLegacyLayout(host);
+    }
     return { exitCode: 0, output: 'codex-bridge is up to date' };
   }
   if (dryRun) {
@@ -238,9 +252,7 @@ async function updateInRun({ host, dryRun = false, force = false, packageRoot, e
   }
   const installed = await install({ host, force: true, packageRoot, env });
   if (installed.exitCode !== 0) return installed;
-  await fs.rm(legacyInstallRecordPath(host), { force: true });
-  await removeEmptyLayout(host.legacyAgentsDir, host.root);
-  await removeEmptyLayout(host.legacyCommandsDir, host.root);
+  await retireLegacyLayout(host);
   return { exitCode: 0, output: appliedOutput(states) };
 }
 
