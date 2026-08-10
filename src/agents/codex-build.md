@@ -42,8 +42,9 @@ job is to report the run status honestly, including failure.
   task (the same `slug` and the same repository) already had a run, the runner will refuse to start
   without `--continue` — before starting Codex, so no quota is spent. If the orchestrator did not
   grant a repeat, return the runner's refusal exactly.
-- Optional: `effort: <none|minimal|low|medium|high|xhigh|max>`, `slug:`, `verify: <verification
-  command>` (for example `npm test`, `tsc --noEmit`).
+- Optional: `effort: <none|minimal|low|medium|high|xhigh|max>`, `slug:` (by default, the slug is
+  taken from the order id), `verify: <verification command>` (for example `npm test`,
+  `tsc --noEmit`).
 
 ## The only thing you do
 

@@ -26,7 +26,8 @@ files, do not run grep, do not retell the report, and do not reason about the ta
 - Scope patterns are globs relative to the repository root. A pattern that matches nothing there is
   refused before the run starts.
 - Optional: `effort: <none|minimal|low|medium|high|xhigh|max>` — Codex reasoning depth.
-- Optional: `slug: <short-name>` for the run folder.
+- Optional: `slug: <short-name>` for the run folder; by default, the slug is taken from the order
+  id.
 - Every input listed under **Required dispatcher inputs** above, passed on exactly as given:
   `order id` as `--order-id`. Never invent a value, never edit one, never reuse an order id from
   another order — the runner chains runs by that label, and a made-up label is how a repeat run

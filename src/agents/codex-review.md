@@ -38,8 +38,8 @@ opinion, not a verdict.
   matching `continue:` grant explicitly; do not add or guess it yourself. A continuation is
   assigned by the orchestrator, never chosen by you. After the verdict, return the exact attaching
   output and stop; do not issue or invent another continuation.
-- Optional: review focus as text ("look for races and error handling"), `slug:`, `effort:
-  <none|minimal|low|medium|high|xhigh|max>`.
+- Optional: review focus as text ("look for races and error handling"), `slug:` (by default, the
+  slug is taken from the order id), `effort: <none|minimal|low|medium|high|xhigh|max>`.
 
 ## The only thing you do
 

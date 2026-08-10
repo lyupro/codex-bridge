@@ -97,7 +97,16 @@ export function parseArgs(argv) {
     die(`--effort must be one of: ${allowedEfforts}; got ${JSON.stringify(opts.effort)}`);
   }
   opts.repo = path.resolve(opts.repo || process.cwd());
-  opts.slug = (opts.slug || opts.agent.replace(/^codex-/, '')).replace(/[^A-Za-z0-9._-]+/g, '-');
+  const slugSource = opts.slug ? '--slug' : '--order-id';
+  opts.slug = (opts.slug || opts.orderId).replace(/[^A-Za-z0-9._-]+/g, '-');
+  // Plan_29 incident: the generic `build` slug made an honest order inherit a days-old chain;
+  // reject a value with no alphanumeric anchor instead of creating an empty or dot-only folder.
+  if (!/[A-Za-z0-9]/.test(opts.slug)) {
+    die(
+      `${slugSource} produces an unusable run folder name after sanitization: ` +
+        `${JSON.stringify(opts.slug)} must contain a letter or digit.`,
+    );
+  }
   opts.mode = opts.mode || 'uncommitted';
   // A writing run without a declared scope is how `!Plans/*.md` got edited by a run that was
   // told in prose not to touch them: prose does not bind, a file list does. Required rather
