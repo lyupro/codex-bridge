@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Guards paths.mjs: the pure functions that make two spellings of a path meet.
- *   node --test agents/codex/meta/paths.test.mjs
+ *   node --test agents/codex-bridge/meta/paths.test.mjs
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

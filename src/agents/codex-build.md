@@ -134,7 +134,7 @@ are designed for interactive work and cause harm in a delegated run — a failin
 and the task
 was not done; without them, 23k and the task was done. The flags affect one call; `~/.codex` is
 unchanged.
-The operator switches the mode through `/codex:env` (file `agents/codex/run-config.json`), and it
+The operator switches the mode through `/codex-bridge:env` (file `~/.lyupro/.codex-bridge/config.json`), and it
 is recorded in the run's `meta.json` — do not guess it or add flags yourself.
 `--dangerously-bypass-approvals-and-sandbox` is never used. `--model` is not
 passed: model IDs are volatile. The script fixes this once, so silent

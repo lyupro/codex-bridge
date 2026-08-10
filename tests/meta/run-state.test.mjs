@@ -2,7 +2,7 @@
 /**
  * Guards run-state.mjs: status.json, writeFailure, markAbandoned, activeRun,
  * abandonedBranchDrift.
- *   node --test agents/codex/meta/run-state.test.mjs
+ *   node --test agents/codex-bridge/meta/run-state.test.mjs
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

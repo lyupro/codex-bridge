@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Guards the environment switches:
- *   node --test agents/codex/run-config.test.mjs
+ *   node --test agents/codex-bridge/run-config.test.mjs
  *
  * The point of these cases is that a run's environment is never decided by accident: an
  * absent file means defaults, a broken one stops the run, and what the flags turn into is

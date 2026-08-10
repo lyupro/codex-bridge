@@ -59,6 +59,29 @@ test('complete installation with all files exits zero', async (t) => {
   }
 });
 
+test('doctor reports the recorded hook form and the version that form executes', async (t) => {
+  const { host, record } = await installedFixture(t);
+  const shortHookRecord = record.hooks.find((hook) => hook.event === 'SubagentStop');
+  const settings = JSON.parse(await fs.readFile(host.settingsPath, 'utf8'));
+  for (const group of settings.hooks.SubagentStop) {
+    for (const hook of group.hooks) {
+      if (hook.command === shortHookRecord.command) hook.command = 'codex-bridge hook reply-guard';
+    }
+  }
+  await fs.writeFile(host.settingsPath, `${JSON.stringify(settings)}\n`);
+  const result = await diagnose({
+    host,
+    codexProbe,
+    bridgeProbe: () => ({ available: true, value: 'codex-bridge 8.8.8' }),
+    currentPackage: ownPackage,
+  });
+  const shortHook = result.checks.find((item) => item.key === 'hook:SubagentStop');
+  const pathHook = result.checks.find((item) => item.key === 'hook:PreToolUse'
+    && item.value.includes('order-gate.mjs'));
+  assert.match(shortHook.value, /short command;.*global command codex-bridge 8\.8\.8/);
+  assert.match(pathHook.value, /path command;.*installed copy @lyupro\/codex-bridge@0\.1\.0/);
+});
+
 test('doctor warns for optional permissions without changing the exit code', async (t) => {
   const { host } = await installedFixture(t);
   const absent = await diagnose({ host, codexProbe, currentPackage: ownPackage });

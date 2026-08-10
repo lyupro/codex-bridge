@@ -16,22 +16,12 @@ import {
   withSettingsRun,
 } from './settings-merge.mjs';
 import { readRulesRegistry, removeRulesOwner, remainingRulesOwners } from './rules-owners.mjs';
-
-async function removeEmpty(directory) {
-  try {
-    if ((await fs.readdir(directory)).length === 0) await fs.rmdir(directory);
-  } catch (err) {
-    if (err.code !== 'ENOENT') throw err;
-  }
-}
-
-async function removeEmptyParents(target, boundary) {
-  let current = path.dirname(target);
-  while (current !== boundary && current.startsWith(`${boundary}${path.sep}`)) {
-    await removeEmpty(current);
-    current = path.dirname(current);
-  }
-}
+import {
+  claudeBoundary,
+  removeEmpty,
+  removeEmptyLayout,
+  removeEmptyParents,
+} from './remove-layout.mjs';
 
 function remainingOwnersText(count) {
   return `${count} other owner${count === 1 ? '' : 's'} ${count === 1 ? 'remains' : 'remain'}`;
@@ -147,13 +137,15 @@ async function uninstallInRun({ host, dryRun = false } = {}) {
     await fs.rm(target, { force: true });
     const boundary = file.root === 'brand'
       ? host.brandRoot
-      : target.startsWith(`${host.commandsDir}${path.sep}`) ? host.commandsDir : host.agentsDir;
+      : claudeBoundary(host, target);
     await removeEmptyParents(target, boundary);
   }
   await removeEmpty(host.commandsDir);
   await fs.rm(installRecordPath(host), { force: true });
   await fs.rm(legacyInstallRecordPath(host), { force: true });
   await removeEmpty(host.agentsDir);
+  await removeEmptyLayout(host.legacyAgentsDir, host.root);
+  await removeEmptyLayout(host.legacyCommandsDir, host.root);
   await removeEmpty(host.brandRoot);
   return {
     exitCode: 0,

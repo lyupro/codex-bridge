@@ -153,6 +153,7 @@ test('install upgrades a legacy record with host fingerprints', async (t) => {
   const legacy = JSON.parse(await fs.readFile(recordPath, 'utf8'));
   delete legacy.fingerprints;
   await fs.rm(recordPath);
+  await fs.mkdir(path.dirname(legacyPath), { recursive: true });
   await fs.writeFile(legacyPath, `${JSON.stringify(legacy, null, 2)}\n`);
   const result = await install({ host });
   assert.equal(result.exitCode, 0);

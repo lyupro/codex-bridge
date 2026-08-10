@@ -3,7 +3,7 @@
  * Guards the write-meta.mjs facade on its build/review axis: collect() resolving a run's
  * status from its artifacts (mismatch, service directories, scope), plus projectFolder()
  * and status.json bookkeeping.
- *   node --test agents/codex/write-meta.test.mjs
+ *   node --test agents/codex-bridge/write-meta.test.mjs
  *
  * Every case here is a run shape that has to keep resolving the same way. The mismatch
  * cases are the two production runs of 2026-07-30 that were green while Codex quarantined

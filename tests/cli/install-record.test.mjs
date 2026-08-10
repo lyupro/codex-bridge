@@ -26,7 +26,7 @@ async function fixture(t) {
 }
 
 const files = [
-  { root: 'claude', path: 'agents/codex-build.md' },
+  { root: 'claude', path: 'agents/codex-bridge/codex-build.md' },
   { root: 'brand', path: 'hooks/reply-guard.mjs' },
   { root: 'brand', path: 'lib/runner.mjs' },
 ];
@@ -39,7 +39,7 @@ function record(overrides = {}) {
     mode: 'copy',
     files,
     fingerprints: {
-      claude: { 'agents/codex-build.md': 'a'.repeat(64) },
+      claude: { 'agents/codex-bridge/codex-build.md': 'a'.repeat(64) },
       brand: {
         'hooks/reply-guard.mjs': 'b'.repeat(64),
         'lib/runner.mjs': 'c'.repeat(64),

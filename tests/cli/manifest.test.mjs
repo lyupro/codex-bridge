@@ -45,10 +45,10 @@ const record = {
   installedAt: '2026-08-02T10:00:00.000Z',
   mode: 'copy',
   files: [
-    { root: 'claude', path: 'agents/codex/run-codex.mjs' },
-    { root: 'claude', path: 'agents/codex/hooks/reply-guard.mjs' },
+    { root: 'claude', path: 'agents/codex-bridge/run-codex.mjs' },
+    { root: 'claude', path: 'agents/codex-bridge/hooks/reply-guard.mjs' },
   ],
-  hooks: [{ event: 'SubagentStop', root: 'claude', path: 'agents/codex/hooks/reply-guard.mjs' }],
+  hooks: [{ event: 'SubagentStop', root: 'claude', path: 'agents/codex-bridge/hooks/reply-guard.mjs' }],
 };
 
 test('installation table is exported data', () => {
@@ -82,8 +82,8 @@ test('install plan maps agents, commands, and remaining src files', async (t) =>
   assert.deepEqual(plan.map((item) => item.relativeToRoot), [
     'hooks/guard.mjs',
     'lib/agents/notes.txt',
-    'agents/codex/build.md',
-    'commands/codex/env.md',
+    'agents/codex-bridge/build.md',
+    'commands/codex-bridge/env.md',
   ]);
   assert.deepEqual(plan.map((item) => item.processing), ['copy', 'copy', 'placeholders', 'placeholders']);
   assert.deepEqual(rulesPlan(host, packageRoot), {
@@ -109,11 +109,15 @@ test('installation record writes and reads after validation', async (t) => {
 
 test('installation record migrates an old single-hook record on read', async (t) => {
   const { host } = await fixture(t);
-  const legacy = { ...record, hooks: undefined };
+  const legacy = {
+    ...record,
+    files: record.files.map((file) => ({ ...file, path: file.path.replace('agents/codex-bridge/', 'agents/codex/') })),
+    hooks: undefined,
+  };
   delete legacy.hooks;
   legacy.hook = { event: 'SubagentStop', path: 'agents/codex/hooks/reply-guard.mjs' };
-  await fs.mkdir(host.agentsDir, { recursive: true });
-  await fs.writeFile(path.join(host.agentsDir, '.codex-bridge-install.json'), `${JSON.stringify(legacy)}\n`);
+  await fs.mkdir(host.legacyAgentsDir, { recursive: true });
+  await fs.writeFile(path.join(host.legacyAgentsDir, '.codex-bridge-install.json'), `${JSON.stringify(legacy)}\n`);
   const migrated = await readInstallRecord(host);
   assert.deepEqual(migrated.hooks, [{ ...legacy.hook, root: 'claude' }]);
   assert.equal(migrated.hook, undefined);
@@ -136,13 +140,13 @@ test('installation record validates multiple hooks sharing one event by filename
     ...record,
     files: [
       ...record.files,
-      { root: 'claude', path: 'agents/codex/hooks/order-gate.mjs' },
-      { root: 'claude', path: 'agents/codex/hooks/worktree-lock.mjs' },
+      { root: 'claude', path: 'agents/codex-bridge/hooks/order-gate.mjs' },
+      { root: 'claude', path: 'agents/codex-bridge/hooks/worktree-lock.mjs' },
     ],
     hooks: [
       ...record.hooks,
-      { event: 'PreToolUse', root: 'claude', path: 'agents/codex/hooks/order-gate.mjs' },
-      { event: 'PreToolUse', root: 'claude', path: 'agents/codex/hooks/worktree-lock.mjs' },
+      { event: 'PreToolUse', root: 'claude', path: 'agents/codex-bridge/hooks/order-gate.mjs' },
+      { event: 'PreToolUse', root: 'claude', path: 'agents/codex-bridge/hooks/worktree-lock.mjs' },
     ],
   };
   assert.equal(validateInstallRecord(multiHook), multiHook);
@@ -171,7 +175,7 @@ test('installation record rejects malformed rules metadata', () => {
 
 test('installation record rejects an extra fingerprint key', () => {
   const fingerprints = Object.fromEntries(record.files.map((file) => [file.path, 'a'.repeat(64)]));
-  fingerprints['agents/codex/extra.mjs'] = 'b'.repeat(64);
+  fingerprints['agents/codex-bridge/extra.mjs'] = 'b'.repeat(64);
   assert.throws(() => validateInstallRecord({ ...record, fingerprints }), /fingerprints keys must exactly match files/);
 });
 
@@ -193,8 +197,8 @@ test('missing record reads as not installed', async (t) => {
 
 test('malformed and structurally broken records fail loudly', async (t) => {
   const { host } = await fixture(t);
-  await fs.mkdir(host.agentsDir, { recursive: true });
-  await fs.writeFile(path.join(host.agentsDir, '.codex-bridge-install.json'), '{ nope');
+  await fs.mkdir(host.legacyAgentsDir, { recursive: true });
+  await fs.writeFile(path.join(host.legacyAgentsDir, '.codex-bridge-install.json'), '{ nope');
   await assert.rejects(() => readInstallRecord(host), /invalid installation record JSON/);
   assert.throws(() => validateInstallRecord({ ...record, files: [3] }), /files/);
   assert.throws(() => validateInstallRecord({ ...record, files: [] }), /non-empty list/);

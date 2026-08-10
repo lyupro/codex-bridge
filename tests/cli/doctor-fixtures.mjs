@@ -28,8 +28,8 @@ export async function hostFixture(t) {
 export async function installedFixture(t) {
   const host = await hostFixture(t);
   const files = [
-    { root: 'claude', path: 'agents/codex/run-codex.mjs' },
-    { root: 'claude', path: 'agents/codex/required-inputs.mjs' },
+    { root: 'claude', path: 'agents/codex-bridge/run-codex.mjs' },
+    { root: 'claude', path: 'agents/codex-bridge/required-inputs.mjs' },
     ...HOOK_DEFINITIONS.map(({ file }) => ({ root: 'brand', path: `hooks/${file}` })),
   ];
   for (const file of files) {

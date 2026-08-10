@@ -122,7 +122,7 @@ The flags are proven, and they do not belong in the prompt: `--ignore-user-confi
 startup ballast (~9k quota instead of ~19k) and structurally blocks writing — no flags can override
 read-only; `--disable hooks --disable plugins` disable the operator's extensions for this call,
 so the run does not depend on what is installed in `~/.codex` today (the default, switched
-by the operator through `/codex:env`); `--model` is never passed because model IDs
+by the operator through `/codex-bridge:env`); `--model` is never passed because model IDs
 are volatile.
 The run is asynchronous, and waiting for it is a separate call. That is deliberate: while the start
 and the wait were one call, a time ceiling on that call looked exactly like a dead run, and the

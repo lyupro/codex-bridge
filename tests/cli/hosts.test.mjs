@@ -19,8 +19,8 @@ test('user scope resolves beneath the supplied home directory', () => {
   const homedir = path.join(os.tmpdir(), 'bridge-home');
   const host = resolveHost({ homedir });
   assert.equal(host.root, path.join(homedir, '.claude'));
-  assert.equal(host.agentsDir, path.join(host.root, 'agents', 'codex'));
-  assert.equal(host.commandsDir, path.join(host.root, 'commands', 'codex'));
+  assert.equal(host.agentsDir, path.join(host.root, 'agents', 'codex-bridge'));
+  assert.equal(host.commandsDir, path.join(host.root, 'commands', 'codex-bridge'));
   assert.equal(host.settingsPath, path.join(host.root, 'settings.json'));
   assertBrandPaths(host, path.join(homedir, '.lyupro', '.codex-bridge'));
   assert.equal(fs.existsSync(host.brandRoot), false);
@@ -41,6 +41,8 @@ test('explicit host overrides both scope choices', () => {
   const codexHome = path.join(os.tmpdir(), 'bridge-codex-home');
   const host = resolveHost({ scope: 'ignored', host: explicit, cwd: path.parse(explicit).root, codexHome });
   assert.equal(host.root, path.resolve(explicit));
+  assert.equal(host.agentsDir, path.join(host.root, 'agents', 'codex-bridge'));
+  assert.equal(host.commandsDir, path.join(host.root, 'commands', 'codex-bridge'));
   assert.equal(host.codexRulesDir, path.join(codexHome, 'rules'));
   assertBrandPaths(host, path.join(os.homedir(), '.lyupro', '.codex-bridge'));
   assert.equal(host.scope, 'host');

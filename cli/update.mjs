@@ -25,6 +25,7 @@ import {
   withSettingsRun,
 } from './settings-merge.mjs';
 import { addRulesOwner, readRulesRegistry } from './rules-owners.mjs';
+import { claudeBoundary, removeEmptyLayout, removeEmptyParents } from './remove-layout.mjs';
 
 async function exists(target) {
   try {
@@ -32,18 +33,6 @@ async function exists(target) {
   } catch (err) {
     if (err.code === 'ENOENT' || err.code === 'ENOTDIR') return false;
     throw err;
-  }
-}
-
-async function removeEmptyParents(target, boundary) {
-  let current = path.dirname(target);
-  while (current !== boundary && current.startsWith(`${boundary}${path.sep}`)) {
-    try {
-      if ((await fs.readdir(current)).length === 0) await fs.rmdir(current);
-    } catch (err) {
-      if (err.code !== 'ENOENT') throw err;
-    }
-    current = path.dirname(current);
   }
 }
 
@@ -241,7 +230,7 @@ async function updateInRun({ host, dryRun = false, force = false, packageRoot, e
     if (state.status !== 'orphaned' || !state.exists) continue;
     const target = recordTarget(host, state.entry);
     await fs.rm(target, { force: true });
-    const boundary = state.entry.root === 'brand' ? host.brandRoot : host.agentsDir;
+    const boundary = state.entry.root === 'brand' ? host.brandRoot : claudeBoundary(host, target);
     await removeEmptyParents(target, boundary);
   }
   for (const { spec, hook } of oldHooks) {
@@ -250,6 +239,8 @@ async function updateInRun({ host, dryRun = false, force = false, packageRoot, e
   const installed = await install({ host, force: true, packageRoot, env });
   if (installed.exitCode !== 0) return installed;
   await fs.rm(legacyInstallRecordPath(host), { force: true });
+  await removeEmptyLayout(host.legacyAgentsDir, host.root);
+  await removeEmptyLayout(host.legacyCommandsDir, host.root);
   return { exitCode: 0, output: appliedOutput(states) };
 }
 

@@ -2,7 +2,7 @@
 /**
  * Guards the write-meta.mjs facade on its scout axis: explicit orchestrator questions and
  * collect() grading a codex-scout run's coverage of them.
- *   node --test agents/codex/write-meta-scout.test.mjs
+ *   node --test agents/codex-bridge/write-meta-scout.test.mjs
  *
  * Split out of write-meta.test.mjs (which still guards collect()'s build/review verdicts)
  * purely on line count: both files test the same facade, just different behavioural axes
@@ -81,7 +81,7 @@ test('a fully covered order is OK and reports 6/6 in the reply', () => {
   const answers = questions.map((q) => ({
     question_id: q.id,
     answer: PROSE_ANSWER,
-    evidence: [`agents/codex/write-meta.mjs:${300 + Number(q.id.slice(1))}`],
+    evidence: [`agents/codex-bridge/write-meta.mjs:${300 + Number(q.id.slice(1))}`],
   }));
   const dir = makeRun({
     result: { answer: 'Final summary of all sub-questions.', answers, findings: [], unknowns: [], report_markdown: '# report' },

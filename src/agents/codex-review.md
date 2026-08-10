@@ -118,7 +118,7 @@ properties that broke the contract.
 Regular `codex exec` follows the schema (verified during scouting), so the review uses it: with
 `--ignore-user-config` (structurally read-only, half the startup ballast), `--sandbox
 read-only`, `--disable hooks --disable plugins` (operator extensions do not affect the run;
-the default, switched through `/codex:env`), and without `--model` — model IDs are volatile. The
+the default, switched through `/codex-bridge:env`), and without `--model` — model IDs are volatile. The
 runner determines the review scope
 itself through git: the exact file list and diff command go into the prompt and are saved in the run
 folder's

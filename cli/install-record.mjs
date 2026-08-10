@@ -203,10 +203,11 @@ export function normalizeInstallRecord(record) {
 }
 
 function legacySeedEntries(host) {
-  return new Set([
-    { root: 'claude', path: posix(path.relative(host.root, path.join(host.agentsDir, 'run-config.json'))) },
-    { root: 'claude', path: posix(path.relative(host.root, path.join(host.agentsDir, 'conventions.md'))) },
-  ].map(recordFileKey));
+  const agentDirs = [host.agentsDir, host.legacyAgentsDir].filter(Boolean);
+  return new Set(agentDirs.flatMap((agentsDir) => [
+    { root: 'claude', path: posix(path.relative(host.root, path.join(agentsDir, 'run-config.json'))) },
+    { root: 'claude', path: posix(path.relative(host.root, path.join(agentsDir, 'conventions.md'))) },
+  ]).map(recordFileKey));
 }
 
 function newSeedEntries() {
@@ -247,7 +248,7 @@ export function installRecordPath(host) {
 }
 
 export function legacyInstallRecordPath(host) {
-  return path.join(host.agentsDir, LEGACY_INSTALL_RECORD_NAME);
+  return path.join(host.legacyAgentsDir, LEGACY_INSTALL_RECORD_NAME);
 }
 
 export async function readInstallRecord(host) {

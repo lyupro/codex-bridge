@@ -2,7 +2,7 @@
 /**
  * Guards environment.mjs: which touched paths belong to the run and which to the tooling
  * writing alongside it.
- *   node --test agents/codex/meta/environment.test.mjs
+ *   node --test agents/codex-bridge/meta/environment.test.mjs
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

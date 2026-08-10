@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Guards chain.mjs: finding the earlier passes of the task a run belongs to.
- *   node --test agents/codex/meta/chain.test.mjs
+ *   node --test agents/codex-bridge/meta/chain.test.mjs
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

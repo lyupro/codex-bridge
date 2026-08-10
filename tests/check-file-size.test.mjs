@@ -157,7 +157,7 @@ test('a pattern exclude (contains *) needs no exclusionRationale entry', async (
 });
 
 test('isSpecificExclude distinguishes a bare path from a glob pattern', () => {
-  assert.equal(isSpecificExclude('agents/codex/run-codex.mjs'), true);
+  assert.equal(isSpecificExclude('agents/codex-bridge/run-codex.mjs'), true);
   assert.equal(isSpecificExclude('**/node_modules/**'), false);
   assert.equal(isSpecificExclude('plugins/**'), false);
 });

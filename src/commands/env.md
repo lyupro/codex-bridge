@@ -4,8 +4,8 @@ allowed-tools: Bash
 argument-hint: "[hooks|plugins on|off] | [reset]"
 ---
 
-<!-- Part of the agents/codex/ package. The file lives here out of necessity: the slash command name
-     is set by its location under commands/<namespace>/, and Claude Code understands neither
+<!-- Part of the agents/codex-bridge/ package. The file lives here out of necessity: the slash
+     command name is set by its location under commands/<namespace>/, and Claude Code understands neither
      symlinks nor pointer files (verified 2026-08-02). Edit it here; it travels as a copy when the
      package is installed. -->
 
@@ -30,8 +30,8 @@ Call forms:
 - `plugins on` / `plugins off` — the same for plugins;
 - `reset` — back to the default (both off).
 
-The state lives in `agents/codex/run-config.json` and lands in the `meta.json` of every run, so the
-artifacts always show which environment a run went through.
+The state lives in `~/.lyupro/.codex-bridge/config.json` and lands in the `meta.json` of every run,
+so the artifacts always show which environment a run went through.
 
 If the user turns `hooks` on, say in one line: while the failing `Stop` hook of `oh-my-codex` stays
 in `~/.codex/hooks.json`, runs will again spend quota on unrelated repairs. Checking the report

@@ -81,7 +81,7 @@ function retentionOutput(line, output) {
 async function migrateLegacySeed(host, seed) {
   if (await targetExists(seed.target)) return;
   const legacyName = path.basename(seed.target) === 'config.json' ? 'run-config.json' : path.basename(seed.target);
-  const legacy = path.join(host.agentsDir, legacyName);
+  const legacy = path.join(host.legacyAgentsDir, legacyName);
   if (legacy === seed.target || !(await targetExists(legacy))) return;
   // Existing seeded files hold operator decisions. Copying a legacy one to the new root preserves
   // those decisions during Plan_25 migration; the old copy is deliberately left untouched because

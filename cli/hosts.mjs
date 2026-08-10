@@ -13,6 +13,15 @@ function repositoryRoot(start) {
   }
 }
 
+function claudePaths(root) {
+  return {
+    agentsDir: path.join(root, 'agents', 'codex-bridge'),
+    commandsDir: path.join(root, 'commands', 'codex-bridge'),
+    legacyAgentsDir: path.join(root, 'agents', 'codex'),
+    legacyCommandsDir: path.join(root, 'commands', 'codex'),
+  };
+}
+
 export function resolveHost({
   scope = 'user',
   host,
@@ -41,8 +50,7 @@ export function resolveHost({
     const root = path.resolve(host);
     return {
       root,
-      agentsDir: path.join(root, 'agents', 'codex'),
-      commandsDir: path.join(root, 'commands', 'codex'),
+      ...claudePaths(root),
       codexRulesDir,
       settingsPath: path.join(root, 'settings.json'),
       scope: 'host',
@@ -57,8 +65,7 @@ export function resolveHost({
   );
   return {
     root,
-    agentsDir: path.join(root, 'agents', 'codex'),
-    commandsDir: path.join(root, 'commands', 'codex'),
+    ...claudePaths(root),
     codexRulesDir,
     settingsPath: path.join(root, 'settings.json'),
     scope,

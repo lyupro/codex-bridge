@@ -3,8 +3,8 @@ description: Show the ChatGPT quota spent on runs delegated to Codex — by day,
 allowed-tools: Bash
 ---
 
-<!-- Part of the agents/codex/ package. The file lives here out of necessity: the slash command name
-     is set by its location under commands/<namespace>/, and Claude Code understands neither
+<!-- Part of the agents/codex-bridge/ package. The file lives here out of necessity: the slash
+     command name is set by its location under commands/<namespace>/, and Claude Code understands neither
      symlinks nor pointer files (verified 2026-08-02). Edit it here; it travels as a copy when the
      package is installed. -->
 

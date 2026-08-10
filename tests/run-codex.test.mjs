@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Guards run-codex.mjs: the decisions it makes before spending anyone's quota.
- *   node --test agents/codex/run-codex.test.mjs
+ *   node --test agents/codex-bridge/run-codex.test.mjs
  *
  * It is imported, not executed — and that importing it starts nothing is itself one of the
  * cases below. Split out of write-meta.test.mjs (which still guards the write-meta.mjs
