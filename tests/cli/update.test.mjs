@@ -7,7 +7,17 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveHost } from '../../cli/hosts.mjs';
 import { install } from '../../cli/install.mjs';
-import { buildInstallPlan, fileFingerprint, readInstallRecord, rulesPlan } from '../../cli/manifest.mjs';
+import {
+  buildInstallPlan,
+  fileFingerprint,
+  HOOK_DEFINITIONS,
+  installRecordPath,
+  legacyInstallRecordPath,
+  packageInfo,
+  readInstallRecord,
+  recordTarget,
+  rulesPlan,
+} from '../../cli/manifest.mjs';
 import { targetMatches } from '../../cli/copy.mjs';
 import { update } from '../../cli/update.mjs';
 
@@ -18,7 +28,14 @@ async function fixture(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-update-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   // Naming the Codex home is not optional: without it the installed rules land in the real one.
-  return { root, host: resolveHost({ host: path.join(root, 'host'), codexHome: path.join(root, 'codex-home') }) };
+  return {
+    root,
+    host: resolveHost({
+      host: path.join(root, 'host'),
+      codexHome: path.join(root, 'codex-home'),
+      brandRoot: path.join(root, 'brand'),
+    }),
+  };
 }
 
 async function packageFixture(root, name, { version = '0.0.0', extraFile } = {}) {
@@ -38,7 +55,8 @@ async function installOutdated(t) {
   await fs.writeFile(oldPlan[0].source, 'old package content\n');
   await install({ host: value.host, packageRoot: oldPackage });
   const currentPlan = await buildInstallPlan(value.host);
-  const changed = currentPlan.find((item) => item.relativeToHost === oldPlan[0].relativeToHost);
+  const changed = currentPlan.find((item) =>
+    item.root === oldPlan[0].root && item.relativeToRoot === oldPlan[0].relativeToRoot);
   return { ...value, changed };
 }
 
@@ -55,9 +73,9 @@ test('a fresh installation is up to date without rewriting any file', async (t) 
   await install({ host });
   const record = await readInstallRecord(host);
   const watched = [
-    ...record.files.map((relative) => path.join(host.root, relative)),
+    ...record.files.map((file) => recordTarget(host, file)),
     record.rules.path,
-    path.join(host.agentsDir, '.codex-bridge-install.json'),
+    installRecordPath(host),
     host.settingsPath,
   ];
   const fixed = new Date('2020-01-02T03:04:05.000Z');
@@ -75,8 +93,8 @@ test('an outdated recorded file updates silently', async (t) => {
   const { host, changed } = await installOutdated(t);
   const result = await update({ host });
   assert.equal(result.exitCode, 0);
-  assert.doesNotMatch(result.output, new RegExp(changed.relativeToHost));
-  assert.equal(await targetMatches(changed, host.agentsDir), true);
+  assert.doesNotMatch(result.output, new RegExp(`${changed.root}/${changed.relativeToRoot}`));
+  assert.equal(await targetMatches(changed, host.brandRoot), true);
 });
 
 test('outdated recorded rules are updated from the current package', async (t) => {
@@ -87,7 +105,7 @@ test('outdated recorded rules are updated from the current package', async (t) =
   await install({ host, packageRoot: oldPackage });
   const result = await update({ host });
   assert.equal(result.exitCode, 0);
-  assert.equal(await targetMatches({ ...rulesPlan(host), processing: 'copy' }, host.agentsDir), true);
+  assert.equal(await targetMatches({ ...rulesPlan(host), processing: 'copy' }, host.brandRoot), true);
 });
 
 test('missing rules stop update then --force restores them by full path', async (t) => {
@@ -100,7 +118,7 @@ test('missing rules stop update then --force restores them by full path', async 
   assert.match(refused.output, new RegExp(rule.target.replaceAll('\\', '\\\\')));
   const forced = await update({ host, force: true });
   assert.equal(forced.exitCode, 0);
-  assert.equal(await targetMatches({ ...rule, processing: 'copy' }, host.agentsDir), true);
+  assert.equal(await targetMatches({ ...rule, processing: 'copy' }, host.brandRoot), true);
 });
 
 test('manually modified rules stop update and --force overwrites them', async (t) => {
@@ -115,36 +133,86 @@ test('manually modified rules stop update and --force overwrites them', async (t
   assert.equal(await fs.readFile(rule.target, 'utf8'), 'manual operator rules\n');
   const forced = await update({ host, force: true });
   assert.equal(forced.exitCode, 0);
-  assert.equal(await targetMatches({ ...rule, processing: 'copy' }, host.agentsDir), true);
+  assert.equal(await targetMatches({ ...rule, processing: 'copy' }, host.brandRoot), true);
 });
 
 test('a legacy record without rules adds and records the current rules', async (t) => {
   const { host } = await fixture(t);
   await install({ host });
   const rule = rulesPlan(host);
-  const recordPath = path.join(host.agentsDir, '.codex-bridge-install.json');
+  const recordPath = installRecordPath(host);
   const legacy = JSON.parse(await fs.readFile(recordPath, 'utf8'));
   delete legacy.rules;
   await fs.writeFile(recordPath, `${JSON.stringify(legacy, null, 2)}\n`);
   await fs.writeFile(rule.target, 'unrecorded legacy rules\n');
   const result = await update({ host });
   assert.equal(result.exitCode, 0);
-  assert.equal(await targetMatches({ ...rule, processing: 'copy' }, host.agentsDir), true);
+  assert.equal(await targetMatches({ ...rule, processing: 'copy' }, host.brandRoot), true);
   const current = await readInstallRecord(host);
   assert.equal(current.rules.path, rule.target);
   assert.equal(current.rules.fingerprint, await fileFingerprint(rule.target));
+});
+
+test('update migrates a legacy single-root layout and removes it once', async (t) => {
+  const { host } = await fixture(t);
+  const oldFiles = HOOK_DEFINITIONS.map(({ file }) => `agents/codex/hooks/${file}`);
+  const fingerprints = {};
+  const hooks = [];
+  const settingsHooks = {};
+  for (const [index, definition] of HOOK_DEFINITIONS.entries()) {
+    const relative = oldFiles[index];
+    const target = path.join(host.root, relative);
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.writeFile(target, `legacy ${definition.file}\n`);
+    fingerprints[relative] = await fileFingerprint(target);
+    const command = index === 0 ? `codex-bridge hook ${definition.name}` : `node "${target}"`;
+    hooks.push({ event: definition.event, path: relative, command, form: 'path' });
+    settingsHooks[definition.event] ??= [];
+    settingsHooks[definition.event].push({
+      matcher: definition.matcher,
+      hooks: [{ type: 'command', command }],
+    });
+  }
+  await fs.writeFile(host.settingsPath, JSON.stringify({ foreign: true, hooks: settingsHooks }));
+  const currentPackage = await packageInfo();
+  const legacyPath = legacyInstallRecordPath(host);
+  await fs.mkdir(path.dirname(legacyPath), { recursive: true });
+  await fs.writeFile(legacyPath, `${JSON.stringify({
+    ...currentPackage,
+    installedAt: '2026-08-01T10:00:00.000Z',
+    mode: 'copy',
+    files: oldFiles,
+    fingerprints,
+    hooks,
+  }, null, 2)}\n`);
+
+  const result = await update({ host, force: true });
+  assert.equal(result.exitCode, 0);
+  await assert.rejects(() => fs.access(legacyPath), { code: 'ENOENT' });
+  for (const relative of oldFiles) {
+    await assert.rejects(() => fs.access(path.join(host.root, relative)), { code: 'ENOENT' });
+  }
+  const migrated = await readInstallRecord(host);
+  assert.ok(migrated.files.some((file) => file.root === 'brand'));
+  const settings = JSON.parse(await fs.readFile(host.settingsPath, 'utf8'));
+  assert.equal(settings.foreign, true);
+  assert.equal(JSON.stringify(settings).includes(path.join(host.root, oldFiles[1])), false);
+
+  const repeat = await update({ host });
+  assert.deepEqual(repeat, { exitCode: 0, output: 'codex-bridge is up to date' });
+  await assert.rejects(() => fs.access(legacyPath), { code: 'ENOENT' });
 });
 
 test('a manually modified file stops update without changing the file or record', async (t) => {
   const { host } = await fixture(t);
   await install({ host });
   const changed = (await buildInstallPlan(host))[0];
-  const recordPath = path.join(host.agentsDir, '.codex-bridge-install.json');
+  const recordPath = installRecordPath(host);
   const recordBefore = await fs.readFile(recordPath, 'utf8');
   await fs.writeFile(changed.target, 'manual change\n');
   const result = await update({ host });
   assert.equal(result.exitCode, 1);
-  assert.match(result.output, new RegExp(changed.relativeToHost));
+  assert.match(result.output, new RegExp(`${changed.root}/${changed.relativeToRoot}`));
   assert.match(result.output, /--force/);
   assert.equal(await fs.readFile(changed.target, 'utf8'), 'manual change\n');
   assert.equal(await fs.readFile(recordPath, 'utf8'), recordBefore);
@@ -157,42 +225,43 @@ test('--force overwrites a manually modified file', async (t) => {
   await fs.writeFile(changed.target, 'manual change\n');
   const result = await update({ host, force: true });
   assert.equal(result.exitCode, 0);
-  assert.equal(await targetMatches(changed, host.agentsDir), true);
+  assert.equal(await targetMatches(changed, host.brandRoot), true);
 });
 
 test('a missing file stops update then --force restores it', async (t) => {
   const { host } = await fixture(t);
   await install({ host });
   const missing = (await buildInstallPlan(host))[0];
-  const recordPath = path.join(host.agentsDir, '.codex-bridge-install.json');
+  const recordPath = installRecordPath(host);
   const recordBefore = await fs.readFile(recordPath, 'utf8');
   await fs.rm(missing.target);
   const refused = await update({ host });
   assert.equal(refused.exitCode, 1);
-  assert.match(refused.output, new RegExp(missing.relativeToHost));
+  assert.match(refused.output, new RegExp(`${missing.root}/${missing.relativeToRoot}`));
   assert.equal(await fs.readFile(recordPath, 'utf8'), recordBefore);
   const forced = await update({ host, force: true });
   assert.equal(forced.exitCode, 0);
-  assert.equal(await targetMatches(missing, host.agentsDir), true);
+  assert.equal(await targetMatches(missing, host.brandRoot), true);
 });
 
 test('a matching orphan is removed from the host and rewritten record', async (t) => {
   const { root, host } = await fixture(t);
   const oldPackage = await packageFixture(root, 'old-package', { extraFile: 'obsolete.txt' });
   await install({ host, packageRoot: oldPackage });
-  const orphan = (await readInstallRecord(host)).files.find((relative) => relative.endsWith('obsolete.txt'));
+  const orphan = (await readInstallRecord(host)).files.find((file) => file.path.endsWith('obsolete.txt'));
   const result = await update({ host });
   assert.equal(result.exitCode, 0);
-  await assert.rejects(() => fs.access(path.join(host.root, orphan)), { code: 'ENOENT' });
-  assert.equal((await readInstallRecord(host)).files.includes(orphan), false);
+  await assert.rejects(() => fs.access(recordTarget(host, orphan)), { code: 'ENOENT' });
+  assert.equal((await readInstallRecord(host)).files.some((file) =>
+    file.root === orphan.root && file.path === orphan.path), false);
 });
 
 test('a modified orphan is reported and preserved without --force', async (t) => {
   const { root, host } = await fixture(t);
   const oldPackage = await packageFixture(root, 'old-package', { extraFile: 'obsolete.txt' });
   await install({ host, packageRoot: oldPackage });
-  const orphan = (await readInstallRecord(host)).files.find((relative) => relative.endsWith('obsolete.txt'));
-  const target = path.join(host.root, orphan);
+  const orphan = (await readInstallRecord(host)).files.find((file) => file.path.endsWith('obsolete.txt'));
+  const target = recordTarget(host, orphan);
   await fs.writeFile(target, 'manual orphan\n');
   const result = await update({ host });
   assert.equal(result.exitCode, 1);
@@ -205,7 +274,7 @@ test('a record without fingerprints treats differing files as modified and expla
   const { host } = await fixture(t);
   await install({ host });
   const changed = (await buildInstallPlan(host))[0];
-  const recordPath = path.join(host.agentsDir, '.codex-bridge-install.json');
+  const recordPath = installRecordPath(host);
   const legacy = JSON.parse(await fs.readFile(recordPath, 'utf8'));
   delete legacy.fingerprints;
   await fs.writeFile(recordPath, `${JSON.stringify(legacy, null, 2)}\n`);
@@ -217,17 +286,23 @@ test('a record without fingerprints treats differing files as modified and expla
 });
 
 test('--dry-run reports future actions without changing files, record, or settings', async (t) => {
-  const { host, changed } = await installOutdated(t);
-  const recordPath = path.join(host.agentsDir, '.codex-bridge-install.json');
+  const { host } = await installOutdated(t);
+  const installed = await readInstallRecord(host);
+  const recordPath = installRecordPath(host);
   const before = {
-    file: await fs.readFile(changed.target),
+    files: await Promise.all(installed.files.map(async (file) => [
+      file,
+      await fs.readFile(recordTarget(host, file)),
+    ])),
     record: await fs.readFile(recordPath),
     settings: await fs.readFile(host.settingsPath),
   };
   const result = await update({ host, dryRun: true });
   assert.equal(result.exitCode, 0);
   assert.match(result.output, /Would update/);
-  assert.deepEqual(await fs.readFile(changed.target), before.file);
+  for (const [file, content] of before.files) {
+    assert.deepEqual(await fs.readFile(recordTarget(host, file)), content);
+  }
   assert.deepEqual(await fs.readFile(recordPath), before.record);
   assert.deepEqual(await fs.readFile(host.settingsPath), before.settings);
 });
@@ -251,10 +326,10 @@ test('a record that claims a run artifact is refused, not obeyed', async (t) => 
   const artifact = path.join(host.root, 'codex-runs', 'run.json');
   await fs.mkdir(path.dirname(artifact), { recursive: true });
   await fs.writeFile(artifact, 'keep\n');
-  const recordPath = path.join(host.agentsDir, '.codex-bridge-install.json');
+  const recordPath = installRecordPath(host);
   const record = JSON.parse(await fs.readFile(recordPath, 'utf8'));
-  record.files.push('codex-runs/run.json');
-  record.fingerprints['codex-runs/run.json'] = await fileFingerprint(artifact);
+  record.files.push({ root: 'claude', path: 'codex-runs/run.json' });
+  record.fingerprints.claude['codex-runs/run.json'] = await fileFingerprint(artifact);
   await fs.writeFile(recordPath, `${JSON.stringify(record, null, 2)}\n`);
   await assert.rejects(update({ host, force: true }), /must not name run artifacts/);
   assert.equal(await fs.readFile(artifact, 'utf8'), 'keep\n');

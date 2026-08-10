@@ -25,7 +25,7 @@ async function createWorkingRun(root, name, { heartbeat = true } = {}) {
 test('doctor warns in color with the configured automatic cleanup age', async (t) => {
   const { host } = await installedFixture(t);
   await fs.writeFile(
-    path.join(host.agentsDir, 'run-config.json'),
+    host.brandConfigPath,
     JSON.stringify({ retention: { enabled: true, days: 7 } }),
   );
 
@@ -40,7 +40,7 @@ test('doctor warns in color with the configured automatic cleanup age', async (t
 test('doctor reports disabled cleanup without warning color', async (t) => {
   const { host } = await installedFixture(t);
   await fs.writeFile(
-    path.join(host.agentsDir, 'run-config.json'),
+    host.brandConfigPath,
     JSON.stringify({ retention: { enabled: false, days: 'not read' } }),
   );
 

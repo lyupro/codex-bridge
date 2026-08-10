@@ -10,7 +10,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { resolveHost } from '../../cli/hosts.mjs';
-import { HOOK_DEFINITIONS, writeInstallRecord } from '../../cli/manifest.mjs';
+import { HOOK_DEFINITIONS, recordTarget, writeInstallRecord } from '../../cli/manifest.mjs';
 
 export const ownPackage = { name: '@lyupro/codex-bridge', version: '0.1.0' };
 export const codexProbe = () => ({ available: true, value: 'codex-cli 1.2.3' });
@@ -18,25 +18,24 @@ export const codexProbe = () => ({ available: true, value: 'codex-cli 1.2.3' });
 export async function hostFixture(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-doctor-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
-  return resolveHost({ host: root, codexHome: path.join(root, 'codex-home') });
+  return resolveHost({
+    host: root,
+    codexHome: path.join(root, 'codex-home'),
+    brandRoot: path.join(root, 'brand'),
+  });
 }
 
 export async function installedFixture(t) {
   const host = await hostFixture(t);
   const files = [
-    'agents/codex/run-codex.mjs',
-    'agents/codex/required-inputs.mjs',
-    'agents/codex/hooks/reply-guard.mjs',
-    'agents/codex/hooks/order-gate.mjs',
-    'agents/codex/hooks/live-runs.mjs',
-    'agents/codex/hooks/worktree-lock.mjs',
-    'agents/codex/hooks/prune-guard.mjs',
-    'agents/codex/hooks/stop-guard.mjs',
+    { root: 'claude', path: 'agents/codex/run-codex.mjs' },
+    { root: 'claude', path: 'agents/codex/required-inputs.mjs' },
+    ...HOOK_DEFINITIONS.map(({ file }) => ({ root: 'brand', path: `hooks/${file}` })),
   ];
-  for (const relative of files) {
-    const target = path.join(host.root, relative);
+  for (const file of files) {
+    const target = recordTarget(host, file);
     await fs.mkdir(path.dirname(target), { recursive: true });
-    await fs.writeFile(target, relative);
+    await fs.writeFile(target, file.path);
   }
   const record = {
     ...ownPackage,
@@ -44,11 +43,13 @@ export async function installedFixture(t) {
     mode: 'copy',
     files,
     hooks: [
-      { event: 'SubagentStop', path: 'agents/codex/hooks/reply-guard.mjs' },
-      { event: 'PreToolUse', path: 'agents/codex/hooks/order-gate.mjs' },
-      { event: 'PreToolUse', path: 'agents/codex/hooks/worktree-lock.mjs' },
-      { event: 'PreToolUse', path: 'agents/codex/hooks/prune-guard.mjs' },
-      { event: 'PreToolUse', path: 'agents/codex/hooks/stop-guard.mjs' },
+      ...HOOK_DEFINITIONS.map(({ event, file }) => ({
+        event,
+        root: 'brand',
+        path: `hooks/${file}`,
+        command: `node "${path.join(host.brandRoot, 'hooks', file)}"`,
+        form: 'path',
+      })),
     ],
   };
   await writeInstallRecord(host, record);
@@ -61,7 +62,7 @@ export async function installedFixture(t) {
     hooks[definition.event] ??= [];
     hooks[definition.event].push({
       matcher: definition.matcher,
-      hooks: [{ type: 'command', command: `node "${path.join(host.root, recorded.path)}"` }],
+      hooks: [{ type: 'command', command: recorded.command }],
     });
   }
   await fs.writeFile(host.settingsPath, JSON.stringify({ hooks }));

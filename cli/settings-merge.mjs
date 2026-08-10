@@ -1,5 +1,6 @@
 /** Merges and removes named codex-bridge hooks without disturbing host settings. */
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { existsSync, statSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -10,6 +11,49 @@ const settingsRuns = new AsyncLocalStorage();
 
 export function commandFor(guardPath) {
   return `node "${path.resolve(guardPath)}"`;
+}
+
+export function shortCommandFor(name) {
+  return `codex-bridge hook ${name}`;
+}
+
+function pathValue(env) {
+  const key = Object.keys(env).find((entry) => entry.toLowerCase() === 'path');
+  return key ? env[key] : '';
+}
+
+export function commandReachable(name = 'codex-bridge', env = process.env) {
+  const extensions = process.platform === 'win32'
+    ? (env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';')
+    : [''];
+  return pathValue(env).split(path.delimiter).filter(Boolean).some((directory) =>
+    extensions.some((extension) => {
+      const candidate = path.join(directory, `${name}${extension}`);
+      try {
+        return existsSync(candidate) && statSync(candidate).isFile();
+      } catch {
+        return false;
+      }
+    }));
+}
+
+export function hookRegistration(name, target, env = process.env) {
+  if (commandReachable('codex-bridge', env)) {
+    return {
+      command: shortCommandFor(name),
+      form: 'short',
+      reason: 'codex-bridge is reachable from PATH; the global command will execute',
+    };
+  }
+  return {
+    command: commandFor(target),
+    form: 'path',
+    reason: 'codex-bridge is not reachable from PATH; the installed copy will execute',
+  };
+}
+
+export function commandForm(command) {
+  return command.startsWith('codex-bridge hook ') ? 'short' : 'path';
 }
 
 function normalizeSpec(specOrPath) {
@@ -26,6 +70,9 @@ function normalizeSpec(specOrPath) {
     event: specOrPath.event,
     matcher: specOrPath.matcher,
     command: specOrPath.command,
+    alternateCommands: Array.isArray(specOrPath.alternateCommands)
+      ? specOrPath.alternateCommands.filter((command) => typeof command === 'string')
+      : [],
   };
 }
 
@@ -55,8 +102,10 @@ function groupHooks(group) {
   return Array.isArray(group?.hooks) ? group.hooks : [];
 }
 
-const hasOwnCommand = (group, command) =>
-  groupHooks(group).some((hook) => hook?.type === 'command' && hook.command === command);
+const hasOwnCommand = (group, commands) => {
+  const expected = Array.isArray(commands) ? commands : [commands];
+  return groupHooks(group).some((hook) => hook?.type === 'command' && expected.includes(hook.command));
+};
 
 /**
  * Presence is decided by the command, not by the matcher it currently sits under.
@@ -71,9 +120,17 @@ const hasOwnCommand = (group, command) =>
 export async function inspectHook(settingsPath, specOrPath) {
   const state = await readSettings(settingsPath);
   const spec = normalizeSpec(specOrPath);
-  const present = groups(state.settings, spec.event)
-    .some((group) => hasOwnCommand(group, spec.command));
-  return { ...state, ...spec, present };
+  const commands = [spec.command, ...spec.alternateCommands];
+  let matchedCommand;
+  for (const group of groups(state.settings, spec.event)) {
+    const hook = groupHooks(group).find((entry) =>
+      entry?.type === 'command' && commands.includes(entry.command));
+    if (hook) {
+      matchedCommand = hook.command;
+      break;
+    }
+  }
+  return { ...state, ...spec, present: Boolean(matchedCommand), matchedCommand };
 }
 
 function backupName(settingsPath) {
@@ -173,10 +230,11 @@ export async function removeHook(settingsPath, specOrPath, { createdGroup = fals
     // sits in another group.
     for (let index = eventGroups.length - 1; index >= 0; index -= 1) {
       const group = eventGroups[index];
-      if (!hasOwnCommand(group, spec.command)) continue;
+      const commands = [spec.command, ...spec.alternateCommands];
+      if (!hasOwnCommand(group, commands)) continue;
       if (!Array.isArray(group?.hooks)) continue;
       group.hooks = group.hooks.filter((hook) =>
-        !(hook?.type === 'command' && hook.command === spec.command));
+        !(hook?.type === 'command' && commands.includes(hook.command)));
       if (createdGroup && group.hooks.length === 0) eventGroups.splice(index, 1);
     }
     await atomicWrite(settingsPath, settings, state);

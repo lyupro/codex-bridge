@@ -6,7 +6,12 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { diagnose, renderDoctor } from '../../cli/doctor.mjs';
-import { fileFingerprint, HOOK_DEFINITIONS, writeInstallRecord } from '../../cli/manifest.mjs';
+import {
+  fileFingerprint,
+  HOOK_DEFINITIONS,
+  recordTarget,
+  writeInstallRecord,
+} from '../../cli/manifest.mjs';
 import { addPermissionRules } from '../../cli/permissions.mjs';
 import { RULES_REGISTRY_NAME } from '../../cli/rules-owners.mjs';
 import { normalizeRepoPath, PROJECT_MARKER } from '../../src/runner/project-dir.mjs';
@@ -50,7 +55,7 @@ test('complete installation with all files exits zero', async (t) => {
   // lock's matcher as pointing at order-gate.mjs, which is exactly the lie an operator reading
   // doctor cannot catch.
   for (const file of ['order-gate.mjs', 'worktree-lock.mjs', 'prune-guard.mjs', 'stop-guard.mjs']) {
-    assert.equal(preToolUse.filter((item) => item.value.endsWith(file)).length, 1);
+    assert.equal(preToolUse.filter((item) => item.value.includes(file)).length, 1);
   }
 });
 
@@ -89,7 +94,7 @@ test('doctor names the copy of the package that answered', async (t) => {
 
 test('doctor reports an optional host conventions file when it is present', async (t) => {
   const { host } = await installedFixture(t);
-  const file = path.join(host.agentsDir, 'conventions.md');
+  const file = host.brandConventionsPath;
   await fs.writeFile(file, '# operator rules\n');
 
   const result = await diagnose({ host, codexProbe, currentPackage: ownPackage });
@@ -103,7 +108,7 @@ test('doctor reports an optional host conventions file when it is present', asyn
 
 test('doctor warns when the host conventions file is empty', async (t) => {
   const { host } = await installedFixture(t);
-  const file = path.join(host.agentsDir, 'conventions.md');
+  const file = host.brandConventionsPath;
   await fs.writeFile(file, ' \n\t');
 
   const result = await diagnose({ host, codexProbe, currentPackage: ownPackage });
@@ -213,27 +218,27 @@ test('manually modified rules warn without failing diagnosis', async (t) => {
 
 test('missing recorded file is a failure', async (t) => {
   const { host, record } = await installedFixture(t);
-  await fs.rm(path.join(host.root, record.files[0]));
+  await fs.rm(recordTarget(host, record.files[0]));
   const result = await diagnose({ host, codexProbe, currentPackage: ownPackage });
   assert.equal(result.exitCode, 1);
-  assert.deepEqual(result.missingFiles, [record.files[0]]);
+  assert.deepEqual(result.missingFiles, [`${record.files[0].root}/${record.files[0].path}`]);
   assert.equal(result.checks.find((item) => item.key === 'files').status, 'fail');
 });
 
 test('a directory at a recorded file path is treated as missing', async (t) => {
   const { host, record } = await installedFixture(t);
-  const target = path.join(host.root, record.files[0]);
+  const target = recordTarget(host, record.files[0]);
   await fs.rm(target);
   await fs.mkdir(target);
   const result = await diagnose({ host, codexProbe, currentPackage: ownPackage });
   assert.equal(result.exitCode, 1);
-  assert.deepEqual(result.missingFiles, [record.files[0]]);
+  assert.deepEqual(result.missingFiles, [`${record.files[0].root}/${record.files[0].path}`]);
 });
 
 test('hook command must reference the exact installed guard path', async (t) => {
   const { host, record } = await installedFixture(t);
   const replyHook = record.hooks.find((hook) => hook.event === 'SubagentStop');
-  const wrong = path.join(host.root, replyHook.path, 'reply-guard.mjs');
+  const wrong = path.join(host.brandRoot, replyHook.path, 'reply-guard.mjs');
   await fs.writeFile(host.settingsPath, JSON.stringify({
     hooks: {
       SubagentStop: [{

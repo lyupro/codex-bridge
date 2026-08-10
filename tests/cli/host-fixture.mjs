@@ -9,7 +9,11 @@ export async function fixture(t) {
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   return {
     root,
-    host: resolveHost({ host: path.join(root, 'host'), codexHome: path.join(root, 'codex-home') }),
+    host: resolveHost({
+      host: path.join(root, 'host'),
+      codexHome: path.join(root, 'codex-home'),
+      brandRoot: path.join(root, 'brand'),
+    }),
   };
 }
 

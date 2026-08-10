@@ -4,17 +4,18 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { replacePlaceholders } from './manifest.mjs';
 
-export async function plannedContent(item, agentsDir) {
+export async function plannedContent(item, installationRoot) {
+  const replacementRoot = item.installationRoot ?? installationRoot;
   const source = await fs.readFile(item.source);
   if (item.processing === 'copy') return source;
   if (item.processing === 'placeholders') {
-    return Buffer.from(replacePlaceholders(source.toString('utf8'), agentsDir));
+    return Buffer.from(replacePlaceholders(source.toString('utf8'), replacementRoot));
   }
   throw new Error(`unknown install processing "${item.processing}"`);
 }
 
-export async function targetMatches(item, agentsDir) {
-  const expected = await plannedContent(item, agentsDir);
+export async function targetMatches(item, installationRoot) {
+  const expected = await plannedContent(item, installationRoot);
   try {
     const actual = await fs.readFile(item.target);
     return actual.equals(expected);
@@ -24,8 +25,8 @@ export async function targetMatches(item, agentsDir) {
   }
 }
 
-export async function copyPlannedFile(item, agentsDir) {
-  const content = await plannedContent(item, agentsDir);
+export async function copyPlannedFile(item, installationRoot) {
+  const content = await plannedContent(item, installationRoot);
   await fs.mkdir(path.dirname(item.target), { recursive: true });
   const temporary = path.join(path.dirname(item.target), `.${path.basename(item.target)}.${randomUUID()}.tmp`);
   try {

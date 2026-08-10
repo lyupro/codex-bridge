@@ -8,12 +8,16 @@ import { resolveHost } from '../../cli/hosts.mjs';
 import { install } from '../../cli/install.mjs';
 import { uninstall } from '../../cli/uninstall.mjs';
 import { update } from '../../cli/update.mjs';
-import { readInstallRecord, seedPlan } from '../../cli/manifest.mjs';
+import { installRecordPath, readInstallRecord, seedPlan } from '../../cli/manifest.mjs';
 
 async function fixture(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-seed-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
-  return resolveHost({ host: path.join(root, 'host'), codexHome: path.join(root, 'codex-home') });
+  return resolveHost({
+    host: path.join(root, 'host'),
+    codexHome: path.join(root, 'codex-home'),
+    brandRoot: path.join(root, 'brand'),
+  });
 }
 
 const CONFIGURED = '{\n  "hooks": false,\n  "plugins": false,\n  "models": {"build": {"model": "m", "effort": "max"}}\n}\n';
@@ -22,11 +26,11 @@ test('install seeds the config once and never records it as a package file', asy
   const host = await fixture(t);
   await install({ host });
   const [seed] = seedPlan(host);
-  assert.equal(path.basename(seed.target), 'run-config.json');
+  assert.equal(path.basename(seed.target), 'config.json');
   assert.ok(await fs.readFile(seed.target, 'utf8'));
   const record = await readInstallRecord(host);
-  const relative = path.relative(host.root, seed.target).split(path.sep).join('/');
-  assert.equal(record.files.includes(relative), false);
+  const relative = path.relative(host.brandRoot, seed.target).split(path.sep).join('/');
+  assert.equal(record.files.some((file) => file.root === 'brand' && file.path === relative), false);
 });
 
 test('a configured host keeps its config through install --force', async (t) => {
@@ -53,11 +57,11 @@ test('a record from before seeding does not make update delete the config', asyn
   await install({ host });
   const [seed] = seedPlan(host);
   await fs.writeFile(seed.target, CONFIGURED);
-  const recordPath = path.join(host.agentsDir, '.codex-bridge-install.json');
+  const recordPath = installRecordPath(host);
   const legacy = JSON.parse(await fs.readFile(recordPath, 'utf8'));
-  const relative = path.relative(host.root, seed.target).split(path.sep).join('/');
-  legacy.files.push(relative);
-  legacy.fingerprints[relative] = 'a'.repeat(64);
+  const relative = path.relative(host.brandRoot, seed.target).split(path.sep).join('/');
+  legacy.files.push({ root: 'brand', path: relative });
+  legacy.fingerprints.brand[relative] = 'a'.repeat(64);
   await fs.writeFile(recordPath, `${JSON.stringify(legacy, null, 2)}\n`);
   const result = await update({ host, force: true });
   assert.equal(result.exitCode, 0);

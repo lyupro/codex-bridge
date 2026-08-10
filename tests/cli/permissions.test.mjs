@@ -17,6 +17,7 @@ async function fixture(t) {
   const host = resolveHost({
     host: path.join(root, 'host'),
     codexHome: path.join(root, 'codex-home'),
+    brandRoot: path.join(root, 'brand'),
   });
   await fs.mkdir(host.root, { recursive: true });
   return { root, host };

@@ -1,14 +1,20 @@
-/** Uninstalls only recorded codex-bridge files while preserving host data and foreign files. */
+/** Uninstalls only recorded files from both roots while preserving host data and foreign files. */
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {
   definitionForRecordedHook,
   fileFingerprint,
   installRecordPath,
+  legacyInstallRecordPath,
   readInstallRecord,
+  recordTarget,
 } from './manifest.mjs';
 import { removePermissionRules } from './permissions.mjs';
-import { commandFor, removeHook, withSettingsRun } from './settings-merge.mjs';
+import {
+  commandFor,
+  removeHook,
+  withSettingsRun,
+} from './settings-merge.mjs';
 import { readRulesRegistry, removeRulesOwner, remainingRulesOwners } from './rules-owners.mjs';
 
 async function removeEmpty(directory) {
@@ -37,6 +43,23 @@ function permissionOutput(host, removed, dryRun) {
   return `${verb} ${removed} permission rule ${plural} from ${host.settingsPath}.`;
 }
 
+function displayFile(file) {
+  return `${file.root}/${file.path}`;
+}
+
+function hookRemovalSpec(host, hook) {
+  const definition = definitionForRecordedHook(hook);
+  const target = recordTarget(host, hook);
+  const full = commandFor(target);
+  const short = `codex-bridge hook ${definition.name}`;
+  return {
+    event: hook.event,
+    matcher: definition.matcher,
+    command: hook.command || full,
+    alternateCommands: [full, short],
+  };
+}
+
 async function uninstallInRun({ host, dryRun = false } = {}) {
   // Preflight before removing the hook: package removal on a broken registry left the host without its watchdog.
   let registry = null;
@@ -50,13 +73,13 @@ async function uninstallInRun({ host, dryRun = false } = {}) {
   const permissionLine = permissionOutput(host, permissionResult.removed, dryRun);
   const record = await readInstallRecord(host);
   const preservation = `Run artifacts in ${path.join(host.root, 'codex-runs')} and the run `
-    + `configuration in ${path.join(host.agentsDir, 'run-config.json')} are preserved.`;
+    + `configuration in ${host.brandConfigPath} are preserved.`;
   if (!record) {
     return { exitCode: 1, output: `${permissionLine}\ncodex-bridge is not installed.\n${preservation}` };
   }
 
   if (dryRun) {
-    const lines = [permissionLine, ...record.files.map((file) => `Would remove ${file}`)];
+    const lines = [permissionLine, ...record.files.map((file) => `Would remove ${displayFile(file)}`)];
     if (record.rules) {
       if (registryError) {
         lines.push(`Would leave ${record.rules.path} because the rules ownership registry is invalid; ownership is unknown.`);
@@ -81,19 +104,15 @@ async function uninstallInRun({ host, dryRun = false } = {}) {
       const definition = definitionForRecordedHook(hook);
       lines.push(`Would remove the ${hook.event} hook for matcher ${definition.matcher}.`);
     }
-    lines.push('Would remove the installation record.');
+    lines.push('Would remove the installation record from the brand root.');
     lines.push(preservation);
     return { exitCode: 0, output: lines.join('\n') };
   }
 
   for (const hook of record.hooks) {
-    const definition = definitionForRecordedHook(hook);
-    const target = path.join(host.root, hook.path);
-    await removeHook(host.settingsPath, {
-      event: hook.event,
-      matcher: definition.matcher,
-      command: commandFor(target),
-    }, { createdGroup: hook.createdGroup === true });
+    await removeHook(host.settingsPath, hookRemovalSpec(host, hook), {
+      createdGroup: hook.createdGroup === true,
+    });
   }
   let ownership = null;
   if (!registryError) {
@@ -123,18 +142,22 @@ async function uninstallInRun({ host, dryRun = false } = {}) {
       }
     }
   }
-  for (const relative of record.files) {
-    const target = path.join(host.root, relative);
+  for (const file of record.files) {
+    const target = recordTarget(host, file);
     await fs.rm(target, { force: true });
-    const boundary = target.startsWith(`${host.commandsDir}${path.sep}`) ? host.commandsDir : host.agentsDir;
+    const boundary = file.root === 'brand'
+      ? host.brandRoot
+      : target.startsWith(`${host.commandsDir}${path.sep}`) ? host.commandsDir : host.agentsDir;
     await removeEmptyParents(target, boundary);
   }
   await removeEmpty(host.commandsDir);
   await fs.rm(installRecordPath(host), { force: true });
+  await fs.rm(legacyInstallRecordPath(host), { force: true });
   await removeEmpty(host.agentsDir);
+  await removeEmpty(host.brandRoot);
   return {
     exitCode: 0,
-    output: [`Uninstalled codex-bridge.`, permissionLine, ...rulesOutput, preservation].join('\n'),
+    output: ['Uninstalled codex-bridge.', permissionLine, ...rulesOutput, preservation].join('\n'),
   };
 }
 

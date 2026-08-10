@@ -6,7 +6,12 @@ import os from 'node:os';
 import path from 'node:path';
 import { resolveHost } from '../../cli/hosts.mjs';
 import { install } from '../../cli/install.mjs';
-import { HOOK_DEFINITIONS, readInstallRecord } from '../../cli/manifest.mjs';
+import {
+  HOOK_DEFINITIONS,
+  installRecordPath,
+  readInstallRecord,
+  recordTarget,
+} from '../../cli/manifest.mjs';
 import {
   readRulesRegistry,
   remainingRulesOwners,
@@ -41,8 +46,16 @@ test('uninstall leaves shared rules for another owner and removes them for the l
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-shared-owners-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const codexHome = path.join(root, 'codex-home');
-  const first = resolveHost({ host: path.join(root, 'first-host'), codexHome });
-  const second = resolveHost({ host: path.join(root, 'second-host'), codexHome });
+  const first = resolveHost({
+    host: path.join(root, 'first-host'),
+    codexHome,
+    brandRoot: path.join(root, 'first-brand'),
+  });
+  const second = resolveHost({
+    host: path.join(root, 'second-host'),
+    codexHome,
+    brandRoot: path.join(root, 'second-brand'),
+  });
   await install({ host: first });
   await install({ host: second });
   const rulesPath = path.join(codexHome, 'rules', 'codex-bridge.rules');
@@ -138,7 +151,7 @@ test('uninstall preserves a manually changed rules file and explains why', async
 test('uninstall accepts a legacy record without rules metadata', async (t) => {
   const { host } = await fixture(t);
   await install({ host });
-  const recordPath = path.join(host.agentsDir, '.codex-bridge-install.json');
+  const recordPath = installRecordPath(host);
   const legacy = JSON.parse(await fs.readFile(recordPath, 'utf8'));
   const rulesPath = legacy.rules.path;
   delete legacy.rules;
@@ -168,10 +181,10 @@ test('uninstall completes with a corrupt registry and preserves shared rules', a
   assert.equal(result.exitCode, 0);
   assert.match(result.output, /Left .*rules ownership registry is invalid.*ownership is unknown/i);
   assert.deepEqual(await fs.readFile(record.rules.path), await fs.readFile('src/rules/codex-bridge.rules'));
-  for (const relative of record.files) {
-    await assert.rejects(() => fs.access(path.join(host.root, relative)), { code: 'ENOENT' });
+  for (const file of record.files) {
+    await assert.rejects(() => fs.access(recordTarget(host, file)), { code: 'ENOENT' });
   }
-  await assert.rejects(() => fs.access(path.join(host.agentsDir, '.codex-bridge-install.json')), { code: 'ENOENT' });
+  await assert.rejects(() => fs.access(installRecordPath(host)), { code: 'ENOENT' });
   const settings = JSON.parse(await fs.readFile(host.settingsPath, 'utf8'));
   assert.deepEqual(settings.hooks.SubagentStop, []);
   assert.deepEqual(settings.hooks.PreToolUse, []);
@@ -192,8 +205,9 @@ test('uninstall without a record is nonzero and dry-run uninstall changes nothin
   assert.match(dry.output, /Would remove/);
   assert.deepEqual(await allFiles(installed.host.root), before);
   assert.equal((await uninstall({ host: installed.host })).exitCode, 0);
-  // The agents directory outlives an uninstall by exactly one file: the config the operator
-  // owns. Everything the package put there is gone, and the commands directory with it.
-  assert.deepEqual((await fs.readdir(installed.host.agentsDir)).sort(), ['conventions.md', 'run-config.json']);
+  // The brand root outlives an uninstall by exactly the seeded files the operator owns.
+  // Everything the package put there is gone, and the commands directory with it.
+  assert.deepEqual((await fs.readdir(installed.host.brandRoot)).sort(), ['config.json', 'conventions.md']);
+  await assert.rejects(() => fs.access(installed.host.agentsDir), { code: 'ENOENT' });
   await assert.rejects(() => fs.access(installed.host.commandsDir), { code: 'ENOENT' });
 });

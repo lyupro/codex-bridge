@@ -12,8 +12,11 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..', '..');
 const BIN = path.join(ROOT, 'bin', 'codex-bridge.mjs');
 
-function run(args) {
-  return spawnSync(process.execPath, [BIN, ...args], { encoding: 'utf8' });
+function run(args, env = {}) {
+  return spawnSync(process.execPath, [BIN, ...args], {
+    encoding: 'utf8',
+    env: { ...process.env, ...env },
+  });
 }
 
 test('importing dispatcher does not execute main', () => {
@@ -67,7 +70,10 @@ test('shared option parser rejects flags outside each command contract', () => {
 test('update flags reach the command handler', async (t) => {
   const host = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-bin-update-'));
   t.after(() => fs.rm(host, { recursive: true, force: true }));
-  const result = run(['update', '--host', host, '--scope', 'project', '--dry-run', '--force']);
+  const result = run(
+    ['update', '--host', host, '--scope', 'project', '--dry-run', '--force'],
+    { CODEX_HOME: path.join(host, 'codex-home'), CODEX_BRIDGE_HOME: path.join(host, 'brand') },
+  );
   assert.equal(result.status, 1);
   assert.match(result.stdout, /not installed/);
   assert.doesNotMatch(result.stderr, /unknown update option/);
@@ -76,7 +82,10 @@ test('update flags reach the command handler', async (t) => {
 test('doctor subcommand diagnoses only the explicit temporary host', async (t) => {
   const host = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-bin-doctor-'));
   t.after(() => fs.rm(host, { recursive: true, force: true }));
-  const result = run(['doctor', '--host', host]);
+  const result = run(
+    ['doctor', '--host', host],
+    { CODEX_HOME: path.join(host, 'codex-home'), CODEX_BRIDGE_HOME: path.join(host, 'brand') },
+  );
   assert.equal(result.status, 1);
   assert.match(result.stdout, /installation: not installed/);
   assert.match(result.stdout, new RegExp(host.replaceAll('\\', '\\\\')));

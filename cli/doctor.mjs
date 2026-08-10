@@ -9,6 +9,7 @@ import {
   readInstallRecord,
   packageInfo,
 } from './manifest.mjs';
+import { recordTarget } from './install-record.mjs';
 import { inspectPermissions } from './permissions.mjs';
 import { commandFor, inspectHook } from './settings-merge.mjs';
 import { readRulesRegistry } from './rules-owners.mjs';
@@ -44,7 +45,7 @@ function check(key, status, value) {
 
 function retentionCheck(host) {
   try {
-    const notice = retentionNotice(readRunConfig(path.join(host.agentsDir, 'run-config.json')));
+    const notice = retentionNotice(readRunConfig(host.brandConfigPath));
     return check('retention', notice.enabled ? 'warn' : 'ok', notice.text);
   } catch (err) {
     return check('retention', 'fail', `invalid configuration: ${err.message}`);
@@ -52,7 +53,7 @@ function retentionCheck(host) {
 }
 
 async function conventionsCheck(host) {
-  const file = path.join(host.agentsDir, 'conventions.md');
+  const file = host.brandConventionsPath;
   let content;
   try {
     content = await fs.readFile(file, 'utf8');
@@ -126,7 +127,25 @@ export function probeCodex() {
   return { available: true, value: (result.stdout || result.stderr).trim() };
 }
 
-async function hookChecks(host, record) {
+export function probeCodexBridge() {
+  const command = process.platform === 'win32' ? process.env.ComSpec || 'cmd.exe' : 'codex-bridge';
+  const args = process.platform === 'win32' ? ['/d', '/s', '/c', 'codex-bridge --version'] : ['--version'];
+  const result = spawnSync(command, args, { encoding: 'utf8', windowsHide: true });
+  if (result.error || result.status !== 0) {
+    return { available: false, value: (result.stderr || result.error?.message || 'not found').trim() };
+  }
+  return { available: true, value: (result.stdout || result.stderr).trim() };
+}
+
+function hookVersion(command, record, bridgeProbe) {
+  if (command.startsWith('codex-bridge hook ')) {
+    const result = bridgeProbe();
+    return result.available ? `global command ${result.value}` : `global command unavailable (${result.value})`;
+  }
+  return `installed copy ${record.name}@${record.version}`;
+}
+
+async function hookChecks(host, record, bridgeProbe) {
   return Promise.all(HOOK_DEFINITIONS.map(async (definition) => {
     const key = `hook:${definition.event}`;
     if (!record) return check(key, 'warn', 'cannot check before installation');
@@ -139,17 +158,27 @@ async function hookChecks(host, record) {
     if (!recorded) {
       return check(key, 'warn', `${definition.event} hook is not present in the installation record`);
     }
-    const expected = path.resolve(host.root, recorded.path);
+    const expected = recordTarget(host, recorded);
+    const fullCommand = commandFor(expected);
+    const shortCommand = `codex-bridge hook ${definition.name}`;
     try {
       const state = await inspectHook(host.settingsPath, {
         event: definition.event,
         matcher: definition.matcher,
-        command: commandFor(expected),
+        command: recorded.command || fullCommand,
+        alternateCommands: [fullCommand, shortCommand],
       });
       if (state.present) {
-        return check(key, 'ok', `${definition.event} matcher ${definition.matcher} -> ${expected}`);
+        const command = state.matchedCommand || recorded.command || fullCommand;
+        const form = command.startsWith('codex-bridge hook ') ? 'short' : 'path';
+        const reason = form === 'short'
+          ? 'PATH command uses the globally installed package'
+          : 'full path uses the copy placed by the last install';
+        return check(key, 'ok', `${definition.event} matcher ${definition.matcher} -> ${expected} (${form} command; ${reason}; ${hookVersion(command, record, bridgeProbe)})`);
       }
-      return check(key, 'warn', `${definition.event} matcher ${definition.matcher} does not point to the installed ${definition.file}`);
+      const command = recorded.command || fullCommand;
+      const form = command.startsWith('codex-bridge hook ') ? 'short' : 'path';
+      return check(key, 'warn', `${definition.event} matcher ${definition.matcher} does not point to the installed ${definition.file} (${form} command; ${hookVersion(command, record, bridgeProbe)})`);
     } catch (err) {
       const value = err.code === 'ENOENT' ? 'settings.json is absent' : `settings.json is invalid: ${err.message}`;
       return check(key, 'warn', `${definition.event} hook: ${value}`);
@@ -192,7 +221,7 @@ async function permissionsCheck(host) {
   }
 }
 
-export async function diagnose({ host, codexProbe = probeCodex, currentPackage } = {}) {
+export async function diagnose({ host, codexProbe = probeCodex, bridgeProbe = probeCodexBridge, currentPackage } = {}) {
   const checks = [sourceCheck()];
   const hostExists = await exists(host.root);
   checks.push(check('host', hostExists ? 'ok' : 'warn', `${host.root} (${host.scope}, ${hostExists ? 'exists' : 'absent'})`));
@@ -218,8 +247,8 @@ export async function diagnose({ host, codexProbe = probeCodex, currentPackage }
 
   const missingFiles = [];
   if (record) {
-    for (const relative of record.files) {
-      if (!(await isFile(path.join(host.root, relative)))) missingFiles.push(relative);
+    for (const file of record.files) {
+      if (!(await isFile(recordTarget(host, file)))) missingFiles.push(`${file.root}/${file.path}`);
     }
   }
   checks.push(check(
@@ -230,7 +259,7 @@ export async function diagnose({ host, codexProbe = probeCodex, currentPackage }
   const rules = await rulesCheck(host, record);
   checks.push(rules);
   checks.push(await permissionsCheck(host));
-  checks.push(...await hookChecks(host, record));
+  checks.push(...await hookChecks(host, record, bridgeProbe));
   const retention = retentionCheck(host);
   checks.push(retention);
   const conventions = await conventionsCheck(host);

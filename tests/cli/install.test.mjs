@@ -7,7 +7,14 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { resolveHost } from '../../cli/hosts.mjs';
 import { install } from '../../cli/install.mjs';
-import { buildInstallPlan, HOOK_DEFINITIONS, readInstallRecord } from '../../cli/manifest.mjs';
+import {
+  buildInstallPlan,
+  HOOK_DEFINITIONS,
+  installRecordPath,
+  legacyInstallRecordPath,
+  readInstallRecord,
+  recordTarget,
+} from '../../cli/manifest.mjs';
 import { RULES_REGISTRY_NAME } from '../../cli/rules-owners.mjs';
 import { uninstall } from '../../cli/uninstall.mjs';
 import { update } from '../../cli/update.mjs';
@@ -39,10 +46,10 @@ test('a rendered file is fingerprinted as written, not as shipped', async (t) =>
   const { host } = await fixture(t);
   await install({ host });
   const record = await readInstallRecord(host);
-  const relative = record.files.find((file) => file.endsWith('codex-build.md'));
+  const file = record.files.find((entry) => entry.path.endsWith('codex-build.md'));
   const hash = async (target) => createHash('sha256').update(await fs.readFile(target)).digest('hex');
-  assert.equal(record.fingerprints[relative], await hash(path.join(host.root, relative)));
-  assert.notEqual(record.fingerprints[relative], await hash('src/agents/codex-build.md'));
+  assert.equal(record.fingerprints[file.root][file.path], await hash(recordTarget(host, file)));
+  assert.notEqual(record.fingerprints[file.root][file.path], await hash('src/agents/codex-build.md'));
 });
 
 test('install copies the exact plan, expands placeholders, and writes a valid record', async (t) => {
@@ -51,8 +58,7 @@ test('install copies the exact plan, expands placeholders, and writes a valid re
   const result = await install({ host });
   assert.equal(result.exitCode, 0);
   const record = await readInstallRecord(host);
-  assert.deepEqual(record.files, plan.map((item) => item.relativeToHost));
-  assert.deepEqual(Object.keys(record.fingerprints), record.files);
+  assert.deepEqual(record.files, plan.map((item) => ({ root: item.root, path: item.relativeToRoot })));
   assert.equal(record.rules.path, path.join(host.codexRulesDir, 'codex-bridge.rules'));
   const rulesBytes = await fs.readFile(record.rules.path);
   assert.deepEqual(rulesBytes, await fs.readFile('src/rules/codex-bridge.rules'));
@@ -71,22 +77,34 @@ test('install copies the exact plan, expands placeholders, and writes a valid re
     assert.ok(settings.hooks[definition.event].some((group) => group.matcher === definition.matcher));
   }
   const installed = await allFiles(host.root);
-  for (const file of record.files) assert.ok(installed.includes(file), file);
-  await fs.access(path.join(host.agentsDir, '.codex-bridge-install.json'));
+  for (const file of record.files) {
+    await fs.access(recordTarget(host, file));
+  }
+  await fs.access(installRecordPath(host));
   assert.ok(installed.includes('settings.json'));
   for (const item of plan.filter((entry) => entry.processing === 'placeholders')) {
     const content = await fs.readFile(item.target, 'utf8');
     const source = await fs.readFile(item.source, 'utf8');
-    assert.equal(record.fingerprints[item.relativeToHost], createHash('sha256').update(content).digest('hex'));
+    assert.equal(record.fingerprints[item.root][item.relativeToRoot], createHash('sha256').update(content).digest('hex'));
     assert.doesNotMatch(content, /\{\{CODEX_BRIDGE_DIR\}\}/);
     if (source.includes('{{CODEX_BRIDGE_DIR}}')) {
-      assert.ok(content.includes(host.agentsDir.replaceAll('\\', '/')));
-      assert.notEqual(record.fingerprints[item.relativeToHost], createHash('sha256').update(source).digest('hex'));
+      assert.ok(content.includes(host.brandRunnerDir.replaceAll('\\', '/')));
+      assert.notEqual(record.fingerprints[item.root][item.relativeToRoot], createHash('sha256').update(source).digest('hex'));
     }
   }
 });
 
-test('fresh install seeds conventions and update preserves an edited copy', async (t) => { const { host } = await fixture(t); await install({ host }); const target = path.join(host.agentsDir, 'conventions.md'); assert.deepEqual(await fs.readFile(target), await fs.readFile('src/conventions.md')); const edited = '# host-specific rules\n\nKeep this wording.\n'; await fs.writeFile(target, edited); assert.equal((await update({ host })).exitCode, 0); assert.equal(await fs.readFile(target, 'utf8'), edited); });
+test('fresh install seeds conventions and update preserves an edited copy', async (t) => {
+  const { host } = await fixture(t);
+  await install({ host });
+  const target = host.brandConventionsPath;
+  assert.deepEqual(await fs.readFile(target), await fs.readFile('src/conventions.md'));
+  const edited = '# host-specific rules\n\nKeep this wording.\n';
+  await fs.writeFile(target, edited);
+  assert.equal((await update({ host })).exitCode, 0);
+  assert.equal(await fs.readFile(target, 'utf8'), edited);
+});
+
 test('a corrupt rules registry aborts install before writing any files', async (t) => {
   const { root, host } = await fixture(t);
   await fs.mkdir(host.codexRulesDir, { recursive: true });
@@ -111,6 +129,7 @@ test('install and update keep one normalized owner without duplicates', async (t
   const host = resolveHost({
     host: path.join(root, 'Host'),
     codexHome: path.join(root, 'codex-home'),
+    brandRoot: path.join(root, 'brand'),
   });
   await install({ host });
   assert.deepEqual(await readRulesRegistry(host), {
@@ -129,19 +148,22 @@ test('install and update keep one normalized owner without duplicates', async (t
 test('install upgrades a legacy record with host fingerprints', async (t) => {
   const { host } = await fixture(t);
   await install({ host });
-  const recordPath = path.join(host.agentsDir, '.codex-bridge-install.json');
+  const recordPath = installRecordPath(host);
+  const legacyPath = legacyInstallRecordPath(host);
   const legacy = JSON.parse(await fs.readFile(recordPath, 'utf8'));
   delete legacy.fingerprints;
-  await fs.writeFile(recordPath, `${JSON.stringify(legacy, null, 2)}\n`);
+  await fs.rm(recordPath);
+  await fs.writeFile(legacyPath, `${JSON.stringify(legacy, null, 2)}\n`);
   const result = await install({ host });
   assert.equal(result.exitCode, 0);
   assert.doesNotMatch(result.output, /nothing to do/);
   const upgraded = await readInstallRecord(host);
-  assert.deepEqual(Object.keys(upgraded.fingerprints), upgraded.files);
+  assert.ok(upgraded.fingerprints);
   for (const file of upgraded.files) {
-    const content = await fs.readFile(path.join(host.root, file));
-    assert.equal(upgraded.fingerprints[file], createHash('sha256').update(content).digest('hex'));
+    const content = await fs.readFile(recordTarget(host, file));
+    assert.equal(upgraded.fingerprints[file.root][file.path], createHash('sha256').update(content).digest('hex'));
   }
+  await fs.access(installRecordPath(host));
 });
 
 test('second install is a complete no-op with unchanged mtimes and no new backup', async (t) => {
@@ -149,7 +171,7 @@ test('second install is a complete no-op with unchanged mtimes and no new backup
   await fs.mkdir(host.root, { recursive: true });
   await fs.writeFile(host.settingsPath, JSON.stringify({ model: 'test' }));
   await install({ host });
-  const recordPath = path.join(host.agentsDir, '.codex-bridge-install.json');
+  const recordPath = installRecordPath(host);
   const before = {
     record: (await fs.stat(recordPath)).mtimeMs,
     settings: (await fs.stat(host.settingsPath)).mtimeMs,
@@ -169,6 +191,8 @@ test('dry-run reports actions without creating the host, files, directories, or 
   assert.equal(result.exitCode, 0);
   assert.match(result.output, /Would create/);
   await assert.rejects(() => fs.access(host.root), { code: 'ENOENT' });
+  await assert.rejects(() => fs.access(host.brandRoot), { code: 'ENOENT' });
+  await assert.rejects(() => fs.access(installRecordPath(host)), { code: 'ENOENT' });
 });
 
 test('unrecorded conflict fails untouched and --force overwrites it', async (t) => {
@@ -179,7 +203,7 @@ test('unrecorded conflict fails untouched and --force overwrites it', async (t) 
   await fs.writeFile(conflict.target, 'foreign');
   const refused = await install({ host });
   assert.equal(refused.exitCode, 1);
-  assert.match(refused.output, new RegExp(conflict.relativeToHost.replaceAll('/', '[\\\\/]')));
+  assert.match(refused.output, new RegExp(conflict.relativeToRoot.replaceAll('/', '[\\\\/]')));
   assert.match(refused.output, /--force/);
   assert.equal(await fs.readFile(conflict.target, 'utf8'), 'foreign');
   assert.equal(await readInstallRecord(host), null);

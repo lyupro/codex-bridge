@@ -1,10 +1,8 @@
-/** Defines install mappings and validates the persisted installation record. */
+/** Defines the package install mappings and renders files before they are copied. */
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-// The hook table lives under src/ because the installed gate reads it too: cli/ is not copied
-// into a host, so a definition kept here would be invisible to the very hook it describes.
 import { HOOK_DEFINITIONS } from '../src/hook-definitions.mjs';
 import {
   renderRequiredInputSummary,
@@ -13,27 +11,42 @@ import {
 import { renderNoSelfExecution } from '../src/no-self-execution.mjs';
 import { renderStopSummary } from '../src/stop-contract.mjs';
 import { readJsonFile } from '../src/json-file.mjs';
+import {
+  INSTALL_RECORD_NAME,
+  RULES_NAME,
+  definitionForRecordedHook,
+  fileEntry,
+  installRecordPath,
+  legacyInstallRecordPath,
+  normalizeInstallRecord,
+  readInstallRecord,
+  recordFileKey,
+  recordMatchesPackage,
+  recordTarget,
+  validateInstallRecord,
+  writeInstallRecord,
+} from './install-record.mjs';
 
-export { HOOK_DEFINITIONS };
-
-/**
- * Finds the definition a recorded hook belongs to. The event alone does not identify one: three of
- * the four hooks are PreToolUse, so `find(d => d.event === hook.event)` returns the order gate for
- * all three. `doctor` was fixed for exactly this and kept its own inline matching; `uninstall` was
- * not, and its dry-run announced matcher `Agent|Task` for the worktree lock and the prune guard —
- * the operator's only view of what a removal is about to touch. One function, so a third caller
- * cannot repeat it.
- */
-export function definitionForRecordedHook(hook) {
-  return HOOK_DEFINITIONS.find((definition) => definition.event === hook?.event
-    && path.basename(String(hook?.path ?? '')) === definition.file);
-}
+export {
+  HOOK_DEFINITIONS,
+  INSTALL_RECORD_NAME,
+  RULES_NAME,
+  definitionForRecordedHook,
+  installRecordPath,
+  legacyInstallRecordPath,
+  normalizeInstallRecord,
+  readInstallRecord,
+  recordFileKey,
+  recordMatchesPackage,
+  recordTarget,
+  validateInstallRecord,
+  writeInstallRecord,
+};
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const PACKAGE_ROOT = path.resolve(HERE, '..');
-export const INSTALL_RECORD_NAME = '.codex-bridge-install.json';
-export const RULES_NAME = 'codex-bridge.rules';
 const RULES_SOURCE = `src/rules/${RULES_NAME}`;
+
 /**
  * Files the operator owns once they exist. Seeded on first install so the defaults are
  * visible and editable, then never written, never compared, never removed: run-config.json
@@ -42,22 +55,20 @@ const RULES_SOURCE = `src/rules/${RULES_NAME}`;
  * update — the same way overwriting a .env would.
  */
 export const SEEDED_SOURCES = Object.freeze(['src/run-config.json', 'src/conventions.md']);
-const seededTargets = (host) =>
-  new Set(SEEDED_SOURCES.map((source) => posix(
-    path.relative(host.root, path.join(host.agentsDir, path.relative('src', source))),
-  )));
+
 export const INSTALL_TABLE = Object.freeze([
-  { source: 'src/agents/*.md', target: 'agentsDir', processing: 'placeholders' },
-  { source: 'src/commands/*.md', target: 'commandsDir', processing: 'placeholders' },
-  { source: 'src/**', target: 'agentsDir', processing: 'copy' },
+  { source: 'src/agents/*.md', root: 'claude', target: 'agentsDir', processing: 'placeholders' },
+  { source: 'src/commands/*.md', root: 'claude', target: 'commandsDir', processing: 'placeholders' },
+  { source: 'src/hooks/**', root: 'brand', target: 'brandHooksDir', processing: 'copy' },
+  { source: 'src/**', root: 'brand', target: 'brandRunnerDir', processing: 'copy' },
 ]);
 
 const posix = (value) => value.split(path.sep).join('/');
 
-export function replacePlaceholders(content, agentsDir) {
+export function replacePlaceholders(content, installationRoot) {
   const agentType = content.match(/^name:\s*([^\r\n]+)$/m)?.[1].trim();
   return content
-    .replaceAll('{{CODEX_BRIDGE_DIR}}', posix(path.resolve(agentsDir)))
+    .replaceAll('{{CODEX_BRIDGE_DIR}}', posix(path.resolve(installationRoot)))
     .replaceAll('{{CODEX_REQUIRED_INPUTS_SUMMARY}}', renderRequiredInputSummary(agentType))
     .replaceAll('{{CODEX_REQUIRED_INPUTS}}', renderRequiredInputs(agentType))
     .replaceAll('{{CODEX_NO_SELF_EXECUTION}}', renderNoSelfExecution())
@@ -69,21 +80,24 @@ export async function packageInfo(packageRoot = PACKAGE_ROOT) {
   return { name: parsed.name, version: parsed.version };
 }
 
-export function installRecordPath(host) {
-  return path.join(host.agentsDir, INSTALL_RECORD_NAME);
-}
-
 export function installedHookPath(host, definition) {
-  return path.join(host.agentsDir, 'hooks', definition.file);
+  return path.join(host.brandHooksDir, definition.file);
 }
 
 /** Where each seeded file comes from and where it goes; contents are copied verbatim. */
 export function seedPlan(host, packageRoot = PACKAGE_ROOT) {
-  return SEEDED_SOURCES.map((source) => ({
-    source: path.join(packageRoot, source),
-    target: path.join(host.agentsDir, path.relative('src', source)),
-    processing: 'copy',
-  }));
+  return SEEDED_SOURCES.map((source) => {
+    const target = source.endsWith('run-config.json')
+      ? host.brandConfigPath
+      : host.brandConventionsPath;
+    return {
+      source: path.join(packageRoot, source),
+      target,
+      root: 'brand',
+      relativeToRoot: posix(path.relative(host.brandRoot, target)),
+      processing: 'copy',
+    };
+  });
 }
 
 export function rulesPlan(host, packageRoot = PACKAGE_ROOT) {
@@ -103,137 +117,22 @@ export async function fileFingerprint(absolutePath) {
   }
 }
 
-/**
- * Whether the recorded installation is exactly what this package would install right now. Install
- * and update both decide "nothing to do" by this question, so it is answered in one place: two
- * copies of the condition would drift the first time a field is added to the record.
- */
-export function recordMatchesPackage(record, plan, currentPackage, fingerprints, ruleState) {
-  return Boolean(record)
-    && record.name === currentPackage.name
-    && record.version === currentPackage.version
-    && record.files.length === plan.length
-    && record.files.every((file, index) => file === plan[index].relativeToHost)
-    && Boolean(record.fingerprints)
-    && plan.every((item) => record.fingerprints[item.relativeToHost] === fingerprints.get(item.relativeToHost))
-    && (!ruleState || (record.rules?.path === ruleState.path
-      && record.rules.fingerprint === ruleState.fingerprint));
+function targetBase(host, mapping) {
+  const base = host[mapping.target];
+  if (!base) throw new Error(`host has no ${mapping.target} install target`);
+  return base;
 }
 
-export function validateInstallRecord(record) {
-  if (!record || typeof record !== 'object' || Array.isArray(record)) {
-    throw new Error('installation record must be an object');
-  }
-  const strings = ['name', 'version', 'installedAt', 'mode'];
-  for (const key of strings) {
-    if (typeof record[key] !== 'string' || !record[key]) throw new Error(`installation record has invalid ${key}`);
-  }
-  if (record.mode !== 'copy') throw new Error('installation record mode must be copy');
-  if (Number.isNaN(Date.parse(record.installedAt))) throw new Error('installation record installedAt is invalid');
-  if (!Array.isArray(record.files) || !record.files.length || record.files.some((file) => typeof file !== 'string' || !file)) {
-    throw new Error('installation record files must be a non-empty list of strings');
-  }
-  if (record.files.some((file) => path.isAbsolute(file) || file.split(/[\\/]/).some((part) => part === '..' || part === '.'))) {
-    throw new Error('installation record files must stay relative to the host root');
-  }
-  if (new Set(record.files).size !== record.files.length) {
-    throw new Error('installation record files must not contain duplicates');
-  }
-  // Run artifacts are the user's data, not ours. Refusing them here means neither uninstall nor
-  // update needs its own guard against deleting a run folder someone listed as an installed file.
-  if (record.files.some((file) => file === 'codex-runs' || file.split(/[\\/]/)[0] === 'codex-runs')) {
-    throw new Error('installation record files must not name run artifacts under codex-runs');
-  }
-  if (record.fingerprints !== undefined) {
-    if (!record.fingerprints || typeof record.fingerprints !== 'object' || Array.isArray(record.fingerprints)) {
-      throw new Error('installation record fingerprints must be an object');
-    }
-    const fingerprintKeys = Object.keys(record.fingerprints);
-    if (fingerprintKeys.length !== record.files.length || fingerprintKeys.some((file) => !record.files.includes(file))) {
-      throw new Error('installation record fingerprints keys must exactly match files');
-    }
-    if (Object.values(record.fingerprints).some((fingerprint) =>
-      typeof fingerprint !== 'string' || !/^[a-f0-9]{64}$/i.test(fingerprint))) {
-      throw new Error('installation record fingerprints must be 64-character hexadecimal SHA256 strings');
-    }
-  }
-  if (record.rules !== undefined) {
-    if (!record.rules || typeof record.rules !== 'object' || Array.isArray(record.rules)) {
-      throw new Error('installation record rules must be an object');
-    }
-    if (typeof record.rules.path !== 'string' || !record.rules.path) {
-      throw new Error('installation record rules path must be a non-empty string');
-    }
-    if (path.basename(record.rules.path) !== RULES_NAME) {
-      throw new Error(`installation record rules path must name ${RULES_NAME}`);
-    }
-    if (typeof record.rules.fingerprint !== 'string'
-      || !/^[a-f0-9]{64}$/i.test(record.rules.fingerprint)) {
-      throw new Error('installation record rules fingerprint must be a 64-character hexadecimal SHA256 string');
-    }
-  }
-  if (record.hooks !== undefined && record.hook !== undefined) {
-    throw new Error('installation record must use hooks instead of hook');
-  }
-  const hooks = record.hooks !== undefined ? record.hooks : record.hook !== undefined ? [record.hook] : null;
-  if (!Array.isArray(hooks) || !hooks.length) {
-    throw new Error('installation record hooks must be a non-empty list');
-  }
-  for (const hook of hooks) {
-    if (!hook || typeof hook !== 'object' || Array.isArray(hook)) {
-      throw new Error('installation record hook must be an object');
-    }
-    const definitions = HOOK_DEFINITIONS.filter((entry) => entry.event === hook.event);
-    if (!definitions.length || typeof hook.path !== 'string' || !hook.path) {
-      throw new Error('installation record hook must identify a supported event and its path');
-    }
-    if (path.isAbsolute(hook.path) || hook.path.split(/[\\/]/).includes('..')) {
-      throw new Error('installation record hook path must stay relative to the host root');
-    }
-    const definition = definitions.find((entry) => path.basename(hook.path) === entry.file);
-    if (!definition || !record.files.includes(hook.path)) {
-      const files = definitions.map((entry) => entry.file).join(' or ');
-      throw new Error(`installation record hook path must name the installed ${files}`);
-    }
-  }
-  return record;
+function rootFor(host, mapping) {
+  return mapping.root === 'brand' ? host.brandRoot : host.root;
 }
 
-export function normalizeInstallRecord(record) {
-  validateInstallRecord(record);
-  if (record.hooks !== undefined) return record;
-  const { hook, ...withoutLegacyHook } = record;
-  return { ...withoutLegacyHook, hooks: [hook] };
-}
-
-export async function readInstallRecord(host) {
-  let parsed;
-  try {
-    parsed = await readJsonFile(installRecordPath(host));
-  } catch (err) {
-    if (err.code === 'ENOENT') return null;
-    if (err.cause) {
-      throw new Error(`invalid installation record JSON: ${err.cause.message}`, { cause: err.cause });
-    }
-    throw err;
-  }
-  const record = normalizeInstallRecord(parsed);
-  // Earlier versions installed the config as a package file and recorded it. Dropping it here
-  // is what stops the next update from calling the operator's edited config an orphan and
-  // deleting it, and it needs no migration step: the record is rewritten on the next write.
-  const seeded = seededTargets(host);
-  record.files = record.files.filter((file) => !seeded.has(file));
-  if (record.fingerprints) {
-    record.fingerprints = Object.fromEntries(
-      Object.entries(record.fingerprints).filter(([file]) => !seeded.has(file)),
-    );
-  }
-  return record;
-}
-
-export async function writeInstallRecord(host, record) {
-  const normalized = normalizeInstallRecord(record);
-  await fs.writeFile(installRecordPath(host), `${JSON.stringify(normalized, null, 2)}\n`);
+function targetRelative(packageRoot, source, mapping) {
+  if (mapping.processing === 'placeholders') return path.basename(source);
+  const sourceRoot = mapping.source === 'src/hooks/**'
+    ? path.join(packageRoot, 'src', 'hooks')
+    : path.join(packageRoot, 'src');
+  return path.relative(sourceRoot, source);
 }
 
 export async function buildInstallPlan(host, packageRoot = PACKAGE_ROOT) {
@@ -241,22 +140,29 @@ export async function buildInstallPlan(host, packageRoot = PACKAGE_ROOT) {
   const claimedSources = [];
   for (const mapping of INSTALL_TABLE) {
     for await (const relative of fs.glob(mapping.source, { cwd: packageRoot, exclude: claimedSources })) {
-      if (posix(relative) === RULES_SOURCE) continue;
-      if (SEEDED_SOURCES.includes(posix(relative))) continue;
+      if (posix(relative) === RULES_SOURCE || SEEDED_SOURCES.includes(posix(relative))) continue;
       const source = path.join(packageRoot, relative);
       if (!(await fs.stat(source)).isFile()) continue;
-      const targetRelative = mapping.processing === 'copy'
-        ? path.relative(path.join(packageRoot, 'src'), source)
-        : path.basename(source);
-      const target = path.join(host[mapping.target], targetRelative);
+      const relativeToTarget = posix(targetRelative(packageRoot, source, mapping));
+      const target = path.join(targetBase(host, mapping), relativeToTarget);
+      const relativeToRoot = posix(path.relative(rootFor(host, mapping), target));
       files.push({
         source,
         target,
+        root: mapping.root,
+        relativeToRoot,
         relativeToHost: posix(path.relative(host.root, target)),
         processing: mapping.processing,
+        installationRoot: mapping.processing === 'placeholders'
+          ? host.brandRunnerDir
+          : rootFor(host, mapping),
       });
     }
     claimedSources.push(mapping.source);
   }
-  return files.sort((a, b) => a.relativeToHost.localeCompare(b.relativeToHost));
+  return files.sort((a, b) => recordFileKey(a).localeCompare(recordFileKey(b)));
+}
+
+export function targetForPlanItem(host, item) {
+  return recordTarget(host, fileEntry({ root: item.root, path: item.relativeToRoot }));
 }

@@ -22,7 +22,11 @@ async function fixture(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-manifest-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const packageRoot = path.join(root, 'package');
-  const host = resolveHost({ host: path.join(root, 'host'), codexHome: path.join(root, 'codex-home') });
+  const host = resolveHost({
+    host: path.join(root, 'host'),
+    codexHome: path.join(root, 'codex-home'),
+    brandRoot: path.join(root, 'brand'),
+  });
   await fs.mkdir(path.join(packageRoot, 'src', 'agents'), { recursive: true });
   await fs.mkdir(path.join(packageRoot, 'src', 'commands'), { recursive: true });
   await fs.mkdir(path.join(packageRoot, 'src', 'hooks'), { recursive: true });
@@ -40,15 +44,19 @@ const record = {
   version: '0.1.0',
   installedAt: '2026-08-02T10:00:00.000Z',
   mode: 'copy',
-  files: ['agents/codex/run-codex.mjs', 'agents/codex/hooks/reply-guard.mjs'],
-  hooks: [{ event: 'SubagentStop', path: 'agents/codex/hooks/reply-guard.mjs' }],
+  files: [
+    { root: 'claude', path: 'agents/codex/run-codex.mjs' },
+    { root: 'claude', path: 'agents/codex/hooks/reply-guard.mjs' },
+  ],
+  hooks: [{ event: 'SubagentStop', root: 'claude', path: 'agents/codex/hooks/reply-guard.mjs' }],
 };
 
 test('installation table is exported data', () => {
   assert.deepEqual(INSTALL_TABLE, [
-    { source: 'src/agents/*.md', target: 'agentsDir', processing: 'placeholders' },
-    { source: 'src/commands/*.md', target: 'commandsDir', processing: 'placeholders' },
-    { source: 'src/**', target: 'agentsDir', processing: 'copy' },
+    { source: 'src/agents/*.md', root: 'claude', target: 'agentsDir', processing: 'placeholders' },
+    { source: 'src/commands/*.md', root: 'claude', target: 'commandsDir', processing: 'placeholders' },
+    { source: 'src/hooks/**', root: 'brand', target: 'brandHooksDir', processing: 'copy' },
+    { source: 'src/**', root: 'brand', target: 'brandRunnerDir', processing: 'copy' },
   ]);
 });
 
@@ -60,24 +68,24 @@ test('seed plan includes the editable host conventions beside run-config', async
   assert.deepEqual(SEEDED_SOURCES, ['src/run-config.json', 'src/conventions.md']);
   assert.deepEqual(seedPlan(host, packageRoot).map((item) => ({
     source: path.relative(packageRoot, item.source).split(path.sep).join('/'),
-    target: path.relative(host.root, item.target).split(path.sep).join('/'),
+    target: path.relative(host.brandRoot, item.target).split(path.sep).join('/'),
     processing: item.processing,
   })), [
-    { source: 'src/run-config.json', target: 'agents/codex/run-config.json', processing: 'copy' },
-    { source: 'src/conventions.md', target: 'agents/codex/conventions.md', processing: 'copy' },
+    { source: 'src/run-config.json', target: 'config.json', processing: 'copy' },
+    { source: 'src/conventions.md', target: 'conventions.md', processing: 'copy' },
   ]);
 });
 
 test('install plan maps agents, commands, and remaining src files', async (t) => {
   const { packageRoot, host } = await fixture(t);
   const plan = await buildInstallPlan(host, packageRoot);
-  assert.deepEqual(plan.map((item) => item.relativeToHost), [
-    'agents/codex/agents/notes.txt',
+  assert.deepEqual(plan.map((item) => item.relativeToRoot), [
+    'hooks/guard.mjs',
+    'lib/agents/notes.txt',
     'agents/codex/build.md',
-    'agents/codex/hooks/guard.mjs',
     'commands/codex/env.md',
   ]);
-  assert.deepEqual(plan.map((item) => item.processing), ['copy', 'placeholders', 'copy', 'placeholders']);
+  assert.deepEqual(plan.map((item) => item.processing), ['copy', 'copy', 'placeholders', 'placeholders']);
   assert.deepEqual(rulesPlan(host, packageRoot), {
     source: path.join(packageRoot, 'src', 'rules', 'codex-bridge.rules'),
     target: path.join(host.codexRulesDir, 'codex-bridge.rules'),
@@ -94,7 +102,7 @@ test('placeholder becomes an absolute POSIX agents path', () => {
 
 test('installation record writes and reads after validation', async (t) => {
   const { host } = await fixture(t);
-  await fs.mkdir(host.agentsDir, { recursive: true });
+  await fs.mkdir(host.brandRoot, { recursive: true });
   await writeInstallRecord(host, record);
   assert.deepEqual(await readInstallRecord(host), record);
 });
@@ -107,7 +115,7 @@ test('installation record migrates an old single-hook record on read', async (t)
   await fs.mkdir(host.agentsDir, { recursive: true });
   await fs.writeFile(path.join(host.agentsDir, '.codex-bridge-install.json'), `${JSON.stringify(legacy)}\n`);
   const migrated = await readInstallRecord(host);
-  assert.deepEqual(migrated.hooks, [legacy.hook]);
+  assert.deepEqual(migrated.hooks, [{ ...legacy.hook, root: 'claude' }]);
   assert.equal(migrated.hook, undefined);
 });
 
@@ -128,13 +136,13 @@ test('installation record validates multiple hooks sharing one event by filename
     ...record,
     files: [
       ...record.files,
-      'agents/codex/hooks/order-gate.mjs',
-      'agents/codex/hooks/worktree-lock.mjs',
+      { root: 'claude', path: 'agents/codex/hooks/order-gate.mjs' },
+      { root: 'claude', path: 'agents/codex/hooks/worktree-lock.mjs' },
     ],
     hooks: [
       ...record.hooks,
-      { event: 'PreToolUse', path: 'agents/codex/hooks/order-gate.mjs' },
-      { event: 'PreToolUse', path: 'agents/codex/hooks/worktree-lock.mjs' },
+      { event: 'PreToolUse', root: 'claude', path: 'agents/codex/hooks/order-gate.mjs' },
+      { event: 'PreToolUse', root: 'claude', path: 'agents/codex/hooks/worktree-lock.mjs' },
     ],
   };
   assert.equal(validateInstallRecord(multiHook), multiHook);
@@ -162,20 +170,20 @@ test('installation record rejects malformed rules metadata', () => {
 });
 
 test('installation record rejects an extra fingerprint key', () => {
-  const fingerprints = Object.fromEntries(record.files.map((file) => [file, 'a'.repeat(64)]));
+  const fingerprints = Object.fromEntries(record.files.map((file) => [file.path, 'a'.repeat(64)]));
   fingerprints['agents/codex/extra.mjs'] = 'b'.repeat(64);
   assert.throws(() => validateInstallRecord({ ...record, fingerprints }), /fingerprints keys must exactly match files/);
 });
 
 test('installation record rejects a missing fingerprint key', () => {
-  const fingerprints = { [record.files[0]]: 'a'.repeat(64) };
+  const fingerprints = { [record.files[0].path]: 'a'.repeat(64) };
   assert.throws(() => validateInstallRecord({ ...record, fingerprints }), /fingerprints keys must exactly match files/);
 });
 
 test('installation record rejects malformed fingerprint values', () => {
-  const fingerprints = Object.fromEntries(record.files.map((file) => [file, 'a'.repeat(64)]));
-  assert.throws(() => validateInstallRecord({ ...record, fingerprints: { ...fingerprints, [record.files[0]]: 'not-hex' } }), /64-character hexadecimal/);
-  assert.throws(() => validateInstallRecord({ ...record, fingerprints: { ...fingerprints, [record.files[0]]: 'a'.repeat(63) } }), /64-character hexadecimal/);
+  const fingerprints = Object.fromEntries(record.files.map((file) => [file.path, 'a'.repeat(64)]));
+  assert.throws(() => validateInstallRecord({ ...record, fingerprints: { ...fingerprints, [record.files[0].path]: 'not-hex' } }), /64-character hexadecimal/);
+  assert.throws(() => validateInstallRecord({ ...record, fingerprints: { ...fingerprints, [record.files[0].path]: 'a'.repeat(63) } }), /64-character hexadecimal/);
 });
 
 test('missing record reads as not installed', async (t) => {
@@ -190,9 +198,9 @@ test('malformed and structurally broken records fail loudly', async (t) => {
   await assert.rejects(() => readInstallRecord(host), /invalid installation record JSON/);
   assert.throws(() => validateInstallRecord({ ...record, files: [3] }), /files/);
   assert.throws(() => validateInstallRecord({ ...record, files: [] }), /non-empty list/);
-  assert.throws(() => validateInstallRecord({ ...record, files: ['.'] }), /host root/);
-  assert.throws(() => validateInstallRecord({ ...record, files: ['../outside.mjs'] }), /host root/);
+  assert.throws(() => validateInstallRecord({ ...record, files: ['.'] }), /installation root/);
+  assert.throws(() => validateInstallRecord({ ...record, files: ['../outside.mjs'] }), /installation root/);
   assert.throws(() => validateInstallRecord({ ...record, hooks: null }), /hooks/);
-  assert.throws(() => validateInstallRecord({ ...record, hooks: [{ event: 'SubagentStop', path: record.files[0] }] }), /reply-guard/);
-  assert.throws(() => validateInstallRecord({ ...record, hooks: [{ event: 'Unknown', path: record.files[1] }] }), /supported event/);
+  assert.throws(() => validateInstallRecord({ ...record, hooks: [{ event: 'SubagentStop', root: 'claude', path: record.files[0].path }] }), /reply-guard/);
+  assert.throws(() => validateInstallRecord({ ...record, hooks: [{ event: 'Unknown', root: 'claude', path: record.files[1].path }] }), /supported event/);
 });
