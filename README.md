@@ -30,10 +30,15 @@ When a global install and a clone coexist, there are two copies of the package. 
 and `codexb update` copy host files from whichever copy launched the command, so `codexb update`
 from `PATH` can silently revert a host that `npm run dev:install` from the clone just updated.
 
-`install` copies the package into the host's `agents/codex/`, its slash commands into
-`commands/codex/`, and registers its four hooks in `settings.json` — **merged**, so hooks that
-are already there survive, and the file is backed up before every write. Run it twice and the
-second run does nothing. `--dry-run` prints the plan and touches nothing.
+`install` writes to two roots. Everything the package reads itself — the runner, the guards, the
+run config and the conventions — goes to `~/.lyupro/.codex-bridge/`. Only what Claude Code reads
+from its own directories and nowhere else stays there: the three agent definitions in
+`agents/codex-bridge/`, the two slash commands in `commands/codex-bridge/`, and the hook
+registrations in `settings.json` — **merged**, so hooks that are already there survive, and the
+file is backed up before every write. Hooks are registered as the command `codex-bridge hook
+<name>` rather than a path, so moving files or changing runtime is never an edit to a foreign
+config. Run it twice and the second run does nothing. `--dry-run` prints the plan and touches
+nothing.
 
 `update` moves an existing installation to the current version. It knows the sha256 of every file
 as it was installed, so it can tell a file you edited on the host from one left over by an older
@@ -48,8 +53,9 @@ strings from `allow`, `deny`, or `ask`, so an operator-authored lookalike is lef
 action it reports whether the rule set is installed, partial, or absent. The command accepts the
 same `--scope` and `--host` selectors as `install`, and `uninstall` removes the same strings too.
 
-`uninstall` removes only what the install recorded: a file you put in `agents/codex/` yourself
-stays, and `codex-runs/` is never touched — those are your run artifacts, not the package.
+`uninstall` removes only what the install recorded: a file you put in `agents/codex-bridge/`
+yourself stays, the shared `agents/` and `commands/` directories Claude Code owns are never
+removed, and `codex-runs/` is never touched — those are your run artifacts, not the package.
 
 `stop` takes a run folder — a full path or a bare name from the current project's runs directory —
 kills that run's whole process tree and closes the folder the way an abandoned run is closed: a

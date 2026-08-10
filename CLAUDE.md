@@ -30,7 +30,7 @@ git config core.hooksPath .githooks        # enable the pre-commit size gate (on
 ## Architecture
 
 Two halves share the repository: the **package/installer** (`bin/`, `cli/`) and the **runtime
-runner** (`src/`, installed into the host's `agents/codex/`). Which module owns what, why the
+runner** (`src/`, installed into `~/.lyupro/.codex-bridge/lib/`). Which module owns what, why the
 launcher/worker split exists and which incident shaped each boundary is in
 [`.claude/context/architecture.md`](.claude/context/architecture.md).
 
@@ -61,7 +61,8 @@ read that file BEFORE the first edit, not from memory.**
 - **Windows paths are compared normalized** (forward slashes, no trailing slash, case-insensitive)
   and symlinks are deliberately not resolved: `realpath` returns `\\?\` and UNC forms.
 - **Agent and command markdown is placeholder-processed** on install: `{{CODEX_BRIDGE_DIR}}` becomes
-  the host's `agents/codex/`. Keep the placeholder, never a real path.
+  the installed runner directory, `~/.lyupro/.codex-bridge/lib/` — not the directory the markdown
+  itself lands in. Keep the placeholder, never a real path.
 
 ## Repository conventions
 

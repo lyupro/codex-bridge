@@ -19,7 +19,9 @@ ones, and finds its own by command rather than by matcher — the matcher is gen
 list and changes whenever a host spelling is added. `update` compares sha256 fingerprints from the record: outdated files refresh silently,
 hand-edited files stop the run unless `--force`.
 
-**Runtime runner** — `src/`, installed into the host's `agents/codex/`:
+**Runtime runner** — `src/`, installed into `~/.lyupro/.codex-bridge/lib/` (the guards into
+`hooks/` beside it); only the agent and command markdown goes to the host's
+`agents/codex-bridge/` and `commands/codex-bridge/`, because Claude Code reads those nowhere else:
 
 - `run-codex.mjs` is the command line and the fork between two programs. A plain call is the
   **launcher** (`runner/launcher.mjs`): every refusal that costs no quota happens here, before the
