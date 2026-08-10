@@ -5,6 +5,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { projects } from '../../cli/projects.mjs';
+import { HEARTBEAT_FILE } from '../../src/heartbeat.mjs';
+import { STOP_COMMAND_TEMPLATE } from '../../src/stop-contract.mjs';
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'projects-command-'));
@@ -111,6 +113,25 @@ test('--json emits the same project row shape as the inventory', (t) => {
   ]);
   assert.equal(rows[0].project, 'sample');
   assert.equal(rows[0].totalTokens, 21);
+});
+
+test('projects reports the confirmed working-run count beside human tables', (t) => {
+  const root = fixture(t);
+  const run = path.join(root, 'sample', '2026-08-10_090000_active');
+  fs.mkdirSync(run, { recursive: true });
+  fs.writeFileSync(path.join(run, 'status.json'), `${JSON.stringify({
+    state: 'running',
+    pid: process.pid,
+    agent: 'codex-build',
+    slug: 'active',
+    repo: process.cwd(),
+  })}\n`);
+  fs.writeFileSync(path.join(run, HEARTBEAT_FILE), 'progress\n');
+
+  const result = projects([], { runsRootPath: root, terminalWidth: 120 });
+
+  assert.equal(result.exitCode, 0);
+  assert.ok(result.output.includes(`1 run working right now; stop with ${STOP_COMMAND_TEMPLATE}`));
 });
 
 test('unknown project names are refused with a non-zero exit code', (t) => {

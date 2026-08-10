@@ -6,66 +6,12 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { diagnose, renderDoctor } from '../../cli/doctor.mjs';
-import { resolveHost } from '../../cli/hosts.mjs';
 import { fileFingerprint, HOOK_DEFINITIONS, writeInstallRecord } from '../../cli/manifest.mjs';
 import { addPermissionRules } from '../../cli/permissions.mjs';
 import { RULES_REGISTRY_NAME } from '../../cli/rules-owners.mjs';
 import { normalizeRepoPath, PROJECT_MARKER } from '../../src/runner/project-dir.mjs';
 import { projectFolder } from '../../src/write-meta.mjs';
-
-const ownPackage = { name: '@lyupro/codex-bridge', version: '0.1.0' };
-const codexProbe = () => ({ available: true, value: 'codex-cli 1.2.3' });
-
-async function hostFixture(t) {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-doctor-'));
-  t.after(() => fs.rm(root, { recursive: true, force: true }));
-  return resolveHost({ host: root, codexHome: path.join(root, 'codex-home') });
-}
-
-async function installedFixture(t) {
-  const host = await hostFixture(t);
-  const files = [
-    'agents/codex/run-codex.mjs',
-    'agents/codex/required-inputs.mjs',
-    'agents/codex/hooks/reply-guard.mjs',
-    'agents/codex/hooks/order-gate.mjs',
-    'agents/codex/hooks/live-runs.mjs',
-    'agents/codex/hooks/worktree-lock.mjs',
-    'agents/codex/hooks/prune-guard.mjs',
-  ];
-  for (const relative of files) {
-    const target = path.join(host.root, relative);
-    await fs.mkdir(path.dirname(target), { recursive: true });
-    await fs.writeFile(target, relative);
-  }
-  const record = {
-    ...ownPackage,
-    installedAt: '2026-08-02T10:00:00.000Z',
-    mode: 'copy',
-    files,
-    hooks: [
-      { event: 'SubagentStop', path: 'agents/codex/hooks/reply-guard.mjs' },
-      { event: 'PreToolUse', path: 'agents/codex/hooks/order-gate.mjs' },
-      { event: 'PreToolUse', path: 'agents/codex/hooks/worktree-lock.mjs' },
-      { event: 'PreToolUse', path: 'agents/codex/hooks/prune-guard.mjs' },
-    ],
-  };
-  await writeInstallRecord(host, record);
-  // Registered from the definitions, not from literals: doctor compares the matcher it finds
-  // against the one the installer would write, so a fixture with its own copy would report a
-  // healthy host green while the real one drifted.
-  const hooks = {};
-  for (const definition of HOOK_DEFINITIONS) {
-    const recorded = record.hooks.find((hook) => path.basename(hook.path) === definition.file);
-    hooks[definition.event] ??= [];
-    hooks[definition.event].push({
-      matcher: definition.matcher,
-      hooks: [{ type: 'command', command: `node "${path.join(host.root, recorded.path)}"` }],
-    });
-  }
-  await fs.writeFile(host.settingsPath, JSON.stringify({ hooks }));
-  return { host, record };
-}
+import { codexProbe, hostFixture, installedFixture, ownPackage, runsRootFixture } from './doctor-fixtures.mjs';
 
 async function addRules(host, record, content = 'prefix_rule(pattern=["safe"], decision="allow")\n') {
   const rulePath = path.join(host.codexRulesDir, 'codex-bridge.rules');
@@ -74,18 +20,6 @@ async function addRules(host, record, content = 'prefix_rule(pattern=["safe"], d
   record.rules = { path: rulePath, fingerprint: await fileFingerprint(rulePath) };
   await writeInstallRecord(host, record);
   return rulePath;
-}
-
-async function runsRootFixture(t) {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-runs-'));
-  const previous = process.env.CODEX_RUNS_ROOT;
-  process.env.CODEX_RUNS_ROOT = root;
-  t.after(async () => {
-    if (previous === undefined) delete process.env.CODEX_RUNS_ROOT;
-    else process.env.CODEX_RUNS_ROOT = previous;
-    await fs.rm(root, { recursive: true, force: true });
-  });
-  return root;
 }
 
 function currentRepoFolder() {
@@ -115,7 +49,7 @@ test('complete installation with all files exits zero', async (t) => {
   // Each line must name its own file. Matching the record by event alone reported the worktree
   // lock's matcher as pointing at order-gate.mjs, which is exactly the lie an operator reading
   // doctor cannot catch.
-  for (const file of ['order-gate.mjs', 'worktree-lock.mjs', 'prune-guard.mjs']) {
+  for (const file of ['order-gate.mjs', 'worktree-lock.mjs', 'prune-guard.mjs', 'stop-guard.mjs']) {
     assert.equal(preToolUse.filter((item) => item.value.endsWith(file)).length, 1);
   }
 });
@@ -243,7 +177,7 @@ test('corrupt rules registry fails only the rules check and keeps all diagnostic
   );
   const result = await diagnose({ host, codexProbe, currentPackage: ownPackage });
   const rendered = renderDoctor(result);
-  for (const key of ['source', 'host', 'installation', 'files', 'rules', 'hook:SubagentStop', 'hook:PreToolUse', 'codex', 'node', 'runsRoot', 'projectRuns']) {
+  for (const key of ['source', 'host', 'installation', 'files', 'rules', 'hook:SubagentStop', 'hook:PreToolUse', 'codex', 'node', 'runsRoot', 'liveRuns', 'projectRuns']) {
     assert.match(rendered, new RegExp(`\\] ${key}:`));
   }
   const rules = result.checks.find((item) => item.key === 'rules');
@@ -365,35 +299,4 @@ test('version mismatch is visible without treating intact files as broken', asyn
   });
   assert.equal(result.exitCode, 0);
   assert.equal(result.checks.find((item) => item.key === 'installation').status, 'warn');
-});
-
-test('doctor warns in color with the configured automatic cleanup age', async (t) => {
-  const { host } = await installedFixture(t);
-  await fs.writeFile(
-    path.join(host.agentsDir, 'run-config.json'),
-    JSON.stringify({ retention: { enabled: true, days: 7 } }),
-  );
-
-  const rendered = renderDoctor(await diagnose({ host, codexProbe, currentPackage: ownPackage }));
-
-  assert.match(rendered, /Automatic cleanup is ON — run transport older than 7 days is removed to reclaim disk space\. Accounting and reports are never touched\. Change or disable: retention in run-config\.json\./);
-  const retentionLine = rendered.split('\n').find((line) => line.includes('retention:'));
-  assert.match(retentionLine, /^\u001b\[33m/);
-  assert.match(retentionLine, /\u001b\[0m$/);
-});
-
-test('doctor reports disabled cleanup without warning color', async (t) => {
-  const { host } = await installedFixture(t);
-  await fs.writeFile(
-    path.join(host.agentsDir, 'run-config.json'),
-    JSON.stringify({ retention: { enabled: false, days: 'not read' } }),
-  );
-
-  const result = await diagnose({ host, codexProbe, currentPackage: ownPackage });
-  const rendered = renderDoctor(result);
-  const retentionLine = rendered.split('\n').find((line) => line.includes('retention:'));
-
-  assert.equal(result.checks.find((item) => item.key === 'retention').status, 'ok');
-  assert.match(retentionLine, /Automatic cleanup is OFF/);
-  assert.doesNotMatch(retentionLine, /\u001b/);
 });

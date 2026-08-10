@@ -44,3 +44,8 @@ test('a pre-Plan_20 running record without a heartbeat keeps its lock', () => {
   const { runs } = makeRun();
   assert.equal(liveRuns(runs).length, 1);
 });
+
+test('strict live scans exclude a run whose process identity is unconfirmed', () => {
+  const { runs } = makeRun();
+  assert.deepEqual(liveRuns(runs, { requireConfirmedIdentity: true }), []);
+});

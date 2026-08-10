@@ -31,10 +31,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { readJsonFileSync } from '../json-file.mjs';
 import { isPidAlive, liveRuns, normalizePath } from './live-runs.mjs';
+import { FORM, MAX_STATE_BLOCKS, STATE, takeTry } from './guard-tries.mjs';
 
 const HOME = os.homedir();
 const LOG_DIR = path.join(HOME, '.claude', 'logs');
-const BLOCKED_FILE = path.join(LOG_DIR, 'codex-reply-guard.blocked.json');
 const GUARDED = new Set(['codex-scout', 'codex-build', 'codex-review']);
 const STATUSES = ['OK', 'FAIL', 'LIMIT'];
 
@@ -48,8 +48,6 @@ const STATUSES = ['OK', 'FAIL', 'LIMIT'];
  * quota on retries that never converge. Three tries, then let it through so the operator
  * sees a reply with substance in it and judges for himself.
  */
-const MAX_FORM_BLOCKS = 3;
-
 /**
  * The same allowance for blocks caused by EXTERNAL state — the run is still going, or its
  * runner died. Counted separately because the two run out for unrelated reasons: three
@@ -61,11 +59,6 @@ const MAX_FORM_BLOCKS = 3;
  * orchestrator got a promise from a process that no longer existed and never learned the
  * worktree was busy.
  */
-const MAX_STATE_BLOCKS = 3;
-
-const FORM = 'form';
-const STATE = 'state';
-
 /** Never let a guard failure break real work: on any doubt, stay silent. */
 const pass = () => process.exit(0);
 
@@ -90,56 +83,6 @@ if (!GUARDED.has(input.agent_type)) pass();
 
 const reply = String(input.last_assistant_message || '').trim();
 if (!reply) pass();
-
-/**
- * Reads one stored entry into {form, state}. Three shapes live in this file at once and all
- * three must keep their meaning: the current pair, the single number written by the previous
- * version, and an ISO string from the version before that (it meant "blocked once"). A
- * number is read as form tries — that budget is the one the old counter mostly guarded.
- * Anything else counts as one form try already spent, so an agent recorded before this fix
- * does not silently get its tries back.
- */
-const readCounts = (prior) => {
-  const whole = (value) => (Number.isInteger(value) && value > 0 ? value : 0);
-  if (prior && typeof prior === 'object' && !Array.isArray(prior)) {
-    return { form: whole(prior.form), state: whole(prior.state) };
-  }
-  if (typeof prior === 'number') return { form: whole(prior), state: 0 };
-  return { form: prior ? 1 : 0, state: 0 };
-};
-
-/**
- * Spends one try of the named budget. stop_hook_active is not reliable here (it already
- * arrives true in normal runs), so the loop protection is our own.
- *
- *   'granted'   — block normally, a try was recorded;
- *   'exhausted' — this budget is used up, the caller decides what that means;
- *   'untracked' — the guard cannot count at all (no agent id, log not writable). A guard
- *                 that cannot count must not decide anything, least of all end a session.
- */
-const takeTry = (agentId, kind) => {
-  if (!agentId) return 'untracked';
-  let seen;
-  try {
-    seen = readJsonFileSync(BLOCKED_FILE);
-  } catch {
-    seen = {};
-  }
-  if (!seen || typeof seen !== 'object' || Array.isArray(seen)) seen = {};
-  const counts = readCounts(seen[agentId]);
-  if (counts[kind] >= (kind === STATE ? MAX_STATE_BLOCKS : MAX_FORM_BLOCKS)) return 'exhausted';
-  counts[kind] += 1;
-  seen[agentId] = counts;
-  // Keep the file from growing without bound; order of insertion is good enough.
-  const ids = Object.keys(seen);
-  if (ids.length > 200) ids.slice(0, ids.length - 200).forEach((id) => delete seen[id]);
-  try {
-    fs.writeFileSync(BLOCKED_FILE, `${JSON.stringify(seen)}\n`);
-  } catch {
-    return 'untracked';
-  }
-  return 'granted';
-};
 
 const emit = (payload) => {
   process.stdout.write(JSON.stringify(payload));

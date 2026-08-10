@@ -64,7 +64,7 @@ test('uninstall leaves shared rules for another owner and removes them for the l
   await assert.rejects(() => fs.access(rulesRegistryPath(second)), { code: 'ENOENT' });
 });
 
-// Three of the four hooks are PreToolUse, so a lookup by event alone names the order gate for all
+// Four of the five hooks are PreToolUse, so a lookup by event alone names the order gate for all
 // of them. The live dry-run of 2026-08-09 announced matcher Agent|Task for the worktree lock and
 // the prune guard — the one line an operator reads to see what a removal will touch.
 test('dry-run uninstall names each hook by its own matcher', async (t) => {

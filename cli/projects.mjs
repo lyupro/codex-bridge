@@ -1,6 +1,9 @@
 /** Implements the projects command. */
 import { listProjectRuns, listProjects } from './runs-inventory.mjs';
 import { renderTable } from './table.mjs';
+import { allLiveRuns } from '../src/hooks/live-runs.mjs';
+import { runsRoot } from '../src/runner/runs-root.mjs';
+import { STOP_COMMAND_TEMPLATE } from '../src/stop-contract.mjs';
 
 // The table renders whatever it is given; how a byte count or a timestamp reads is this command's
 // business. Raw bytes and ISO milliseconds are technically exact and practically unreadable — an
@@ -75,9 +78,21 @@ function parseArgs(args) {
   return { json, projectName: positional[0] || null };
 }
 
-function output(rows, columns, options) {
+/**
+ * Silence when nothing is running: this line exists to interrupt the operator who believes every
+ * run is stopped, and a "0 runs" line printed under every listing is the fastest way to teach them
+ * not to read it.
+ */
+function workingRunsLine(root) {
+  const count = allLiveRuns(root, { requireConfirmedIdentity: true }).length;
+  if (!count) return '';
+  const noun = count === 1 ? 'run' : 'runs';
+  return `\n${count} ${noun} working right now; stop with ${STOP_COMMAND_TEMPLATE}`;
+}
+
+function output(rows, columns, options, root) {
   if (options.json) return JSON.stringify(rows, null, 2);
-  return renderTable(columns, rows, options.terminalWidth);
+  return `${renderTable(columns, rows, options.terminalWidth)}${workingRunsLine(root)}`;
 }
 
 /** Lists projects or runs for one project. */
@@ -86,7 +101,7 @@ export function projects(argv = [], options = {}) {
   if (parsed.error) return { exitCode: 2, output: parsed.error };
 
   const { projectName } = parsed;
-  const root = options.runsRootPath;
+  const root = options.runsRootPath || runsRoot();
   const renderOptions = { json: parsed.json, terminalWidth: options.terminalWidth };
 
   if (projectName) {
@@ -97,9 +112,9 @@ export function projects(argv = [], options = {}) {
         output: `codex-bridge projects: unknown project "${projectName}"`,
       };
     }
-    return { exitCode: 0, output: output(rows, RUN_COLUMNS, renderOptions) };
+    return { exitCode: 0, output: output(rows, RUN_COLUMNS, renderOptions, root) };
   }
 
   const rows = listProjects(root);
-  return { exitCode: 0, output: output(rows, PROJECT_COLUMNS, renderOptions) };
+  return { exitCode: 0, output: output(rows, PROJECT_COLUMNS, renderOptions, root) };
 }

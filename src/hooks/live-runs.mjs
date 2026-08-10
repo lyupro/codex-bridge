@@ -13,17 +13,25 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { isHeartbeatFresh } from '../heartbeat.mjs';
+import { heartbeatAge, isHeartbeatFresh } from '../heartbeat.mjs';
 import { readJsonFileSync } from '../json-file.mjs';
-import { IDENTITY_DEAD, IDENTITY_FOREIGN, processIdentity } from '../process-identity.mjs';
+import {
+  IDENTITY_ALIVE,
+  IDENTITY_DEAD,
+  IDENTITY_FOREIGN,
+  processIdentity,
+} from '../process-identity.mjs';
 
 /**
  * The hook requires pid judgment plus a fresh heartbeat. Identity uncertainty stays live here
  * (fail-open), while the identity module deliberately treats a missing heartbeat as unverified;
  * isHeartbeatFresh() keeps its pre-Plan_20 missing-file compatibility for this separate question.
  */
-export const isPidAlive = (pid, runDir, status = {}) => {
+// Plan_31 needs confirmed process identity before warning about paid work that TaskStop leaves
+// behind; existing lock/reply guards retain the fail-open default for uncertain identities.
+export const isPidAlive = (pid, runDir, status = {}, options = {}) => {
   const identity = processIdentity({ runDir, status: { ...status, pid } });
+  if (options.requireConfirmedIdentity === true) return identity === IDENTITY_ALIVE;
   return identity !== IDENTITY_DEAD && identity !== IDENTITY_FOREIGN;
 };
 
@@ -48,7 +56,9 @@ function isNonEmptyString(value) {
   return typeof value === 'string' && Boolean(value.trim());
 }
 
-function recognizedStatus(runDir, status) {
+function recognizedStatus(runDir, status, options) {
+  const heartbeatFresh = isHeartbeatFresh(runDir)
+    && (options.requireConfirmedIdentity !== true || heartbeatAge(runDir) !== null);
   return Boolean(status)
     && typeof status === 'object'
     && !Array.isArray(status)
@@ -57,8 +67,8 @@ function recognizedStatus(runDir, status) {
     && isNonEmptyString(status.agent)
     && isNonEmptyString(status.slug)
     && isNonEmptyString(status.repo)
-    && isHeartbeatFresh(runDir)
-    && isPidAlive(status.pid, runDir, status);
+    && heartbeatFresh
+    && isPidAlive(status.pid, runDir, status, options);
 }
 
 function readStatus(runDir) {
@@ -70,7 +80,7 @@ function readStatus(runDir) {
 }
 
 /** Scan one project's direct run folders; unreadable or unfamiliar entries are ignored. */
-export function liveRuns(runsDir) {
+export function liveRuns(runsDir, options = {}) {
   if (typeof runsDir !== 'string' || !runsDir.trim()) return [];
   let entries;
   try {
@@ -83,13 +93,13 @@ export function liveRuns(runsDir) {
     if (!entry.isDirectory()) continue;
     const dir = path.join(runsDir, entry.name);
     const status = readStatus(dir);
-    if (recognizedStatus(dir, status)) result.push({ dir, status });
+    if (recognizedStatus(dir, status, options)) result.push({ dir, status });
   }
   return result;
 }
 
 /** Scan every project under the configured runs root for worktree ownership. */
-export function allLiveRuns(runsRoot) {
+export function allLiveRuns(runsRoot, options = {}) {
   if (typeof runsRoot !== 'string' || !runsRoot.trim()) return [];
   let projects;
   try {
@@ -100,7 +110,7 @@ export function allLiveRuns(runsRoot) {
   const result = [];
   for (const project of projects) {
     if (!project.isDirectory()) continue;
-    result.push(...liveRuns(path.join(runsRoot, project.name)));
+    result.push(...liveRuns(path.join(runsRoot, project.name), options));
   }
   return result;
 }

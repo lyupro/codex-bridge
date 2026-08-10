@@ -15,6 +15,8 @@ import { readRulesRegistry } from './rules-owners.mjs';
 import { readRunConfig, retentionNotice } from '../src/run-config.mjs';
 import { runsRoot } from '../src/runner/runs-root.mjs';
 import { resolveProjectRunsDir } from '../src/runner/project-dir.mjs';
+import { allLiveRuns } from '../src/hooks/live-runs.mjs';
+import { STOP_COMMAND_TEMPLATE } from '../src/stop-contract.mjs';
 
 const WARNING = '\u001b[33m';
 const RESET = '\u001b[0m';
@@ -100,6 +102,18 @@ function projectRunsCheck() {
   }
   const note = resolved.reason === 'created' ? 'not created yet' : resolved.reason;
   return check('projectRuns', 'ok', `${path.resolve(resolved.dir)} (${note})`);
+}
+
+function liveRunsCheck() {
+  let count;
+  try {
+    count = allLiveRuns(runsRoot(), { requireConfirmedIdentity: true }).length;
+  } catch (err) {
+    return check('liveRuns', 'warn', `working-run count unavailable: ${err.message}`);
+  }
+  if (!count) return check('liveRuns', 'ok', '0 runs working right now');
+  const noun = count === 1 ? 'run' : 'runs';
+  return check('liveRuns', 'warn', `${count} ${noun} working right now; stop with ${STOP_COMMAND_TEMPLATE}`);
 }
 
 export function probeCodex() {
@@ -228,6 +242,7 @@ export async function diagnose({ host, codexProbe = probeCodex, currentPackage }
   checks.push(check('node', nodeMajor >= 24 ? 'ok' : 'fail', `${process.versions.node} (requires >=24)`));
   checks.push(check('runsRoot', 'ok', path.resolve(runsRoot())));
   const projectRuns = projectRunsCheck();
+  checks.push(liveRunsCheck());
   checks.push(projectRuns);
 
   return {
@@ -242,7 +257,7 @@ export async function diagnose({ host, codexProbe = probeCodex, currentPackage }
 export function renderDoctor(result) {
   return result.checks.map(({ key, status, value }) => {
     const rendered = `[${status}] ${key}: ${value}`;
-    return ['retention', 'conventions', 'permissions'].includes(key) && status === 'warn'
+    return ['retention', 'conventions', 'permissions', 'liveRuns'].includes(key) && status === 'warn'
       ? `${WARNING}${rendered}${RESET}`
       : rendered;
   }).join('\n');

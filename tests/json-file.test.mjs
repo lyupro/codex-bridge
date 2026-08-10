@@ -19,6 +19,7 @@ const stdinHookExpressions = Object.freeze({
   'src/hooks/order-gate.mjs': "JSON.parse(fs.readFileSync(0, 'utf8'))",
   'src/hooks/prune-guard.mjs': "JSON.parse(fs.readFileSync(0, 'utf8'))",
   'src/hooks/reply-guard.mjs': "JSON.parse(fs.readFileSync(0, 'utf8'))",
+  'src/hooks/stop-guard.mjs': "JSON.parse(fs.readFileSync(0, 'utf8'))",
   'src/hooks/worktree-lock.mjs': "JSON.parse(fs.readFileSync(0, 'utf8'))",
 });
 

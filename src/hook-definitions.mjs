@@ -39,9 +39,17 @@ export const SHELL_TOOLS = Object.freeze(['Bash', 'PowerShell']);
 /** A PreToolUse matcher is a regular expression over tool names, so alternation covers both. */
 export const SHELL_TOOL_MATCHER = SHELL_TOOLS.join('|');
 
+// Plan_31 routes host stop requests through the package guard; keep the matcher derived from
+// the tool list so registration and uninstall cannot drift from the host event spelling.
+export const STOP_TOOLS = Object.freeze(['TaskStop']);
+
+/** A PreToolUse matcher is a regular expression over tool names, so the list remains authoritative. */
+export const STOP_TOOL_MATCHER = STOP_TOOLS.join('|');
+
 export const HOOK_DEFINITIONS = Object.freeze([
   Object.freeze({ event: 'SubagentStop', matcher: '*', file: 'reply-guard.mjs' }),
   Object.freeze({ event: 'PreToolUse', matcher: SUBAGENT_TOOL_MATCHER, file: 'order-gate.mjs' }),
   Object.freeze({ event: 'PreToolUse', matcher: WRITE_TOOL_MATCHER, file: 'worktree-lock.mjs' }),
   Object.freeze({ event: 'PreToolUse', matcher: SHELL_TOOL_MATCHER, file: 'prune-guard.mjs' }),
+  Object.freeze({ event: 'PreToolUse', matcher: STOP_TOOL_MATCHER, file: 'stop-guard.mjs' }),
 ]);

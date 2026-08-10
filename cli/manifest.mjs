@@ -11,6 +11,7 @@ import {
   renderRequiredInputs,
 } from '../src/required-inputs.mjs';
 import { renderNoSelfExecution } from '../src/no-self-execution.mjs';
+import { renderStopSummary } from '../src/stop-contract.mjs';
 import { readJsonFile } from '../src/json-file.mjs';
 
 export { HOOK_DEFINITIONS };
@@ -59,7 +60,8 @@ export function replacePlaceholders(content, agentsDir) {
     .replaceAll('{{CODEX_BRIDGE_DIR}}', posix(path.resolve(agentsDir)))
     .replaceAll('{{CODEX_REQUIRED_INPUTS_SUMMARY}}', renderRequiredInputSummary(agentType))
     .replaceAll('{{CODEX_REQUIRED_INPUTS}}', renderRequiredInputs(agentType))
-    .replaceAll('{{CODEX_NO_SELF_EXECUTION}}', renderNoSelfExecution());
+    .replaceAll('{{CODEX_NO_SELF_EXECUTION}}', renderNoSelfExecution())
+    .replaceAll('{{CODEX_STOP_SUMMARY}}', renderStopSummary());
 }
 
 export async function packageInfo(packageRoot = PACKAGE_ROOT) {

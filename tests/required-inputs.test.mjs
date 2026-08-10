@@ -6,6 +6,7 @@ import path from 'node:path';
 import { replacePlaceholders } from '../cli/manifest.mjs';
 import { AGENTS } from '../src/write-meta.mjs';
 import { renderNoSelfExecution } from '../src/no-self-execution.mjs';
+import { renderStopSummary } from '../src/stop-contract.mjs';
 import {
   CONTINUATION_INPUT,
   REQUIRED_INPUTS,
@@ -172,6 +173,8 @@ test('expanded dispatcher prompts tell the caller exactly what the gate accepts'
       `${agentType} body must carry every generated input entry`,
     );
     assert.doesNotMatch(rendered, /\{\{CODEX_REQUIRED_INPUTS(?:_SUMMARY)?\}\}/);
+    assert.ok(frontmatter.includes(renderStopSummary()), `${agentType} frontmatter must carry stop guidance`);
+    assert.doesNotMatch(rendered, /\{\{CODEX_STOP_SUMMARY\}\}/);
 
     const acceptedTask = entries.map((entry) => `${entry.label}: ${entry.example}`).join('\n');
     assert.deepEqual(
