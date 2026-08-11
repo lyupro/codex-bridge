@@ -40,3 +40,11 @@ desktop.ini
 
 # rtk wrapper state: history.db holds the operator's shell history and absolute local paths
 rtk/
+
+# The workroom, not the storefront (Plan_36). Plans record why the code is shaped this way,
+# checklists are hand-run acceptance the operator performs, audits are one-day snapshots. All three
+# are kept and written in full — on disk, in Russian, out of the public repository. None of them
+# ever shipped in the package (`npm pack` never included docs/), so nothing downstream changes.
+docs/plans/
+docs/checklists/
+docs/audits/

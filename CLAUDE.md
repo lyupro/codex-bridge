@@ -72,13 +72,19 @@ read that file BEFORE the first edit, not from memory.**
 - **400 lines per source file**, enforced by `scripts/check-file-size.mjs` at pre-commit. An entry
   in `.file-size-limit.json#exclude` naming a specific file requires an `exclusionRationale`. Split
   by responsibility, not by moving lines into a `utils.mjs`.
-- **Code, comments, prompts, README and CHANGELOG are English. `docs/` is Russian.** Follow whatever
-  the file you are editing already uses.
+- **Everything tracked in this repository is English** — code, comments, prompts, README, CHANGELOG
+  and the reference documents in `docs/`. The untracked working notes below stay Russian.
 - **Comments explain why, with the incident behind the rule.** The existing headers cite the run
   that failed; match that density instead of restating what the code does.
+- **Three folders are kept on disk and out of git** (Plan_36, `.gitignore`): `docs/plans/`,
+  `docs/checklists/` and `docs/audits/`. They are still written in full and still Russian — they are
+  the only memory between sessions — but they are the workroom, not the storefront, and a fresh
+  clone does not contain them. **A step is closed by a commit plus a plan entry plus a checklist;
+  only the commit is visible in git.**
 - Every closed step gets an operator checklist in `docs/checklists/` and a link from
-  `docs/operator-checklists.md` — `tests/docs-checklist-index.test.mjs` fails if either side is
-  missing. Fully passed checklists move to `docs/checklists/done/`.
+  `docs/checklists/operator-checklists.md` — `tests/docs-checklist-index.test.mjs` enforces both
+  sides wherever the folder exists, and skips where it does not. Fully passed checklists move to
+  `docs/checklists/done/`.
 - `docs/plans/` records why the code is shaped this way, what was rejected and at what cost. Read
   the relevant plan before redesigning a mechanism.
 - Tests mirror source layout (`tests/meta/`, `tests/runner/`, `tests/cli/`); shared fixtures live in
