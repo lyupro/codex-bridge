@@ -99,19 +99,41 @@ async function dropStaleLock(lockPath) {
   }
 }
 
+/**
+ * Windows answers a taken lock with three different codes, and only one of them is EEXIST. A file
+ * whose last handle closed while a delete was pending stays visible but refuses to be opened:
+ * `open(..., 'wx')` comes back EPERM, and a file another process still holds comes back EBUSY.
+ * Treating those as fatal is what made `tests/cli/rules-owners.test.mjs` fail twice on 2026-08-11
+ * with EPERM on the lock file — the suite went red over a lock that was simply busy for one more
+ * millisecond. All three mean the same thing to a caller waiting for a lock: not yours yet.
+ */
+const LOCK_TAKEN_CODES = new Set(['EEXIST', 'EPERM', 'EBUSY']);
+
+/** Exported so the retry contract is asserted directly; the race itself reproduces only by luck. */
+export function isLockTaken(err) {
+  return LOCK_TAKEN_CODES.has(err?.code);
+}
+
 async function acquireRegistryLock(host) {
   await fs.mkdir(host.codexRulesDir, { recursive: true });
   const lockPath = registryLockPath(host);
+  let lastTaken;
   for (let attempt = 0; attempt < REGISTRY_LOCK_RETRIES; attempt += 1) {
     try {
       const handle = await fs.open(lockPath, 'wx');
       return { handle, lockPath };
     } catch (err) {
-      if (err.code !== 'EEXIST') throw err;
+      if (!isLockTaken(err)) throw err;
+      lastTaken = err;
       if (!(await dropStaleLock(lockPath))) await waitForRegistryLock();
     }
   }
-  throw new Error(`timed out waiting for rules ownership registry lock: ${lockPath}`);
+  // The code is part of the message: a timeout on EPERM points at a delete that never completed,
+  // a timeout on EEXIST at an owner that never released.
+  throw new Error(
+    `timed out waiting for rules ownership registry lock: ${lockPath} (last attempt: ${lastTaken.code})`,
+    { cause: lastTaken },
+  );
 }
 
 async function withRegistryLock(host, action) {

@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   addRulesOwner,
+  isLockTaken,
   normalizedRulesOwner,
   readRulesRegistry,
 } from '../../cli/rules-owners.mjs';
@@ -42,6 +43,18 @@ test('a lock left behind by a dead process does not block the next owner', async
 
   assert.deepEqual(registry.owners, [normalizedRulesOwner(host)]);
   await assert.rejects(() => fs.stat(lockPath), { code: 'ENOENT' });
+});
+
+// Windows reported EPERM on the lock file twice on 2026-08-11 and the suite went red over a lock
+// that was busy for one more millisecond. The race reproduces only by luck, so the contract is
+// asserted directly: every code that means "taken" retries, everything else still fails loudly.
+test('a taken lock is recognised by every code Windows uses for it', () => {
+  for (const code of ['EEXIST', 'EPERM', 'EBUSY']) {
+    assert.ok(isLockTaken({ code }), `${code} means the lock is taken, not that the run is broken`);
+  }
+  for (const code of ['ENOSPC', 'EACCES', 'EROFS', undefined]) {
+    assert.equal(isLockTaken({ code }), false, `${code} is a real failure and must not be retried`);
+  }
 });
 
 test('a lock a live process is holding is waited for, not stolen', async (t) => {
