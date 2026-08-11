@@ -22,12 +22,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readJsonFileSync } from './json-file.mjs';
 import { changedPaths, readJson, readText, size } from './meta/paths.mjs';
 import { splitRunChanges } from './meta/environment.mjs';
 import { readEvents } from './meta/events.mjs';
 import { writeStatus } from './meta/run-state.mjs';
 import { resolveStatus } from './meta/verdict.mjs';
 import { AGENTS, failReply, limitReply } from './meta/reply.mjs';
+
+const RUNNER_VERSION = readJsonFileSync(new URL('../package.json', import.meta.url)).version;
 
 export { expandDeclared, globToRegExp, readJson } from './meta/paths.mjs';
 export { chainBaseline, chainRuns, taskFingerprint } from './meta/chain.mjs';
@@ -84,6 +87,7 @@ export function collect(runDir, agent, exitCode) {
 
   const meta = {
     agent,
+    runner_version: RUNNER_VERSION,
     project: path.basename(path.dirname(runDir)),
     run: path.basename(runDir),
     finished_at: new Date().toISOString(),

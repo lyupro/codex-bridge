@@ -44,14 +44,14 @@ for(const proj of fs.readdirSync(root)){
   try{repo=JSON.parse(fs.readFileSync(path.join(pdir,'.project.json'),'utf8')).repo||null}catch{}
   for(const run of fs.readdirSync(pdir)){
     const dir=path.join(pdir,run),meta=path.join(dir,'meta.json'),log=path.join(dir,'raw.log');
-    let tokens=null,agent=null,sandbox=null;
+    let tokens=null,agent=null,sandbox=null,runnerVersion=false;
     if(fs.existsSync(meta)){
-      try{const m=JSON.parse(fs.readFileSync(meta,'utf8'));tokens=m.tokens??null;agent=m.agent||null;sandbox=m.sandbox||null}catch{}
+      try{const m=JSON.parse(fs.readFileSync(meta,'utf8'));tokens=m.tokens??null;agent=m.agent||null;sandbox=m.sandbox||null;runnerVersion=Object.hasOwn(m,'runner_version')}catch{}
     } else if(fs.existsSync(log)){
       const hit=[...fs.readFileSync(log,'utf8').matchAll(/tokens used[\r\n]+([^\r\n]+)/g)].pop();
       tokens=hit?parseInt(hit[1].replace(/\D/g,''),10)||null:null;
     } else continue;
-    const entry={proj,repo,run,day:run.slice(0,10),agent:agent||(/review/.test(run)?'codex-review':/build/.test(run)?'codex-build':'codex-scout'),sandbox};
+    const entry={proj,repo,run,day:run.slice(0,10),agent:agent||(/review/.test(run)?'codex-review':/build/.test(run)?'codex-build':'codex-scout'),sandbox,runnerVersion};
     if(tokens===null){unknown.push(entry);continue}
     runs.push({...entry,tokens});
   }
@@ -63,7 +63,9 @@ const fmt=n=>n.toLocaleString('en-US');
 const row=(l,rs)=>'  '+String(l).padEnd(22)+String(rs.length).padStart(3)+' runs  '+fmt(sum(rs)).padStart(11)+'  average '+fmt(Math.round(sum(rs)/rs.length));
 if(runs.length)console.log('TOTAL: '+fmt(sum(runs))+' tokens over '+runs.length+' runs · average '+fmt(Math.round(sum(runs)/runs.length)));
 if(unknown.length)console.log('Unaccounted: '+unknown.length+' runs (Codex reported no spending) — the total is understated');
-const risky=[...runs,...unknown].filter(r=>r.sandbox&&r.sandbox!=='read-only'&&r.sandbox!=='workspace-write');
+const legacy=[...runs,...unknown].filter(r=>!r.runnerVersion);
+if(legacy.length)console.log('Before the runner: '+legacy.length+' runs carry no runner version and are not judged by the sandbox contract');
+const risky=[...runs,...unknown].filter(r=>r.runnerVersion&&r.sandbox&&r.sandbox!=='read-only'&&r.sandbox!=='workspace-write');
 if(risky.length)console.log('WARNING: '+risky.length+' runs went outside the usual sandbox: '+risky.map(r=>r.run+' ('+r.sandbox+')').join(', '));
 if(runs.length){
   console.log('');console.log('By day:');
