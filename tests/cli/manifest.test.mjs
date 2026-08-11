@@ -57,6 +57,7 @@ test('installation table is exported data', () => {
     { source: 'src/commands/*.md', root: 'claude', target: 'commandsDir', processing: 'placeholders' },
     { source: 'src/hooks/**', root: 'brand', target: 'brandHooksDir', processing: 'copy' },
     { source: 'src/**', root: 'brand', target: 'brandRunnerDir', processing: 'copy' },
+    { source: 'package.json', root: 'brand', target: 'brandRoot', processing: 'copy' },
   ]);
 });
 
@@ -91,6 +92,22 @@ test('install plan maps agents, commands, and remaining src files', async (t) =>
     target: path.join(host.codexRulesDir, 'codex-bridge.rules'),
     name: 'codex-bridge.rules',
   });
+});
+
+test('the installed runner finds its own version one level above the runner directory', async (t) => {
+  const { packageRoot, host } = await fixture(t);
+  await fs.writeFile(path.join(packageRoot, 'package.json'), '{"version":"9.9.9"}\n');
+
+  const plan = await buildInstallPlan(host, packageRoot);
+  const manifest = plan.find((item) => path.basename(item.source) === 'package.json');
+
+  // write-meta.mjs resolves new URL('../package.json', import.meta.url) to stamp meta.json with
+  // the version that wrote the run. In the clone that path is the repository root and every test
+  // passes; on a host it is one level above the installed runner, and until Plan_34 nothing put a
+  // file there — each run would have died on import with the suite still green.
+  assert.ok(manifest, 'package.json belongs in the install plan');
+  assert.equal(manifest.target, path.resolve(host.brandRunnerDir, '..', 'package.json'));
+  assert.equal(manifest.root, 'brand');
 });
 
 test('placeholder becomes an absolute POSIX agents path', () => {

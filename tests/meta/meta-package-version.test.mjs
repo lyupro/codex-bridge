@@ -61,6 +61,9 @@ test('a run without runner_version is reported as legacy without a sandbox warni
   });
 
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /Legacy: 1 runs made before runner \(pre-contract\)/);
+  assert.match(
+    result.stdout,
+    /Before the runner: 1 runs carry no runner version and are not judged by the sandbox contract/,
+  );
   assert.doesNotMatch(result.stdout, /WARNING: .*went outside the usual sandbox/);
 });

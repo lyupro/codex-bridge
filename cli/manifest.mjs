@@ -61,6 +61,11 @@ export const INSTALL_TABLE = Object.freeze([
   { source: 'src/commands/*.md', root: 'claude', target: 'commandsDir', processing: 'placeholders' },
   { source: 'src/hooks/**', root: 'brand', target: 'brandHooksDir', processing: 'copy' },
   { source: 'src/**', root: 'brand', target: 'brandRunnerDir', processing: 'copy' },
+  // The runner reads its own version out of the package.json beside it, so meta.json can say
+  // which code wrote a run (Plan_34). In the clone that file sits one level above src/; without
+  // this line the installed layout has nothing one level above lib/, and every run on a real host
+  // would die on import while the whole suite stayed green against the clone.
+  { source: 'package.json', root: 'brand', target: 'brandRoot', processing: 'copy' },
 ]);
 
 const posix = (value) => value.split(path.sep).join('/');
@@ -128,7 +133,9 @@ function rootFor(host, mapping) {
 }
 
 function targetRelative(packageRoot, source, mapping) {
-  if (mapping.processing === 'placeholders') return path.basename(source);
+  if (mapping.processing === 'placeholders' || mapping.source === 'package.json') {
+    return path.basename(source);
+  }
   const sourceRoot = mapping.source === 'src/hooks/**'
     ? path.join(packageRoot, 'src', 'hooks')
     : path.join(packageRoot, 'src');
