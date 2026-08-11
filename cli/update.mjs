@@ -121,7 +121,12 @@ function dryRunOutput(states, hookStates, legacy, oldHooks) {
     if (state.status === 'orphaned' && state.exists) lines.push(`Would remove ${state.relative}.`);
     if (state.status === 'modified' && !state.item) lines.push(`Would preserve modified orphan ${state.relative}.`);
   }
-  oldHooks.forEach((hook) => lines.push(`Would remove the previous ${hook.event} hook registration.`));
+  // previousHooks() returns {hook, definition, spec}, and reading .event off that wrapper printed
+  // "the previous undefined hook registration" five times during the Plan_25 migration — the one
+  // dry run where the operator most needed to see which registrations were about to be taken away.
+  oldHooks.forEach(({ hook, definition }) => lines.push(
+    `Would remove the previous ${hook.event} hook registration for matcher ${definition.matcher}.`,
+  ));
   hookStates.forEach(({ state, target }) => {
     const { definition, registration } = target;
     if (!state.present) {
