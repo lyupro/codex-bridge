@@ -59,7 +59,10 @@ read that file BEFORE the first edit, not from memory.**
   anything else that has to recognise a call read it from there. Two independent lists drift
   silently — exactly how the installer and test hook lists had already drifted before Plan_19.
 - **Windows paths are compared normalized** (forward slashes, no trailing slash, case-insensitive)
-  and symlinks are deliberately not resolved: `realpath` returns `\\?\` and UNC forms.
+  and symlinks are deliberately not resolved: `realpath` returns `\\?\` and UNC forms. The single
+  exception is `cli/invoked-directly.mjs`, which resolves both sides: there the question is whether
+  two paths are the same file, not what a path is, and comparing them as written let `npm i -g .`
+  silence every guard.
 - **Agent and command markdown is placeholder-processed** on install: `{{CODEX_BRIDGE_DIR}}` becomes
   the installed runner directory, `~/.lyupro/.codex-bridge/lib/` — not the directory the markdown
   itself lands in. Keep the placeholder, never a real path.
