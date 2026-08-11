@@ -1,270 +1,273 @@
-# Жизненный цикл прогона
+# Run Lifecycle
 
-## Участники
+## Participants
 
-`run-codex.mjs` выбирает одну из двух веток. Обычный вызов запускает launcher. Внутренний вызов
-`--worker <каталог прогона>` запускает worker. После отделения процессов их единственная связь по
-данным — `worker.json`.
+`run-codex.mjs` selects one of two branches. A normal invocation starts the launcher. The internal
+`--worker <run directory>` invocation starts the worker. After the processes detach, their only data
+connection is `worker.json`.
 
-Launcher вердикта не ждёт: он стартует прогон и завершается. За вердиктом вызывающий приходит
-повторным вызовом той же команды с той же меткой заказа — `attach.mjs` присоединяет его к уже
-идущему прогону вместо запуска второго. Пока старт и ожидание были одним вызовом, потолок времени
-вызывающей оболочки выглядел как умерший прогон: 2026-08-03 один заказ дал шесть прогонов, из них
-четыре не были учтены вовсе.
+The launcher does not wait for the verdict: it starts the run and exits. The caller returns for the
+verdict by invoking the same command again with the same job label — `attach.mjs` attaches it to the
+existing run instead of starting a second one. When startup and waiting were a single invocation, the
+calling shell's time limit looked like a dead run: on 2026-08-03 one job produced six runs, four of
+which were never accounted for at all.
 
-## Первая точка отказа: gate оркестратора
+## First failure point: the orchestrator gate
 
-До запуска launcher Claude Code вызывает `PreToolUse` hook `order-gate.mjs` на каждой попытке
-вызвать диспетчер. Gate читает текст заказа из `tool_input.prompt` и сверяет его с единой таблицей
-`src/required-inputs.mjs`: для `codex-scout` и `codex-review` нужна метка заказа, для `codex-build`
-нужны метка и полный `scope`. Пропущенное значение и очевидный шаблон (`TODO`, `<label>` и т. п.)
-отклоняются здесь, поэтому subagent и Codex ещё не стартовали и квота не тратится. Настоящая метка
-и scope пропускают вызов дальше.
+Before the launcher starts, Claude Code invokes the `PreToolUse` hook `order-gate.mjs` on every attempt
+to call a dispatcher. The gate reads the job text from `tool_input.prompt` and checks it against the
+single table in `src/required-inputs.mjs`: `codex-scout` and `codex-review` require a job label, while
+`codex-build` requires a label and full `scope`. A missing value or obvious placeholder (`TODO`,
+`<label>`, and so on) is rejected here, before either the subagent or Codex starts and before quota is
+spent. A real label and scope allow the call to continue.
 
-Это producer-side проверка: промпт агента тоже получает этот список при установке из той же таблицы,
-но gate защищает вызывающего до того, как управление перейдёт диспетчеру. Только после ответа
-`allow` начинается последовательность launcher ниже.
+This is a producer-side check: the agent prompt also receives this list from the same table during
+installation, but the gate protects the caller before control passes to the dispatcher. Only an `allow`
+response begins the launcher sequence below.
 
-## Последовательность launcher
+## Launcher sequence
 
-Порядок важен: ранние отказы должны произойти до вызова Codex, а worker должен получить полный
-заказ до отделения от launcher.
+Order matters: early refusals must happen before Codex is invoked, and the worker must receive the
+complete job before detaching from the launcher.
 
-1. `loadRunEnv()` читает `run-config.json` и фиксирует флаги среды. Ошибка конфига завершает
-   команду без каталога прогона.
-2. `parseArgs()` проверяет CLI, в том числе обязательные `--agent`, `--order-id` для всех режимов,
-   `--scope` для build и хотя бы один `--question` для scout. Метку заказа и подвопросы выдаёт
-   оркестратор; раннер их не сочиняет и без них не стартует. Имя флага на месте значения
-   (`--question --continue`) считается пропущенным значением. `--effort` сверяется с набором Codex
-   (`none|minimal|low|medium|high|xhigh|max`) здесь же — до вызова, а не по ответу API.
-3. Launcher читает stdin и отклоняет пустую задачу.
-4. Через git определяется корень репозитория; для не-git каталога используется `--repo`.
-   Сразу за этим `validateScope()` сверяет шаблоны scope с содержимым репозитория и отказывает,
-   если шаблон не может совпасть: абсолютный или дисковый путь, обратные слэши, `..`, либо ничего
-   не нашедший шаблон. Проверка идёт у всех трёх агентов и до создания каталога прогона; пути из
-   `--scope-new` (только `codex-build`) освобождены от требования существовать. Корень репозитория
-   нужен раньше проверки — отсюда её место в этом пункте, а не в `parseArgs()`.
-5. `markAbandoned()` закрывает прежние каталоги с `state=running`, если их pid уже мёртв. Такой
-   каталог получает не только пометку, но и вердикт: `meta.json` со статусом `FAIL` и причиной,
-   перечисляющей файлы, которыми текущее дерево отличается от `state-before.txt` этого прогона.
-   Снимок дерева передаётся аргументом — `meta/` намеренно не делает git-вызовов. Список честен,
-   но не доказывает авторство: сверка идёт в начале более позднего прогона, поэтому в неё может
-   попасть чужая работа, и сама причина это оговаривает. Каталог остаётся в состоянии `abandoned`,
-   иначе защита от detached HEAD перестала бы его видеть.
-6. `abandonedBranchDrift()` смотрит, не оставил ли брошенный прогон репозиторий в detached HEAD.
-   Оставил — запуск отказывается для всех трёх режимов, печатает `git checkout <ветка>` и не
-   выполняет её. Отличие ветки по имени отказом не считается: переключение веток — обычная работа
-   оператора. Блокировка снимается сама, как только репозиторий снова на ветке.
-7. Если `--slug` не задан, раннер берёт его из обязательной метки заказа и применяет санитайзер
-   `[^A-Za-z0-9._-]+` → `-`; результат без букв и цифр отбрасывается до создания папки. Затем
-   `chainRuns()` ищет прогоны того же репозитория по трём признакам: тот же `slug`, тот же
-   отпечаток текста задачи или та же метка заказа. Найденная цепочка без `--continue` останавливает
-   запуск до создания нового каталога. Папки старого контракта с общим slug вроде `build` не
-   теряются: их находят по сохранённой метке заказа или отпечатку. Считаются только прогоны, у
-   которых была сессия Codex: каталог с `state=aborted_pre_start` (и его аналог прежнего
-   контракта) из счёта выпадает — за ним нет ни одной потраченной единицы квоты, продолжать в нём
-   нечего. Сама цепочка остаётся полной: это аудиторский вид, и отбитый прогон в нём виден.
-8. Для build проверяется живой пишущий прогон в том же репозитории.
-9. Создаётся уникальный каталог `<дата_время>_<slug>`; при совпадении имени добавляется `-2`,
-   `-3` и так далее.
-10. Первым артефактом пишется `status.json` с `state=running` и pid launcher. Затем stdout
-    получает строку `RUN=<каталог>`.
-11. Конфликт пишущих прогонов или недоступный Codex CLI закрывается через `meta.json` и
-    `status.json` со статусом `FAIL` и состоянием `aborted_pre_start`; платного вызова ещё не
-    было. Отдельное состояние здесь не косметика: по нему следующий запуск отличает пустой
-    каталог от прогона, за которым стоит потраченная квота (Plan_23).
-12. Для review вычисляется область diff и пишется `scope.txt`. Для scout переданные флагами
-    `--question` подвопросы пишутся в `questions.json` в том же порядке (`Q1..Qn`); текст задачи
-    источником списка не является. Для build в `scope.txt` пишутся шаблоны `--scope`.
-13. Пишутся `env.json`, затем `task.md` и `schema.json`. `schema.json` — не только формат ответа
-    для Codex: по нему вердикт узнаёт, был ли прогон обязан объявить исход (`outcome` в
-    `required`), поэтому старая папка судится контрактом своего дня — см. [verdict.md](verdict.md).
-14. Для build снимаются `head-before.txt`, `branch-before.txt`, `git-before.txt` и
-    `state-before.txt`. Пустой `branch-before.txt` означает detached HEAD, а не отсутствие данных.
-15. Собирается argv для `codex exec`; небезопасный для `cmd.exe` аргумент приводит к
-    артефактированному `FAIL` до вызова Codex.
-16. Пишется `worker.json` — полный заказ второй половине.
-17. Точка отделения: launcher создаёт detached worker с `stdio: ignore`, вызывает `unref()` и
-    обновляет `status.json`, заменяя активный `pid` на pid worker и добавляя `runner_pid`.
-18. Launcher печатает строку `STARTED` с режимом, slug, меткой заказа и pid worker, а следом —
-    как вернуться за вердиктом, и завершается кодом `0`. Ожидания здесь больше нет.
+1. `loadRunEnv()` reads `run-config.json` and fixes the environment flags. A configuration error ends
+   the command without creating a run directory.
+2. `parseArgs()` validates the CLI, including mandatory `--agent` and `--order-id` for all modes,
+   `--scope` for build, and at least one `--question` for scout. The orchestrator supplies the job label
+   and subquestions; the runner does not invent them and will not start without them. A flag name in
+   place of a value (`--question --continue`) counts as a missing value. `--effort` is checked against
+   the Codex set (`none|minimal|low|medium|high|xhigh|max`) here as well — before invocation, not from
+   an API response.
+3. The launcher reads stdin and rejects an empty task.
+4. The repository root is determined through git; `--repo` is used for a non-git directory.
+   Immediately afterward, `validateScope()` checks scope patterns against repository contents and
+   rejects a pattern that cannot match: an absolute or drive path, backslashes, `..`, or a pattern that
+   found nothing. This check runs for all three agents and before creating the run directory; paths from
+   `--scope-new` (only for `codex-build`) are exempt from the requirement to exist. The repository root
+   is needed before validation, which is why this check belongs here rather than in `parseArgs()`.
+5. `markAbandoned()` closes earlier directories with `state=running` if their pid is already dead. Such
+   a directory receives not only a marker but also a verdict: `meta.json` with status `FAIL` and a reason
+   listing the files by which the current tree differs from that run's `state-before.txt`. The tree
+   snapshot is passed as an argument — `meta/` intentionally makes no git calls. The list is honest but
+   does not prove authorship: the comparison happens at the start of a later run, so it may include
+   someone else's work, and the reason says so. The directory remains in `abandoned` state; otherwise
+   the detached HEAD protection would stop seeing it.
+6. `abandonedBranchDrift()` checks whether an abandoned run left the repository in detached HEAD. If it
+   did, startup is rejected for all three modes, prints `git checkout <branch>`, and does not execute it.
+   A branch-name difference is not a refusal: switching branches is normal operator work. The block
+   clears itself as soon as the repository is back on a branch.
+7. If `--slug` is absent, the runner takes it from the mandatory job label and applies the sanitizer
+   `[^A-Za-z0-9._-]+` → `-`; a result with no letters or digits is rejected before creating a directory.
+   Then `chainRuns()` finds runs from the same repository by three signals: the same `slug`, the same
+   task-text fingerprint, or the same job label. A matching chain without `--continue` stops startup
+   before a new directory is created. Old-contract directories with a generic slug such as `build` are
+   not lost: the saved job label or fingerprint finds them. Only runs that had a Codex session count:
+   a directory with `state=aborted_pre_start` (and its old-contract equivalent) is excluded — it spent
+   no quota and contains nothing to continue. The chain itself remains complete: it is the audit view,
+   and the rejected run remains visible in it.
+8. For build, a live writing run in the same repository is checked.
+9. A unique `<date_time>_<slug>` directory is created; on a name collision, `-2`, `-3`, and so on is
+   appended.
+10. The first artifact written is `status.json` with `state=running` and the launcher pid. Stdout then
+    receives the line `RUN=<directory>`.
+11. A conflicting writing run or unavailable Codex CLI is closed through `meta.json` and `status.json`
+    with status `FAIL` and state `aborted_pre_start`; no paid call has occurred. The separate state is
+    not cosmetic: it lets the next startup distinguish an empty directory from a run backed by spent
+    quota.
+12. For review, the diff area is computed and written to `scope.txt`. For scout, subquestions passed via
+    `--question` are written to `questions.json` in the same order (`Q1..Qn`); the task text is not the
+    source of this list. For build, `--scope` patterns are written to `scope.txt`.
+13. `env.json` is written, followed by `task.md` and `schema.json`. `schema.json` is not only the Codex
+    response format: it tells the verdict whether the run was required to declare an outcome (`outcome`
+    in `required`), so an old directory is judged by the contract of its own day — see
+    [verdict.md](verdict.md).
+14. For build, `head-before.txt`, `branch-before.txt`, `git-before.txt`, and `state-before.txt` are
+    captured. An empty `branch-before.txt` means detached HEAD, not missing data.
+15. argv for `codex exec` is assembled; an argument unsafe for `cmd.exe` produces an artifacted `FAIL`
+    before Codex is invoked.
+16. `worker.json` is written — the complete job for the second half.
+17. Detachment point: the launcher creates a detached worker with `stdio: ignore`, calls `unref()`, and
+    updates `status.json`, replacing the active `pid` with the worker pid and adding `runner_pid`.
+18. The launcher prints a `STARTED` line with the mode, slug, job label, and worker pid, followed by
+    instructions for returning for the verdict, then exits with code `0`. It no longer waits here.
 
-## Присоединение по метке заказа
+## Attaching by job label
 
-Повторный вызов с той же меткой не порождает второй прогон. Проверка стоит до создания каталога,
-сразу после поиска цепочки, и до отказа `--continue is required` (пункт 7):
+A repeated invocation with the same label does not create a second run. The check occurs before
+directory creation, immediately after finding the chain and before the `--continue is required` refusal
+(step 7):
 
-- **У прогона этой метки уже есть `reply.txt`** — вердикт печатается с диска, повтор отвечает, а не
-  отказывает.
-- **`reply.txt` нет, pid жив** — вызов печатает `ATTACH=<каталог> started=<время>`, ждёт появления
-  `reply.txt` и печатает его. Следующая строка прямо говорит, что это ответ предыдущего прогона,
-  начатого в указанное время, и что новая работа не запускалась. Codex не вызывается, квота не
-  тратится. Прерванный повтор ничего не портит: следующий присоединится к тому же прогону.
-- **`reply.txt` нет, pid мёртв** — это брошенный прогон, присоединяться не к чему; работает прежний
-  путь (`markAbandoned()` уже пометил каталог, дальше действует отказ `--continue`).
-- **Передан `--continue`** — присоединения не происходит вовсе: оркестратор прочитал прошлый ответ и
-  просит новый заход.
+- **A run with this label already has `reply.txt`** — the verdict is printed from disk; the repeat
+  responds rather than refusing.
+- **There is no `reply.txt`, and the pid is alive** — the invocation prints
+  `ATTACH=<directory> started=<time>`, waits for `reply.txt`, and prints it. The next line states
+  explicitly that this is the response from the previous run started at the given time and that no new
+  work was started. Codex is not invoked and quota is not spent. An interrupted repeat damages nothing:
+  the next invocation attaches to the same run.
+- **There is no `reply.txt`, and the pid is dead** — this is an abandoned run with nothing to attach to;
+  the earlier path applies (`markAbandoned()` has already marked the directory, then the `--continue`
+  refusal takes effect).
+- **`--continue` was passed** — attachment does not happen at all: the orchestrator has read the previous
+  response and requests a new attempt.
 
-## Разрешение на продолжение
+## Continuation authorization
 
-Гейт всегда разбирает текст задачи на разрешение. Если строка разрешения есть, а `--continue` не
-передан, вызов отклоняется до `attach()`, создания каталога и расхода квоты. Само `--continue` без
-разрешения от оркестратора тоже отклоняется. Разрешение — строка в тексте задачи, рядом с
-`order id:` и `scope:`:
+The gate always parses the task text for authorization. If an authorization line exists but
+`--continue` was not passed, the call is rejected before `attach()`, directory creation, and quota use.
+`--continue` without authorization from the orchestrator is also rejected. Authorization is a line in
+the task text next to `order id:` and `scope:`:
 
 ```
 continue: 2026-08-05_092913_plan14-build — LIMIT at step 3, tests unwritten
 ```
 
-Она называет прогон, за которым продолжаем, и причину. Разрешением считается форма строки, а не
-наличие названной папки: после метки `continue:` должны читаться имя папки, `—` и причина. Опечатка
-в имени всё равно остаётся разрешением неправильной формы для проверки каталога: раннер не заменяет
-его правильным именем молча. Упоминание слова `continue:` внутри обычной прозы разрешением не
-считается.
+It names the run after which execution continues and gives the reason. The line form constitutes
+authorization, not the existence of the named directory: after `continue:` there must be a readable
+directory name, `—`, and a reason. A typo in the name is still authorization in the wrong form for the
+directory check: the runner does not silently replace it with the correct name. Mentioning `continue:`
+in ordinary prose is not authorization.
 
-Отказы, все бесплатные:
+All refusals are free:
 
-- разрешения нет вовсе, либо на месте заглушка (`<...>`, `TODO`) — отказ;
-- названного каталога нет в папке прогонов проекта — отказ с теми же подсказками;
-- названный прогон не последний в цепочке — отказ.
+- authorization is absent, or its value is a placeholder (`<...>`, `TODO`) — refusal;
+- the named directory does not exist in the project's runs directory — refusal with the same hints;
+- the named run is not the last in the chain — refusal.
 
-Если разрешение есть, но флага не было, отказ называет точную папку последнего прогона этой задачи,
-его статус и причину, а также печатает готовую строку разрешения для повторной попытки. При
-отсутствующей папке эти три подсказки также выдаются; введённое имя не подменяется.
+If authorization exists but the flag was omitted, the refusal names the exact directory of this task's
+last run, its status and reason, and prints a ready-to-use authorization line for the retry. If the
+directory is absent, all three hints are still provided; the entered name is not substituted.
 
-Последнее правило и делает разрешение одноразовым: продолжение дописывает в цепочку более поздний
-прогон, поэтому та же строка перестаёт совпадать сама собой — без счётчика и без нового состояния.
-Названный прогон записывается в `status.json` как `continued_from`; это след для разбора, а не вход
-проверки.
+The last rule makes authorization single-use: continuation appends a later run to the chain, so the same
+line stops matching by itself — without a counter or new state. The named run is recorded in
+`status.json` as `continued_from`; this is an investigation trace, not a validation input.
 
-При отсутствии строки обычный повтор без `--continue` всё ещё может безопасно присоединиться к
-предыдущему прогону; строка без флага через `attach()` пройти не может. Поэтому `PreToolUse`-гейт
-метки заказа не требует разрешение: решение продолжать рождается внутри субагента, и требование ко
-всем вызовам отклоняло бы честные первые заходы. Причина инцидента 2026-08-05: диспетчер, получив
-честный `FAIL`, сам назначил себе второй заход на 75 691 токен чужой квоты и придумал работу,
-которой заказ не просил. Инцидент `2026-08-10_220535_plan25-2-install-table-two-roots` показал,
-что без этого порядка старый ответ мог выглядеть вердиктом нового заказа.
+Without the line, a normal repeat without `--continue` can still safely attach to the previous run; a
+line without the flag cannot pass through `attach()`. Therefore the `PreToolUse` job-label gate does not
+require authorization: the decision to continue originates inside the subagent, and requiring it for
+every call would reject legitimate first attempts. The 2026-08-05 incident caused this rule: after
+receiving an honest `FAIL`, the dispatcher assigned itself a second attempt using 75,691 tokens of
+someone else's quota and invented work the job had not requested. The
+`2026-08-10_220535_plan25-2-install-table-two-roots` incident showed that without this ordering an old
+response could look like the verdict for a new job.
 
-## Предел продолжений
+## Continuation limit
 
-Поверх разрешения действует предел: `--continue` разрешён один раз на метку заказа и только за
-прогоном с записанным вердиктом:
+A limit applies on top of authorization: `--continue` is permitted once per job label and only after a
+run with a recorded verdict:
 
-- прогонов этой метки нет — продолжение разрешено;
-- один и у него есть вердикт — разрешено;
-- один, вердикта нет — отказ: прогон может ещё править дерево, а повтор без `--continue` к нему
-  присоединится;
-- два и больше — отказ с именами потраченных прогонов; следующий заход требует новой метки заказа
-  от оркестратора.
+- no runs with this label — continuation is allowed;
+- one run with a verdict — allowed;
+- one run without a verdict — refusal: the run may still be editing the tree, and a repeat without
+  `--continue` will attach to it;
+- two or more — refusal naming the spent runs; another attempt requires a new job label from the
+  orchestrator.
 
-Считаются именно прогоны этой метки, а не вся цепочка. Цепочка связывает прогоны ещё по slug и по
-отпечатку текста задачи — этим ловится повтор, переименовавший себя, — но если считать предел по
-ней, обещанный выход перестаёт работать: новая метка попадает в ту же цепочку через отпечаток, и
-задача оказывается отвергнута и с `--continue` («продолжение потрачено»), и без него («требуется
-`--continue`»). Навсегда незапускаемая задача хуже той бури повторов, ради которой предел заведён.
+Only runs with this label count, not the entire chain. The chain also links runs by slug and task-text
+fingerprint — catching a repeat that renamed itself — but applying the limit to the chain would break
+the promised exit: a new label joins the same chain through the fingerprint, and the task is rejected
+both with `--continue` (“continuation spent”) and without it (“`--continue` required”). A permanently
+unstartable task is worse than the retry storm the limit was introduced to prevent.
 
-## Остановка руками
+## Manual stop
 
-`codex-bridge stop <прогон>` закрывает повисший прогон: убивает записанный pid со всем деревом
-процессов и закрывает каталог как брошенный — `meta.json` со статусом `FAIL` и перечнем того, что
-прогон оставил в дереве. Прогон с готовым вердиктом не трогается, несуществующий каталог даёт
-внятную ошибку. Убийство переиспользует ту же функцию, что и дедлайн: знание про `cmd.exe` и внука
-на Windows не должно жить в двух местах.
+`codex-bridge stop <run>` closes a hung run: it kills the recorded pid with its entire process tree and
+closes the directory as abandoned — `meta.json` with status `FAIL` and a list of what the run left in
+the tree. A run with a completed verdict is untouched, and a nonexistent directory produces a clear
+error. Killing reuses the same function as the deadline: knowledge of `cmd.exe` and its grandchild on
+Windows must not live in two places.
 
-Признак «прогон ещё не ответил» — отсутствие `reply.txt`, а не отсутствие `meta.json`. Порядок
-артефактов таков, что `meta.json` пишется раньше `reply.txt`, и между ними есть окно, где вердикт
-уже есть, а прогон не закрыт. Судили бы по `meta.json` — повтор, пришедший в это окно, получил бы
-отказ вместо ответа, и обещание «повтор всегда безопасен» имело бы дыру.
+The indication that “the run has not responded yet” is the absence of `reply.txt`, not `meta.json`.
+Artifact ordering writes `meta.json` before `reply.txt`, leaving a window where the verdict exists but
+the run is not closed. If `meta.json` were used, a repeat arriving in this window would receive a refusal
+instead of the response, leaving a hole in the “repeating is always safe” guarantee.
 
-Если worker умер без `reply.txt` уже после присоединения, присоединившийся вызов сначала доверяет
-существующему `meta.json`; вердикта нет — записывает `FAIL` и указывает, что возможные правки
-остались в дереве.
+If the worker dies without `reply.txt` after an attachment, the attached invocation first trusts an
+existing `meta.json`; if there is no verdict, it writes `FAIL` and notes that possible edits remain in
+the tree.
 
-## Heartbeat и `unlock`
+## Heartbeat and `unlock`
 
-Worker держит в каталоге прогона файл `heartbeat`: обновляет его при поступлении данных и
-периодическим таймером, пока Codex ещё работает. Hook живого прогона считает свежими только
-запись со `state=running`, живым pid и heartbeat не старше пяти минут. Отсутствующий heartbeat
-сохраняет совместимость со старыми прогонами и считается живым; сам файл — подсказка о движении,
-а не вердикт.
+The worker maintains a `heartbeat` file in the run directory: it updates the file as data arrives and on
+a periodic timer while Codex is still running. The live-run hook considers only a record with
+`state=running`, a live pid, and a heartbeat no older than five minutes fresh. A missing heartbeat
+preserves compatibility with old runs and counts as live; the file is evidence of movement, not a
+verdict.
 
-Зависший прогон теперь виден отдельно: pid ещё жив, `status.json` остаётся в `running`, но время
-изменения heartbeat превышает пять минут. Такой прогон нельзя закрывать через `unlock`: worker
-всё ещё владеет своим `meta.json`. `codex-bridge stop <прогон>` сначала убивает дерево процессов,
-затем записывает отказ — это единственный писатель в правильном порядке.
+A hung run is now visible separately: the pid remains alive and `status.json` remains `running`, but the
+heartbeat modification time exceeds five minutes. Such a run cannot be closed through `unlock`: the
+worker still owns its `meta.json`. `codex-bridge stop <run>` kills the process tree first and then writes
+the failure — the sole writer in the correct order.
 
-`codex-bridge unlock` — ручной промежуточный шаг между адресным `stop` и автоматической проверкой
-`markAbandoned()` в начале следующего прогона (шаг 5 launcher). Без аргумента он проверяет только
-текущий репозиторий; с именем — один проект; `--all` явно проходит всё хранилище. Закрываются
-только записи `state=running` с идентичностью `dead` или `foreign`; `alive` никогда не закрывается,
-а вывод называет `codex-bridge stop <прогон>`. `unverified` остаётся на месте с объяснением причины.
-Для каждой записи отчёт печатает возраст, длительность тишины и вердикт идентичности
-`alive` / `dead` / `foreign` / `unverified`. Второй запуск ничего не меняет, а команда не удаляет
-ни каталоги, ни транспортные файлы.
+`codex-bridge unlock` is the manual intermediate step between a targeted `stop` and the automatic
+`markAbandoned()` check at the start of the next run (launcher step 5). With no argument, it checks only
+the current repository; with a name, one project; `--all` explicitly traverses all storage. Only
+`state=running` records with `dead` or `foreign` identity are closed; `alive` is never closed, and the
+output names `codex-bridge stop <run>`. `unverified` remains in place with an explanation. For every
+record, the report prints its age, silence duration, and identity verdict of
+`alive` / `dead` / `foreign` / `unverified`. A second invocation changes nothing, and the command deletes
+neither directories nor transport files.
 
-Старое имя `codex-bridge sweep` распознаётся как переименование и отвечает отказом с подсказкой
-использовать `codex-bridge unlock`; неизвестной командой оно не считается.
+The old name `codex-bridge sweep` is recognized as a rename and responds with a refusal suggesting
+`codex-bridge unlock`; it is not treated as an unknown command.
 
-В отличие от `stop`, `unlock` не снимает состояние рабочего дерева, поэтому в `abandoned_reason`
-закрытых им прогонов списка файлов не будет. Это сознательный выбор: `stop` закрывает один
-названный прогон и знает его репозиторий, а проход по всему хранилищу гонял бы `git` во всех
-репозиториях сразу, и список описывал бы сегодняшнее дерево, а не работу давно умершего прогона.
-Нужен список файлов — закрывайте прогон через `stop`, пока он свежий.
+Unlike `stop`, `unlock` does not snapshot the worktree, so the `abandoned_reason` of runs it closes has
+no file list. This is deliberate: `stop` closes one named run and knows its repository, while traversing
+all storage would run `git` in every repository at once, and the list would describe today's tree rather
+than the work of a long-dead run. If a file list is needed, close the run through `stop` while it is fresh.
 
-## Точка невозврата
+## Point of no return
 
-С практической точки зрения граница проходит после успешного запуска detached worker. До неё
-launcher может отказать без вызова Codex. После неё worker владеет прогоном, начинает
-`runCodex()` и должен закрыть каталог независимо от судьбы вызывающей оболочки. Повтор той же
-команды после этой границы безопасен и ничего не запускает — он присоединяется к действующему
-прогону. Опасен не повтор, а повтор с изменённой меткой заказа: он и есть второй платный прогон в
-том же дереве.
+In practical terms, the boundary comes after the detached worker starts successfully. Before it, the
+launcher can refuse without invoking Codex. After it, the worker owns the run, starts `runCodex()`, and
+must close the directory regardless of what happens to the calling shell. Repeating the same command
+after this point is safe and starts nothing — it attaches to the active run. The dangerous case is a
+repeat with a changed job label: that is a second paid run in the same tree.
 
-Сам внешний вызов начинается в worker при `runCodex()`. Поэтому созданный каталог ещё не
-доказывает расход квоты: ранние сбои после шага 10 тоже оставляют `status.json` и `meta.json`.
-Такие каталоги и помечаются состоянием `aborted_pre_start` — именно чтобы «каталог есть» не
-читалось как «пасс задачи был».
+The external invocation itself starts in the worker at `runCodex()`. A created directory therefore does
+not prove quota use: early failures after step 10 also leave `status.json` and `meta.json`. Such
+directories receive `aborted_pre_start` precisely so that “a directory exists” is not read as “a task
+pass occurred.”
 
-## Последовательность worker
+## Worker sequence
 
-1. Worker читает `worker.json`, берёт `repo`, `agent`, `args`, `is_git_repo`, `budget_minutes` и
-   регистрирует текущий каталог для crash-handler.
-2. `runCodex()` получает полный `task.md` через stdin. Прогон идёт с `--json`, поэтому stdout —
-   поток событий JSONL: он пишется в `events.jsonl`, а stderr — в `stderr.log`; у каждого файла
-   свой предел в 256 MiB, и превышение обрезает файл, а не убивает прогон. `events.jsonl` режется
-   по границе строки: половина JSON-строки не разбирается, и читатель обязан пропускать
-   нечитаемые строки, а не падать. Разделены они по границе «протокол против всего остального»:
-   в общий человекочитаемый поток попадало содержимое читаемых прогоном файлов, и цитата чужой
-   ошибки красила прогон в `LIMIT` (см. `verdict.md`). `stderr.log` создаётся всегда, даже когда
-   stderr промолчал. Если любой из двух файлов не пишется (нет прав, кончился диск),
-   раннер останавливает дерево процессов Codex и закрывает прогон отказом: молча продолжать
-   означало бы оставить CLI жечь квоту без наблюдателя.
-   Одновременно заводится предел времени из `budget_minutes` (`scout` 15, `build` 25, `review` 20 —
-   ключ `budgets` в `run-config.json`). По его истечении Codex убивается вместе со всем деревом
-   процессов, факт убийства записывается полем `stopped_on_deadline` в `status.json`, и worker
-   закрывает каталог обычным вердиктом. Уже сказанное Codex переживает убийство, потому что
-   пишется потоком, а не собирается в память.
-3. Сразу после возврата `runCodex()` worker дописывает в `status.json` поля
-   `stopped_on_deadline` и `elapsed_ms` — то есть раньше, чем `collect()` вычислит вердикт. Строка
-   в логе осталась для человека, но судит вердикт по этим полям: `status.json` лежит вне
-   репозитория, на который выдан `workspace-write`, и подделать его Codex не может.
-4. После завершения Codex build пишет `head-after.txt`, `branch-after.txt`, `git-after.txt`,
-   `state-after.txt`, `diff.stat` и `flags.txt` именно в этом порядке.
-5. Для scout и build worker читает структурированный result и, если присутствует
-   `report_markdown`, пишет `report.md`. Review оставляет отчёт в `review.json`.
-6. `collect()` читает артефакты, вычисляет вердикт и пишет `meta.json`.
-7. После `meta.json` тот же `collect()` обновляет `status.json` до `state=finished`.
-8. `emitReply()` создаёт `reply.txt`. Это последний обязательный файл: его наличие означает,
-   что `meta.json` и финальное состояние уже лежат на диске.
-9. Worker завершает процесс кодом, соответствующим вердикту.
+1. The worker reads `worker.json`, takes `repo`, `agent`, `args`, `is_git_repo`, and `budget_minutes`,
+   and registers the current directory with the crash handler.
+2. `runCodex()` receives the full `task.md` through stdin. The run uses `--json`, so stdout is a JSONL
+   event stream written to `events.jsonl`, while stderr goes to `stderr.log`; each file has its own
+   256 MiB limit, and exceeding it truncates the file rather than killing the run. `events.jsonl` is
+   truncated on a line boundary: half a JSON line is not parsed, and the reader must skip unreadable
+   lines rather than fail. They are separated at the “protocol versus everything else” boundary: the
+   shared human-readable stream included contents of files read by the run, and quoting someone else's
+   error colored the run `LIMIT` (see `verdict.md`). `stderr.log` is always created, even when stderr is
+   silent. If either file cannot be written (no permission, disk full), the runner stops the Codex
+   process tree and closes the run as a failure: continuing silently would leave the CLI consuming
+   quota without an observer.
+   At the same time, the time limit from `budget_minutes` starts (`scout` 15, `build` 25, `review` 20 —
+   the `budgets` key in `run-config.json`). When it expires, Codex is killed together with its full
+   process tree, the killing is recorded as `stopped_on_deadline` in `status.json`, and the worker closes
+   the directory with a normal verdict. What Codex has already said survives because it is streamed to
+   disk rather than accumulated in memory.
+3. Immediately after `runCodex()` returns, the worker appends `stopped_on_deadline` and `elapsed_ms` to
+   `status.json` — before `collect()` computes the verdict. The log line remains for people, but the
+   verdict uses these fields: `status.json` is outside the repository covered by `workspace-write`, so
+   Codex cannot forge it.
+4. After Codex finishes, build writes `head-after.txt`, `branch-after.txt`, `git-after.txt`,
+   `state-after.txt`, `diff.stat`, and `flags.txt`, in that order.
+5. For scout and build, the worker reads the structured result and, if `report_markdown` is present,
+   writes `report.md`. Review leaves its report in `review.json`.
+6. `collect()` reads the artifacts, computes the verdict, and writes `meta.json`.
+7. After `meta.json`, the same `collect()` updates `status.json` to `state=finished`.
+8. `emitReply()` creates `reply.txt`. This is the final required file: its presence means that
+   `meta.json` and the final state are already on disk.
+9. The worker exits with the code corresponding to the verdict.
 
-## Крахи и брошенные прогоны
+## Crashes and abandoned runs
 
-Crash-handler находится в `run-codex.mjs` и действует для обеих половин. Если каталог уже
-известен, он дописывает ошибку в `stderr.log` — файл ровно для того, что случилось вне протокола
-CLI, — создаёт `meta.json`, закрывает `status.json` как
-`failed` и формирует ответ. Worker пишет ответ в файл, launcher — в stdout.
+The crash handler lives in `run-codex.mjs` and applies to both halves. If the directory is already known,
+it appends the error to `stderr.log` — the file specifically for events outside the CLI protocol —
+creates `meta.json`, closes `status.json` as `failed`, and forms the response. The worker writes the
+response to a file; the launcher writes it to stdout.
 
-Если процесс погиб так, что handler не сработал, следующий launcher проверит прежний
-`status.json`. Мёртвый pid без `meta.json` переводится в `abandoned` с `tree_after=false`;
-мёртвый pid при существующем `meta.json` восстанавливается как `finished`.
+If the process dies before the handler runs, the next launcher checks the previous `status.json`. A dead
+pid without `meta.json` becomes `abandoned` with `tree_after=false`; a dead pid with an existing
+`meta.json` is recovered as `finished`.

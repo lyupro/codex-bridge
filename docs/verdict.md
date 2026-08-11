@@ -1,190 +1,189 @@
-# Как вычисляется вердикт
+# How the Verdict Is Computed
 
-`write-meta.mjs` читает артефакты и передаёт их в `resolveStatus()`. Проверки выполняются
-последовательно; первая сработавшая ветка определяет статус. Поэтому порядок является частью
-контракта.
+`write-meta.mjs` reads the artifacts and passes them to `resolveStatus()`. Checks run sequentially;
+the first matching branch determines the status. The order is therefore part of the contract.
 
-## Порядок `resolveStatus()`
+## `resolveStatus()` order
 
-1. **Прогон брошен на старте.** `events.jsonl` существует, но не содержит ни одного события, а
-   существующий рядом `stderr.log` пуст — Codex не сказал ничего ни по протоколу, ни вне его.
-   Это `FAIL` с собственной причиной. Проверка стоит первой (там же, где до Plan_16 стояла
-   проверка пустого `raw.log`): ниже неё живут обвинения в том, как прогон себя вёл, а сдвиг
-   HEAD в окне прогона, которого не было, — чужой коммит. Оба файла проверяются на
-   **существование** прежде, чем на пустоту: отсутствующий `stderr.log` — не молчание, а
-   пропавшая улика, и ею занимается проверка 5.
-2. **Коммит во время build.** Разные `head-before.txt` и `head-after.txt` дают `FAIL`. Проверка
-   стоит выше `LIMIT` и качества результата: сдвиг истории при явном запрете — нарушение
-   контракта, о котором оркестратор должен узнать первым.
-3. **Смена ветки во время build.** Сразу за коммитом и с тем же рангом: разные
-   `branch-before.txt` и `branch-after.txt` дают `FAIL`, в том числе когда коммит не сдвинулся —
-   уход в detached HEAD на том же коммите иначе прошёл бы молча. Пустое значение здесь означает
-   detached HEAD, а отсутствие файла — что снимка не было; поэтому сравниваются только полные
-   пары, и половина пары никогда не обвиняет прогон.
-4. **Прогон убит по дедлайну.** Поле `stopped_on_deadline` в `status.json` пишет раннер, убивший
-   Codex; это факт, а не текст в логе. Даёт `FAIL` с причиной, называющей прожитое время.
-   Проверка стоит выше `LIMIT`, потому что убитый прогон почти всегда приходит с пустым
-   результатом и иначе проваливался бы именно в ту ветку — так и родился ложный `LIMIT`
-   2026-08-05. Ниже запретов на коммит и ветку: нарушенный контракт важнее причины смерти.
-5. **Транспортные артефакты противоречат друг другу.** Два невозможных сочетания дают `FAIL`.
-   Первое: `worker.json#args` содержит `--json`, а `events.jsonl` на диске нет — прогон обещал
-   поток событий и не оставил его, значит улику потеряли уже после прогона. Второе: `status.json`
-   с полем `stopped_on_deadline`, но без `stderr.log` рядом — их пишет один и тот же вызов.
-   Прогон, чьи аргументы не содержат `--json`, — архивный, и судится по правилам своего дня.
-6. **Ошибка транспорта в событиях.** Событие `type: "error"` или `turn.failed` даёт `LIMIT`,
-   если несёт `status: 429` либо тип ошибки, называющий лимит, и `FAIL` с причиной из события
-   в остальных случаях. Проверка смотрит только на прогон, которому нечего предъявить (пустой
-   результат или ненулевой exit): CLI печатает событие ошибки и на оборванном потоке, который
-   сам же переживает, — покрасить прогон, доделавший работу, значило бы повторить ложный `LIMIT`
-   зеркально. `item.completed` источником не является никогда — см. «Транспорт и данные».
-7. **Результат отсутствует или не заполнен.** `FAIL` с причиной по порядку: сначала последняя
-   жалоба модели на содержание заказа (`item.completed` с `item.type: "error"`), затем ошибка
-   транспорта из событий, и только потом `stderr.log`. Порядок — следствие живой пробы 2026-08-05:
-   у здорового прогона в `stderr.log` лежат отказы execpolicy, и прежний разбор выдавал случайный
-   заблокированный вызов за причину провала. Отдельного поиска квоты здесь нет: единственный
-   источник `LIMIT` — проверка 6.
-8. **Ненулевой exit при заполненном результате.** Это `FAIL`. Наличие JSON не отменяет сбой
-   процесса.
-9. **Красная verification у build.** `verify_passed === false` даёт `FAIL`, даже если изменения
-   и schema корректны. Проверка должна стоять до scope и соответствия отчёта: сломанная
-   обязательная команда уже достаточна для провала.
-10. **Объявленный исход build.** Исполнитель сам сообщает в обязательном поле `outcome`, сделана
-   ли заказанная работа: `fail` даёт `FAIL` с причиной из `summary`. Проверка стоит после
-   verification и до scope: несделанная работа важнее того, где именно она не сделана, а
-   сломанная обязательная команда остаётся более громким провалом. Судятся только прогоны,
-   которым поле вменял их собственный `schema.json` — см. «Возраст прогона» ниже.
-11. **Покрытие scout.** Для нескольких извлечённых вопросов требуются отдельные ответы,
-    достаточный объём содержательного текста и хотя бы одна evidence-ссылка на каждый вопрос.
-    Для единственного вопроса проверяется содержательность общего `answer`.
-12. **Правки build вне scope.** Из delta дерева сначала вычитаются `environmentPaths`, затем
-    оставшиеся пути сравниваются с `scope.txt`. Эта проверка стоит выше соответствия отчёта:
-    отчёт может назвать один разрешённый файл и одновременно скрыть несколько лишних.
-13. **Соответствие отчёта build фактической работе.** `changes[].file` сначала сравниваются с
-    delta текущего прогона. Если совпадений нет, служебные пути отклоняются до просмотра цепочки.
-    Затем заявленные файлы ищутся в накопленном diff от первого `state-before.txt` цепочки до
-    текущего `state-after.txt`.
-14. **Успех.** Совпадение только с накопленной работой возвращает `OK` и `carried: true`; обычное
-    завершение возвращает `OK` без причины.
+1. **The run was abandoned at startup.** `events.jsonl` exists but contains no events, and the adjacent
+   `stderr.log` exists and is empty — Codex said nothing either through the protocol or outside it. This
+   is `FAIL` with its own reason. The check comes first, where the empty-`raw.log` check previously stood:
+   the branches below accuse the run of how it behaved, while a HEAD change during a run that never
+   existed is someone else's commit. Both files are checked for **existence** before emptiness: a missing
+   `stderr.log` is not silence but missing evidence, handled by check 5.
+2. **A commit during build.** Different `head-before.txt` and `head-after.txt` values produce `FAIL`.
+   This check ranks above `LIMIT` and result quality: moving history despite an explicit prohibition is
+   a contract violation that the orchestrator must learn first.
+3. **A branch change during build.** Immediately after the commit check and at the same rank: different
+   `branch-before.txt` and `branch-after.txt` values produce `FAIL`, including when the commit did not
+   move — otherwise entering detached HEAD on the same commit would pass silently. An empty value here
+   means detached HEAD, while a missing file means no snapshot; only complete pairs are compared, and
+   half a pair never accuses a run.
+4. **The run was killed at its deadline.** The runner that killed Codex writes `stopped_on_deadline` to
+   `status.json`; this is a fact, not log text. It produces `FAIL` with a reason naming the elapsed time.
+   This check ranks above `LIMIT` because a killed run almost always arrives with an empty result and
+   would otherwise fall into that branch — which is how the false `LIMIT` on 2026-08-05 arose. It ranks
+   below the commit and branch prohibitions: a violated contract matters more than the cause of death.
+5. **Transport artifacts contradict one another.** Two impossible combinations produce `FAIL`. First,
+   `worker.json#args` contains `--json` but `events.jsonl` is absent from disk — the run promised an event
+   stream and did not leave it, so evidence was lost after the run. Second, `status.json` has a
+   `stopped_on_deadline` field but no adjacent `stderr.log` — the same invocation writes both. A run
+   whose arguments do not contain `--json` is archival and is judged by the rules of its own day.
+6. **A transport error in events.** An event with `type: "error"` or `turn.failed` produces `LIMIT` if it
+   carries `status: 429` or an error type naming a limit, and otherwise `FAIL` with the event's reason.
+   The check considers only a run with nothing to show (an empty result or nonzero exit): the CLI also
+   prints an error event for an interrupted stream that it then survives, and coloring a run that
+   completed its work would mirror the false `LIMIT`. `item.completed` is never a source — see
+   “Transport and data.”
+7. **The result is absent or unfilled.** `FAIL`, with the reason selected in this order: first the model's
+   last complaint about the job content (`item.completed` with `item.type: "error"`), then a transport
+   error from events, and only then `stderr.log`. The order follows from the live probe on 2026-08-05:
+   a healthy run has execpolicy refusals in `stderr.log`, and the previous parser presented an arbitrary
+   blocked call as the cause of failure. There is no separate quota search here: check 6 is the only
+   source of `LIMIT`.
+8. **Nonzero exit with a filled result.** This is `FAIL`. Having JSON does not cancel a process failure.
+9. **Failed build verification.** `verify_passed === false` produces `FAIL` even if the changes and
+   schema are correct. This check must come before scope and report matching: a failed mandatory command
+   is already sufficient for failure.
+10. **Declared build outcome.** The executor reports in the mandatory `outcome` field whether the
+    requested work was completed: `fail` produces `FAIL` with the reason from `summary`. The check comes
+    after verification and before scope: unfinished work matters more than where it was left, while a
+    failed mandatory command remains the louder failure. Only runs whose own `schema.json` required the
+    field are judged by it — see “Run age” below.
+11. **Scout coverage.** Multiple extracted questions require separate answers, enough substantive text,
+    and at least one evidence link for each question. For a single question, the overall `answer` is
+    checked for substance.
+12. **Build edits outside scope.** `environmentPaths` are subtracted from the tree delta first, then the
+    remaining paths are compared with `scope.txt`. This check ranks above report matching: a report can
+    name one allowed file while concealing several extra ones.
+13. **Build report matches actual work.** `changes[].file` entries are first compared with the current
+    run's delta. If there are no matches, service paths are rejected before examining the chain. The
+    declared files are then searched in the accumulated diff from the chain's first `state-before.txt`
+    through the current `state-after.txt`.
+14. **Success.** A match only with accumulated work returns `OK` and `carried: true`; normal completion
+    returns `OK` without a reason.
 
-## Транспорт и данные
+## Transport and data
 
-`LIMIT` — единственный вердикт, который велит оркестратору не повторять, поэтому он не может
-строиться на тексте, который прогон в него сам и положил. Прогон 2026-08-05 получил `LIMIT`,
-потому что грепал репозиторий и вывел в `raw.log` строку из фикстур собственных тестов пакета:
-в цитате маркеры стоят ровно так же, как в настоящей ошибке.
+`LIMIT` is the only verdict that tells the orchestrator not to retry, so it cannot be based on text the
+run itself placed in the output. A run on 2026-08-05 received `LIMIT` because it grepped the repository
+and printed to `raw.log` a line from the package's own test fixtures: the quoted markers were identical
+to those in a real error.
 
-Сначала попробовали развести потоки: stderr отдельным файлом, квота — только в нём. Живая проба
-2026-08-05 (`2026-08-05_155023_plan15-deadline-probe`) это опровергла — `codex exec` без флагов
-пишет в stderr весь человекочитаемый лог вместе с выводом инструментов: 206 013 байт из 206 086
-ушли туда, и строки из читаемых прогоном исходников оказались в `stderr.log`. У этого CLI потоки
-делят вывод не по границе «транспорт против данных».
+The first attempt separated the streams: stderr in its own file, quota errors only there. A live probe
+on 2026-08-05 (`2026-08-05_155023_plan15-deadline-probe`) disproved this — `codex exec` without flags
+writes the entire human-readable log, including tool output, to stderr: 206,013 of 206,086 bytes went
+there, and lines from source files read by the run appeared in `stderr.log`. This CLI does not divide
+output at the “transport versus data” boundary.
 
-Граница нашлась не в потоках, а в протоколе. Все три агента запускаются с `--json`, и CLI печатает
-поток событий JSONL: `thread.started`, `turn.started`, `item.completed`, `turn.completed`, а отказы
-— `type: "error"` и `turn.failed`. Отказ транспорта здесь **поле, а не фраза**, и он структурно
-отделён от того, что говорила модель.
+The boundary was in the protocol rather than the streams. All three agents start with `--json`, and the
+CLI prints a JSONL event stream: `thread.started`, `turn.started`, `item.completed`, `turn.completed`,
+while failures are `type: "error"` and `turn.failed`. A transport failure here is **a field, not a
+phrase**, and is structurally separate from what the model said.
 
-- **`events.jsonl`** — единственный источник вердикта `LIMIT`, расхода и идентификатора сессии.
-- **`stderr.log`** — то, что CLI говорит вне протокола: паники, отказ на неизвестный флаг и,
-  как показала живая проба 2026-08-05, отказы execpolicy (`rejected: blocked by policy`) с путями
-  из репозитория внутри. **Пустым он в норме не бывает** — обещание обратного держалось ровно до
-  первого прогона под `--json`. Поэтому он и стоит последним в порядке причины `FAIL`: строка
-  оттуда описывает заблокированный вызов, который прогон пережил, а не то, обо что он умер.
-- `raw.log` больше не существует. Под `--json` он был побайтовой копией `events.jsonl`, при этом
-  именно на нём стоял вердикт «прогон брошен» — хотя `usage.md` сам объявляет его удаляемым.
-  Артефакт, который разрешено удалить, не может быть основанием вердикта. Человек читает прогон
-  командой `codex-bridge read <прогон>`, которая рендерит события по требованию.
+- **`events.jsonl`** is the only source for the `LIMIT` verdict, usage, and session identifier.
+- **`stderr.log`** is what the CLI says outside the protocol: panics, an unknown-flag refusal, and, as
+  the live probe on 2026-08-05 showed, execpolicy refusals (`rejected: blocked by policy`) containing
+  repository paths. It is **not normally empty** — the opposite promise lasted exactly until the first
+  run under `--json`. This is why it comes last in the `FAIL` reason order: a line from it describes a
+  blocked call that the run survived, not what killed it.
+- `raw.log` no longer exists. Under `--json` it was a byte-for-byte copy of `events.jsonl`, yet the
+  “run abandoned” verdict depended on it even though `usage.md` itself declares it removable. An artifact
+  that may be deleted cannot support a verdict. A person reads a run with
+  `codex-bridge read <run>`, which renders events on demand.
 
-**`item.completed` источником транспортного вердикта не является ни при каких условиях.** В этом
-событии лежит текст модели — то самое место, куда попадает процитированная из репозитория строка.
-Вернуть её в число оснований значило бы вернуть дефект туда, откуда его выселяли.
+**`item.completed` is never a source of a transport verdict.** This event contains model text — exactly
+where a line quoted from the repository appears. Restoring it as a basis would restore the defect to the
+place from which it was removed.
 
-Признак того, что прогон был **обязан** оставить поток событий, — флаг `--json` в его собственных
-`worker.json#args`, ровно как признаком объявленного исхода служит `schema.json`. Маркер и есть
-контракт, поэтому «был ли прогон обязан» и «что он был обязан сделать» не могут разойтись молча.
-Прогон с `--json` и без `events.jsonl` — не архив, а порча улик, и он получает `FAIL` (проверка 5):
-иначе потерянный файл тихо вернул бы старое поведение — единственный способ отменить фикс снаружи.
+The indication that a run was **required** to leave an event stream is the `--json` flag in its own
+`worker.json#args`, just as `schema.json` indicates a declared outcome. The marker is the contract, so
+“whether the run was required” and “what it was required to do” cannot silently diverge. A run with
+`--json` and without `events.jsonl` is not an archive but corrupted evidence, and receives `FAIL`
+(check 5); otherwise a lost file would silently restore the old behavior — the only way to undo the fix
+from outside.
 
-Поиска квоты по тексту в пакете больше нет. Он удалён целиком, а не оставлен «на всякий случай»:
-пока живы две строки со словами `rate limit`, жив и весь класс дефекта.
+There is no longer any text search for quota errors in the package. It was removed completely rather
+than retained “just in case”: while two lines containing `rate limit` remain, the entire defect class
+remains.
 
-Отдельно — что происходит, если файл лога вообще не пишется (нет прав, кончился диск). Ошибка
-потока прилетает на первой записи, и раннер обязан на ней **остановить Codex**, а не упасть: без
-обработчика событие валит worker, crash-handler закрывает каталог, а CLI продолжает жечь чужую
-квоту никем не наблюдаемый — сирота 2026-07-31 с лишним шагом. Прогон умирает вместе со своим
-процессом, а не вместо него.
+Separately, consider what happens if a log file cannot be written at all (no permission, disk full).
+The stream error arrives on the first write, and the runner must **stop Codex** there rather than crash:
+without a handler, the event kills the worker, the crash handler closes the directory, and the CLI keeps
+spending someone else's quota unobserved — the 2026-07-31 orphan with an extra step. The run dies with
+its process, not instead of it.
 
-Цена решения названа заранее: если будущая версия CLI перестанет печатать отказ квоты событием,
-прогон получит `FAIL` вместо `LIMIT`. Это ошибка в безопасную сторону — `FAIL` зовёт посмотреть,
-тогда как ложный `LIMIT` бросает доделанную работу.
+The cost of the decision is explicit: if a future CLI version stops emitting quota refusal as an event,
+the run will receive `FAIL` instead of `LIMIT`. This fails safely — `FAIL` calls for investigation,
+whereas a false `LIMIT` abandons completed work.
 
-## Объявленный исход и возраст прогона
+## Declared outcome and run age
 
-Раннер не знает намерения заказа, поэтому исход **объявляется**, а не выводится. Прогон
-2026-08-04 (`2026-08-04_202959_build`) получил задачу починить функцию в модуле, которого нет в
-чекауте, и ответил `OK — No code change was made`: все артефакты корректны, чистое дерево —
-законный исход для «проверь и почини, если сломано», и возразить было нечему.
+The runner does not know the job's intent, so the outcome is **declared**, not inferred. The run on
+2026-08-04 (`2026-08-04_202959_build`) was asked to fix a function in a module absent from the checkout
+and responded `OK — No code change was made`: all artifacts were valid and a clean tree is a legitimate
+outcome for “check and fix if broken,” leaving no basis for objection.
 
-Значения `outcome`: `done` — заказанная работа выполнена, `fail` — не выполнена по любой причине
-(невыполнимый заказ, отсутствующий файл, запрет scope, нехватка времени). Значение `blocked`
-сознательно не вводится, пока нет статистики живых прогонов, чтобы отличить его от `fail`
-правилом. Строка, а не булев флаг: enum расширяется без ломки контракта.
+`outcome` values are `done` — the requested work was completed — and `fail` — it was not completed for
+any reason (an impossible job, a missing file, a scope prohibition, or lack of time). A `blocked` value
+is deliberately not introduced until live-run statistics can distinguish it from `fail` by rule. It is
+a string rather than a Boolean so the enum can expand without breaking the contract.
 
-Признак того, что прогон был **обязан** объявить исход, — его собственный `schema.json`: если
-`required` содержит `outcome`, прогон судится по объявлению. Отдельного номера версии рядом со
-схемой нет намеренно — схема и есть контракт, выданный Codex, поэтому «что прогон был обязан
-ответить» и «был ли он обязан» не могут разойтись молча. Прогон без `schema.json` или со схемой
-без этого поля (архив, реплей старой папки) сохраняет прежнее поведение; прогон с полем в схеме,
-но без значения в ответе, — `FAIL` «результат не заполнен».
+The indication that a run was **required** to declare an outcome is its own `schema.json`: if `required`
+contains `outcome`, the run is judged by the declaration. There is deliberately no separate version
+number next to the schema — the schema is the contract given to Codex, so “what the run was required to
+answer” and “whether it was required” cannot silently diverge. A run without `schema.json`, or with a
+schema without this field (an archive or replay of an old directory), retains the previous behavior; a
+run with the field in its schema but no value in the response is `FAIL` with “result is unfilled.”
 
-Объявленный `done` ничего не доказывает: он лишь завершает эту проверку. Дерево, scope и
-соответствие отчёта проверяются дальше в прежнем порядке — поле добавляет причину покраснеть, но
-не отменяет ни одной действующей.
+A declared `done` proves nothing: it only completes this check. Tree, scope, and report matching continue
+in their previous order — the field adds a reason to turn red but cancels none of the existing checks.
 
-У scout и review такого поля нет: у разведки исход выражен покрытием подвопросов, у ревью —
-вердиктом с находками. Второе обязательное поле рядом с ними могло бы молча с ними разойтись.
+Scout and review do not have this field: for scout, the outcome is expressed through subquestion
+coverage; for review, through the verdict and findings. A second mandatory field beside them could
+silently contradict them.
 
-## Почему environment отделяется до scope
+## Why environment is separated before scope
 
-Снимки фиксируют всё, что изменилось в рабочем дереве, включая записи внешней оснастки. Шаблоны
-из `env.json.environmentPaths` делят пути на `work` и `environment`. Только `work` участвует в
-scope и сверке отчёта. При этом `environment` не скрывается: список попадает в
-`meta.json.environment_changes` и при наличии выводится отдельной строкой ответа.
+Snapshots record everything changed in the worktree, including writes from external tooling. Patterns
+from `env.json.environmentPaths` divide paths into `work` and `environment`. Only `work` participates in
+scope and report matching. `environment` is not hidden: the list goes to
+`meta.json.environment_changes` and, when present, is printed as a separate response line.
 
-Scope не может разрешить служебный каталог. Однако путь, совпавший с `environmentPaths`,
-исключается раньше этой проверки независимо от того, какой процесс фактически его изменил.
-Поэтому список должен содержать только пути, за которые оператор готов отвечать как за работу
-среды; аудит сохраняется в `environment_changes`.
+Scope cannot allow a service directory. However, a path matching `environmentPaths` is excluded before
+this check regardless of which process actually changed it. The list must therefore contain only paths
+for which the operator is prepared to account as environment work; the audit remains in
+`environment_changes`.
 
-## Сверка отчёта с деревом и цепочкой
+## Matching the report against the tree and chain
 
-Снимок содержит для tracked-файлов числа добавленных и удалённых строк, для untracked — размер.
-Это позволяет заметить новую правку уже изменённого файла, когда код `git status` не меняется.
+For tracked files, a snapshot contains counts of added and deleted lines; for untracked files, size.
+This exposes a new edit to an already modified file even when its `git status` code does not change.
 
-Цепочка для этой сверки собирается по трём признакам сразу: slug, отпечаток текста задачи и метка
-заказа из `status.json`. Прогон, переименовавший себя и переписавший текст, всё равно находит свою
-базу — а прогоны без этих полей связываются по slug, как раньше.
+The chain for this comparison is assembled using all three signals: slug, task-text fingerprint, and job
+label from `status.json`. A run that renamed itself and rewrote the text still finds its baseline, while
+runs without these fields are linked by slug as before.
 
-Пустой `changes[]` при пустой delta допустим — раннер не знает, требовал ли заказ правок, и ноль
-изменений бывает законным исходом. Прежняя цена этого правила (прогон, ничего не сделавший из-за
-невыполнимой задачи, получал `OK`) закрыта не здесь, а объявленным исходом: проверка 10 краснеет по
-полю `outcome` раньше, чем дело доходит до сверки отчёта. Само правило осталось прежним — оно
-про то, что раннер не додумывает намерение заказа. Пустой отчёт при непустой delta или отчёт, не
-совпавший ни с текущей delta, ни с накопленной работой цепочки, даёт `FAIL` «сделана не та
-работа». Проверка служебных путей выполняется до chain lookup, чтобы прежний прогон не мог
-легализовать работу в `.git/` или `.claude/`.
+An empty `changes[]` with an empty delta is allowed — the runner does not know whether the job required
+edits, and zero changes can be a legitimate outcome. The former cost of this rule (a run that did
+nothing because the task was impossible received `OK`) is addressed not here but by the declared
+outcome: check 10 turns red on the `outcome` field before report matching. The rule itself remains the
+same — the runner does not invent the job's intent. An empty report with a nonempty delta, or a report
+matching neither the current delta nor the chain's accumulated work, produces `FAIL` for “wrong work
+was done.” Service paths are checked before chain lookup so an earlier run cannot legitimize work in
+`.git/` or `.claude/`.
 
-## Статусы и коды процесса
+## Statuses and process codes
 
-| Статус | Смысл | Код раннера |
+| Status | Meaning | Runner code |
 | --- | --- | --- |
-| `OK` | Артефакты подтверждают выполнение контракта. | `0` |
-| `FAIL` | Контракт, процесс, проверка или соответствие работы нарушены. | `1` |
-| `LIMIT` | Результата нет, и поток событий содержит отказ транспорта по исчерпанной квоте. | `3` |
+| `OK` | Artifacts confirm contract fulfillment. | `0` |
+| `FAIL` | The contract, process, verification, or work match was violated. | `1` |
+| `LIMIT` | There is no result, and the event stream contains a transport refusal caused by exhausted quota. | `3` |
 
-`LIMIT` не означает частичный успех. Для build короткий ответ отдельно сообщает строкой
-`Worktree:`, остались ли в дереве незавершённые изменения — и при `LIMIT`, и при `FAIL`.
-«Работа не сделана» не равно «дерево чистое»: прогон может написать половину правки и объявить
-`fail`. Если снимков дерева нет (прогон убит до `state-after.txt`), строка честно говорит
-`unknown`, а не «изменений нет»: утверждение из отсутствующих данных — та самая ошибка, ради
-которой в `status.json` заведён `tree_after: false`.
+`LIMIT` does not mean partial success. For build, the short response separately reports in a `Worktree:`
+line whether unfinished changes remain in the tree — for both `LIMIT` and `FAIL`. “Work was not done”
+does not mean “the tree is clean”: a run may write half a change and declare `fail`. If tree snapshots
+are absent (the run was killed before `state-after.txt`), the line honestly says `unknown` rather than
+“no changes”: making a claim from absent data is exactly the error for which `tree_after: false` exists
+in `status.json`.

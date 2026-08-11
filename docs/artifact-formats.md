@@ -1,122 +1,122 @@
-# Форматы `status.json` и `meta.json`
+# `status.json` and `meta.json` Formats
 
-Оба файла дописываются через полную перезапись JSON. `status.json` показывает жизненный цикл,
-`meta.json` — окончательный вердикт и учёт. При нормальном завершении `meta.json` пишется раньше
-финального обновления `status.json`.
+Both files are updated by fully rewriting the JSON. `status.json` shows the lifecycle;
+`meta.json` records the final verdict and accounting. On normal completion, `meta.json` is written
+before the final update to `status.json`.
 
 ## `status.json`
 
-### Поля запуска
+### Startup fields
 
-| Поле | Значение |
+| Field | Value |
 | --- | --- |
-| `state` | Сначала `running`. Позже `finished`, `failed`, `aborted_pre_start` или `abandoned`. |
-| `pid` | Процесс, смерть которого означает, что текущая стадия брошена: сначала launcher, после spawn — worker. |
-| `process_started_at` | Время старта процесса, которому принадлежит `pid`, в ISO 8601. Launcher пишет `null`, когда передаёт pid worker'у; worker заменяет это значение своим фактическим временем старта. |
-| `launcher_pid` | pid launcher; не заменяется после отделения worker. |
-| `runner_pid` | pid worker; добавляется после успешного spawn. |
-| `agent` | Имя выбранного диспетчера. |
-| `slug` | Нормализованный slug задачи. |
-| `task_hash` | Отпечаток нормализованного текста задачи; по нему цепочка находит повтор с переписанным именем. |
-| `order_id` | Метка заказа от оркестратора; по ней цепочка находит повтор, у которого переписаны и имя, и текст. |
-| `repo` | Корень репозитория. |
-| `started_at` | Время создания прогона в ISO 8601. |
-| `continues` | Необязательное имя первого каталога цепочки, если запуск сделан с продолжением. |
-| `continued_from` | Необязательное имя прогона, названного разрешением `continue:` в тексте задачи. В отличие от `continues` это не начало цепочки, а тот прогон, за которым оркестратор велел продолжить. След для разбора; проверку делает правило «названный прогон — последний в цепочке». |
+| `state` | Initially `running`. Later `finished`, `failed`, `aborted_pre_start`, or `abandoned`. |
+| `pid` | The process whose death means that the current stage was abandoned: initially the launcher, after spawn the worker. |
+| `process_started_at` | Start time of the process that owns `pid`, in ISO 8601. The launcher writes `null` when handing over to the worker pid; the worker replaces this value with its actual start time. |
+| `launcher_pid` | Launcher pid; not replaced after the worker detaches. |
+| `runner_pid` | Worker pid; added after a successful spawn. |
+| `agent` | Name of the selected dispatcher. |
+| `slug` | Normalized task slug. |
+| `task_hash` | Fingerprint of the normalized task text; the chain uses it to find a repeated run whose name was changed. |
+| `order_id` | Job label from the orchestrator; the chain uses it to find a repeated run whose name and text were both changed. |
+| `repo` | Repository root. |
+| `started_at` | Run creation time in ISO 8601. |
+| `continues` | Optional name of the first directory in the chain if the run was started with continuation. |
+| `continued_from` | Optional name of the run named by the `continue:` authorization in the task text. Unlike `continues`, this is not the start of the chain, but the run after which the orchestrator instructed execution to continue. An investigation trace; enforcement is handled by the “named run is the last in the chain” rule. |
 
-### Поля завершения
+### Completion fields
 
-| Поле | Значение |
+| Field | Value |
 | --- | --- |
-| `stopped_on_deadline` | Убил ли раннер прогон по его пределу времени. Пишется worker'ом сразу после возврата Codex, то есть раньше вердикта; `false` означает «раннер следил и не убивал». Отсутствие поля — прогон прежнего контракта. Раньше этот факт жил строкой лога, куда пишет и сам Codex. |
-| `elapsed_ms` | Сколько прогон прожил до возврата Codex. Именно прожитое время, а не выданный бюджет: бюджет лежит в `worker.json#budget_minutes`. |
-| `stdio_drained` | Успел ли worker дождаться штатного закрытия stdout/stderr. `true` означает обычный `close`; `false` — закрытие после ограниченного grace-периода, когда поток удерживал процесс. Поле записывается до вердикта и не заменяет `stopped_on_deadline`. |
-| `status` | Итог `OK`, `FAIL` или `LIMIT`; появляется при закрытии с вердиктом. |
-| `finished_at` | Время итогового вердикта в ISO 8601. |
-| `tree_after` | При `abandoned` записывается `false`: снимок дерева после прогона неизвестен. |
-| `abandoned_reason` | Причина, по которой мёртвый незакрытый процесс признан брошенным. |
-| `abandoned_at` | Время такого решения. |
+| `stopped_on_deadline` | Whether the runner killed the run at its time limit. Written by the worker immediately after Codex returns, before the verdict; `false` means “the runner monitored the run and did not kill it.” An absent field means a run from the previous contract. This fact used to live in a log line, where Codex itself also writes. |
+| `elapsed_ms` | How long the run lived before Codex returned. This is actual elapsed time, not the allocated budget: the budget is in `worker.json#budget_minutes`. |
+| `stdio_drained` | Whether the worker managed to wait for stdout/stderr to close normally. `true` means a normal `close`; `false` means closure after a limited grace period because a stream held the process open. The field is written before the verdict and does not replace `stopped_on_deadline`. |
+| `status` | Final `OK`, `FAIL`, or `LIMIT`; appears when closing with a verdict. |
+| `finished_at` | Time of the final verdict in ISO 8601. |
+| `tree_after` | For `abandoned`, written as `false`: the post-run tree snapshot is unknown. |
+| `abandoned_reason` | Reason why a dead, unclosed process was declared abandoned. |
+| `abandoned_at` | Time of that decision. |
 
-Обычный `collect()` завершает прогон как `state=finished`, даже если вердикт `FAIL` или `LIMIT`:
-worker штатно дошёл до вычисления результата. `state=failed` используется для инфраструктурного
-`writeFailure()`, например при крахе раннера. `state=abandoned` означает, что вердикта нет.
+A normal `collect()` completes a run as `state=finished` even when the verdict is `FAIL` or `LIMIT`:
+the worker reached result computation normally. `state=failed` is used for an infrastructure-level
+`writeFailure()`, such as a runner crash. `state=abandoned` means that no verdict exists.
 
-`state=aborted_pre_start` — отказ **до** старта Codex: занятое дерево, недоступный CLI, аргумент,
-не проходящий через `cmd.exe`, несостоявшийся spawn worker. Сессии Codex не было, квота не
-потрачена, поэтому такой каталог не считается пройденным пассом задачи: цепочка видит его в
-аудите, но гейт `--continue` и базовый снимок дерева его пропускают. До Plan_23 такие отказы
-писали `failed` наравне с прогоном, отработавшим двадцать минут, и следующий заход того же заказа
-требовал разрешения на продолжение при пустой папке. Каталоги прежнего контракта распознаются по
-`meta.json`: `exit: null`, `session_id: null`, нулевые `events_bytes` и `stderr_bytes`,
-`tokens_reported: false`. Именно по числам в `meta.json`, а не по наличию `events.jsonl` —
-транспортные файлы удаляет чистка по возрасту, и оплаченный прогон после неё выглядел бы
-нестартовавшим.
+`state=aborted_pre_start` is a refusal **before** Codex starts: a busy tree, unavailable CLI, an
+argument that cannot pass through `cmd.exe`, or failure to spawn the worker. No Codex session existed
+and no quota was spent, so such a directory does not count as a completed task pass: the chain sees it
+in the audit, but the `--continue` gate and baseline tree snapshot skip it. Before pre-start aborts had
+their own state, these refusals were recorded as `failed`, just like a run that had worked for twenty
+minutes, and the next attempt for the same job required continuation authorization despite an empty
+directory. Directories from the previous contract are recognized through `meta.json`: `exit: null`,
+`session_id: null`, zero `events_bytes` and `stderr_bytes`, and `tokens_reported: false`. The numeric
+values in `meta.json`, rather than the presence of `events.jsonl`, are authoritative because age-based
+cleanup deletes transport files, which would otherwise make a paid run look as though it never started.
 
-## Файл `heartbeat`
+## The `heartbeat` file
 
-`heartbeat` — обычный файл в каталоге прогона, который worker обновляет при данных от Codex и
-периодически во время работы. Его время изменения используется hooks/live-runs для определения
-тишины: свежим считается heartbeat не старше пяти минут. Содержимое — диагностическая отметка
-времени, источником вердикта она не является.
+`heartbeat` is a regular file in the run directory that the worker updates when data arrives from Codex
+and periodically during execution. Its modification time is used by hooks/live-runs to detect silence:
+a heartbeat no older than five minutes is considered fresh. Its content is a diagnostic timestamp, not
+a verdict source.
 
-Отсутствующий `heartbeat` означает старый прогон до Plan_20: его живой pid сохраняет блокировку,
-чтобы новая логика не открыла дерево внезапно. Устаревший heartbeat при живом pid означает
-возможный зависший процесс, но не разрешает `unlock` закрыть запись: подтверждённо живой прогон
-остаётся `running`, а `unverified` остаётся с объяснением. Для этого нужен
-`codex-bridge stop <прогон>`, который сначала убивает процесс.
+A missing `heartbeat` means an old run from before heartbeats were introduced: its live pid keeps the
+lock so the new logic does not unexpectedly open the tree. A stale heartbeat with a live pid indicates
+a possibly hung process, but does not allow `unlock` to close the record: a confirmed live run remains
+`running`, and `unverified` remains with an explanation. This requires
+`codex-bridge stop <run>`, which kills the process first.
 
 ## `meta.json`
 
-### Поля обычного `collect()`
+### Fields of a normal `collect()`
 
-| Поле | Значение |
+| Field | Value |
 | --- | --- |
-| `agent` | Имя агента. |
-| `runner_version` | Версия пакета раннера, код которого записал `meta.json`; берётся прямо из его `package.json`, а не из аргументов запуска. Отсутствие поля означает исторический прогон, сделанный до раннера: он не нарушает контракт и не оценивается по правилам песочницы раннера. |
-| `project` | Имя каталога репозитория, использованное как уровень группировки прогонов. |
-| `run` | Имя каталога этого прогона. |
-| `finished_at` | Время вычисления meta в ISO 8601. |
-| `exit` | Числовой код Codex; `null`, если его нет. |
-| `status` | `OK`, `FAIL` или `LIMIT`. |
-| `reason` | Причина `FAIL`/`LIMIT`; для обычного `OK` — `null`. |
-| `carried_from_earlier_run` | `true`, если заявленная работа найдена в накопленном diff цепочки, но не в delta текущего запуска. Всегда присутствует в обычном collect. |
-| `environment_changes` | Пути, изменённые между снимками, но совпавшие с `env.json.environmentPaths`. Они видимы в аудите, но исключены из оценки работы. |
-| `result_ok` | Результат прочитан как JSON и содержит основное обязательное содержательное поле агента. |
-| `events_bytes` | Размер `events.jsonl` в байтах. |
-| `stderr_bytes` | Размер `stderr.log` в байтах. Нулём в норме **не** бывает: живая проба 2026-08-05 нашла там сотни байт отказов execpolicy у совершенно здорового прогона. |
-| `usage` | Объект `usage` из `turn.completed`, как его прислал CLI, со всеми числами; при нескольких ходах они просуммированы. |
-| `tokens` | `input_tokens + output_tokens` из событий; `null`, если ни один ход не сообщил расход. |
-| `tokens_reported` | Было ли число токенов распознано. `false` не означает нулевой расход. |
-| `model` | Значение строки `model:` из лога или `null`. |
-| `sandbox` | Значение строки `sandbox:` из лога или `null`. |
-| `env` | Содержимое `env.json`; для старого или раннего прогона может быть `null`. |
-| `session_id` | Значение строки `session id:` из лога или `null`. |
+| `agent` | Agent name. |
+| `runner_version` | Version of the runner package whose code wrote `meta.json`; taken directly from its `package.json`, not from launch arguments. An absent field means a historical run created before the runner: it does not violate the contract and is not evaluated under the runner sandbox rules. |
+| `project` | Repository directory name used as the run grouping level. |
+| `run` | Directory name of this run. |
+| `finished_at` | Time when meta was computed, in ISO 8601. |
+| `exit` | Numeric Codex code; `null` if none exists. |
+| `status` | `OK`, `FAIL`, or `LIMIT`. |
+| `reason` | Reason for `FAIL`/`LIMIT`; `null` for a normal `OK`. |
+| `carried_from_earlier_run` | `true` if the claimed work is found in the chain's accumulated diff but not in the current run's delta. Always present in a normal collect. |
+| `environment_changes` | Paths changed between snapshots that matched `env.json.environmentPaths`. They are visible in the audit but excluded from work evaluation. |
+| `result_ok` | The result was read as JSON and contains the agent's primary required content field. |
+| `events_bytes` | Size of `events.jsonl` in bytes. |
+| `stderr_bytes` | Size of `stderr.log` in bytes. Normally it is **not** zero: a live probe on 2026-08-05 found hundreds of bytes of execpolicy refusals there for a completely healthy run. |
+| `usage` | The `usage` object from `turn.completed`, exactly as sent by the CLI, with all numeric values; for multiple turns they are summed. |
+| `tokens` | `input_tokens + output_tokens` from events; `null` if no turn reported usage. |
+| `tokens_reported` | Whether a token count was recognized. `false` does not mean zero usage. |
+| `model` | Value of the `model:` line from the log, or `null`. |
+| `sandbox` | Value of the `sandbox:` line from the log, or `null`. |
+| `env` | Contents of `env.json`; may be `null` for an old or early run. |
+| `session_id` | Value of the `session id:` line from the log, or `null`. |
 
-### Ранний `writeFailure()`
+### Early `writeFailure()`
 
-Сбой до нормального `collect()` также создаёт `meta.json`, но его форма уже. Он записывает
+A failure before normal `collect()` also creates `meta.json`, but its shape is narrower. It writes
 `agent`, `project`, `run`, `finished_at`, `exit: null`, `status: "FAIL"`, `reason`,
 `result_ok: false`, `events_bytes`, `stderr_bytes`, `tokens: null`, `tokens_reported: false`,
-`model: null`, `sandbox: null`, `session_id: null` и доступное `env`.
+`model: null`, `sandbox: null`, `session_id: null`, and the available `env`.
 
-В этой ветке нет `carried_from_earlier_run` и `environment_changes`: необходимые снимки и
-результат могли ещё не существовать. Потребители должны различать отсутствие поля и значение
-`false` или пустой список.
+This branch has no `carried_from_earlier_run` or `environment_changes`: the required snapshots and
+result might not yet have existed. Consumers must distinguish an absent field from `false` or an
+empty list.
 
-## Связь файлов
+## File relationships
 
-- `status.json` отвечает на вопрос «идёт ли процесс и чем он закончился».
-- `meta.json` отвечает на вопрос «почему получен этот вердикт и чем он подтверждён».
-- `events.jsonl` — поток событий CLI под `--json`, единственный источник вердикта `LIMIT`, расхода
-  и идентификатора сессии; `stderr.log` — то, что CLI говорит вне протокола, включая отказы
-  execpolicy живого прогона. Человек читает прогон командой `codex-bridge read <прогон>`, которая
-  рендерит события по требованию.
-- Признак того, что прогон был обязан оставить события, — флаг `--json` в его собственных
-  `worker.json#args`. Прогон с флагом, но без `events.jsonl`, — испорченный, а не архивный, и
-  судится как `FAIL`; то же для поля `stopped_on_deadline` без `stderr.log`. См. `verdict.md`.
-- `raw.log` в прогонах до 0.2.0 содержал оба потока вперемешку. Новые прогоны его не пишут:
-  под `--json` он был копией `events.jsonl`, а вердикт не может стоять на файле, который
-  `/codex-bridge:usage` сам объявляет удаляемым.
-- `reply.txt` — только краткое представление meta; он не является источником истины.
-- Пересчёт старого прогона берёт `environmentPaths` из его `env.json`, а не из текущего
+- `status.json` answers “is the process running, and how did it end?”
+- `meta.json` answers “why was this verdict reached, and what supports it?”
+- `events.jsonl` is the CLI event stream under `--json`, the only source for the `LIMIT` verdict, usage,
+  and session identifier; `stderr.log` is what the CLI says outside the protocol, including execpolicy
+  refusals from a live run. A person reads a run with `codex-bridge read <run>`, which renders events
+  on demand.
+- The indication that a run was required to leave events is the `--json` flag in its own
+  `worker.json#args`. A run with the flag but without `events.jsonl` is corrupt, not archival, and is
+  judged as `FAIL`; the same applies to a `stopped_on_deadline` field without `stderr.log`. See `verdict.md`.
+- `raw.log` in runs before 0.2.0 contained both streams interleaved. New runs do not write it:
+  under `--json` it duplicated `events.jsonl`, and a verdict cannot depend on a file that
+  `/codex-bridge:usage` itself declares removable.
+- `reply.txt` is only a brief representation of meta; it is not a source of truth.
+- Recomputing an old run takes `environmentPaths` from its `env.json`, not from the current
   `run-config.json`.

@@ -98,4 +98,4 @@ read that file BEFORE the first edit, not from memory.**
 | Why a status came out OK/FAIL/LIMIT | `docs/verdict.md` |
 | What launcher hands the worker | `docs/worker-contract.md` |
 | Shape of `status.json` and `meta.json` | `docs/artifact-formats.md` |
-| Agents, flags, config keys, artifacts (full, Russian) | `docs/overview.ru.md` |
+| Agents, flags, config keys, artifacts | `docs/overview.md` |

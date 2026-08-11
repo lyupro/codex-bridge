@@ -1,19 +1,19 @@
-# Контракт `worker.json`
+# `worker.json` Contract
 
-`worker.json` — единственный заказ, который launcher передаёт detached worker. После запуска
-worker не перечитывает CLI и `run-config.json`: это защищает прогон от расхождения аргументов и
-от изменения конфига посреди работы.
+`worker.json` is the only job that the launcher passes to the detached worker. After startup,
+the worker does not reread the CLI or `run-config.json`: this protects the run from argument drift
+and from configuration changes in the middle of execution.
 
-## Что пишет launcher
+## What the launcher writes
 
-Файл создаётся после всех task/schema/snapshot-артефактов и до запуска worker.
+The file is created after all task/schema/snapshot artifacts and before the worker starts.
 
 ```json
 {
   "agent": "codex-build",
   "slug": "auth-flow",
-  "order_id": "<метка заказа от оркестратора>",
-  "repo": "<корень репозитория>",
+  "order_id": "<job label from the orchestrator>",
+  "repo": "<repository root>",
   "is_git_repo": true,
   "launcher_pid": 12345,
   "budget_minutes": 25,
@@ -22,50 +22,50 @@ worker не перечитывает CLI и `run-config.json`: это защищ
 }
 ```
 
-| Поле | Пишет launcher | Назначение |
+| Field | Written by launcher | Purpose |
 | --- | --- | --- |
-| `agent` | всегда | Один из `codex-scout`, `codex-build`, `codex-review`. |
-| `slug` | всегда | Имя задачи для чтения каталога и связи прогонов в цепочку. |
-| `order_id` | всегда | Метка заказа, выданная оркестратором; по ней цепочка находит повтор, переименовавший себя. |
-| `repo` | всегда | Нормализованный корень, в котором работает Codex и снимается git-состояние. |
-| `is_git_repo` | всегда | Нужно ли build снимать HEAD; также влияет на `--skip-git-repo-check`. |
-| `launcher_pid` | всегда | Идентификатор первой половины для последующего аудита. |
-| `budget_minutes` | всегда | Предел времени прогона в минутах, взятый из `budgets` конфига по режиму (`scout` 15, `build` 25, `review` 20). По его истечении worker убивает Codex и пишет вердикт сам. |
-| `scope_new` | всегда (пустой список, если флага не было) | Пути из `--scope-new`: файлы, которых на момент старта ещё нет и которые прогон создаёт. Только для `codex-build`. Записаны, чтобы через месяцы было видно, какие отсутствующие пути были объявлены намеренно, а не приняты по ошибке. |
-| `args` | всегда | Полный argv команды Codex, включая sandbox, output schema и путь результата. |
+| `agent` | always | One of `codex-scout`, `codex-build`, `codex-review`. |
+| `slug` | always | Task name used to read the directory and link runs into a chain. |
+| `order_id` | always | Job label issued by the orchestrator; the chain uses it to find a repeated run that renamed itself. |
+| `repo` | always | Normalized root where Codex works and git state is captured. |
+| `is_git_repo` | always | Whether build should capture HEAD; also affects `--skip-git-repo-check`. |
+| `launcher_pid` | always | Identifier of the first half for later auditing. |
+| `budget_minutes` | always | Run time limit in minutes, taken from the configuration's `budgets` for the mode (`scout` 15, `build` 25, `review` 20). When it expires, the worker kills Codex and writes the verdict itself. |
+| `scope_new` | always (an empty list if the flag was absent) | Paths from `--scope-new`: files that do not exist at startup and that the run creates. Only for `codex-build`. They are recorded so that months later it remains clear which missing paths were declared intentionally rather than accepted by mistake. |
+| `args` | always | Full argv for the Codex command, including the sandbox, output schema, and result path. |
 
-`args` уже содержит решение о `hooks` и `plugins`, `effort`, каталоге, schema и result-файле.
-Worker не должен собирать этот список повторно.
+`args` already contains the decisions about `hooks` and `plugins`, `effort`, directory, schema, and
+result file. The worker must not assemble this list again.
 
-## Что читает worker
+## What the worker reads
 
-Текущая реализация читает пять полей:
+The current implementation reads five fields:
 
-- `repo` — для снимков после выполнения;
-- `agent` — для выбора build-артефактов и результата;
-- `args` — для запуска Codex;
-- `is_git_repo` — для решения, читать ли HEAD после build;
-- `budget_minutes` — предел времени, по истечении которого Codex убивается вместе со всем деревом
-  процессов (на Windows это `taskkill /T /F`: непосредственный потомок там `cmd.exe`, а Codex —
-  его внук, и `kill` снял бы только оболочку).
+- `repo` — for post-execution snapshots;
+- `agent` — to select build artifacts and the result;
+- `args` — to start Codex;
+- `is_git_repo` — to decide whether to read HEAD after build;
+- `budget_minutes` — the time limit after which Codex is killed together with its entire process
+  tree (on Windows this is `taskkill /T /F`: the direct child there is `cmd.exe`, while Codex is
+  its child, and `kill` would terminate only the shell).
 
-Worker не читает `slug`, `order_id`, `launcher_pid` и `scope_new`. Это реальное асимметричное состояние
-контракта, а не ошибка документации: эти поля сохраняются для объяснимости каталога при
-последующем разборе — в том числе чтобы через месяцы было видно, какому заказу принадлежал прогон.
-Связь цепочки и активный pid worker берутся из `status.json`, не из `worker.json`.
+The worker does not read `slug`, `order_id`, `launcher_pid`, or `scope_new`. This is the actual
+asymmetric state of the contract, not a documentation error: these fields are retained to make the
+directory explainable during later investigation — including making it clear months later which job
+owned the run. The chain link and active worker pid come from `status.json`, not `worker.json`.
 
-## Связанные файлы
+## Related files
 
-`worker.json` не содержит текст задачи и schema. Worker читает `task.md` отдельно, а пути к
-`schema.json`, `result.json` или `review.json` уже находятся внутри `args`. Состояние процесса
-живёт в `status.json`, настройки окружения — в `env.json`.
+`worker.json` does not contain the task text or schema. The worker reads `task.md` separately, while
+the paths to `schema.json`, `result.json`, or `review.json` are already inside `args`. Process state
+lives in `status.json`; environment settings live in `env.json`.
 
-## Правила изменения формата
+## Format change rules
 
-- Поле, которое нужно worker, должно быть записано до `spawn()`.
-- Нельзя переносить чтение живого `run-config.json` в worker: тогда один прогон сможет получить
-  разные настройки до и после отделения.
-- Нельзя удалять `slug` или `launcher_pid` только потому, что worker их не читает: они являются
-  частью аудита сохранённого заказа.
-- При изменении имён или типов необходимо синхронно проверять `launcher.mjs`, `worker.mjs` и
-  живой end-to-end прогон: модульные тесты не доказывают передачу между процессами.
+- A field required by the worker must be written before `spawn()`.
+- Reading the live `run-config.json` must not be moved into the worker: that would allow a single run
+  to receive different settings before and after detachment.
+- `slug` or `launcher_pid` must not be removed merely because the worker does not read them: they are
+  part of the saved job's audit trail.
+- When names or types change, `launcher.mjs`, `worker.mjs`, and a live end-to-end run must be checked
+  together: unit tests do not prove transfer between processes.
