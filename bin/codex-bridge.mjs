@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 /** Dispatches codex-bridge CLI arguments to focused command modules. */
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { diagnose, renderDoctor } from '../cli/doctor.mjs';
+import { isInvokedDirectly } from '../cli/invoked-directly.mjs';
 import { hook } from '../cli/hook.mjs';
 import { resolveHost } from '../cli/hosts.mjs';
 import { install } from '../cli/install.mjs';
@@ -161,10 +160,7 @@ export async function main(argv, io = console) {
   return 2;
 }
 
-const invokedDirectly =
-  process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
-
-if (invokedDirectly) {
+if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   main(process.argv.slice(2))
     .then((exitCode) => { process.exitCode = exitCode; })
     .catch((err) => {
