@@ -6,6 +6,50 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-11
+
+### Added
+
+- A fifth host guard now catches `TaskStop` while a live Codex run is still writing to the
+  repository, names the run and points to `codex-bridge stop <run>` before allowing a repeated
+  request. `doctor` and `projects` also surface active runs, so stopping a dispatcher wrapper is
+  no longer mistaken for stopping its detached worker.
+- `codex-bridge hook <name>` gives Claude Code a stable way to invoke each installed guard, and
+  `meta.json` now records the package version that produced a run. The usage report can therefore
+  separate historical runs made outside this runner from runs that should satisfy its sandbox
+  contract.
+
+### Changed
+
+- **Breaking:** the installed package layout now uses `agents/codex-bridge/` instead of
+  `agents/codex/`, `commands/codex-bridge/` instead of `commands/codex/`, and
+  `~/.lyupro/.codex-bridge/lib/` for the runner and guards. Slash commands are now
+  `/codex-bridge:usage` and `/codex-bridge:env`, and hooks in `settings.json` use
+  `codex-bridge hook <name>` when the matching package version is available. Run
+  `codex-bridge update` to migrate an existing installation and retire the old layout.
+- Runs started without an explicit `--slug` now derive a readable folder name from the required
+  order id instead of grouping unrelated work under the dispatcher name. Existing run folders
+  remain discoverable by their order id and task fingerprint.
+- The README now leads with the package's guarantees, verification and update guidance, and
+  limitations before the command reference, and the repository now publishes a security policy
+  and private vulnerability-reporting route.
+
+### Fixed
+
+- Guards invoked through a global-install symlink no longer exit successfully without running;
+  the direct-invocation check now compares resolved files, so a silent guard cannot allow every
+  operation while `doctor` reports it healthy. Hook registration also chooses the short command
+  form only when the command on `PATH` is this package's exact version, rather than merely present.
+- Retiring the previous layout no longer removes the shared Claude Code `agents/` and `commands/`
+  directories. Seeded operator files are moved only after byte verification, and an interrupted
+  migration is retried by the next `update` even when the new files are already current.
+- A continuation grant that loses its `--continue` flag is now refused before attachment instead
+  of replaying an older run's verdict as though new work ran. Attachment output also states
+  explicitly that no new work was started.
+- The test suite now isolates both installation roots, preventing tests from writing fixtures or
+  seeded configuration into the operator's real `~/.lyupro/.codex-bridge/` directory. Migration
+  dry runs also name the hook event and matcher instead of printing `undefined`.
+
 ## [0.4.0] - 2026-08-09
 
 ### Added
