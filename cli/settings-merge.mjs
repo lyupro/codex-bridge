@@ -1,5 +1,6 @@
 /** Merges and removes named codex-bridge hooks without disturbing host settings. */
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { spawnSync } from 'node:child_process';
 import { existsSync, statSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -37,19 +38,44 @@ export function commandReachable(name = 'codex-bridge', env = process.env) {
     }));
 }
 
-export function hookRegistration(name, target, env = process.env) {
-  if (commandReachable('codex-bridge', env)) {
+/**
+ * The version the command on PATH reports, or null when there is none or it will not say.
+ *
+ * Existence used to be the only question, and on 2026-08-11 that cost the operator every guard on
+ * the machine: an install from the clone wrote `codex-bridge hook <name>` while the command on
+ * PATH was the previous release, which has no `hook` subcommand. Every guard then failed before it
+ * could decide anything, and the host refused Bash, PowerShell, file edits and agent launches.
+ */
+export function reachableCommandVersion(name = 'codex-bridge', env = process.env) {
+  if (!commandReachable(name, env)) return null;
+  const result = spawnSync(name, ['--version'], {
+    encoding: 'utf8',
+    env,
+    // The launcher npm writes on Windows is a .cmd shim, which spawn cannot execute without a
+    // shell. The name is a constant of this module, never operator input.
+    shell: process.platform === 'win32',
+  });
+  if (result.error || result.status !== 0) return null;
+  return String(result.stdout || '').trim().split(/\r?\n/).pop()?.trim() || null;
+}
+
+export function hookRegistration(name, target, env = process.env, packageVersion = null) {
+  // Requiring the versions to match is stricter than asking whether `hook` exists, deliberately:
+  // a command of another version would run code this install has never seen, which is the hazard
+  // README describes when a global install and a clone coexist. Anything short of a match falls
+  // back to the copy this install placed itself.
+  const reachable = reachableCommandVersion('codex-bridge', env);
+  if (reachable && packageVersion && reachable === packageVersion) {
     return {
       command: shortCommandFor(name),
       form: 'short',
-      reason: 'codex-bridge is reachable from PATH; the global command will execute',
+      reason: `codex-bridge ${reachable} on PATH matches this package; the global command will execute`,
     };
   }
-  return {
-    command: commandFor(target),
-    form: 'path',
-    reason: 'codex-bridge is not reachable from PATH; the installed copy will execute',
-  };
+  const reason = reachable
+    ? `codex-bridge on PATH reports ${reachable}, not ${packageVersion}; the installed copy will execute`
+    : 'codex-bridge is not reachable from PATH; the installed copy will execute';
+  return { command: commandFor(target), form: 'path', reason };
 }
 
 export function commandForm(command) {

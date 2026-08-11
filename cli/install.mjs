@@ -15,6 +15,7 @@ import {
   writeInstallRecord,
 } from './manifest.mjs';
 import { copyPlannedFile, targetMatches } from './copy.mjs';
+import { hookTargets } from './hook-targets.mjs';
 import { fingerprintFor } from './install-record.mjs';
 import {
   commandFor,
@@ -37,30 +38,6 @@ async function targetExists(target) {
     if (err.code === 'ENOENT') return false;
     throw err;
   }
-}
-
-function hookTargets(host, env = process.env) {
-  return HOOK_DEFINITIONS.map((definition) => {
-    const target = installedHookPath(host, definition);
-    const registration = hookRegistration(definition.name, target, env);
-    const fallback = commandFor(target);
-    const alternate = registration.command === fallback
-      ? `codex-bridge hook ${definition.name}`
-      : fallback;
-    return {
-      definition,
-      target,
-      root: 'brand',
-      relative: path.relative(host.brandRoot, target).split(path.sep).join('/'),
-      registration,
-      spec: {
-        event: definition.event,
-        matcher: definition.matcher,
-        command: registration.command,
-        alternateCommands: [alternate],
-      },
-    };
-  });
 }
 
 function recordHasHooks(record, targets) {
@@ -103,7 +80,7 @@ async function installInRun({ host, dryRun = false, force = false, packageRoot, 
   const rule = { ...rulesPlan(host, packageRoot), processing: 'copy' };
   const currentPackage = await packageInfo(packageRoot);
   const record = await readInstallRecord(host);
-  const targets = hookTargets(host, env);
+  const targets = hookTargets(host, env, currentPackage.version);
   for (const target of targets) {
     if (!plan.some((item) => item.root === 'brand' && item.relativeToRoot === target.relative)) {
       throw new Error(`install plan does not contain hooks/${target.definition.file}`);

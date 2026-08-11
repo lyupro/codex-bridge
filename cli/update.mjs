@@ -16,6 +16,7 @@ import {
   rulesPlan,
 } from './manifest.mjs';
 import { targetMatches } from './copy.mjs';
+import { hookTargets } from './hook-targets.mjs';
 import { definitionForRecordedHook, fileEntry, fingerprintFor } from './install-record.mjs';
 import {
   commandFor,
@@ -60,29 +61,6 @@ function classifyOrphan(state) {
   if (!state.exists) return 'orphaned';
   if (state.recordedFingerprint === state.fingerprint) return 'orphaned';
   return 'modified';
-}
-
-function hookTargets(host, env = process.env) {
-  return HOOK_DEFINITIONS.map((definition) => {
-    const target = installedHookPath(host, definition);
-    const registration = hookRegistration(definition.name, target, env);
-    const fallback = commandFor(target);
-    const alternate = registration.command === fallback
-      ? `codex-bridge hook ${definition.name}`
-      : fallback;
-    return {
-      definition,
-      target,
-      relative: path.relative(host.brandRoot, target).split(path.sep).join('/'),
-      registration,
-      spec: {
-        event: definition.event,
-        matcher: definition.matcher,
-        command: registration.command,
-        alternateCommands: [alternate],
-      },
-    };
-  });
 }
 
 function recordHasHooks(record, targets) {
@@ -218,13 +196,13 @@ async function updateInRun({ host, dryRun = false, force = false, packageRoot, e
     return { exitCode: 1, output: conflictOutput(conflicts, legacy, dryRun) };
   }
 
-  const targets = hookTargets(host, env);
+  const currentPackage = await packageInfo(packageRoot);
+  const targets = hookTargets(host, env, currentPackage.version);
   const inspectedHooks = await Promise.all(targets.map(async (target) => ({
     target,
     state: await inspectHook(host.settingsPath, target.spec),
   })));
   const oldHooks = previousHooks(host, record, targets);
-  const currentPackage = await packageInfo(packageRoot);
   const recordCurrent = recordMatchesPackage(record, plan, currentPackage,
     new Map(plannedStates.map((state) => [recordFileKey(state.item), state.fingerprint])),
     { path: rule.target, fingerprint: ruleState.fingerprint });
