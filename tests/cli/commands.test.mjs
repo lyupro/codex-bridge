@@ -35,10 +35,16 @@ function installBlock(readme) {
   return block[1];
 }
 
+// The command list is read from the reference table, not from the install block. Until Plan_33 it
+// came from the install block, and the only way to keep this test green was to list uninstall,
+// prune and stop under "Install" — a README shaped for its own test rather than for the person
+// installing the package. The install block is still asserted to exist: a package whose first
+// screen has no install command is the audit's P-01 failure.
 function readmeCommands(readme) {
-  const block = installBlock(readme);
-  return unique([...block.matchAll(/(?:npx @lyupro\/codex-bridge|node bin\/codex-bridge\.mjs)\s+([a-z][\w-]*)/g)]
-    .map(([, command]) => command));
+  installBlock(readme);
+  const table = readme.match(/## Command reference\r?\n([\s\S]*?)(?:\r?\n## |$)/);
+  assert.ok(table, 'README.md must contain a Command reference table.');
+  return unique([...table[1].matchAll(/^\|\s*`([a-z][\w-]*)/gm)].map(([, command]) => command));
 }
 
 function escapeRegex(value) {

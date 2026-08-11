@@ -1,125 +1,110 @@
 # codex-bridge
 
-Delegate implementation, reconnaissance and code review from Claude Code to the
-[Codex CLI](https://developers.openai.com/codex/cli), so the work runs on a Codex
-subscription instead of the Claude one.
+**Delegate implementation, reconnaissance and review from Claude Code to Codex — five host guards, zero runtime dependencies, zero build steps.**
 
-## Install
-
-```bash
-npx @lyupro/codex-bridge install        # one-off, into ~/.claude
-npm i -g @lyupro/codex-bridge           # install both command names globally
-codex-bridge install                    # full name, from any directory
-codexb install                          # short name, same command
-node bin/codex-bridge.mjs install       # from a clone, same thing
-node bin/codex-bridge.mjs install --scope project   # into <repo>/.claude
-node bin/codex-bridge.mjs update        # bring an installation up to the current version
-node bin/codex-bridge.mjs permissions   # show optional shell permission rules
-node bin/codex-bridge.mjs permissions add # add the complete allow/deny rule set
-node bin/codex-bridge.mjs permissions remove # remove only codex-bridge's rule strings
-node bin/codex-bridge.mjs doctor        # what is installed, where it points, is codex alive
-node bin/codex-bridge.mjs uninstall     # removes exactly what was installed
-node bin/codex-bridge.mjs stop <run>    # close a hanging run by hand, without hunting for a pid
-node bin/codex-bridge.mjs read <run>   # read a run: its events rendered as text, on demand
-node bin/codex-bridge.mjs projects     # what the run store holds: projects, runs, weight, tokens
-node bin/codex-bridge.mjs prune <project>   # reclaim disk space, transport only unless told otherwise
-node bin/codex-bridge.mjs unlock [<project>|--all] # close records whose runner is gone
-```
-
-When a global install and a clone coexist, there are two copies of the package. `codex-bridge update`
-and `codexb update` copy host files from whichever copy launched the command, so `codexb update`
-from `PATH` can silently revert a host that `npm run dev:install` from the clone just updated.
-
-`install` writes to two roots. Everything the package reads itself — the runner, the guards, the
-run config and the conventions — goes to `~/.lyupro/.codex-bridge/`. Only what Claude Code reads
-from its own directories and nowhere else stays there: the three agent definitions in
-`agents/codex-bridge/`, the two slash commands in `commands/codex-bridge/`, and the hook
-registrations in `settings.json` — **merged**, so hooks that are already there survive, and the
-file is backed up before every write. Hooks are registered as the command `codex-bridge hook
-<name>` rather than a path, so moving files or changing runtime is never an edit to a foreign
-config. Run it twice and the second run does nothing. `--dry-run` prints the plan and touches
-nothing.
-
-`update` moves an existing installation to the current version. It knows the sha256 of every file
-as it was installed, so it can tell a file you edited on the host from one left over by an older
-version: outdated files are refreshed silently, files you changed by hand stop the run and are
-named, and `--force` is what overwrites them. A file the package no longer ships is removed only
-if you never touched it.
-
-`permissions` manages the optional shell rules in the selected host's `settings.json`. `add`
-merges the exact allow and deny strings for both CLI names, the clone entry point, Bash and
-PowerShell; it preserves foreign rules and is safe to repeat. `remove` takes back those exact
-strings from `allow`, `deny`, or `ask`, so an operator-authored lookalike is left alone. With no
-action it reports whether the rule set is installed, partial, or absent. The command accepts the
-same `--scope` and `--host` selectors as `install`, and `uninstall` removes the same strings too.
-
-`uninstall` removes only what the install recorded: a file you put in `agents/codex-bridge/`
-yourself stays, the shared `agents/` and `commands/` directories Claude Code owns are never
-removed, and `codex-runs/` is never touched — those are your run artifacts, not the package.
-
-`stop` takes a run folder — a full path or a bare name from the current project's runs directory —
-kills that run's whole process tree and closes the folder the way an abandoned run is closed: a
-`FAIL` verdict naming what the run left in the worktree. A run that already has a verdict is left
-alone. Runs end on their own time budget now, so this is for the case where something wedged
-anyway.
-
-Run artifacts live in `codex-runs/<project>/`, one folder per repository, marked with a
-`.project.json` holding that repository's path. Two checkouts that share a directory name — two
-different `api` — therefore get `api` and `api-2` instead of one mixed history. `doctor` prints
-which folder the current repository writes to.
-
-`projects` reads that store back: without an argument, one line per project — runs, weight, tokens
-spent, how many are running right now; with a project name, one line per run. `prune` is the only
-command in the package that destroys data, and it is built to be hard to fire by accident: without
-`-f` it prints a plan and deletes nothing, `-f` still asks before each step, and with no terminal
-it refuses outright, because deletion is an operator action and there is no flag around it.
-By default it removes transport only — event streams and stderr, the megabytes — and leaves
-accounting, reports and worktree snapshots alone; `--purge` is what takes a folder whole.
-The same transport is dropped automatically from runs older than 30 days when a new run starts,
-which the reply says out loud; `retention` in `run-config.json` changes the age or turns it off.
-
-`unlock` is housekeeping for records left by a dead runner. With no argument it acts on the current
-repository; a bare project name limits the scan to that folder, and `--all` explicitly scans the
-whole store. It uses the same process-identity decision as start-of-run cleanup, closes only
-`dead` or `foreign` records, and reports each record's age, silence duration, and identity verdict.
-A confirmed `alive` record is refused rather than closed and is named with the exact
-`codex-bridge stop <run>` command needed to end it; `unverified` records stay untouched with the
-reason visible. The command never deletes run artifacts. The old spelling `sweep` is recognized and
-refused with the rename to `unlock`, rather than treated as an unknown command.
+[![npm version](https://img.shields.io/npm/v/@lyupro/codex-bridge)](https://www.npmjs.com/package/@lyupro/codex-bridge)
+[![Node.js](https://img.shields.io/node/v/@lyupro/codex-bridge)](https://www.npmjs.com/package/@lyupro/codex-bridge)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 ## What it gives you
 
-- **Three dispatcher agents** for Claude Code — reconnaissance (read-only), implementation
-  (write access limited to a declared scope), and an independent review by a second model.
-- **A runner that survives a dropped call.** The launcher hands the run to a detached
-  worker, so a killed dispatcher no longer leaves the work unexplainable: the run folder is
-  closed with artifacts either way.
-- **A verdict that checks the report against the worktree.** The agent's own account of what
-  it changed is compared with what git says actually changed, and a mismatch is a failed run
-  rather than a nicer-sounding summary.
-- **Four hooks that hold the rules the prompts only ask for**: a reply is refused when it does not
-  match the recorded state of the run, a dispatcher call is refused when it carries no order id, a
-  file edit is refused inside a repository a live run holds, and deletion of the run store is
-  refused when an agent is the one asking.
+- **Runs survive the caller.** A detached worker keeps the run and its artifacts alive after the dispatcher exits.
+- **Invalid work is rejected before quota is spent.** Scope, order, retry, branch, and continuation checks run before a run folder is created.
+- **Verdicts come from artifacts.** CLI events, git state, and the declared report decide the result, not model claims about itself.
+- **Identical retries attach safely.** Repeating the same command joins the active run instead of starting another one.
+- **5 host guards enforce the boundary.** `reply-guard`, `order-gate`, `worktree-lock`, `prune-guard`, and `stop-guard` cover replies, orders, edits, deletion, and stopping.
+- **Installation is identifiable and reversible.** Writes to `settings.json` are merged and backed up; uninstall removes recorded package files only.
+- **Every run leaves an audit folder.** The verbatim task, scope, before/after git state, events, report, verdict, and reason remain together.
+- **Zero runtime dependencies and zero build steps.** The package is plain `.mjs` on the Node.js standard library.
+
+The current suite contains **603 automated tests: 602 passing and 1 skipped**.
 
 ## Requirements
 
-- Node.js >= 24 (the file-size gate uses `fs.glob`, the test runner uses directory globs)
-- The `codex` CLI, authenticated (`codex --version`, `codex login`)
-- Claude Code, for the agents and the hook to be registered in
+- Node.js >= 24
+- An authenticated [Codex CLI](https://developers.openai.com/codex/cli): `codex --version` and `codex login`
+- Claude Code, which hosts the agents, commands, and guards
 
-No runtime dependencies: everything here is plain `.mjs` on the Node standard library, and
-that is deliberate — installing from a clone stays one command, with no build step.
+## Install
 
-## Development
+For a one-off user installation, global access, or a clone entry point:
+
+```bash
+npm i -g @lyupro/codex-bridge   # puts both command names on PATH
+codex-bridge install            # into ~/.claude and ~/.lyupro/.codex-bridge/
+codexb install                  # the short name, same command
+```
+
+Two other entry points reach the same command: `npx @lyupro/codex-bridge install` for a one-off run without a global install, and `node bin/codex-bridge.mjs install` from a clone. Every command below works through all three.
+
+Use `--scope project` to install the Claude Code-facing files under `<repo>/.claude`; the default user scope uses `~/.claude`.
+
+Installation has two roots:
+
+- `~/.lyupro/.codex-bridge/` contains package runtime files, guards, configuration, conventions, and the installation record.
+- The selected Claude Code root (`~/.claude/` or `<repo>/.claude/`) contains the three agents, two slash commands, merged hook registrations in `settings.json`, and run artifacts under `codex-runs/`.
+
+Before every `settings.json` write, the existing file is backed up. Existing settings and foreign hooks are preserved. `--dry-run` prints the plan without writing.
+
+If a global install and a clone coexist, you have two package copies. `codex-bridge update`, `codexb update`, and the clone entry point copy files from whichever copy launched the command; using the wrong one can replace a newer host installation with older files.
+
+`codex-runs/` contains operator data. Uninstall never removes it.
+
+## Verify
+
+```bash
+codex-bridge doctor
+```
+
+`doctor` reports the selected host, package source, installed files and guards, Codex availability, retention policy, permissions, live runs, and the current repository's run folder.
+
+## Update
+
+Update the global package, then refresh the selected host installation:
+
+```bash
+npm i -g @lyupro/codex-bridge
+codex-bridge update
+```
+
+`update` refreshes unchanged package files, refuses to overwrite operator edits unless `--force` is supplied, and removes obsolete files only when their installed fingerprint is unchanged.
+
+## Limitations
+
+- **Runs are not isolated from one another.** They share one worktree; guards prevent concurrent writers instead of creating sandboxes.
+- **A build run has a 25-minute deadline.** Work and artifacts survive a timeout, but the run may need an explicit continuation.
+- **A dispatcher verdict is not the work outcome.** Judge completion from the worktree and tests as well as the recorded verdict.
+
+Transport files from runs at least **30 days** old are pruned automatically when a new run starts. Configuration can change or disable that retention policy; reports, accounting, and worktree snapshots are retained.
+
+## Command reference
+
+| Command | Purpose |
+| --- | --- |
+| `install [--scope user\|project] [--host <path>] [--dry-run] [--force]` | Install into a Claude Code host. |
+| `update [--scope user\|project] [--host <path>] [--dry-run] [--force]` | Refresh a recorded installation. |
+| `permissions [add\|remove] [--scope user\|project] [--host <path>]` | Inspect or manage optional shell rules. |
+| `uninstall [--scope user\|project] [--host <path>] [--dry-run]` | Remove recorded package files while preserving run artifacts. |
+| `doctor [--scope user\|project] [--host <path>]` | Diagnose the selected host and Codex connection. |
+| `projects [<name>] [--json]` | List projects or runs in the run store. |
+| `prune <project> [<run>] [--purge] [--older-than <age>] [-f] [--json]` | Plan or perform operator-confirmed cleanup. |
+| `unlock [<project>\|--all]` | Close records whose runner is gone. |
+| `read <run>` | Render a run's structured event stream. |
+| `stop <run>` | Stop a run and record a `FAIL` verdict. |
+
+Both `codex-bridge` and `codexb` invoke the same command. Run `codex-bridge --help` for exact forms.
+
+### Development
 
 ```bash
 git clone https://github.com/lyupro/codex-bridge.git
 cd codex-bridge
-git config core.hooksPath .githooks   # pre-commit file-size gate, 400 lines per source file
-npm test                              # node --test, no dependencies to install
+git config core.hooksPath .githooks
+npm test
 ```
+
+The Git hook enforces the 400-line source-file limit.
 
 ## License
 
-MIT
+[MIT](LICENSE)
