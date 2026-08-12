@@ -6,28 +6,13 @@
 [![Node.js](https://img.shields.io/node/v/@lyupro/codex-bridge)](https://www.npmjs.com/package/@lyupro/codex-bridge)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-## What it gives you
+[![npm downloads](https://img.shields.io/npm/dm/@lyupro/codex-bridge)](https://www.npmjs.com/package/@lyupro/codex-bridge)
+[![npm unpacked size](https://img.shields.io/npm/unpacked-size/@lyupro/codex-bridge)](https://www.npmjs.com/package/@lyupro/codex-bridge)
+[![dependencies: zero](https://img.shields.io/badge/dependencies-zero-brightgreen)](package.json)
 
-- **Runs survive the caller.** A detached worker keeps the run and its artifacts alive after the dispatcher exits.
-- **Invalid work is rejected before quota is spent.** Scope, order, retry, branch, and continuation checks run before a run folder is created.
-- **Verdicts come from artifacts.** CLI events, git state, and the declared report decide the result, not model claims about itself.
-- **Identical retries attach safely.** Repeating the same command joins the active run instead of starting another one.
-- **5 host guards enforce the boundary.** `reply-guard`, `order-gate`, `worktree-lock`, `prune-guard`, and `stop-guard` cover replies, orders, edits, deletion, and stopping.
-- **Installation is identifiable and reversible.** Writes to `settings.json` are merged and backed up; uninstall removes recorded package files only.
-- **Every run leaves an audit folder.** The verbatim task, scope, before/after git state, events, report, verdict, and reason remain together.
-- **Zero runtime dependencies and zero build steps.** The package is plain `.mjs` on the Node.js standard library.
-
-The current suite contains **603 automated tests: 602 passing and 1 skipped**.
-
-## Requirements
-
-- Node.js >= 24
-- An authenticated [Codex CLI](https://developers.openai.com/codex/cli): `codex --version` and `codex login`
-- Claude Code, which hosts the agents, commands, and guards
+Agentic coding spends one model subscription on everything, and implementation is the expensive part. codex-bridge moves that work to a separate [Codex CLI](https://developers.openai.com/codex/cli) subscription: Claude Code plans, dispatches and accepts, Codex executes — and every delegated run is guarded, verified and audited on disk.
 
 ## Install
-
-For a one-off user installation, global access, or a clone entry point:
 
 ```bash
 npm i -g @lyupro/codex-bridge   # puts both command names on PATH
@@ -50,10 +35,50 @@ If a global install and a clone coexist, you have two package copies. `codex-bri
 
 `codex-runs/` contains operator data. Uninstall never removes it.
 
+## Requirements
+
+- Node.js >= 24
+- An authenticated [Codex CLI](https://developers.openai.com/codex/cli): `codex --version` and `codex login`
+- Claude Code, which hosts the agents, commands, and guards
+
+## What it gives you
+
+- **Runs survive the caller.** A detached worker keeps the run and its artifacts alive after the dispatcher exits.
+- **Invalid work is rejected before quota is spent.** Scope, order, retry, branch, and continuation checks run before a run folder is created.
+- **Verdicts come from artifacts.** CLI events, git state, and the declared report decide the result, not model claims about itself.
+- **Identical retries attach safely.** Repeating the same command joins the active run instead of starting another one.
+- **5 host guards enforce the boundary.** `reply-guard`, `order-gate`, `worktree-lock`, `prune-guard`, and `stop-guard` cover replies, orders, edits, deletion, and stopping.
+- **Installation is identifiable and reversible.** Writes to `settings.json` are merged and backed up; uninstall removes recorded package files only.
+- **Every run leaves an audit folder.** The verbatim task, scope, before/after git state, events, report, verdict, and reason remain together.
+- **Zero runtime dependencies and zero build steps.** The package is plain `.mjs` on the Node.js standard library.
+
+The current suite contains **604 automated tests: 603 passing and 1 skipped**.
+
 ## Verify
 
 ```bash
 codex-bridge doctor
+```
+
+Output on a healthy host (trimmed):
+
+```text
+[ok] host: ~/.claude (user, exists)
+[ok] installation: @lyupro/codex-bridge@0.5.1 (matches package)
+[ok] files: 53 installed file(s) present
+[ok] rules: ~/.codex/rules/codex-bridge.rules (matches record)
+[ok] permissions: installed (24/24 own strings in allow/deny)
+[ok] hook:SubagentStop: matcher * -> ~/.lyupro/.codex-bridge/hooks/reply-guard.mjs
+[ok] hook:PreToolUse: matcher Agent|Task -> ~/.lyupro/.codex-bridge/hooks/order-gate.mjs
+[ok] hook:PreToolUse: matcher Write|Edit|MultiEdit|NotebookEdit -> ~/.lyupro/.codex-bridge/hooks/worktree-lock.mjs
+[ok] hook:PreToolUse: matcher Bash|PowerShell -> ~/.lyupro/.codex-bridge/hooks/prune-guard.mjs
+[ok] hook:PreToolUse: matcher TaskStop -> ~/.lyupro/.codex-bridge/hooks/stop-guard.mjs
+[warn] retention: Automatic cleanup is ON — run transport older than 30 days is removed to reclaim disk space.
+[ok] conventions: ~/.lyupro/.codex-bridge/conventions.md (found)
+[ok] codex: codex-cli 0.146.1
+[ok] node: 24.18.0 (requires >=24)
+[ok] runsRoot: ~/.claude/codex-runs
+[ok] liveRuns: 0 runs working right now
 ```
 
 `doctor` reports the selected host, package source, installed files and guards, Codex availability, retention policy, permissions, live runs, and the current repository's run folder.
