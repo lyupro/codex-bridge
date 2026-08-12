@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-08-12
+
+### Fixed
+
+- Installing or uninstalling no longer fails over a rules-registry lock that is busy for one more
+  millisecond. Windows answers a taken lock with three codes, and only one of them is `EEXIST`: a
+  lock file whose delete is still pending comes back `EPERM`, and a file another process still
+  holds comes back `EBUSY` — the acquisition loop treated both as fatal instead of waiting. All
+  three now mean "not yours yet", and the decision lives in one exported check, `isLockTaken()`.
+
+### Changed
+
+- The README's first screen names the problem the package solves, keeps the install command inside
+  the first 30 lines, adds a second badge row, and shows `doctor` output from a healthy host in
+  place of a screenshot.
+- The reference documentation under `docs/` is English-only now (`overview.ru.md` became
+  `overview.md`), and the working folders — plans, checklists and audits — left the repository and
+  its history: a fresh clone contains the five reference documents and nothing else.
+
 ## [0.5.0] - 2026-08-11
 
 ### Added
