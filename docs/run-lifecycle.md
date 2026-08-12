@@ -101,9 +101,10 @@ directory creation, immediately after finding the chain and before the `--contin
   responds rather than refusing.
 - **There is no `reply.txt`, and the pid is alive** — the invocation prints
   `ATTACH=<directory> started=<time>`, waits for `reply.txt`, and prints it. The next line states
-  explicitly that this is the response from the previous run started at the given time and that no new
-  work was started. Codex is not invoked and quota is not spent. An interrupted repeat damages nothing:
-  the next invocation attaches to the same run.
+  that the run is already in progress, no new work was started, and this invocation is waiting for its
+  verdict. When `reply.txt` already exists, the next line instead says this is the answer from the
+  previous run and no new work was started. Codex is not invoked and quota is not spent. An interrupted
+  repeat damages nothing: the next invocation attaches to the same run.
 - **There is no `reply.txt`, and the pid is dead** — this is an abandoned run with nothing to attach to;
   the earlier path applies (`markAbandoned()` has already marked the directory, then the `--continue`
   refusal takes effect).

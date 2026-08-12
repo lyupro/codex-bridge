@@ -238,8 +238,31 @@ test('a verdict written before the reply still answers the repeat', async (t) =>
   const { code, lines } = await attaching(order(runsRoot, repo));
 
   assert.equal(code, 0);
-  assert.match(lines[1], /previous run started at 2026-08-04T09:00:00.000Z; no new work was started/);
+  assert.match(lines[1], /run already in progress since 2026-08-04T09:00:00.000Z; no new work was started/);
   assert.match(lines[2], /OK — closed late/);
+});
+
+test('a live attach never presents a pending verdict as a previous answer', async (t) => {
+  const runsRoot = fixture(t);
+  const repo = path.join(runsRoot, 'repo');
+  const dir = run(runsRoot, '2026-08-04_090000_async-start', running(repo));
+  const replyPath = path.join(dir, 'reply.txt');
+  assert.equal(fs.existsSync(replyPath), false);
+  const answering = setTimeout(() => {
+    fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify({ status: 'OK' }));
+    fs.writeFileSync(replyPath, 'OK — arrived later\n');
+  }, 50);
+  t.after(() => clearTimeout(answering));
+
+  const { code, lines } = await attaching(order(runsRoot, repo));
+
+  assert.equal(code, 0);
+  assert.doesNotMatch(lines.join('\n'), /This is the answer of the previous run/);
+  assert.match(
+    lines[1],
+    /run already in progress since 2026-08-04T09:00:00.000Z; no new work was started, and this invocation is waiting for its verdict/,
+  );
+  assert.equal(lines[2], 'OK — arrived later');
 });
 
 test('an abandoned run is not joined: a dead pid will never write a reply', async (t) => {
@@ -322,7 +345,7 @@ test('a continuation still running is joined instead of the answered pass before
   const { lines } = await attaching(order(runsRoot, repo));
 
   assert.equal(lines[0], `ATTACH=${second} started=2026-08-04T09:15:00.000Z`);
-  assert.match(lines[1], /previous run started at 2026-08-04T09:15:00.000Z; no new work was started/);
+  assert.match(lines[1], /run already in progress since 2026-08-04T09:15:00.000Z; no new work was started/);
   assert.equal(lines[2], 'OK — the continuation');
 });
 

@@ -148,8 +148,9 @@ Authorization is the line form: the `continue:` label, run directory name, `—`
 validation does not depend on whether the directory exists: the runner does not silently correct
 a mistyped name, but refuses with the latest run's name, status, and reason, plus a ready-made line
 for another attempt. Mentioning the word `continue:` in prose is not authorization. On a safe
-`attach`, the output explicitly says that it printed the response from the previous run started at
-the stated time and that no new work was started.
+`attach`, the first line is `ATTACH=<directory> started=<time>`. For a saved reply, the next line says
+that it printed the answer from the previous run and no new work was started. For a live run, it says
+the run is already in progress, no new work was started, and this invocation is waiting for its verdict.
 
 Authorization is single-use: it names the latest run in the chain, and continuation appends a
 later one, so the same line will not work twice. Details and all refusals are in
