@@ -20,6 +20,20 @@ test('successful replies use the read command instead of a raw file path', () =>
   assert.doesNotMatch(reply, /raw\.log/);
 });
 
+test('successful build replies preserve summaries longer than the old 160-character limit', () => {
+  const summary = `${'verified behavior '.repeat(11)}final marker`;
+  const dir = makeRun({
+    args: ['exec', '--json'],
+    events: [{ type: 'thread.started', thread_id: 'reply-long-summary' }],
+    result: buildResult([], { summary }),
+  });
+
+  const { reply } = collect(dir, 'codex-build', 0);
+
+  assert.ok(summary.length > 160 && summary.length < 300);
+  assert.ok(reply.includes(summary));
+});
+
 test('failed replies report events and stderr sizes plus the read command', () => {
   const dir = makeRun({
     args: ['exec', '--json'],

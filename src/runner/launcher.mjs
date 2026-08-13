@@ -63,7 +63,7 @@ const stamp = () => {
  * otherwise overwrite each other's task.md, log and result — and a status could then be
  * computed from another run's artifacts.
  */
-function makeRunDir(base) {
+export function makeRunDir(base) {
   fs.mkdirSync(path.dirname(base), { recursive: true });
   for (let n = 2, dir = base; ; n += 1) {
     try {
@@ -75,6 +75,16 @@ function makeRunDir(base) {
     }
   }
 }
+
+export const runDirPath = (root, slug, runStamp = stamp()) => {
+  // `2026-08-13_235525_2026-08-13_plan4-6g-ceiling-scope` duplicated the order date. Only the
+  // directory copy is stripped: the slug stored in status.json stays verbatim, because a run
+  // with neither order_id nor task_hash is found by its stored slug alone (meta/chain.mjs).
+  const stripped = String(slug).replace(/^\d{4}-\d{2}-\d{2}[_-]/, '');
+  // An order id that is nothing but a date would otherwise name a folder ending in `_`.
+  const directorySlug = stripped || String(slug);
+  return path.join(root, `${runStamp}_${directorySlug}`);
+};
 
 /**
  * Everything a run needs before a single token of someone else's quota is spent, and every
@@ -196,7 +206,7 @@ export async function launcher() {
     retention = null;
   }
 
-  const runDir = makeRunDir(path.join(projectRunsRoot, `${stamp()}_${opts.slug}`));
+  const runDir = makeRunDir(runDirPath(projectRunsRoot, opts.slug));
   setRun(runDir, opts.agent);
 
   // Written before Codex is even probed. From here on a killed runner leaves a folder that

@@ -8,7 +8,41 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { globToRegExp, expandDeclared, readJson } from '../../src/meta/paths.mjs';
+import { globToRegExp, expandDeclared, line, readJson } from '../../src/meta/paths.mjs';
+
+// --- line -------------------------------------------------------------------------
+
+test('line never leaves a partial multi-digit number at the limit', () => {
+  assert.equal(line('All 298 tests pass', 6), 'All...');
+  assert.equal(line('123456789', 7), '...');
+});
+
+// The first fix dropped a trailing number whenever the limit happened to land inside the NEXT
+// word, so `All 298 12345678 rest` lost the 298 that fitted whole. A number that survived the
+// retreat to a space is finished text and must be left alone.
+test('line keeps a whole number that fits before the word boundary', () => {
+  assert.equal(line('All 298 12345678 rest', 15), 'All 298...');
+  assert.equal(line('All 298 tests 4567890 x', 17), 'All 298 tests...');
+});
+
+test('line leaves text shorter than the limit unchanged', () => {
+  assert.equal(line('All 298 tests pass', 80), 'All 298 tests pass');
+});
+
+test('line including its ellipsis never exceeds the limit', () => {
+  const result = line('Alpha beta gamma delta', 13);
+  assert.ok(result.length <= 13);
+  assert.match(result, /\.\.\.$/);
+});
+
+test('line handles long words, no spaces, tiny limits, and empty values', () => {
+  assert.equal(line('supercalifragilistic', 8), 'super...');
+  assert.equal(line('abcdefghij', 7), 'abcd...');
+  assert.equal(line('word', 2), 'wo');
+  assert.equal(line('', 10), '');
+  assert.equal(line(null, 10), '');
+  assert.equal(line(undefined, 10), '');
+});
 
 // --- readJson ---------------------------------------------------------------------
 

@@ -108,7 +108,7 @@ function buildReply(ctx) {
     : paths || 'worktree untouched';
   const retention = retentionReply(ctx.runDir);
   return [
-    `OK — ${line(r.summary, 160)}`,
+    `OK — ${line(r.summary, 300)}`,
     `Files: ${touchedPaths.length} changed · ${files}`,
     // Only when something outside the run wrote to the tree. Subtracting those paths from the
     // verdict without naming them would hide a real edit behind a pattern.

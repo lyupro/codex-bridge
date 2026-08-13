@@ -1,12 +1,17 @@
 /** Regression coverage for Plan_29 slug derivation and legacy chain lookup. */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { chainRuns, taskFingerprint } from '../../src/meta/chain.mjs';
 import { parseArgs } from '../../src/runner/args.mjs';
+import { makeRunDir, runDirPath } from '../../src/runner/launcher.mjs';
 import { makeChainRoot, CHAIN_REPO } from '../meta/test-fixtures.mjs';
 
 const ARGS_MODULE = new URL('../../src/runner/args.mjs', import.meta.url).href;
+const RUN_STAMP = '2026-08-13_235525';
 
 function reviewArgs(orderId, slug) {
   return [
@@ -16,6 +21,39 @@ function reviewArgs(orderId, slug) {
     '--order-id', orderId,
   ];
 }
+
+test('a leading slug date appears only once in the run directory name', () => {
+  const runDir = runDirPath('/runs', '2026-08-13_plan4-6g-ceiling-scope', RUN_STAMP);
+  assert.equal(path.basename(runDir), '2026-08-13_235525_plan4-6g-ceiling-scope');
+  assert.equal(
+    path.basename(runDirPath('/runs', '2026-08-13-plan4-6g-ceiling-scope', RUN_STAMP)),
+    '2026-08-13_235525_plan4-6g-ceiling-scope',
+  );
+});
+
+test('a slug without a date keeps the existing run directory name', () => {
+  const runDir = runDirPath('/runs', 'plan4-6g-ceiling-scope', RUN_STAMP);
+  assert.equal(path.basename(runDir), '2026-08-13_235525_plan4-6g-ceiling-scope');
+});
+
+test('a slug that is nothing but a date still names a folder', () => {
+  const runDir = runDirPath('/runs', '2026-08-13-', RUN_STAMP);
+  assert.equal(path.basename(runDir), '2026-08-13_235525_2026-08-13-');
+});
+
+test('a date outside the start of a slug is preserved', () => {
+  const runDir = runDirPath('/runs', 'plan4-2026-08-13-ceiling-scope', RUN_STAMP);
+  assert.equal(path.basename(runDir), '2026-08-13_235525_plan4-2026-08-13-ceiling-scope');
+});
+
+test('run directory collisions still receive a numeric suffix', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'slug-collision-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const base = runDirPath(root, '2026-08-13_plan4', RUN_STAMP);
+
+  assert.equal(makeRunDir(base), base);
+  assert.equal(makeRunDir(base), `${base}-2`);
+});
 
 test('an order without --slug derives the slug from its order id', () => {
   const options = parseArgs(reviewArgs('plan/29:slug-default'));

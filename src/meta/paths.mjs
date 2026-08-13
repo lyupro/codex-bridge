@@ -10,7 +10,26 @@ import fs from 'node:fs';
 import { readJsonFileSync } from '../json-file.mjs';
 
 /** One line, no newlines, bounded length — a five-line reply must stay five lines. */
-export const line = (value, max = 200) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
+export const line = (value, max = 200) => {
+  const text = String(value ?? '').replace(/\s+/g, ' ').trim();
+  if (text.length <= max) return text;
+
+  const ellipsis = '...';
+  if (max <= ellipsis.length) return text.slice(0, Math.max(0, max));
+
+  const contentLimit = max - ellipsis.length;
+  const boundary = text.lastIndexOf(' ', contentLimit);
+  // `All 298 tests pass` once became `All 29`; a reply must omit a whole word, not corrupt it.
+  // Retreating to a space is the whole fix, and it is enough on its own: what survives ends
+  // where a word ended. Dropping a trailing number here as well cost `All 298 12345678 rest`
+  // its 298 — a number that fitted whole — because the digit test compared the limit rather
+  // than the point the text was actually cut at.
+  if (boundary > 0) return `${text.slice(0, boundary)}${ellipsis}`;
+
+  // No space to retreat to: the limit lands inside a single long word. Only here can the cut
+  // land mid-number, so only here is a partial number dropped.
+  return `${text.slice(0, contentLimit).replace(/\d+$/, '')}${ellipsis}`;
+};
 
 export const readText = (file) => {
   try {
