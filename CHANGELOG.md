@@ -6,6 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- Delegating to a dispatcher no longer stops on a permission prompt. The shipped agent definitions
+  started a run by absolute path — `node "<installed dir>/run-codex.mjs" --agent … \ …` — and a host
+  matches permission rules against the beginning of a command line, so a rule written for this
+  package could never match it. The only way to start a run is now the package command,
+  `codex-bridge run`, on a single line: no interpreter, no path, no line continuation. The task
+  statement travels as `--task-file`, because a heredoc forces the invocation back into the
+  multi-line form that no rule can cover; stdin remains supported for the direct call, and giving
+  both channels is a refusal rather than a silent precedence.
+- Installed hooks could not run at all. The installer reshaped the source tree — hooks to one
+  directory, their modules to another — so every hook's relative import was correct in the clone and
+  false on the host, and all five guards died on `ERR_MODULE_NOT_FOUND` from the day the package
+  moved to its branded folder. The suite stayed green because it exercises the clone, and `doctor`
+  called a hook healthy on the strength of a line in `settings.json` without ever starting the file.
+  The source now contains a literal image of the installed home, `src/home/`, and installation
+  copies it one to one.
+
+### Added
+
+- `codex-bridge run` — the public entry point for starting a delegated run, with the same flags,
+  stdout and exit codes as the historical file invocation.
+- Two structural guards that make the above regressions loud instead of silent: the install plan
+  must stay isomorphic to the shipped home image, and every registered hook must actually start as
+  a child process with its imports resolved.
+- `doctor` compares the version answering a hook against the installed copy, verifies the installed
+  agent definitions against the repository, and downgrades to a warning instead of reporting code it
+  never ran as healthy.
+
 ## [0.5.1] - 2026-08-12
 
 ### Fixed
