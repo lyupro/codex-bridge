@@ -1,9 +1,9 @@
 /** Resolves a run argument and confirms that it names an existing run directory. */
 import fs from 'node:fs';
 import path from 'node:path';
-import { git } from '../src/runner/git-state.mjs';
-import { resolveProjectRunsDir } from '../src/runner/project-dir.mjs';
-import { runsRoot } from '../src/runner/runs-root.mjs';
+import { git } from '../src/home/lib/runner/git-state.mjs';
+import { resolveProjectRunsDir } from '../src/home/lib/runner/project-dir.mjs';
+import { runsRoot } from '../src/home/lib/runner/runs-root.mjs';
 
 function projectRoot(cwd) {
   const result = git(cwd, ['rev-parse', '--show-toplevel']);

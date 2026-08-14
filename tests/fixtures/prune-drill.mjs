@@ -22,7 +22,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { runsRoot } from '../../src/runner/runs-root.mjs';
+import { runsRoot } from '../../src/home/lib/runner/runs-root.mjs';
 
 const store = runsRoot();
 

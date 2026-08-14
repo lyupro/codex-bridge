@@ -41,7 +41,7 @@ export const REQUIRED_INPUTS = Object.freeze({
       label: 'scope',
       source: 'the orchestrator',
       explanation: 'Comma-separated globs relative to the repository root, listing every file the run may touch — including each caller of what changes, not only the file being edited. Anything outside the list fails the run.',
-      example: 'src/runner/**,tests/runner/**',
+      example: 'src/home/lib/runner/**,tests/runner/**',
     },
     CONTINUATION_INPUT,
   ]),

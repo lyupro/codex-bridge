@@ -15,7 +15,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { collect } from '../src/write-meta.mjs';
+import { collect } from '../src/home/lib/write-meta.mjs';
 import { buildResult as build, makeRun } from './meta/test-fixtures.mjs';
 
 // --- commit made during the run -------------------------------------------------------

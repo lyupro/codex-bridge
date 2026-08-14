@@ -35,7 +35,7 @@ export async function installedFixture(t) {
   for (const file of files) {
     const target = recordTarget(host, file);
     await fs.mkdir(path.dirname(target), { recursive: true });
-    await fs.writeFile(target, file.path);
+    await fs.writeFile(target, file.root === 'brand' ? 'process.exitCode = 0;\n' : file.path);
   }
   const record = {
     ...ownPackage,

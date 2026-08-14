@@ -356,7 +356,7 @@ export function resolveStatus({ resultOk, exit, agent, result, runDir, events })
       // Hooks on is the known cause of this exact failure, so the reason says so instead
       // of leaving the operator to rediscover it from the log.
       const hooks = readJson(path.join(runDir, 'env.json'))?.hooks
-        ? ' (hooks are enabled in run-config.json — a likely cause)'
+        ? ' (hooks are enabled in config.json — a likely cause)'
         : '';
       return { status: 'FAIL', reason: `${verdict.reason}${hooks}` };
     }

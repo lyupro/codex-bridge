@@ -18,7 +18,7 @@ import {
   rulesRegistryPath,
 } from '../../cli/rules-owners.mjs';
 import { uninstall } from '../../cli/uninstall.mjs';
-import { normalizeRepoPath } from '../../src/runner/project-dir.mjs';
+import { normalizeRepoPath } from '../../src/home/lib/runner/project-dir.mjs';
 import { allFiles, fixture } from './host-fixture.mjs';
 
 test('a missing registry is distinct from an empty owner list', () => {

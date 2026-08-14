@@ -5,12 +5,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { chainRuns, taskFingerprint } from '../../src/meta/chain.mjs';
-import { parseArgs } from '../../src/runner/args.mjs';
-import { makeRunDir, runDirPath } from '../../src/runner/launcher.mjs';
+import { chainRuns, taskFingerprint } from '../../src/home/lib/meta/chain.mjs';
+import { parseArgs } from '../../src/home/lib/runner/args.mjs';
+import { makeRunDir, runDirPath } from '../../src/home/lib/runner/launcher.mjs';
 import { makeChainRoot, CHAIN_REPO } from '../meta/test-fixtures.mjs';
 
-const ARGS_MODULE = new URL('../../src/runner/args.mjs', import.meta.url).href;
+const ARGS_MODULE = new URL('../../src/home/lib/runner/args.mjs', import.meta.url).href;
 const RUN_STAMP = '2026-08-13_235525';
 
 function reviewArgs(orderId, slug) {

@@ -48,7 +48,7 @@ if (process.platform === 'win32') {
   };
   syncBuiltinESMExports();
 }
-const { runCodex } = await import('../../src/runner/codex-cmd.mjs');
+const { runCodex } = await import('../../src/home/lib/runner/codex-cmd.mjs');
 after(() => {
   if (process.platform === 'win32') {
     childProcess.spawnSync = realSpawnSync;

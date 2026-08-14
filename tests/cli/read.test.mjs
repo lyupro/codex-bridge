@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { resolveProjectRunsDir } from '../../src/runner/project-dir.mjs';
+import { resolveProjectRunsDir } from '../../src/home/lib/runner/project-dir.mjs';
 import { main } from '../../bin/codex-bridge.mjs';
 import { read } from '../../cli/read.mjs';
 

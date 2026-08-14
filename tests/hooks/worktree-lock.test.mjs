@@ -10,10 +10,10 @@ import {
   HOOK_DEFINITIONS,
   WRITE_TOOL_MATCHER,
   WRITE_TOOLS,
-} from '../../src/hook-definitions.mjs';
+} from '../../src/home/lib/hook-definitions.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
-const LOCK = path.join(ROOT, 'src', 'hooks', 'worktree-lock.mjs');
+const LOCK = path.join(ROOT, 'src', 'home', 'hooks', 'worktree-lock.mjs');
 
 async function fixture(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-worktree-lock-'));

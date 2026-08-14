@@ -7,9 +7,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { readEvents } from '../../src/meta/events.mjs';
+import { readEvents } from '../../src/home/lib/meta/events.mjs';
 import { buildResult, makeRun } from './test-fixtures.mjs';
-import { collect } from '../../src/write-meta.mjs';
+import { collect } from '../../src/home/lib/write-meta.mjs';
 
 test('sums turn usage, preserves the full usage object, and reads thread id', () => {
   const dir = makeRun({

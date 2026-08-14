@@ -12,10 +12,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { resolveProjectRunsDir } from '../../src/runner/project-dir.mjs';
+import { resolveProjectRunsDir } from '../../src/home/lib/runner/project-dir.mjs';
 
-const RUN_CODEX = fileURLToPath(new URL('../../src/run-codex.mjs', import.meta.url));
-const LAUNCHER = new URL('../../src/runner/launcher.mjs', import.meta.url).href;
+const RUN_CODEX = fileURLToPath(new URL('../../src/home/lib/run-codex.mjs', import.meta.url));
+const LAUNCHER = new URL('../../src/home/lib/runner/launcher.mjs', import.meta.url).href;
 
 function fixture(t, suffix) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), `pre-start-${suffix}-`));
@@ -241,7 +241,7 @@ childProcess.spawnSync = (command, args, options) =>
 import { syncBuiltinESMExports } from 'node:module';
 syncBuiltinESMExports();
 process.exit = (code = 0) => { process.exitCode = code; };
-const { requireCodex } = await import(${JSON.stringify(new URL('../../src/runner/codex-cmd.mjs', import.meta.url).href)});
+const { requireCodex } = await import(${JSON.stringify(new URL('../../src/home/lib/runner/codex-cmd.mjs', import.meta.url).href)});
 requireCodex(${JSON.stringify(runDir)}, 'codex-review');
 `;
   const output = spawnSync(process.execPath, ['--input-type=module', '-e', source], {

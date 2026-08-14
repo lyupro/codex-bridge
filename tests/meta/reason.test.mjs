@@ -2,7 +2,7 @@
 /** Verifies failed-run reasons use model and transport events before stderr diagnostics. */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { collect } from '../../src/write-meta.mjs';
+import { collect } from '../../src/home/lib/write-meta.mjs';
 import { makeRun } from './test-fixtures.mjs';
 
 const emptyBuild = { summary: '', changes: [], report_markdown: '' };

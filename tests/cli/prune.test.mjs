@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { prune } from '../../cli/prune.mjs';
-import { chainRuns } from '../../src/meta/chain.mjs';
+import { chainRuns } from '../../src/home/lib/meta/chain.mjs';
 
 const NOW = Date.parse('2026-08-06T12:00:00.000Z');
 const TRANSPORT = ['events.jsonl', 'stderr.log', 'raw.log'];

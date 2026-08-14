@@ -8,8 +8,8 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { outcomeGap, requiresOutcome } from '../../src/meta/outcome.mjs';
-import { SCHEMAS } from '../../src/runner/schemas.mjs';
+import { outcomeGap, requiresOutcome } from '../../src/home/lib/meta/outcome.mjs';
+import { SCHEMAS } from '../../src/home/lib/runner/schemas.mjs';
 import { buildResult, makeRun } from './test-fixtures.mjs';
 
 // The production schema is used rather than a hand-written stand-in: the marker and the

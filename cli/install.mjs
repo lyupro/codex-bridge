@@ -25,7 +25,7 @@ import {
   withSettingsRun,
 } from './settings-merge.mjs';
 import { addRulesOwner, readRulesRegistry } from './rules-owners.mjs';
-import { readRunConfig, retentionNotice } from '../src/run-config.mjs';
+import { readRunConfig, retentionNotice } from '../src/home/lib/run-config.mjs';
 
 const WARNING = '\u001b[33m';
 const RESET = '\u001b[0m';

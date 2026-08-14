@@ -11,11 +11,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { collect } from '../src/write-meta.mjs';
-import { questionsFromFlags } from '../src/runner/launcher.mjs';
+import { collect } from '../src/home/lib/write-meta.mjs';
+import { questionsFromFlags } from '../src/home/lib/runner/launcher.mjs';
 import { makeRun } from './meta/test-fixtures.mjs';
 
-const RUN_CODEX = new URL('../src/run-codex.mjs', import.meta.url).href;
+const RUN_CODEX = new URL('../src/home/lib/run-codex.mjs', import.meta.url).href;
 
 function parseArgsInChild(argv) {
   const source = `import { parseArgs } from ${JSON.stringify(RUN_CODEX)};

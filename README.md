@@ -29,6 +29,10 @@ Installation has two roots:
 - `~/.lyupro/.codex-bridge/` contains package runtime files, guards, configuration, conventions, and the installation record.
 - The selected Claude Code root (`~/.claude/` or `<repo>/.claude/`) contains the three agents, two slash commands, merged hook registrations in `settings.json`, and run artifacts under `codex-runs/`.
 
+The repository's `src/home/` directory is the literal image copied into the branded root: its
+`hooks/`, `lib/`, `config.json`, and `conventions.md` paths are the host paths without remapping.
+Only npm's `package.json` is copied into that root from outside the image.
+
 Before every `settings.json` write, the existing file is backed up. Existing settings and foreign hooks are preserved. `--dry-run` prints the plan without writing.
 
 If a global install and a clone coexist, you have two package copies. `codex-bridge update`, `codexb update`, and the clone entry point copy files from whichever copy launched the command; using the wrong one can replace a newer host installation with older files.

@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url';
 import { readJsonFileSync } from './json-file.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-export const CONFIG_PATH = path.join(HERE, 'run-config.json');
+export const CONFIG_PATH = path.join(HERE, '..', 'config.json');
 
 const BUDGET_KEY = 'budgets';
 const BUDGET_MODES = ['scout', 'build', 'review'];
@@ -117,7 +117,7 @@ export function retentionNotice(config) {
     const days = config.retention.days;
     return {
       enabled: true,
-      text: `Automatic cleanup is ON — run transport older than ${days} days is removed to reclaim disk space. Accounting and reports are never touched. Change or disable: retention in run-config.json.`,
+      text: `Automatic cleanup is ON — run transport older than ${days} days is removed to reclaim disk space. Accounting and reports are never touched. Change or disable: retention in config.json.`,
     };
   }
   return {

@@ -5,8 +5,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { projects } from '../../cli/projects.mjs';
-import { HEARTBEAT_FILE } from '../../src/heartbeat.mjs';
-import { STOP_COMMAND_TEMPLATE } from '../../src/stop-contract.mjs';
+import { HEARTBEAT_FILE } from '../../src/home/lib/heartbeat.mjs';
+import { STOP_COMMAND_TEMPLATE } from '../../src/home/lib/stop-contract.mjs';
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'projects-command-'));

@@ -9,7 +9,7 @@
  * fixture ran the task and cost 23k.
  *
  * Not hardcoded, because "never" is the wrong contract: `node run-config.mjs hooks on`
- * turns either of them back on. A broken run-config.json stops the run instead of quietly
+ * turns either of them back on. A broken config.json stops the run instead of quietly
  * falling back — a typo must not decide what environment a run gets.
  */
 import { readRunConfig, disableFlags } from '../run-config.mjs';

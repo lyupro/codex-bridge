@@ -2,17 +2,17 @@
 /** Closes dead-pid running records without deleting any run artifacts. */
 import fs from 'node:fs';
 import path from 'node:path';
-import { formatSilence, heartbeatAge, HEARTBEAT_STALE_MS } from '../src/heartbeat.mjs';
-import { markAbandoned } from '../src/meta/run-state.mjs';
+import { formatSilence, heartbeatAge, HEARTBEAT_STALE_MS } from '../src/home/lib/heartbeat.mjs';
+import { markAbandoned } from '../src/home/lib/meta/run-state.mjs';
 import {
   IDENTITY_ALIVE,
   IDENTITY_UNVERIFIED,
   processIdentity,
-} from '../src/process-identity.mjs';
-import { git } from '../src/runner/git-state.mjs';
-import { resolveProjectRunsDir } from '../src/runner/project-dir.mjs';
-import { runsRoot } from '../src/runner/runs-root.mjs';
-import { readJson } from '../src/write-meta.mjs';
+} from '../src/home/lib/process-identity.mjs';
+import { git } from '../src/home/lib/runner/git-state.mjs';
+import { resolveProjectRunsDir } from '../src/home/lib/runner/project-dir.mjs';
+import { runsRoot } from '../src/home/lib/runner/runs-root.mjs';
+import { readJson } from '../src/home/lib/write-meta.mjs';
 import { renderTable } from './table.mjs';
 
 const CLOSED_COLUMNS = [

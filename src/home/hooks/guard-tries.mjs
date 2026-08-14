@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { readJsonFileSync } from '../json-file.mjs';
+import { readJsonFileSync } from '../lib/json-file.mjs';
 
 const LOG_DIR = path.join(os.homedir(), '.claude', 'logs');
 /**

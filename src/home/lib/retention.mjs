@@ -1,7 +1,7 @@
 /** Owns the transport list and age decision shared by automatic and manual cleanup. */
 import fs from 'node:fs';
 import path from 'node:path';
-import { liveRuns, normalizePath } from './hooks/live-runs.mjs';
+import { liveRuns, normalizePath } from '../hooks/live-runs.mjs';
 
 // Plan_17 step 3 found one order's copied list and age default diverging on the same day. Keeping
 // the transport boundary here prevents automatic cleanup from eating accounting files.

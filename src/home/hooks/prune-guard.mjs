@@ -11,8 +11,8 @@
  * Anything unrecognised passes. A guard that misreads its input must not break unrelated host work.
  */
 import fs from 'node:fs';
-import { CLI_NAMES } from '../cli-names.mjs';
-import { SHELL_TOOLS } from '../hook-definitions.mjs';
+import { CLI_NAMES } from '../lib/cli-names.mjs';
+import { SHELL_TOOLS } from '../lib/hook-definitions.mjs';
 
 const SHELL_TOOL_NAMES = new Set(SHELL_TOOLS);
 const pass = () => process.exit(0);

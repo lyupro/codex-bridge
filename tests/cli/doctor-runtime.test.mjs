@@ -4,8 +4,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { diagnose, renderDoctor } from '../../cli/doctor.mjs';
-import { HEARTBEAT_FILE, HEARTBEAT_STALE_MS } from '../../src/heartbeat.mjs';
-import { STOP_COMMAND_TEMPLATE } from '../../src/stop-contract.mjs';
+import { HEARTBEAT_FILE, HEARTBEAT_STALE_MS } from '../../src/home/lib/heartbeat.mjs';
+import { STOP_COMMAND_TEMPLATE } from '../../src/home/lib/stop-contract.mjs';
 import { codexProbe, installedFixture, ownPackage, runsRootFixture } from './doctor-fixtures.mjs';
 
 async function createWorkingRun(root, name, { heartbeat = true } = {}) {
@@ -31,7 +31,7 @@ test('doctor warns in color with the configured automatic cleanup age', async (t
 
   const rendered = renderDoctor(await diagnose({ host, codexProbe, currentPackage: ownPackage }));
 
-  assert.match(rendered, /Automatic cleanup is ON — run transport older than 7 days is removed to reclaim disk space\. Accounting and reports are never touched\. Change or disable: retention in run-config\.json\./);
+  assert.match(rendered, /Automatic cleanup is ON — run transport older than 7 days is removed to reclaim disk space\. Accounting and reports are never touched\. Change or disable: retention in config\.json\./);
   const retentionLine = rendered.split('\n').find((line) => line.includes('retention:'));
   assert.match(retentionLine, /^\u001b\[33m/);
   assert.match(retentionLine, /\u001b\[0m$/);

@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline/promises';
-import { normalizePath } from '../src/hooks/live-runs.mjs';
+import { normalizePath } from '../src/home/hooks/live-runs.mjs';
 import { parsePruneArgs } from './prune-args.mjs';
 import { prunePlan } from './prune-plan.mjs';
 import { recursiveSize } from './runs-inventory.mjs';

@@ -2,8 +2,8 @@
 import fs from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
-import { normalizeRepoPath } from '../src/runner/project-dir.mjs';
-import { readJsonFile } from '../src/json-file.mjs';
+import { normalizeRepoPath } from '../src/home/lib/runner/project-dir.mjs';
+import { readJsonFile } from '../src/home/lib/json-file.mjs';
 
 export const RULES_REGISTRY_NAME = '.codex-bridge-rules.json';
 export const RULES_REGISTRY_VERSION = 1;

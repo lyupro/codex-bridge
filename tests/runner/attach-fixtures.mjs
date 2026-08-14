@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { attach } from '../../src/runner/attach.mjs';
+import { attach } from '../../src/home/lib/runner/attach.mjs';
 
 export function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'attach-'));

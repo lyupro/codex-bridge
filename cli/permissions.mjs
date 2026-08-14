@@ -1,8 +1,8 @@
 /** Manages the optional shell permission rules for every codex-bridge command spelling. */
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CLI_NAMES } from '../src/cli-names.mjs';
-import { SHELL_TOOLS } from '../src/hook-definitions.mjs';
+import { CLI_NAMES } from '../src/home/lib/cli-names.mjs';
+import { SHELL_TOOLS } from '../src/home/lib/hook-definitions.mjs';
 import { readSettings, updateSettings, withSettingsRun } from './settings-merge.mjs';
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');

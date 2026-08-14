@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { abortedPreStart, startedRuns } from '../../src/write-meta.mjs';
+import { abortedPreStart, startedRuns } from '../../src/home/lib/write-meta.mjs';
 import { makeChainRoot } from './test-fixtures.mjs';
 
 const retroactiveMeta = (overrides = {}) => ({

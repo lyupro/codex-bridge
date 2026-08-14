@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { collect } from '../../src/write-meta.mjs';
+import { collect } from '../../src/home/lib/write-meta.mjs';
 import { buildResult, makeRun } from './test-fixtures.mjs';
 
 test('successful replies use the read command instead of a raw file path', () => {

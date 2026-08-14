@@ -181,7 +181,7 @@ Correct (runner output copied exactly):
 ```
 ATTACH=<artifact root>\myproject\2026-07-30_1412_hooks started=2026-07-30T14:12:03.000Z
 OK — The settings.json hook loads twice: from the plugin and the local config
-Key finding: duplicate loader (src/hooks/loader.ts:42)
+Key finding: duplicate loader (src/home/hooks/loader.ts:42)
 Unresolved: why the second load is needed
 Report: ...\report.md · Log: codex-bridge read ...\2026-08-05_120000_slug
 ```

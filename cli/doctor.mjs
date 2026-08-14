@@ -2,7 +2,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import {
   fileFingerprint,
   HOOK_DEFINITIONS,
@@ -13,11 +13,11 @@ import { recordTarget } from './install-record.mjs';
 import { inspectPermissions } from './permissions.mjs';
 import { commandFor, inspectHook } from './settings-merge.mjs';
 import { readRulesRegistry } from './rules-owners.mjs';
-import { readRunConfig, retentionNotice } from '../src/run-config.mjs';
-import { runsRoot } from '../src/runner/runs-root.mjs';
-import { resolveProjectRunsDir } from '../src/runner/project-dir.mjs';
-import { allLiveRuns } from '../src/hooks/live-runs.mjs';
-import { STOP_COMMAND_TEMPLATE } from '../src/stop-contract.mjs';
+import { readRunConfig, retentionNotice } from '../src/home/lib/run-config.mjs';
+import { runsRoot } from '../src/home/lib/runner/runs-root.mjs';
+import { resolveProjectRunsDir } from '../src/home/lib/runner/project-dir.mjs';
+import { allLiveRuns } from '../src/home/hooks/live-runs.mjs';
+import { STOP_COMMAND_TEMPLATE } from '../src/home/lib/stop-contract.mjs';
 
 const WARNING = '\u001b[33m';
 const RESET = '\u001b[0m';
@@ -74,15 +74,22 @@ async function conventionsCheck(host) {
  * the host as seen by THIS copy. An operator comparing two diagnoses has no other way to tell them
  * apart.
  */
-function sourceCheck() {
+function packageSource() {
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-  const installed = root.split(/[\\/]/).includes('node_modules');
-  return check('source', 'ok', `${root} (${installed ? 'installed package' : 'clone'})`);
+  return {
+    root,
+    kind: root.split(/[\\/]/).includes('node_modules') ? 'installed copy' : 'clone',
+  };
+}
+
+function sourceCheck() {
+  const source = packageSource();
+  return check('source', 'ok', `${source.root} (${source.kind === 'installed copy' ? 'installed package' : source.kind})`);
 }
 
 /**
  * The runner asks git for the repository root before it picks a runs folder, so doctor has to
- * ask the same question: run from `src/runner`, a plain cwd would name the folder `runner` and
+ * ask the same question: run from `src/home/lib/runner`, a plain cwd would name the folder `runner` and
  * report a location no run will ever use.
  */
 function repoRoot(cwd) {
@@ -137,16 +144,52 @@ export function probeCodexBridge() {
   return { available: true, value: (result.stdout || result.stderr).trim() };
 }
 
-function hookVersion(command, record, bridgeProbe) {
+function hookVersion(command, record, bridgeResult) {
   if (command.startsWith('codex-bridge hook ')) {
-    const result = bridgeProbe();
-    return result.available ? `global command ${result.value}` : `global command unavailable (${result.value})`;
+    return bridgeResult.available
+      ? `global command ${bridgeResult.value}`
+      : `global command unavailable (${bridgeResult.value})`;
   }
   return `installed copy ${record.name}@${record.version}`;
 }
 
-async function hookChecks(host, record, bridgeProbe) {
-  return Promise.all(HOOK_DEFINITIONS.map(async (definition) => {
+function probedVersion(result) {
+  return result.available ? result.value.match(/(\d+\.\d+\.\d+(?:[-+][^\s]+)?)\s*$/)?.[1] : null;
+}
+
+function startHook(target) {
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [target], {
+      stdio: ['ignore', 'ignore', 'pipe'],
+      windowsHide: true,
+    });
+    let stderr = '';
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    child.on('error', (error) => resolve({ status: null, stderr: error.message }));
+    child.on('close', (status) => resolve({ status, stderr }));
+  });
+}
+
+function startFailure(definition, result) {
+  if (result.status === 0) return null;
+  const lines = result.stderr.trim().split(/\r?\n/);
+  const resolver = lines.find((line) => /^Error \[ERR_MODULE_NOT_FOUND\]|Cannot find module/.test(line));
+  return `${definition.file} did not start: ${resolver || lines.find(Boolean) || `exit code ${result.status}`}`;
+}
+
+async function hookChecks(host, record, bridgeProbe, ownPackage) {
+  let bridgeResult;
+  const bridge = () => {
+    bridgeResult ??= bridgeProbe();
+    return bridgeResult;
+  };
+  const starts = record ? await Promise.all(HOOK_DEFINITIONS.map(async (definition) => {
+    const recorded = record.hooks.find((hook) => hook.event === definition.event
+      && path.basename(hook.path) === definition.file);
+    return recorded ? startHook(recordTarget(host, recorded)) : null;
+  })) : [];
+  return Promise.all(HOOK_DEFINITIONS.map(async (definition, index) => {
     const key = `hook:${definition.event}`;
     if (!record) return check(key, 'warn', 'cannot check before installation');
     // The file, not just the event: PreToolUse carries two hooks of this package, and matching
@@ -174,11 +217,20 @@ async function hookChecks(host, record, bridgeProbe) {
         const reason = form === 'short'
           ? 'PATH command uses the globally installed package'
           : 'full path uses the copy placed by the last install';
-        return check(key, 'ok', `${definition.event} matcher ${definition.matcher} -> ${expected} (${form} command; ${reason}; ${hookVersion(command, record, bridgeProbe)})`);
+        const problems = [startFailure(definition, starts[index])].filter(Boolean);
+        const commandVersion = form === 'short' ? bridge() : null;
+        const globalVersion = probedVersion(commandVersion || { available: false });
+        if (globalVersion && globalVersion !== ownPackage.version) {
+          problems.push(`global PATH package version ${globalVersion} differs from ${packageSource().kind} version ${ownPackage.version}`);
+        }
+        const health = problems.length ? `; ${problems.join('; ')}` : '';
+        return check(key, problems.length ? 'warn' : 'ok', `${definition.event} matcher ${definition.matcher} -> ${expected} (${form} command; ${reason}; ${hookVersion(command, record, commandVersion)}${health})`);
       }
       const command = recorded.command || fullCommand;
       const form = command.startsWith('codex-bridge hook ') ? 'short' : 'path';
-      return check(key, 'warn', `${definition.event} matcher ${definition.matcher} does not point to the installed ${definition.file} (${form} command; ${hookVersion(command, record, bridgeProbe)})`);
+      const failure = startFailure(definition, starts[index]);
+      const commandVersion = form === 'short' ? bridge() : null;
+      return check(key, 'warn', `${definition.event} matcher ${definition.matcher} does not point to the installed ${definition.file} (${form} command; ${hookVersion(command, record, commandVersion)}${failure ? `; ${failure}` : ''})`);
     } catch (err) {
       const value = err.code === 'ENOENT' ? 'settings.json is absent' : `settings.json is invalid: ${err.message}`;
       return check(key, 'warn', `${definition.event} hook: ${value}`);
@@ -259,7 +311,7 @@ export async function diagnose({ host, codexProbe = probeCodex, bridgeProbe = pr
   const rules = await rulesCheck(host, record);
   checks.push(rules);
   checks.push(await permissionsCheck(host));
-  checks.push(...await hookChecks(host, record, bridgeProbe));
+  checks.push(...await hookChecks(host, record, bridgeProbe, ownPackage));
   const retention = retentionCheck(host);
   checks.push(retention);
   const conventions = await conventionsCheck(host);

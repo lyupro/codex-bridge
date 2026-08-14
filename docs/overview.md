@@ -263,7 +263,7 @@ that directory, now.
 
 ### Automatic cleanup
 
-The `retention` key in `run-config.json` (a host file, untouched by updates):
+The `retention` key in `config.json` (a host file, untouched by updates):
 
 ```json
 "retention": { "enabled": true, "days": 30 }
@@ -306,7 +306,7 @@ string remains in place. The same `--scope` and `--host` options as for `install
 
 ## Environment configuration
 
-`run-config.json` controls the delegated Codex environment. By default, `hooks` and `plugins` are
+`config.json` controls the delegated Codex environment. By default, `hooks` and `plugins` are
 disabled: the runner passes `--disable hooks --disable plugins`. The switches can be viewed or
 changed without manual editing:
 
@@ -332,7 +332,7 @@ in code.
 }
 ```
 
-The `run-config.json` file belongs to the host, not the package: the installer creates it once
+The `config.json` file belongs to the host, not the package: the installer creates it once
 with default values and never touches it again—not during `install --force`, `update`, or
 `uninstall`. Configured profiles survive package updates.
 
@@ -370,14 +370,14 @@ took about twenty minutes.
 
 `answerLanguage` is the language in which the run responds: `answer`, `report_markdown`, and text
 fields in `result.json`. The default is `English`, regardless of the task language; the key is set
-in `run-config.json` as a non-empty string, and an empty string is rejected when read. Without it,
+in `config.json` as a non-empty string, and an empty string is rejected when read. Without it,
 the model chose the language—an English order came back in Russian, and one project's artifacts
 ended up in two languages.
 
 `environmentPaths` is a list of glob patterns for paths changed during a run by surrounding
 tooling rather than Codex itself. Such changes do not participate in scope validation or report-to-
 tree consistency checks, but remain visible in `meta.json.environment_changes` and the short
-response. The list is edited directly in `run-config.json`; it is not a switch. Invalid JSON, an
+response. The list is edited directly in `config.json`; it is not a switch. Invalid JSON, an
 unknown key, or a value of the wrong type stops the run without spending quota.
 
 If the key is absent, five default patterns apply:
@@ -402,7 +402,7 @@ violations for six consecutive passes. The bundle is now pasted into every run's
 separate `## Conventions` section, in two layers:
 
 - `~/.lyupro/.codex-bridge/conventions.md`—the host-wide bundle. The file is **seeded**: the
-  installer places it once and never touches it again, like `run-config.json`. The operator edits
+  installer places it once and never touches it again, like `config.json`. The operator edits
   it without a package release.
 - `.codex-conventions.md` at the repository root—an optional layer for project-specific rules.
   It travels with the project; if the file is absent, the layer is silently skipped.
@@ -461,8 +461,9 @@ tests.
 ## Installation into another Claude Code configuration
 
 The installer lays out the files—`codexb install` (or `npm run dev:install` from a clone). There
-is no longer anything to copy by hand: since the package moved to two roots (2026-08-11), the
-installer, not the operator, must know both by heart.
+is no longer anything to copy by hand. The repository's `src/home/` is copied one-to-one into
+`~/.lyupro/.codex-bridge/`, so every path below `hooks/` and `lib/` is identical in source and on
+the host. `package.json`, required by npm outside that image, is the one documented exception.
 
 | Root | What lives there |
 | --- | --- |

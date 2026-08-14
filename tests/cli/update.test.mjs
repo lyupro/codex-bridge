@@ -44,7 +44,7 @@ async function packageFixture(root, name, { version = '0.0.0', extraFile } = {})
   const manifest = JSON.parse(await fs.readFile(path.join(ROOT, 'package.json'), 'utf8'));
   manifest.version = version;
   await fs.writeFile(path.join(packageRoot, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`);
-  if (extraFile) await fs.writeFile(path.join(packageRoot, 'src', extraFile), 'obsolete package file\n');
+  if (extraFile) await fs.writeFile(path.join(packageRoot, 'src', 'home', extraFile), 'obsolete package file\n');
   return packageRoot;
 }
 

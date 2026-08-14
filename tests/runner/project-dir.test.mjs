@@ -8,7 +8,7 @@ import {
   normalizeRepoPath,
   PROJECT_MARKER,
   resolveProjectRunsDir,
-} from '../../src/runner/project-dir.mjs';
+} from '../../src/home/lib/runner/project-dir.mjs';
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'project-dir-'));

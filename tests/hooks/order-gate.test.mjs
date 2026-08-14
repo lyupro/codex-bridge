@@ -6,10 +6,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { HOOK_DEFINITIONS, SUBAGENT_TOOLS } from '../../src/hook-definitions.mjs';
+import { HOOK_DEFINITIONS, SUBAGENT_TOOLS } from '../../src/home/lib/hook-definitions.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
-const GATE = path.join(ROOT, 'src', 'hooks', 'order-gate.mjs');
+const GATE = path.join(ROOT, 'src', 'home', 'hooks', 'order-gate.mjs');
 
 function runGate(root, input) {
   return spawnSync(process.execPath, [GATE], {
@@ -44,7 +44,7 @@ test('missing dispatcher inputs are denied with actionable details', async (t) =
   assert.match(decision.permissionDecisionReason, /order id/);
   assert.match(decision.permissionDecisionReason, /scope/);
   assert.match(decision.permissionDecisionReason, /plan-13-build-20260804/);
-  assert.match(decision.permissionDecisionReason, /src\/runner\/\*\*/);
+  assert.match(decision.permissionDecisionReason, /src\/home\/lib\/runner\/\*\*/);
   assert.match(decision.permissionDecisionReason, /tool_input\.prompt/);
   assert.doesNotMatch(decision.permissionDecisionReason, /found `/);
 });
@@ -104,7 +104,7 @@ test('diagnosis appears only beneath the missing entry whose label has a candida
 
 test('a valid dispatcher call passes and keeps the last payload', async (t) => {
   const root = await fixture(t);
-  const input = payload('codex-build', 'order id: plan-13-build-20260804\nscope: src/hooks/order-gate.mjs');
+  const input = payload('codex-build', 'order id: plan-13-build-20260804\nscope: src/home/hooks/order-gate.mjs');
   const result = runGate(root, input);
   assert.equal(result.status, 0);
   assert.equal(result.stdout, '');
@@ -120,7 +120,7 @@ test('a conditional continuation grant is not an order-gate requirement', async 
     root,
     payload(
       'codex-build',
-      'order id: plan-13-build-20260804\nscope: src/hooks/order-gate.mjs\ncontinue: TODO',
+      'order id: plan-13-build-20260804\nscope: src/home/hooks/order-gate.mjs\ncontinue: TODO',
     ),
   );
   assert.equal(result.status, 0);

@@ -5,7 +5,7 @@
  * subagent, and the first host that renames it would leave a registered hook listening for a
  * tool that never fires — silence indistinguishable from approval, which is the exact failure
  * the gate exists to end. `cli/manifest.mjs` builds the settings matcher from SUBAGENT_TOOLS
- * and `src/hooks/order-gate.mjs` recognises the same names, so a matcher can never drift away
+ * and `src/home/hooks/order-gate.mjs` recognises the same names, so a matcher can never drift away
  * from what the hook actually checks.
  */
 

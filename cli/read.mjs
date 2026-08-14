@@ -1,6 +1,6 @@
 /** Renders a run's structured Codex transport as a readable event-by-event report. */
-import { readEvents } from '../src/meta/events.mjs';
-import { runsRoot } from '../src/runner/runs-root.mjs';
+import { readEvents } from '../src/home/lib/meta/events.mjs';
+import { runsRoot } from '../src/home/lib/runner/runs-root.mjs';
 import { resolveRunFolder } from './run-lookup.mjs';
 
 const result = (exitCode, output) => ({ exitCode, output });

@@ -9,18 +9,18 @@ import {
   readJsonFile,
   readJsonFileSync,
   readJsonFileWithRaw,
-} from '../src/json-file.mjs';
-import { readJson as readArtifactJson } from '../src/meta/paths.mjs';
-import { readRunConfig, DEFAULTS } from '../src/run-config.mjs';
-import { readJsonFile as readAttachedJson } from '../src/runner/attach.mjs';
+} from '../src/home/lib/json-file.mjs';
+import { readJson as readArtifactJson } from '../src/home/lib/meta/paths.mjs';
+import { readRunConfig, DEFAULTS } from '../src/home/lib/run-config.mjs';
+import { readJsonFile as readAttachedJson } from '../src/home/lib/runner/attach.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const stdinHookExpressions = Object.freeze({
-  'src/hooks/order-gate.mjs': "JSON.parse(fs.readFileSync(0, 'utf8'))",
-  'src/hooks/prune-guard.mjs': "JSON.parse(fs.readFileSync(0, 'utf8'))",
-  'src/hooks/reply-guard.mjs': "JSON.parse(fs.readFileSync(0, 'utf8'))",
-  'src/hooks/stop-guard.mjs': "JSON.parse(fs.readFileSync(0, 'utf8'))",
-  'src/hooks/worktree-lock.mjs': "JSON.parse(fs.readFileSync(0, 'utf8'))",
+  'src/home/hooks/order-gate.mjs': "JSON.parse(fs.readFileSync(0, 'utf8'))",
+  'src/home/hooks/prune-guard.mjs': "JSON.parse(fs.readFileSync(0, 'utf8'))",
+  'src/home/hooks/reply-guard.mjs': "JSON.parse(fs.readFileSync(0, 'utf8'))",
+  'src/home/hooks/stop-guard.mjs': "JSON.parse(fs.readFileSync(0, 'utf8'))",
+  'src/home/hooks/worktree-lock.mjs': "JSON.parse(fs.readFileSync(0, 'utf8'))",
 });
 
 async function fixture(t, content) {
@@ -83,8 +83,8 @@ test('all source JSON parsing is centralized except explicit string and stdin in
       );
       source = source.replace(stdinExpression, '');
     }
-    if (relative === 'src/meta/events.mjs') source = source.replaceAll('JSON.parse(source)', '');
-    if (relative === 'src/json-file.mjs') source = source.replace('JSON.parse(text)', '');
+    if (relative === 'src/home/lib/meta/events.mjs') source = source.replaceAll('JSON.parse(source)', '');
+    if (relative === 'src/home/lib/json-file.mjs') source = source.replace('JSON.parse(text)', '');
     if (/\bJSON\.parse\s*\(/.test(source)) violations.push(relative);
   }
   assert.deepEqual(

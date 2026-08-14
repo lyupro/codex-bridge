@@ -11,7 +11,7 @@ import {
   isHeartbeatFresh,
   HEARTBEAT_STALE_MS,
   HEARTBEAT_WRITE_INTERVAL_MS,
-} from '../src/heartbeat.mjs';
+} from '../src/home/lib/heartbeat.mjs';
 
 function runDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'codex-heartbeat-'));

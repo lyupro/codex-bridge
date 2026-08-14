@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { STOP_TOOLS } from '../hook-definitions.mjs';
-import { runsRoot } from '../runner/runs-root.mjs';
-import { renderStopCommand, STOP_REASON } from '../stop-contract.mjs';
+import { STOP_TOOLS } from '../lib/hook-definitions.mjs';
+import { runsRoot } from '../lib/runner/runs-root.mjs';
+import { renderStopCommand, STOP_REASON } from '../lib/stop-contract.mjs';
 import { allLiveRuns, normalizePath } from './live-runs.mjs';
 import { takeTry } from './guard-tries.mjs';
 

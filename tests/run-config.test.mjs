@@ -12,8 +12,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { readRunConfig, writeRunConfig, disableFlags, DEFAULTS } from '../src/run-config.mjs';
-import { runMode } from '../src/runner/codex-cmd.mjs';
+import { readRunConfig, writeRunConfig, disableFlags, DEFAULTS } from '../src/home/lib/run-config.mjs';
+import { runMode } from '../src/home/lib/runner/codex-cmd.mjs';
 
 const tempFile = (content) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-cfg-'));

@@ -5,11 +5,11 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { validateScope } from '../../src/runner/scope-check.mjs';
+import { validateScope } from '../../src/home/lib/runner/scope-check.mjs';
 
-const RUN_CODEX = new URL('../../src/run-codex.mjs', import.meta.url).href;
-const LAUNCHER = new URL('../../src/runner/launcher.mjs', import.meta.url).href;
-const ARGS_MODULE = new URL('../../src/runner/args.mjs', import.meta.url).href;
+const RUN_CODEX = new URL('../../src/home/lib/run-codex.mjs', import.meta.url).href;
+const LAUNCHER = new URL('../../src/home/lib/runner/launcher.mjs', import.meta.url).href;
+const ARGS_MODULE = new URL('../../src/home/lib/runner/args.mjs', import.meta.url).href;
 
 function fixture(t, suffix) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), `scope-${suffix}-`));

@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
-import { chainRuns, chainBaseline, taskFingerprint } from '../../src/meta/chain.mjs';
+import { chainRuns, chainBaseline, taskFingerprint } from '../../src/home/lib/meta/chain.mjs';
 import { makeChainRoot, CHAIN_REPO, CHAIN_SLUG } from './test-fixtures.mjs';
 
 test('chainRuns collects the passes of one task and nothing else', () => {

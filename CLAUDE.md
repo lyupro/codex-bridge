@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this package is
 
 `@lyupro/codex-bridge` installs three Claude Code dispatcher agents (`codex-scout`, `codex-build`,
-`codex-review`), a delegating runner and three guard hooks into a Claude Code host, so
+`codex-review`), a delegating runner and five guard hooks into a Claude Code host, so
 implementation work runs on a Codex CLI subscription instead of the Claude one.
 
 Zero runtime dependencies, plain `.mjs` on the Node standard library, no build step — installing
@@ -29,8 +29,9 @@ git config core.hooksPath .githooks        # enable the pre-commit size gate (on
 
 ## Architecture
 
-Two halves share the repository: the **package/installer** (`bin/`, `cli/`) and the **runtime
-runner** (`src/`, installed into `~/.lyupro/.codex-bridge/lib/`). Which module owns what, why the
+Two halves share the repository: the **package/installer** (`bin/`, `cli/`) and the literal
+**installed home image** (`src/home/`, copied one-to-one into `~/.lyupro/.codex-bridge/`; runner
+modules are under `lib/`). Which module owns what, why the
 launcher/worker split exists and which incident shaped each boundary is in
 [`.claude/context/architecture.md`](.claude/context/architecture.md).
 
@@ -48,14 +49,14 @@ read that file BEFORE the first edit, not from memory.**
   `meta.json` before `status.json` is closed, `reply.txt` last. `reply.txt` existing means the
   verdict is already on disk.
 - **The worker takes its whole order from `worker.json`** and never re-reads the CLI or
-  `run-config.json` — otherwise one run gets two different configurations. See
+  `config.json` — otherwise one run gets two different configurations. See
   `docs/worker-contract.md`.
-- **`src/run-config.json` is seeded, never overwritten.** It is the host's file (models, effort,
+- **`src/home/config.json` is seeded, never overwritten.** It is the host's file (models, effort,
   `environmentPaths`), like a `.env`. `SEEDED_SOURCES` in `cli/manifest.mjs`.
 - **`codex-runs/` is user data.** Uninstall never touches it; the install record is forbidden from
   naming it.
-- **Model ids live only in `run-config.json`.** No model literal belongs in `.mjs` code.
-- **`src/cli-names.mjs` is the only list of CLI spellings.** `bin`, the prune guard's matcher and
+- **Model ids live only in `config.json`.** No model literal belongs in `.mjs` code.
+- **`src/home/lib/cli-names.mjs` is the only list of CLI spellings.** `bin`, the prune guard's matcher and
   anything else that has to recognise a call read it from there. Two independent lists drift
   silently — exactly how the installer and test hook lists had already drifted before Plan_19.
 - **Windows paths are compared normalized** (forward slashes, no trailing slash, case-insensitive)

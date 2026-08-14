@@ -4,9 +4,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { replacePlaceholders } from '../cli/manifest.mjs';
-import { AGENTS } from '../src/write-meta.mjs';
-import { renderNoSelfExecution } from '../src/no-self-execution.mjs';
-import { renderStopSummary } from '../src/stop-contract.mjs';
+import { AGENTS } from '../src/home/lib/write-meta.mjs';
+import { renderNoSelfExecution } from '../src/home/lib/no-self-execution.mjs';
+import { renderStopSummary } from '../src/home/lib/stop-contract.mjs';
 import {
   CONTINUATION_INPUT,
   REQUIRED_INPUTS,
@@ -15,7 +15,7 @@ import {
   parseContinuationGrant,
   renderRequiredInputSummary,
   renderRequiredInputs,
-} from '../src/required-inputs.mjs';
+} from '../src/home/lib/required-inputs.mjs';
 
 const agentDirectory = path.join('src', 'agents');
 
@@ -123,7 +123,7 @@ test('continuation grants reject placeholders and incomplete values', () => {
 
 test('valid values pass and the renderer uses the same entries', () => {
   assert.deepEqual(
-    missingInputs('codex-build', 'order id: plan-13-build-20260804\nscope: src/runner/**,tests/runner/**'),
+    missingInputs('codex-build', 'order id: plan-13-build-20260804\nscope: src/home/lib/runner/**,tests/runner/**'),
     [],
   );
   // Rendered from the table rather than compared against copied literals: pass 2 writes this

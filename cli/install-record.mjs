@@ -1,8 +1,8 @@
 /** Reads, validates, and writes the installation record shared by installer commands. */
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { readJsonFile } from '../src/json-file.mjs';
-import { HOOK_DEFINITIONS } from '../src/hook-definitions.mjs';
+import { readJsonFile } from '../src/home/lib/json-file.mjs';
+import { HOOK_DEFINITIONS } from '../src/home/lib/hook-definitions.mjs';
 
 export const INSTALL_RECORD_NAME = '.installed.json';
 export const LEGACY_INSTALL_RECORD_NAME = '.codex-bridge-install.json';

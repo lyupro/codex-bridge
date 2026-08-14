@@ -4,8 +4,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { liveRuns, RECENT_RUN_MAX_AGE_MS, recentRuns } from '../../src/hooks/live-runs.mjs';
-import { HEARTBEAT_FILE, HEARTBEAT_STALE_MS } from '../../src/heartbeat.mjs';
+import { liveRuns, RECENT_RUN_MAX_AGE_MS, recentRuns } from '../../src/home/hooks/live-runs.mjs';
+import { HEARTBEAT_FILE, HEARTBEAT_STALE_MS } from '../../src/home/lib/heartbeat.mjs';
 
 function makeRun() {
   const runs = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-live-runs-'));

@@ -14,8 +14,8 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { diagnoseInput, missingInputs } from '../required-inputs.mjs';
-import { SUBAGENT_TOOLS } from '../hook-definitions.mjs';
+import { diagnoseInput, missingInputs } from '../lib/required-inputs.mjs';
+import { SUBAGENT_TOOLS } from '../lib/hook-definitions.mjs';
 
 const HOME = os.homedir();
 const LOG_DIR = path.join(HOME, '.claude', 'logs');

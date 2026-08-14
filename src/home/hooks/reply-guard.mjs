@@ -29,9 +29,9 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { readJsonFileSync } from '../json-file.mjs';
-import { resolveProjectRunsDir } from '../runner/project-dir.mjs';
-import { runsRoot } from '../runner/runs-root.mjs';
+import { readJsonFileSync } from '../lib/json-file.mjs';
+import { resolveProjectRunsDir } from '../lib/runner/project-dir.mjs';
+import { runsRoot } from '../lib/runner/runs-root.mjs';
 import { isPidAlive, liveRuns, normalizePath, recentRuns } from './live-runs.mjs';
 import { FORM, MAX_STATE_BLOCKS, STATE, takeTry } from './guard-tries.mjs';
 

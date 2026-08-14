@@ -13,14 +13,14 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { heartbeatAge, isHeartbeatFresh } from '../heartbeat.mjs';
-import { readJsonFileSync } from '../json-file.mjs';
+import { heartbeatAge, isHeartbeatFresh } from '../lib/heartbeat.mjs';
+import { readJsonFileSync } from '../lib/json-file.mjs';
 import {
   IDENTITY_ALIVE,
   IDENTITY_DEAD,
   IDENTITY_FOREIGN,
   processIdentity,
-} from '../process-identity.mjs';
+} from '../lib/process-identity.mjs';
 
 export const RECENT_RUN_MAX_AGE_MS = 24 * 60 * 60 * 1_000;
 

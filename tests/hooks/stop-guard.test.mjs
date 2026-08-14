@@ -6,12 +6,12 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { HEARTBEAT_FILE } from '../../src/heartbeat.mjs';
-import { STOP_REASON, renderStopCommand } from '../../src/stop-contract.mjs';
-import { STOP_TOOLS } from '../../src/hook-definitions.mjs';
+import { HEARTBEAT_FILE } from '../../src/home/lib/heartbeat.mjs';
+import { STOP_REASON, renderStopCommand } from '../../src/home/lib/stop-contract.mjs';
+import { STOP_TOOLS } from '../../src/home/lib/hook-definitions.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
-const GUARD = path.join(ROOT, 'src', 'hooks', 'stop-guard.mjs');
+const GUARD = path.join(ROOT, 'src', 'home', 'hooks', 'stop-guard.mjs');
 const REPOSITORY = path.resolve('stop-guard-repository');
 
 function request(toolName = STOP_TOOLS[0], taskId = 'host-task') {

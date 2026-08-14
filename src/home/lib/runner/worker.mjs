@@ -6,7 +6,7 @@
  * `repo`, `agent`, `args`, `is_git_repo`, `budget_minutes`. Written there: those five plus
  * `slug`, `launcher_pid` and `scope_new`, which nothing here needs but a run folder read back
  * months later does. The launcher must write the selected mode's budget into worker.json before
- * spawning this half, so the worker never re-reads run-config.json and one run cannot acquire two
+ * spawning this half, so the worker never re-reads config.json and one run cannot acquire two
  * configurations.
  * Neither side may change the shape alone.
  */

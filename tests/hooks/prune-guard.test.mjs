@@ -5,14 +5,15 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CLI_NAMES } from '../../src/cli-names.mjs';
-import { SHELL_TOOLS } from '../../src/hook-definitions.mjs';
+import { CLI_NAMES } from '../../src/home/lib/cli-names.mjs';
+import { SHELL_TOOLS } from '../../src/home/lib/hook-definitions.mjs';
 
 const HOOK = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
   '..',
   '..',
   'src',
+  'home',
   'hooks',
   'prune-guard.mjs',
 );

@@ -7,8 +7,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { collect } from '../../src/write-meta.mjs';
-import { outOfScope, reportVersusWork } from '../../src/meta/verdict.mjs';
+import { collect } from '../../src/home/lib/write-meta.mjs';
+import { outOfScope, reportVersusWork } from '../../src/home/lib/meta/verdict.mjs';
 import { makeChainRoot, makeRun, CHAIN_REPO, CHAIN_SLUG } from './test-fixtures.mjs';
 
 const build = (changes, extra = {}) => ({

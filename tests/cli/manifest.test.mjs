@@ -7,6 +7,7 @@ import path from 'node:path';
 import { resolveHost } from '../../cli/hosts.mjs';
 import {
   INSTALL_TABLE,
+  PACKAGE_ROOT,
   SEEDED_SOURCES,
   buildInstallPlan,
   fileFingerprint,
@@ -29,12 +30,14 @@ async function fixture(t) {
   });
   await fs.mkdir(path.join(packageRoot, 'src', 'agents'), { recursive: true });
   await fs.mkdir(path.join(packageRoot, 'src', 'commands'), { recursive: true });
-  await fs.mkdir(path.join(packageRoot, 'src', 'hooks'), { recursive: true });
+  await fs.mkdir(path.join(packageRoot, 'src', 'home', 'hooks'), { recursive: true });
+  await fs.mkdir(path.join(packageRoot, 'src', 'home', 'lib'), { recursive: true });
   await fs.mkdir(path.join(packageRoot, 'src', 'rules'), { recursive: true });
   await fs.writeFile(path.join(packageRoot, 'src', 'agents', 'build.md'), 'agent');
   await fs.writeFile(path.join(packageRoot, 'src', 'agents', 'notes.txt'), 'notes');
   await fs.writeFile(path.join(packageRoot, 'src', 'commands', 'env.md'), 'command');
-  await fs.writeFile(path.join(packageRoot, 'src', 'hooks', 'guard.mjs'), 'guard');
+  await fs.writeFile(path.join(packageRoot, 'src', 'home', 'hooks', 'guard.mjs'), 'guard');
+  await fs.writeFile(path.join(packageRoot, 'src', 'home', 'lib', 'runtime.mjs'), 'runtime');
   await fs.writeFile(path.join(packageRoot, 'src', 'rules', 'codex-bridge.rules'), 'rules');
   return { root, packageRoot, host };
 }
@@ -55,34 +58,33 @@ test('installation table is exported data', () => {
   assert.deepEqual(INSTALL_TABLE, [
     { source: 'src/agents/*.md', root: 'claude', target: 'agentsDir', processing: 'placeholders' },
     { source: 'src/commands/*.md', root: 'claude', target: 'commandsDir', processing: 'placeholders' },
-    { source: 'src/hooks/**', root: 'brand', target: 'brandHooksDir', processing: 'copy' },
-    { source: 'src/**', root: 'brand', target: 'brandRunnerDir', processing: 'copy' },
+    { source: 'src/home/**', root: 'brand', target: 'brandRoot', processing: 'copy' },
     { source: 'package.json', root: 'brand', target: 'brandRoot', processing: 'copy' },
   ]);
 });
 
 test('seed plan includes the editable host conventions beside run-config', async (t) => {
   const { packageRoot, host } = await fixture(t);
-  await fs.writeFile(path.join(packageRoot, 'src', 'run-config.json'), '{}\n');
-  await fs.writeFile(path.join(packageRoot, 'src', 'conventions.md'), '# conventions\n');
+  await fs.writeFile(path.join(packageRoot, 'src', 'home', 'config.json'), '{}\n');
+  await fs.writeFile(path.join(packageRoot, 'src', 'home', 'conventions.md'), '# conventions\n');
 
-  assert.deepEqual(SEEDED_SOURCES, ['src/run-config.json', 'src/conventions.md']);
+  assert.deepEqual(SEEDED_SOURCES, ['src/home/config.json', 'src/home/conventions.md']);
   assert.deepEqual(seedPlan(host, packageRoot).map((item) => ({
     source: path.relative(packageRoot, item.source).split(path.sep).join('/'),
     target: path.relative(host.brandRoot, item.target).split(path.sep).join('/'),
     processing: item.processing,
   })), [
-    { source: 'src/run-config.json', target: 'config.json', processing: 'copy' },
-    { source: 'src/conventions.md', target: 'conventions.md', processing: 'copy' },
+    { source: 'src/home/config.json', target: 'config.json', processing: 'copy' },
+    { source: 'src/home/conventions.md', target: 'conventions.md', processing: 'copy' },
   ]);
 });
 
-test('install plan maps agents, commands, and remaining src files', async (t) => {
+test('install plan maps agents, commands, and the literal home tree', async (t) => {
   const { packageRoot, host } = await fixture(t);
   const plan = await buildInstallPlan(host, packageRoot);
   assert.deepEqual(plan.map((item) => item.relativeToRoot), [
     'hooks/guard.mjs',
-    'lib/agents/notes.txt',
+    'lib/runtime.mjs',
     'agents/codex-bridge/build.md',
     'commands/codex-bridge/env.md',
   ]);
@@ -92,6 +94,25 @@ test('install plan maps agents, commands, and remaining src files', async (t) =>
     target: path.join(host.codexRulesDir, 'codex-bridge.rules'),
     name: 'codex-bridge.rules',
   });
+});
+
+test('brand install paths are isomorphic to the literal home tree', async (t) => {
+  const { host } = await fixture(t);
+  const sourceRoot = path.join(PACKAGE_ROOT, 'src', 'home');
+  const sourcePaths = [];
+  for await (const relative of fs.glob('**', { cwd: sourceRoot })) {
+    if ((await fs.stat(path.join(sourceRoot, relative))).isFile()) {
+      sourcePaths.push(relative.split(path.sep).join('/'));
+    }
+  }
+  const seeded = new Set(SEEDED_SOURCES.map((source) => path.posix.relative('src/home', source)));
+  const expected = sourcePaths.filter((relative) => !seeded.has(relative)).sort();
+  const installed = (await buildInstallPlan(host))
+    .filter((item) => item.root === 'brand' && item.relativeToRoot !== 'package.json')
+    .map((item) => item.relativeToRoot)
+    .sort();
+
+  assert.deepEqual(installed, expected);
 });
 
 test('the installed runner finds its own version one level above the runner directory', async (t) => {

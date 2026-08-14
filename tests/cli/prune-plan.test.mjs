@@ -7,7 +7,7 @@ import path from 'node:path';
 import { parsePruneArgs } from '../../cli/prune-args.mjs';
 import { prunePlan, runIsOlderThan, TRANSPORT_FILES } from '../../cli/prune-plan.mjs';
 import { recursiveSize } from '../../cli/runs-inventory.mjs';
-import { TRANSPORT_FILES as RETENTION_FILES } from '../../src/retention.mjs';
+import { TRANSPORT_FILES as RETENTION_FILES } from '../../src/home/lib/retention.mjs';
 
 const NOW = Date.parse('2026-08-06T12:00:00.000Z');
 

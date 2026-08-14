@@ -14,8 +14,8 @@ import {
 } from '../../cli/manifest.mjs';
 import { addPermissionRules } from '../../cli/permissions.mjs';
 import { RULES_REGISTRY_NAME } from '../../cli/rules-owners.mjs';
-import { normalizeRepoPath, PROJECT_MARKER } from '../../src/runner/project-dir.mjs';
-import { projectFolder } from '../../src/write-meta.mjs';
+import { normalizeRepoPath, PROJECT_MARKER } from '../../src/home/lib/runner/project-dir.mjs';
+import { projectFolder } from '../../src/home/lib/write-meta.mjs';
 import { codexProbe, hostFixture, installedFixture, ownPackage, runsRootFixture } from './doctor-fixtures.mjs';
 
 async function addRules(host, record, content = 'prefix_rule(pattern=["safe"], decision="allow")\n') {
@@ -78,8 +78,27 @@ test('doctor reports the recorded hook form and the version that form executes',
   const shortHook = result.checks.find((item) => item.key === 'hook:SubagentStop');
   const pathHook = result.checks.find((item) => item.key === 'hook:PreToolUse'
     && item.value.includes('order-gate.mjs'));
+  assert.equal(shortHook.status, 'warn');
   assert.match(shortHook.value, /short command;.*global command codex-bridge 8\.8\.8/);
+  assert.match(shortHook.value, /global PATH package version 8\.8\.8 differs from clone version 0\.1\.0/);
   assert.match(pathHook.value, /path command;.*installed copy @lyupro\/codex-bridge@0\.1\.0/);
+});
+
+test('doctor warns when an installed hook cannot resolve an import', async (t) => {
+  const { host } = await installedFixture(t);
+  const definition = HOOK_DEFINITIONS[0];
+  await fs.writeFile(
+    path.join(host.brandHooksDir, definition.file),
+    "import '../lib/missing-doctor-dependency.mjs';\n",
+  );
+
+  const result = await diagnose({ host, codexProbe, currentPackage: ownPackage });
+  const hook = result.checks.find((item) => item.key === `hook:${definition.event}`
+    && item.value.includes(definition.file));
+  assert.equal(hook.status, 'warn');
+  assert.match(hook.value, /did not start/);
+  assert.match(hook.value, /ERR_MODULE_NOT_FOUND/);
+  assert.match(hook.value, /missing-doctor-dependency\.mjs/);
 });
 
 test('doctor warns for optional permissions without changing the exit code', async (t) => {

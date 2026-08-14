@@ -1,16 +1,16 @@
 /** Stops a live run and records the same abandoned FAIL artifacts as the normal unlock. */
 import path from 'node:path';
-import { stopCodex } from '../src/runner/codex-cmd.mjs';
-import { git, worktreeSnapshot } from '../src/runner/git-state.mjs';
+import { stopCodex } from '../src/home/lib/runner/codex-cmd.mjs';
+import { git, worktreeSnapshot } from '../src/home/lib/runner/git-state.mjs';
 import {
   IDENTITY_ALIVE,
   IDENTITY_FOREIGN,
   IDENTITY_UNVERIFIED,
   processAlive,
   processIdentity,
-} from '../src/process-identity.mjs';
-import { markAbandoned, readJson } from '../src/write-meta.mjs';
-import { runsRoot } from '../src/runner/runs-root.mjs';
+} from '../src/home/lib/process-identity.mjs';
+import { markAbandoned, readJson } from '../src/home/lib/write-meta.mjs';
+import { runsRoot } from '../src/home/lib/runner/runs-root.mjs';
 import { resolveRunFolder } from './run-lookup.mjs';
 
 const EXIT_POLL_MS = 25;

@@ -30,7 +30,18 @@ import { writeStatus } from './meta/run-state.mjs';
 import { resolveStatus } from './meta/verdict.mjs';
 import { AGENTS, failReply, limitReply } from './meta/reply.mjs';
 
-const RUNNER_VERSION = readJsonFileSync(new URL('../package.json', import.meta.url)).version;
+function readRunnerVersion() {
+  try {
+    return readJsonFileSync(new URL('../package.json', import.meta.url)).version;
+  } catch (error) {
+    // package.json is the one file npm requires outside the literal home image. The installed
+    // image has it beside lib/, while the repository has src/home between the module and manifest.
+    if (error.code !== 'ENOENT') throw error;
+    return readJsonFileSync(new URL('../../../package.json', import.meta.url)).version;
+  }
+}
+
+const RUNNER_VERSION = readRunnerVersion();
 
 export { expandDeclared, globToRegExp, readJson } from './meta/paths.mjs';
 export { chainBaseline, chainRuns, taskFingerprint } from './meta/chain.mjs';

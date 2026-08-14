@@ -5,7 +5,7 @@
   "include": [
     "bin/**/*.{mjs,js,ts}",
     "cli/**/*.{mjs,js,ts}",
-    "src/**/*.{mjs,js,ts}",
+    "src/home/**/*.{mjs,js,ts}",
     "tests/**/*.{mjs,js,ts}",
     "scripts/**/*.{mjs,js,ts}"
   ],

@@ -18,9 +18,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { collect } from '../src/write-meta.mjs';
-import { SCHEMAS } from '../src/runner/schemas.mjs';
-import { INSTRUCTIONS } from '../src/runner/prompts.mjs';
+import { collect } from '../src/home/lib/write-meta.mjs';
+import { SCHEMAS } from '../src/home/lib/runner/schemas.mjs';
+import { INSTRUCTIONS } from '../src/home/lib/runner/prompts.mjs';
 import { buildResult as build, makeRun } from './meta/test-fixtures.mjs';
 
 const BUILD_SCHEMA = SCHEMAS['codex-build'];

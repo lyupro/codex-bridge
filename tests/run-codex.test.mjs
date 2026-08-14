@@ -14,13 +14,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { parseArgs, runsPrefixInside, worktreeSnapshot } from '../src/run-codex.mjs';
-import { codexArgs } from '../src/runner/codex-cmd.mjs';
-import { loadRunEnv } from '../src/runner/run-env.mjs';
-import { runsRoot } from '../src/runner/runs-root.mjs';
+import { parseArgs, runsPrefixInside, worktreeSnapshot } from '../src/home/lib/run-codex.mjs';
+import { codexArgs } from '../src/home/lib/runner/codex-cmd.mjs';
+import { loadRunEnv } from '../src/home/lib/runner/run-env.mjs';
+import { runsRoot } from '../src/home/lib/runner/runs-root.mjs';
 
 /** Resolved from this file, so a copied folder tests its own copy of the runner. */
-const RUN_CODEX = new URL('../src/run-codex.mjs', import.meta.url).href;
+const RUN_CODEX = new URL('../src/home/lib/run-codex.mjs', import.meta.url).href;
 
 /**
  * Non-ASCII travels through an environment variable at the mercy of the code page, so the

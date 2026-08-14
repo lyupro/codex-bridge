@@ -10,9 +10,9 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { formatSilence, heartbeatAge } from '../heartbeat.mjs';
-import { WRITE_TOOLS } from '../hook-definitions.mjs';
-import { runsRoot } from '../runner/runs-root.mjs';
+import { formatSilence, heartbeatAge } from '../lib/heartbeat.mjs';
+import { WRITE_TOOLS } from '../lib/hook-definitions.mjs';
+import { runsRoot } from '../lib/runner/runs-root.mjs';
 import { allLiveRuns, normalizePath } from './live-runs.mjs';
 
 const WRITE_TOOL_NAMES = new Set(WRITE_TOOLS);

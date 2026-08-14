@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { globToRegExp, expandDeclared, line, readJson } from '../../src/meta/paths.mjs';
+import { globToRegExp, expandDeclared, line, readJson } from '../../src/home/lib/meta/paths.mjs';
 
 // --- line -------------------------------------------------------------------------
 

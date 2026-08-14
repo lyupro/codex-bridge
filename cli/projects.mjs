@@ -1,9 +1,9 @@
 /** Implements the projects command. */
 import { listProjectRuns, listProjects } from './runs-inventory.mjs';
 import { renderTable } from './table.mjs';
-import { allLiveRuns } from '../src/hooks/live-runs.mjs';
-import { runsRoot } from '../src/runner/runs-root.mjs';
-import { STOP_COMMAND_TEMPLATE } from '../src/stop-contract.mjs';
+import { allLiveRuns } from '../src/home/hooks/live-runs.mjs';
+import { runsRoot } from '../src/home/lib/runner/runs-root.mjs';
+import { STOP_COMMAND_TEMPLATE } from '../src/home/lib/stop-contract.mjs';
 
 // The table renders whatever it is given; how a byte count or a timestamp reads is this command's
 // business. Raw bytes and ISO milliseconds are technically exact and practically unreadable — an

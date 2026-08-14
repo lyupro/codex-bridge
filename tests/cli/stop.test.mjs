@@ -6,8 +6,8 @@ import fs from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
-import { HEARTBEAT_FILE } from '../../src/heartbeat.mjs';
-import { resolveProjectRunsDir } from '../../src/runner/project-dir.mjs';
+import { HEARTBEAT_FILE } from '../../src/home/lib/heartbeat.mjs';
+import { resolveProjectRunsDir } from '../../src/home/lib/runner/project-dir.mjs';
 
 const realSpawnSync = childProcess.spawnSync;
 if (process.platform === 'win32') {

@@ -5,7 +5,7 @@ import { existsSync, statSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { readJsonFileWithRaw } from '../src/json-file.mjs';
+import { readJsonFileWithRaw } from '../src/home/lib/json-file.mjs';
 
 const LEGACY_SPEC = { event: 'SubagentStop', matcher: '*' };
 const settingsRuns = new AsyncLocalStorage();

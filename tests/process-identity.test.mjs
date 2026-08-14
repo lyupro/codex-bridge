@@ -9,14 +9,14 @@ import { fileURLToPath } from 'node:url';
 import {
   HEARTBEAT_FILE,
   HEARTBEAT_STALE_MS,
-} from '../src/heartbeat.mjs';
+} from '../src/home/lib/heartbeat.mjs';
 import {
   IDENTITY_ALIVE,
   IDENTITY_DEAD,
   IDENTITY_FOREIGN,
   IDENTITY_UNVERIFIED,
   processIdentity,
-} from '../src/process-identity.mjs';
+} from '../src/home/lib/process-identity.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const now = Date.now();
@@ -167,7 +167,7 @@ test('the Windows probe falls back to CIM for a SYSTEM-owned pid', { skip: proce
 });
 
 test('signal zero appears only in the process identity module', async () => {
-  const excludedFiles = new Set(['src/process-identity.mjs']);
+  const excludedFiles = new Set(['src/home/lib/process-identity.mjs']);
   const violations = [];
   const patterns = ['src/**/*.mjs', 'cli/**/*.mjs', 'scripts/*.mjs'];
   const files = new Set();

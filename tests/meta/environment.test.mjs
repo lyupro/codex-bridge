@@ -6,7 +6,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { environmentPatterns, splitEnvironment, splitRunChanges } from '../../src/meta/environment.mjs';
+import { environmentPatterns, splitEnvironment, splitRunChanges } from '../../src/home/lib/meta/environment.mjs';
 import { makeRun } from './test-fixtures.mjs';
 
 test('a run folder whose env.json predates the list has no environment at all', () => {

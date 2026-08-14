@@ -4,8 +4,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { continuationRefusal } from '../../src/runner/continuation.mjs';
-import { chainRuns } from '../../src/meta/chain.mjs';
+import { continuationRefusal } from '../../src/home/lib/runner/continuation.mjs';
+import { chainRuns } from '../../src/home/lib/meta/chain.mjs';
 import { attaching, deadPid, fixture, order, run, running } from './attach-fixtures.mjs';
 
 test('an order with no runs at all starts one', async (t) => {

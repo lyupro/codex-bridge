@@ -5,6 +5,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
+import { spawn } from 'node:child_process';
 import { resolveHost } from '../../cli/hosts.mjs';
 import { install } from '../../cli/install.mjs';
 import {
@@ -18,7 +19,7 @@ import {
 import { RULES_REGISTRY_NAME } from '../../cli/rules-owners.mjs';
 import { uninstall } from '../../cli/uninstall.mjs';
 import { update } from '../../cli/update.mjs';
-import { normalizeRepoPath } from '../../src/runner/project-dir.mjs';
+import { normalizeRepoPath } from '../../src/home/lib/runner/project-dir.mjs';
 import { allFiles, fixture } from './host-fixture.mjs';
 
 async function backups(host) {
@@ -36,6 +37,20 @@ async function fileHash(target) {
 
 function rulesRegistryPath(host) {
   return path.join(host.codexRulesDir, RULES_REGISTRY_NAME);
+}
+
+function runHook(target) {
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [target], {
+      stdio: ['ignore', 'ignore', 'pipe'],
+      windowsHide: true,
+    });
+    let stderr = '';
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    child.on('error', (error) => resolve({ status: null, stderr: error.message }));
+    child.on('close', (status) => resolve({ status, stderr }));
+  });
 }
 
 async function readRulesRegistry(host) {
@@ -94,11 +109,24 @@ test('install copies the exact plan, expands placeholders, and writes a valid re
   }
 });
 
+test('every installed registered hook starts with its imports resolved', async (t) => {
+  const { host } = await fixture(t);
+  await install({ host });
+  const results = await Promise.all(HOOK_DEFINITIONS.map(async (definition) => ({
+    definition,
+    result: await runHook(path.join(host.brandHooksDir, definition.file)),
+  })));
+
+  for (const { definition, result } of results) {
+    assert.equal(result.status, 0, `${definition.file} did not start:\n${result.stderr}`);
+  }
+});
+
 test('fresh install seeds conventions and update preserves an edited copy', async (t) => {
   const { host } = await fixture(t);
   await install({ host });
   const target = host.brandConventionsPath;
-  assert.deepEqual(await fs.readFile(target), await fs.readFile('src/conventions.md'));
+  assert.deepEqual(await fs.readFile(target), await fs.readFile('src/home/conventions.md'));
   const edited = '# host-specific rules\n\nKeep this wording.\n';
   await fs.writeFile(target, edited);
   assert.equal((await update({ host })).exitCode, 0);

@@ -4,8 +4,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { cleanupRetention } from '../src/retention.mjs';
-import { readRunConfig } from '../src/run-config.mjs';
+import { cleanupRetention } from '../src/home/lib/retention.mjs';
+import { readRunConfig } from '../src/home/lib/run-config.mjs';
 
 const NOW = Date.parse('2026-08-06T12:00:00.000Z');
 

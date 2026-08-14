@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { HOOK_DEFINITIONS } from '../../src/hook-definitions.mjs';
+import { HOOK_DEFINITIONS } from '../../src/home/lib/hook-definitions.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const BIN = path.join(ROOT, 'bin', 'codex-bridge.mjs');
@@ -118,7 +118,7 @@ test('stdin and the guard exit status pass through the CLI unchanged', async (t)
     marker: 'preserve-this-payload',
   });
   const env = hookEnvironment(root);
-  const guard = path.join(ROOT, 'src', 'hooks', 'order-gate.mjs');
+  const guard = path.join(ROOT, 'src', 'home', 'hooks', 'order-gate.mjs');
   const direct = spawnSync(process.execPath, [guard], { input, encoding: 'utf8', env: { ...process.env, ...env } });
   const dispatched = run(['hook', 'order-gate'], input, env);
   assert.equal(dispatched.status, direct.status);

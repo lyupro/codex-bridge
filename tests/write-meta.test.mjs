@@ -45,7 +45,7 @@ import {
   chainBaseline,
   expandDeclared,
   reportVersusWork,
-} from '../src/write-meta.mjs';
+} from '../src/home/lib/write-meta.mjs';
 import { buildResult as build, makeChainRoot, makeRun } from './meta/test-fixtures.mjs';
 
 // substanceLength ≈ 227 — clears MIN_SINGLE_SUBSTANCE_CHARS (200), so a scout run below

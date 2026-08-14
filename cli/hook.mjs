@@ -1,9 +1,9 @@
 /** Dispatches a named host hook without changing the guard's stdin or process lifecycle. */
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { HOOK_DEFINITIONS } from '../src/hook-definitions.mjs';
+import { HOOK_DEFINITIONS } from '../src/home/lib/hook-definitions.mjs';
 
-const HOOKS_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'hooks');
+const HOOKS_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'home', 'hooks');
 const VALID_NAMES = HOOK_DEFINITIONS.map(({ name }) => name);
 
 function validNames() {

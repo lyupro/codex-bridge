@@ -6,10 +6,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { parseContinuationGrant } from '../../src/required-inputs.mjs';
-import { resolveProjectRunsDir } from '../../src/runner/project-dir.mjs';
+import { parseContinuationGrant } from '../../src/home/lib/required-inputs.mjs';
+import { resolveProjectRunsDir } from '../../src/home/lib/runner/project-dir.mjs';
 
-const RUN_CODEX = fileURLToPath(new URL('../../src/run-codex.mjs', import.meta.url));
+const RUN_CODEX = fileURLToPath(new URL('../../src/home/lib/run-codex.mjs', import.meta.url));
 const AGENT = 'codex-build';
 const SLUG = 'continuation-grant';
 const ORDER_ID = 'order-32';

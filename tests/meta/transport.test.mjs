@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { transportGap } from '../../src/meta/transport.mjs';
+import { transportGap } from '../../src/home/lib/meta/transport.mjs';
 import { makeRun } from './test-fixtures.mjs';
 
 test('a --json run without events.jsonl reports damaged evidence', () => {

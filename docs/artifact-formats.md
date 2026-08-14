@@ -55,7 +55,7 @@ cleanup deletes transport files, which would otherwise make a paid run look as t
 ## The `heartbeat` file
 
 `heartbeat` is a regular file in the run directory that the worker updates when data arrives from Codex
-and periodically during execution. Its modification time is used by hooks/live-runs to detect silence:
+and periodically during execution. Its modification time is used by `hooks/live-runs.mjs` to detect silence:
 a heartbeat no older than five minutes is considered fresh. Its content is a diagnostic timestamp, not
 a verdict source.
 
@@ -119,4 +119,4 @@ empty list.
   `/codex-bridge:usage` itself declares removable.
 - `reply.txt` is only a brief representation of meta; it is not a source of truth.
 - Recomputing an old run takes `environmentPaths` from its `env.json`, not from the current
-  `run-config.json`.
+  `config.json`.

@@ -5,8 +5,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { continuationRefusal } from '../../src/runner/continuation.mjs';
-import { startedRuns } from '../../src/write-meta.mjs';
+import { continuationRefusal } from '../../src/home/lib/runner/continuation.mjs';
+import { startedRuns } from '../../src/home/lib/write-meta.mjs';
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'continuation-'));

@@ -8,7 +8,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
-const GUARD = path.join(ROOT, 'src', 'hooks', 'reply-guard.mjs');
+const GUARD = path.join(ROOT, 'src', 'home', 'hooks', 'reply-guard.mjs');
 
 function runGuard(root, reply, agentId = 'test-reply-guard') {
   const repo = path.join(root, 'project');

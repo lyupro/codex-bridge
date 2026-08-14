@@ -15,8 +15,8 @@ import {
   activeRun,
   abandonedBranchDrift,
   writeFailure,
-} from '../../src/meta/run-state.mjs';
-import { HEARTBEAT_FILE, HEARTBEAT_STALE_MS } from '../../src/heartbeat.mjs';
+} from '../../src/home/lib/meta/run-state.mjs';
+import { HEARTBEAT_FILE, HEARTBEAT_STALE_MS } from '../../src/home/lib/heartbeat.mjs';
 import { makeChainRoot } from './test-fixtures.mjs';
 
 // A dispatcher pid this OS will never hand out, so pidAlive() reads it as dead everywhere

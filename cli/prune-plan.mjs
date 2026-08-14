@@ -3,8 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { listProjectRuns, listProjects, recursiveSize } from './runs-inventory.mjs';
 import { parseOlderThan } from './prune-args.mjs';
-import { runsRoot } from '../src/runner/runs-root.mjs';
-import { runIsOlderThan, TRANSPORT_FILES } from '../src/retention.mjs';
+import { runsRoot } from '../src/home/lib/runner/runs-root.mjs';
+import { runIsOlderThan, TRANSPORT_FILES } from '../src/home/lib/retention.mjs';
 
 export { runIsOlderThan, TRANSPORT_FILES };
 

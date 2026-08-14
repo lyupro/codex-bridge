@@ -358,7 +358,7 @@ export async function launcher() {
         is_git_repo: isGitRepo,
         launcher_pid: process.pid,
         // The mode's wall-clock budget, resolved here and never re-read by the worker: a run
-        // that consulted run-config.json twice could end up honouring two different limits.
+        // that consulted config.json twice could end up honouring two different limits.
         budget_minutes: RUN_ENV?.budgets?.[runMode(opts.agent)],
         scope_new: opts.scopeNewPatterns,
         args: codexArgv,
