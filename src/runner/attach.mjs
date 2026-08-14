@@ -25,6 +25,24 @@ function announceLiveAttach(runDir, startedAt) {
   );
 }
 
+function elapsedSince(startedAt) {
+  const elapsedSeconds = Math.max(0, Math.floor((Date.now() - Date.parse(startedAt)) / 1000));
+  if (!Number.isFinite(elapsedSeconds)) return 'unknown';
+  const hours = Math.floor(elapsedSeconds / 3600);
+  const minutes = Math.floor((elapsedSeconds % 3600) / 60);
+  const seconds = elapsedSeconds % 60;
+  if (hours) return `${hours}h ${minutes}m`;
+  if (minutes) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
+}
+
+function announcePending(runDir, startedAt) {
+  console.log(`ATTACH=${runDir} started=${startedAt}`);
+  console.log(
+    `Run is still in progress; elapsed ${elapsedSince(startedAt)}. Repeat the same command without --no-wait later to wait for its verdict.`,
+  );
+}
+
 export const readJsonFile = (file) => {
   try {
     return readJsonFileSync(file);
@@ -85,7 +103,7 @@ export async function waitForReply(runDir, workerPid, status = {}) {
  * reason. `--continue` is the one case that must not attach: it is the orchestrator saying it read
  * the previous reply and wants another pass.
  */
-export async function attach({ runsRoot, repo, slug, taskHash, orderId, chain, isContinue } = {}) {
+export async function attach({ runsRoot, repo, slug, taskHash, orderId, chain, isContinue, noWait } = {}) {
   if (isContinue) return null;
   const runs = chain || chainRuns(runsRoot, repo, slug, taskHash, orderId);
   const sameOrder = runs
@@ -110,9 +128,19 @@ export async function attach({ runsRoot, repo, slug, taskHash, orderId, chain, i
       break;
     }
   }
-  if (!candidate) return null;
+  if (!candidate) {
+    if (!noWait) return null;
+    console.log(`No run exists for order id ${JSON.stringify(String(orderId ?? ''))}; --no-wait never starts a new run.`);
+    return 4;
+  }
 
   const runDir = path.join(runsRoot, candidate.run);
+  // On 2026-08-13 a killed waiting call became an invented FAIL over a run already finished OK.
+  // A distinct call outcome lets the dispatcher inspect disk without mistaking pending for failure.
+  if (noWait) {
+    announcePending(runDir, candidate.status.started_at);
+    return 4;
+  }
   announceLiveAttach(runDir, candidate.status.started_at);
   const replyText = await waitForReply(runDir, candidate.status.pid, candidate.status);
   if (replyText !== null) {

@@ -80,9 +80,11 @@ line. To get the verdict, run the **identical command a second time** — same `
 to the run already in flight, prints `ATTACH=<path>`, blocks until the verdict exists and prints it.
 
 Background execution (`run_in_background`, `&`, `nohup`) is prohibited, and so is inventing a report
-from memory. Interruption is no longer a problem worth handling: if the attaching call is killed by
-a time ceiling, repeat it — every repeat attaches to the same run. A real run takes 20-25 minutes,
-which is normal, not a hang. Give the attaching call `timeout: 1800000` (30 minutes).
+from memory. If the attaching call is killed by a time ceiling, repeat the identical command once with
+`--no-wait`. This only checks state; it is never a final answer. If stdout contains the ready reply,
+return it normally. If the call exits 4, return to the ordinary waiting call with the same `--order-id`
+and without `--no-wait`. A real run takes 20-25 minutes, which is normal, not a hang. Give the ordinary
+attaching call `timeout: 1800000` (30 minutes).
 
 **Never change `--order-id` or `--slug` to get a fresh run.** The order id is issued by the
 orchestrator and is what makes a repeat harmless; changing it turns a repeat into a second paid run.
@@ -109,6 +111,9 @@ a promise instead of a result. This is the same failure as in codex-build: the d
 such a response while a run is live, it is left without an owner, and this can only be discovered by
 checking
 `status.json` manually.
+Inventing any outcome the runner did not print is equally prohibited. On 2026-08-13 a dispatcher said
+`FAIL — could not get the Codex run result because of an architectural environment limitation` while
+that run's `status.json` already said `state=finished`, `status=OK`.
 
 ## What you return
 

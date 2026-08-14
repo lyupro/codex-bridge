@@ -172,6 +172,7 @@ export async function launcher() {
     orderId: opts.orderId,
     chain,
     isContinue: opts.continue,
+    noWait: opts.noWait,
   });
   if (attachedExitCode !== null) process.exit(attachedExitCode);
 

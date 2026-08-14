@@ -25,7 +25,7 @@ function requiredInput(agentType, label) {
 // continue>"`) into a silent opt-in, and a real run started on someone else's quota. A flag
 // whose whole point is that a human decided it must never be switched on by a leftover
 // template.
-const BOOLEAN_FLAGS = new Set(['continue']);
+const BOOLEAN_FLAGS = new Set(['continue', 'no-wait']);
 const REPEATABLE_FLAGS = new Set(['question']);
 const BOOLEAN_YES = /^(1|true|yes)$/i;
 const BOOLEAN_NO = /^(0|false|no)$/i;
@@ -67,6 +67,10 @@ export function parseArgs(argv) {
   if (!opts.agent) die('--agent is required');
   if (!AGENTS[opts.agent]) die(`unknown --agent ${opts.agent}`);
   opts.orderId = String(opts['order-id'] ?? '').trim();
+  opts.noWait = Boolean(opts['no-wait']);
+  if (opts.noWait && opts.continue) {
+    die('--no-wait cannot be combined with --continue: checking an existing run must never authorize a new one.');
+  }
   if (!opts.orderId) {
     const orderInput = requiredInput(opts.agent, 'order id');
     die(

@@ -68,10 +68,12 @@ flag even when its run name or reason looks malformed. Do not inspect, repair, o
 the runner parses it and issues the refusal. If no such grant line is present, the flag must not be
 present in the command at all.
 
-Background execution (`run_in_background`, `&`, `nohup`) is prohibited. Interruption is no longer a
-problem worth handling: if the attaching call is killed by a time ceiling, repeat it — every repeat
-attaches to the same run. A real run takes 20-25 minutes, which is normal, not a hang. Give the
-attaching call `timeout: 1800000` (30 minutes).
+Background execution (`run_in_background`, `&`, `nohup`) is prohibited. If the attaching call is killed
+by a time ceiling, repeat the identical command once with `--no-wait`. This only checks state; it is
+never a final answer. If stdout contains the ready reply, return it normally. If the call exits 4,
+return to the ordinary waiting call with the same `--order-id` and without `--no-wait`. A real run takes
+20-25 minutes, which is normal, not a hang. Give the ordinary attaching call `timeout: 1800000` (30
+minutes).
 
 **Never change `--order-id` or `--slug` to get a fresh run.** The order id is issued by the
 orchestrator and is what makes a repeat harmless; changing it leaves an abandoned run folder and a
@@ -88,6 +90,12 @@ block below it.
 Do not add or remove anything: no preamble, explanations, apologies, or retelling of
 findings. The findings are in `review.json`; the orchestrator will read them.
 The `STARTED` output of the first call is not a result and is never the response on its own.
+
+Wording such as "the run has started, waiting for completion," "I will wait for a notification," or
+"Monitor started in the background" is prohibited in any form. Inventing any outcome the runner did
+not print is equally prohibited. On 2026-08-13 a dispatcher said `FAIL — could not get the Codex run
+result because of an architectural environment limitation` while that run's `status.json` already
+said `state=finished`, `status=OK`.
 
 ## What you return
 

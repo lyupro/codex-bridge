@@ -132,6 +132,43 @@ test('launcher refuses an invalid scope before creating the run folder', (t) => 
   assert.equal(fs.existsSync(runsRoot), false);
 });
 
+test('--no-wait exits 4 without launching a missing order', (t) => {
+  const { root, repo } = repository(t, 'no-wait-missing');
+  const runsRoot = path.join(root, 'runs');
+  const output = mockedLauncher(
+    SUCCESS_SOURCE,
+    buildArgs(repo, 'missing-order', 'src/existing.mjs', ['--no-wait']),
+    'inspect a run without starting one',
+    { CODEX_RUNS_ROOT: runsRoot },
+    repo,
+  );
+
+  assert.equal(output.status, 4, `${output.stdout}\n${output.stderr}`);
+  assert.equal(output.stderr, '');
+  assert.match(output.stdout, /No run exists for order id "missing-order"/);
+  assert.doesNotMatch(output.stdout, /^RUN=/m);
+  assert.equal(
+    fs.readdirSync(runsRoot, { recursive: true }).some((entry) => entry === 'status.json' || entry === 'worker.json'),
+    false,
+  );
+});
+
+test('--no-wait cannot be combined with --continue', (t) => {
+  const { root, repo } = repository(t, 'no-wait-continue');
+  const runsRoot = path.join(root, 'runs');
+  const output = mockedLauncher(
+    SUCCESS_SOURCE,
+    buildArgs(repo, 'conflicting-order', 'src/existing.mjs', ['--no-wait', '--continue']),
+    'continue: previous-run — finish the task',
+    { CODEX_RUNS_ROOT: runsRoot },
+    repo,
+  );
+
+  assert.equal(output.status, 2, output.stderr);
+  assert.match(output.stderr, /--no-wait cannot be combined with --continue/);
+  assert.equal(fs.existsSync(runsRoot), false);
+});
+
 test('an honest scope starts and scope-new is persisted in worker.json', (t) => {
   const { root, repo } = repository(t, 'start');
   const runsRoot = path.join(root, 'runs');

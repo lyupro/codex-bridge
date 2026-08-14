@@ -98,13 +98,20 @@ directory creation, immediately after finding the chain and before the `--contin
 (step 7):
 
 - **A run with this label already has `reply.txt`** — the verdict is printed from disk; the repeat
-  responds rather than refusing.
+  responds rather than refusing. `--no-wait` does not change this branch or its existing verdict exit
+  code.
 - **There is no `reply.txt`, and the pid is alive** — the invocation prints
   `ATTACH=<directory> started=<time>`, waits for `reply.txt`, and prints it. The next line states
   that the run is already in progress, no new work was started, and this invocation is waiting for its
   verdict. When `reply.txt` already exists, the next line instead says this is the answer from the
   previous run and no new work was started. Codex is not invoked and quota is not spent. An interrupted
   repeat damages nothing: the next invocation attaches to the same run.
+- **There is no `reply.txt`, the pid is alive, and `--no-wait` was passed** — the invocation prints
+  `ATTACH=<directory> started=<time>`, reports how long the run has been in progress, and returns exit
+  code `4` immediately. This is a call outcome, not a run status; a later ordinary repeat still waits
+  for and returns the saved verdict.
+- **No run exists for this order label and `--no-wait` was passed** — the invocation reports that no
+  run exists and returns exit code `4`. It never creates a run directory or invokes Codex.
 - **There is no `reply.txt`, and the pid is dead** — this is an abandoned run with nothing to attach to;
   the earlier path applies (`markAbandoned()` has already marked the directory, then the `--continue`
   refusal takes effect).

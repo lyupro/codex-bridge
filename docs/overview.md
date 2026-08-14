@@ -70,6 +70,9 @@ node ~/.lyupro/.codex-bridge/lib/run-codex.mjs \
 `--agent` is required. `--repo` defaults to the current directory, `--slug` is optional and
 defaults to the `order id`, `--effort` defaults to `medium`, and `--mode` defaults to `uncommitted`.
 The `--effort` value is passed to Codex as is; the runner checks only that it is a single word.
+`--no-wait` checks an existing run immediately: it returns its ready reply normally, or exit code `4`
+when the run is still in progress or no run exists. It never starts a new run and cannot be combined
+with `--continue`.
 
 The same sanitizer is applied to the `order id` and an explicit `slug`: characters outside
 `A-Za-z0-9._-` are replaced with `-`. If no letter or digit remains in the name afterward, the
