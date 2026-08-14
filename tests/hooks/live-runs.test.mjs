@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { liveRuns } from '../../src/hooks/live-runs.mjs';
+import { liveRuns, RECENT_RUN_MAX_AGE_MS, recentRuns } from '../../src/hooks/live-runs.mjs';
 import { HEARTBEAT_FILE, HEARTBEAT_STALE_MS } from '../../src/heartbeat.mjs';
 
 function makeRun() {
@@ -48,4 +48,38 @@ test('a pre-Plan_20 running record without a heartbeat keeps its lock', () => {
 test('strict live scans exclude a run whose process identity is unconfirmed', () => {
   const { runs } = makeRun();
   assert.deepEqual(liveRuns(runs, { requireConfirmedIdentity: true }), []);
+});
+
+test('recent scans include finished runs and filter by agent and age', () => {
+  const now = Date.now();
+  const { runs, dir } = makeRun();
+  fs.writeFileSync(path.join(dir, 'status.json'), `${JSON.stringify({
+    state: 'finished',
+    status: 'OK',
+    agent: 'codex-build',
+    slug: 'recent-finished',
+    repo: '/repo',
+    finished_at: new Date(now - 1_000).toISOString(),
+  })}\n`);
+  const other = path.join(runs, 'other-agent');
+  fs.mkdirSync(other);
+  fs.writeFileSync(path.join(other, 'status.json'), JSON.stringify({
+    state: 'finished',
+    agent: 'codex-review',
+    finished_at: new Date(now - 500).toISOString(),
+  }));
+  const stale = path.join(runs, 'stale');
+  fs.mkdirSync(stale);
+  fs.writeFileSync(path.join(stale, 'status.json'), JSON.stringify({
+    state: 'finished',
+    agent: 'codex-build',
+    finished_at: new Date(now - RECENT_RUN_MAX_AGE_MS - 1).toISOString(),
+  }));
+  assert.deepEqual(recentRuns(runs, { agent: 'codex-build', now }).map((run) => run.dir), [dir]);
+});
+
+test('recent scans report unreadable JSON as uncertainty', () => {
+  const { runs, dir } = makeRun();
+  fs.writeFileSync(path.join(dir, 'status.json'), '{ broken');
+  assert.equal(recentRuns(runs, { agent: 'codex-build' }), null);
 });

@@ -30,7 +30,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { readJsonFileSync } from '../json-file.mjs';
-import { isPidAlive, liveRuns, normalizePath } from './live-runs.mjs';
+import { resolveProjectRunsDir } from '../runner/project-dir.mjs';
+import { runsRoot } from '../runner/runs-root.mjs';
+import { isPidAlive, liveRuns, normalizePath, recentRuns } from './live-runs.mjs';
 import { FORM, MAX_STATE_BLOCKS, STATE, takeTry } from './guard-tries.mjs';
 
 const HOME = os.homedir();
@@ -115,9 +117,23 @@ const blockState = (reason, stopReason) => {
  */
 const cleanRunDir = (value) => value.trim().replace(/\s+started=\S*$/, '').replace(/[`"'*]+$/g, '');
 const runDirs = [...reply.matchAll(/(?:RUN|ATTACH)=(.+?)(?:\r?\n|$)/g)].map((match) => cleanRunDir(match[1]));
-const runDir = runDirs[0] || null;
 
-if (!runDir || !fs.existsSync(runDir)) {
+/**
+ * Does this reply pronounce a verdict at all? Computed here rather than after meta.json is read,
+ * because it decides whether an unnamed folder is worth searching the disk for.
+ *
+ * Not every honest reply carries one. The runner refuses before creating a folder — a repeat
+ * without `--continue`, an impossible `--scope`, a missing `--question` — and its refusal is the
+ * whole truthful answer, with no run to name. Escalating those would punish the dispatcher for
+ * quoting the runner correctly, and on 2026-08-14 two such refusals arrived in a row.
+ */
+const claimed = STATUSES.find((status) => new RegExp(`(^|\\n)\\s*\`*${status}\\b`).test(reply));
+let runDir = runDirs[0] || null;
+let discoveredRun = false;
+let discoveredStatus = null;
+let searchedRunsDir = null;
+
+if (runDir && !fs.existsSync(runDir)) {
   blockForm(
     'Contract violated: the response has no RUN= or ATTACH= line with an existing run folder, so ' +
       'delegation to Codex is not confirmed. Run run-codex.mjs and return its stdout ' +
@@ -133,8 +149,23 @@ if (!runDir || !fs.existsSync(runDir)) {
  */
 const fact = (value) => (value === undefined || value === null || value === '' ? 'not recorded' : String(value));
 
-const stopText = (headline, observed, runStatus, folder = runDir) =>
-  [
+const stopText = (headline, observed, runStatus, folder = runDir) => {
+  if (!runStatus) {
+    return [headline, observed, `Project runs directory checked: ${folder || 'not recorded'}.`].join(' ');
+  }
+  if (runStatus.state === 'finished' || runStatus.state === 'failed') {
+    return [
+      headline,
+      `Run: slug ${fact(runStatus.slug)}, agent ${fact(runStatus.agent)}, repository ` +
+        `${fact(runStatus.repo)}, started ${fact(runStatus.started_at)}.`,
+      `Run folder: ${folder}. Read state from ${path.join(folder, 'status.json')} and verdict ` +
+        `from ${path.join(folder, 'meta.json')}.`,
+      observed,
+      'The recorded run is complete; return the runner artifacts verbatim instead of replacing ' +
+        'their verdict or omitting their folder.',
+    ].join(' ');
+  }
+  return [
     headline,
     `Run: slug ${fact(runStatus?.slug)}, agent ${fact(runStatus?.agent)}, repository ` +
       `${fact(runStatus?.repo)}, started ${fact(runStatus?.started_at)}.`,
@@ -149,6 +180,45 @@ const stopText = (headline, observed, runStatus, folder = runDir) =>
       'verdict will be there; there is no need to ask the dispatcher again. Repeating the same ' +
       'command with the same --order-id attaches to this run rather than starting another.',
   ].join(' ');
+};
+
+if (!runDir && !claimed) {
+  // A reply that pronounces nothing cannot contradict the disk. It stays on the old, softer path:
+  // three tries about the SHAPE of the answer and then through, which is what a quoted refusal
+  // needs. Only a reply that hands down a verdict earns the disk search below.
+  blockForm(
+    'Contract violated: the response has no RUN= or ATTACH= line, so delegation to Codex is not ' +
+      'confirmed. Run run-codex.mjs and return its stdout verbatim. If the runner refused before ' +
+      'creating a folder, return that refusal exactly as printed.',
+  );
+}
+
+if (!runDir) {
+  let candidates;
+  try {
+    searchedRunsDir = resolveProjectRunsDir(runsRoot(), input.cwd, { create: false }).dir;
+    candidates = recentRuns(searchedRunsDir, { agent: input.agent_type });
+  } catch {
+    pass();
+  }
+  if (candidates === null) pass();
+  if (!candidates.length) {
+    blockState(
+      'Contract violated: the response has no RUN= or ATTACH= line, and no recent run for this ' +
+        'dispatcher was found on disk. Run run-codex.mjs and return its stdout verbatim; your own ' +
+        'analysis instead of Codex is prohibited in all outcomes.',
+      stopText(
+        `The reply guard stopped the session: the dispatcher responded ${MAX_STATE_BLOCKS} times ` +
+          'without naming a run and no recent matching run was found on disk.',
+        `No run for agent ${input.agent_type} was found in the last 24 hours.`,
+        null,
+        searchedRunsDir,
+      ),
+    );
+  }
+  ({ dir: runDir, status: discoveredStatus } = candidates[0]);
+  discoveredRun = true;
+}
 
 /**
  * The dispatcher must name every WRITING run the project has live, not just the one it chose to
@@ -253,10 +323,21 @@ if (fs.existsSync(statusPath)) {
 
 const metaPath = path.join(runDir, 'meta.json');
 if (!fs.existsSync(metaPath)) {
-  blockForm(
-    `Contract violated: run folder ${runDir} has no meta.json; nothing supports the response. ` +
-      'Run run-codex.mjs again and return its stdout verbatim.',
-  );
+  const reason = `Contract violated: run folder ${runDir} has no meta.json; nothing supports the ` +
+    'response. Run run-codex.mjs again and return its stdout verbatim.';
+  if (discoveredRun) {
+    blockState(
+      reason,
+      stopText(
+        `The reply guard stopped the session: the dispatcher responded ${MAX_STATE_BLOCKS} times ` +
+          'without naming the recent run found on disk.',
+        `status.json says state=${fact(discoveredStatus?.state)}, status=${fact(discoveredStatus?.status)}, ` +
+          'but the adjacent meta.json is missing.',
+        discoveredStatus,
+      ),
+    );
+  }
+  blockForm(reason);
 }
 
 let meta;
@@ -266,12 +347,38 @@ try {
   pass();
 }
 
-const claimed = STATUSES.find((status) => new RegExp(`(^|\\n)\\s*\`*${status}\\b`).test(reply));
 if (claimed && meta.status && claimed !== meta.status) {
-  blockForm(
-    `Contract violated: you reported ${claimed}, but the run's meta.json says ${meta.status} ` +
-      `(${meta.reason || 'no reason given'}). The runner calculates status from artifacts — return ` +
-      'its output verbatim without substituting your own judgment.',
+  const reason = `Contract violated: you reported ${claimed}, but run folder ${runDir} has ` +
+    `state=${fact(discoveredStatus?.state)} in status.json and status=${meta.status} in meta.json ` +
+    `(${meta.reason || 'no reason given'}). The runner calculates status from artifacts — return ` +
+    'its output verbatim without substituting your own judgment.';
+  if (discoveredRun) {
+    blockState(
+      reason,
+      stopText(
+        `The reply guard stopped the session: the dispatcher contradicted the recent run on disk ` +
+          `${MAX_STATE_BLOCKS} times.`,
+        `status.json says state=${fact(discoveredStatus.state)}, status=${fact(discoveredStatus.status)}; ` +
+          `meta.json says status=${meta.status}, but the reply says ${claimed}.`,
+        discoveredStatus,
+      ),
+    );
+  }
+  blockForm(reason);
+}
+
+if (discoveredRun) {
+  blockState(
+    `Contract violated: the response omitted RUN=${runDir}; status.json says ` +
+      `state=${fact(discoveredStatus.state)}, status=${fact(discoveredStatus.status)}, and meta.json ` +
+      `says status=${fact(meta.status)}. Return the runner stdout verbatim.`,
+    stopText(
+      `The reply guard stopped the session: the dispatcher omitted the recent run found on disk ` +
+        `${MAX_STATE_BLOCKS} times.`,
+      `status.json says state=${fact(discoveredStatus.state)}, status=${fact(discoveredStatus.status)}; ` +
+        `meta.json says status=${fact(meta.status)}.`,
+      discoveredStatus,
+    ),
   );
 }
 
