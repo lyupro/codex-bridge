@@ -30,7 +30,7 @@ import {
 import { attach } from './attach.mjs';
 import { setRun } from './run-context.mjs';
 import { loadRunEnv, RUN_ENV } from './run-env.mjs';
-import { parseArgs, die } from './args.mjs';
+import { parseArgs, die, readTaskText } from './args.mjs';
 import { parseContinuationGrant } from '../required-inputs.mjs';
 import { continuationRefusal } from './continuation.mjs';
 import { SCHEMAS } from './schemas.mjs';
@@ -92,12 +92,10 @@ export const runDirPath = (root, slug, runStamp = stamp()) => {
  * worktree, a missing Codex CLI. All of it happens here, in the process the caller is free
  * to kill — so a killed caller can only ever interrupt a run that was already paid for.
  */
-export async function launcher() {
+export async function launcher(argv = process.argv.slice(2)) {
   loadRunEnv();
-
-  const opts = parseArgs(process.argv.slice(2));
-  const taskText = fs.readFileSync(0, 'utf8').trim();
-  if (!taskText) die('task text on stdin is empty');
+  const opts = parseArgs(argv);
+  const taskText = readTaskText(opts);
 
   const topLevel = git(opts.repo, ['rev-parse', '--show-toplevel']);
   const isGitRepo = topLevel.status === 0;
@@ -174,7 +172,7 @@ export async function launcher() {
     isContinue: opts.continue,
     noWait: opts.noWait,
   });
-  if (attachedExitCode !== null) process.exit(attachedExitCode);
+  if (attachedExitCode !== null) return attachedExitCode;
 
   if (startedChain.length && !opts.continue) {
     const last = startedChain[startedChain.length - 1];
@@ -256,7 +254,7 @@ export async function launcher() {
       true,
     );
     console.log(reply);
-    process.exit(1);
+    return 1;
   }
 
   requireCodex(runDir, opts.agent);
@@ -345,7 +343,7 @@ export async function launcher() {
       true,
     );
     console.log(reply);
-    process.exit(1);
+    return 1;
   }
   fs.writeFileSync(
     path.join(runDir, 'worker.json'),
@@ -377,13 +375,17 @@ export async function launcher() {
     windowsHide: true,
     cwd: repoRoot,
   });
-  worker.on('error', (err) => {
-    const { reply } = writeFailure(runDir, opts.agent, `run worker process failed to start: ${err.message}`, [
-      'Codex was not started; quota was not spent',
-    ], true);
-    console.log(reply);
-    process.exit(1);
+  const started = await new Promise((resolve) => {
+    worker.once('spawn', () => resolve(true));
+    worker.once('error', (err) => {
+      const { reply } = writeFailure(runDir, opts.agent, `run worker process failed to start: ${err.message}`, [
+        'Codex was not started; quota was not spent',
+      ], true);
+      console.log(reply);
+      resolve(false);
+    });
   });
+  if (!started) return 1;
   worker.unref();
   writeStatus(runDir, { pid: worker.pid, runner_pid: worker.pid, process_started_at: null });
 
@@ -393,5 +395,5 @@ export async function launcher() {
   console.log(
     'To get the verdict, repeat the identical command with the same --order-id; it will attach to this run and will not start a second run.',
   );
-  process.exit(0);
+  return 0;
 }

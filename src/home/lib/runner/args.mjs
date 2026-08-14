@@ -5,14 +5,42 @@
  * else's quota is touched, and every refusal is an exit code rather than a message: a
  * dispatcher branches on it.
  */
+import fs from 'node:fs';
 import path from 'node:path';
 import { AGENTS } from '../write-meta.mjs';
 import { ALLOWED_EFFORTS } from '../run-config.mjs';
 import { requiredInputsFor } from '../required-inputs.mjs';
 
+export class RunnerUsageError extends Error {
+  constructor(message) {
+    super(message);
+    this.exitCode = 2;
+  }
+}
+
 export function die(message) {
   console.error(`run-codex: ${message}`);
-  process.exit(2);
+  throw new RunnerUsageError(message);
+}
+
+export function readTaskText(opts) {
+  const stdinText = process.stdin.isTTY ? '' : fs.readFileSync(0, 'utf8');
+  if (opts['task-file'] !== undefined) {
+    if (stdinText.trim()) {
+      die('task text was supplied through both stdin and --task-file; choose exactly one channel');
+    }
+    const taskFile = path.resolve(opts['task-file']);
+    let fileText;
+    try {
+      fileText = fs.readFileSync(taskFile, 'utf8');
+    } catch (err) {
+      die(`task file from --task-file could not be read: ${err.message}`);
+    }
+    if (!fileText.trim()) die(`task file from --task-file is empty: ${taskFile}`);
+    return fileText.trim();
+  }
+  if (!stdinText.trim()) die('task text on stdin is empty');
+  return stdinText.trim();
 }
 
 function requiredInput(agentType, label) {

@@ -38,7 +38,11 @@ const jsonAscii = (value) =>
  */
 function parseArgsInChild(argv) {
   const source = `import { parseArgs } from ${JSON.stringify(RUN_CODEX)};
-process.stdout.write(JSON.stringify(parseArgs(JSON.parse(process.env.CODEX_TEST_ARGV))));`;
+try {
+  process.stdout.write(JSON.stringify(parseArgs(JSON.parse(process.env.CODEX_TEST_ARGV))));
+} catch (err) {
+  process.exit(err.exitCode || 1);
+}`;
   const out = spawnSync(process.execPath, ['--input-type=module', '-e', source], {
     encoding: 'utf8',
     env: { ...process.env, CODEX_TEST_ARGV: jsonAscii(argv) },

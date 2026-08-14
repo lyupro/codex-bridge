@@ -28,8 +28,23 @@ test('--help and -h print the command list', () => {
     const result = run([flag]);
     assert.equal(result.status, 0);
     assert.match(result.stdout, /Commands:[\s\S]*install[\s\S]*update[\s\S]*uninstall[\s\S]*doctor[\s\S]*unlock/);
+    assert.match(result.stdout, /codex-bridge run <runner options> --task-file <path>/);
     assert.match(result.stdout, /codex-bridge hook <name>/);
   }
+});
+
+test('run forwards runner arguments and returns the runner exit code unchanged', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-bin-run-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const taskFile = path.join(root, 'task.md');
+  await fs.writeFile(taskFile, 'check current state\n');
+  const result = run(
+    ['run', '--agent', 'codex-review', '--repo', root, '--order-id', 'bin-run', '--task-file', taskFile, '--no-wait'],
+    { CODEX_RUNS_ROOT: path.join(root, 'runs') },
+  );
+  assert.equal(result.status, 4, result.stderr);
+  assert.match(result.stdout, /--no-wait never starts a new run/);
+  assert.doesNotMatch(result.stderr, /unknown run option/);
 });
 
 test('--version and -v print package.json version', async () => {

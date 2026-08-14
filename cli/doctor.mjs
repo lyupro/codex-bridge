@@ -4,11 +4,14 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 import {
+  buildInstallPlan,
+  contentFingerprint,
   fileFingerprint,
   HOOK_DEFINITIONS,
   readInstallRecord,
   packageInfo,
 } from './manifest.mjs';
+import { plannedContent } from './copy.mjs';
 import { recordTarget } from './install-record.mjs';
 import { inspectPermissions } from './permissions.mjs';
 import { commandFor, inspectHook } from './settings-merge.mjs';
@@ -37,6 +40,26 @@ async function isFile(target) {
   } catch {
     return false;
   }
+}
+
+async function agentsCheck(host, record) {
+  if (!record) return check('agents', 'warn', 'Agent definitions were not checked; run codex-bridge install');
+  const plan = await buildInstallPlan(host);
+  const agents = plan.filter((item) => /[\\/]src[\\/]agents[\\/][^\\/]+\.md$/.test(item.source));
+  const mismatches = [];
+  for (const item of agents) {
+    const expected = contentFingerprint(await plannedContent(item, host.brandRoot));
+    if (await fileFingerprint(item.target) !== expected) mismatches.push(path.basename(item.target));
+  }
+  return mismatches.length
+    ? check('agents', 'warn', `Installed agent definitions differ from this package: ${mismatches.join(', ')}; run codex-bridge update --force`)
+    : check('agents', 'ok', `${agents.length} installed agent definition(s) match this package`);
+}
+
+function bridgeCommandCheck(result) {
+  return result.available
+    ? check('command', 'ok', `codex-bridge resolves on PATH (${result.value})`)
+    : check('command', 'warn', `codex-bridge does not resolve on PATH (${result.value}); run npm i -g @lyupro/codex-bridge`);
 }
 
 function check(key, status, value) {
@@ -308,10 +331,13 @@ export async function diagnose({ host, codexProbe = probeCodex, bridgeProbe = pr
     !record ? 'warn' : missingFiles.length ? 'fail' : 'ok',
     !record ? 'not checked' : missingFiles.length ? `missing: ${missingFiles.join(', ')}` : `${record.files.length} installed file(s) present`,
   ));
+  checks.push(await agentsCheck(host, record));
   const rules = await rulesCheck(host, record);
   checks.push(rules);
   checks.push(await permissionsCheck(host));
-  checks.push(...await hookChecks(host, record, bridgeProbe, ownPackage));
+  const bridge = bridgeProbe();
+  checks.push(bridgeCommandCheck(bridge));
+  checks.push(...await hookChecks(host, record, () => bridge, ownPackage));
   const retention = retentionCheck(host);
   checks.push(retention);
   const conventions = await conventionsCheck(host);
@@ -337,6 +363,7 @@ export async function diagnose({ host, codexProbe = probeCodex, bridgeProbe = pr
 
 export function renderDoctor(result) {
   return result.checks.map(({ key, status, value }) => {
+    if ((key === 'agents' || key === 'command') && status !== 'ok') return value;
     const rendered = `[${status}] ${key}: ${value}`;
     return ['retention', 'conventions', 'permissions', 'liveRuns'].includes(key) && status === 'warn'
       ? `${WARNING}${rendered}${RESET}`

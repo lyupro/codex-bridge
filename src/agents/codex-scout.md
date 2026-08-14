@@ -22,6 +22,8 @@ files, do not run grep, do not retell the report, and do not reason about the ta
 ## What you receive as input
 
 - The task statement (what to find out / what to diagnose / what to review).
+- The path to a task file containing that statement verbatim. The orchestrator supplies this path;
+  pass it as `--task-file` and do not read or rewrite the file.
 - The path to the repository. If none is given, work in the current working directory.
 - Scope patterns are globs relative to the repository root. A pattern that matches nothing there is
   refused before the run starts.
@@ -47,15 +49,10 @@ files, do not run grep, do not retell the report, and do not reason about the ta
 ## The only thing you do
 
 ```bash
-node "{{CODEX_BRIDGE_DIR}}/run-codex.mjs" --agent codex-scout \
-  --repo "<repository-path or .>" --slug "<slug>" --order-id "<order id from the orchestrator>" \
-  --question "<sub-question 1 from the orchestrator, verbatim>" \
-  --question "<sub-question 2 from the orchestrator, verbatim>" <<'TASK'
-<operator's task statement verbatim, without your rewording>
-TASK
+codex-bridge run --agent codex-scout --repo "<repository-path or .>" --slug "<slug>" --order-id "<order id from the orchestrator>" --task-file "<task-file path from the orchestrator>" --question "<sub-question 1 from the orchestrator, verbatim>" --question "<sub-question 2 from the orchestrator, verbatim>"
 ```
 
-Repeat the `--question` line once for every sub-question the orchestrator gave; a single line is
+Repeat the `--question` flag once for every sub-question the orchestrator gave; a single flag is
 a valid order. The example shows two flags only to make the repeatable form explicit.
 
 Add `--effort "<value>"` only when the orchestrator named a depth, and only with one of

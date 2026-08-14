@@ -7,6 +7,7 @@ import { resolveHost } from '../cli/hosts.mjs';
 import { install } from '../cli/install.mjs';
 import { projects } from '../cli/projects.mjs';
 import { read } from '../cli/read.mjs';
+import { runCodex } from '../src/home/lib/run-codex.mjs';
 import { packageInfo } from '../cli/manifest.mjs';
 import { permissions } from '../cli/permissions.mjs';
 import { prune } from '../cli/prune.mjs';
@@ -23,6 +24,7 @@ Usage:
   codex-bridge permissions [add|remove] [--scope user|project] [--host <path>]
   codex-bridge uninstall [--scope user|project] [--host <path>] [--dry-run]
   codex-bridge doctor [--scope user|project] [--host <path>]
+  codex-bridge run <runner options> --task-file <path>
   codex-bridge projects [<name>] [--json]
   codex-bridge prune <project> [<run>] [--purge] [--older-than <age>] [-f] [--json]
   codex-bridge prune --all-projects [--older-than <age>] [-f] [--json]
@@ -40,6 +42,7 @@ Commands:
   permissions Show, add, or remove optional shell permission rules
   uninstall Remove installed files while preserving run artifacts
   doctor    Diagnose the selected Claude Code host
+  run       Start or attach to a delegated Codex run
   projects  List projects or runs from the run store
   prune     Remove archived transport, or purge selected run folders
   unlock    Close running records whose runner is gone
@@ -84,6 +87,7 @@ export async function main(argv, io = console) {
     io.log((await packageInfo()).version);
     return 0;
   }
+  if (command === 'run') return runCodex(rest);
   if (command === 'doctor') {
     const host = resolveHost(commandOptions(command, rest));
     const result = await diagnose({ host });

@@ -40,7 +40,8 @@ ${source}
 syncBuiltinESMExports();
 process.argv = [process.execPath, ${JSON.stringify(LAUNCHER)}, ...${JSON.stringify(args)}];
 const { launcher } = await import(${JSON.stringify(LAUNCHER)});
-await launcher();
+const exitCode = await launcher();
+if (exitCode !== undefined) process.exitCode = exitCode;
 `;
   return spawnSync(process.execPath, ['--input-type=module', '-e', script], {
     cwd,
@@ -191,6 +192,7 @@ childProcess.spawn = () => {
   const worker = new EventEmitter();
   worker.pid = 999999;
   worker.unref = () => {};
+  queueMicrotask(() => worker.emit('spawn'));
   return worker;
 };
 process.exit = (code = 0) => { process.exitCode = code; };

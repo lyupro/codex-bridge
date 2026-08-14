@@ -27,6 +27,8 @@ opinion, not a verdict.
   - branch against base — `--mode base:<branch>`;
   - specific commit — `--mode commit:<sha>`.
 - The path to the repository. If none is given, use the current working directory.
+- The path to a task file containing the review focus verbatim. The orchestrator supplies this
+  path; pass it as `--task-file` and do not read or rewrite the file.
 - Scope patterns are globs relative to the repository root. A pattern that matches nothing there is
   refused before the run starts.
 - Every input listed under **Required dispatcher inputs** above, passed on exactly as given:
@@ -46,11 +48,7 @@ opinion, not a verdict.
 ## The only thing you do
 
 ```bash
-node "{{CODEX_BRIDGE_DIR}}/run-codex.mjs" --agent codex-review \
-  --repo "<repository-path or .>" --mode "<uncommitted|base:<branch>|commit:<sha>>" \
-  --slug "<slug>" --order-id "<order id from the orchestrator>" <<'TASK'
-<review focus from the task verbatim; if there is no focus — "No focus, review by priority.">
-TASK
+codex-bridge run --agent codex-review --repo "<repository-path or .>" --mode "<uncommitted|base:<branch>|commit:<sha>>" --slug "<slug>" --order-id "<order id from the orchestrator>" --task-file "<task-file path from the orchestrator>"
 ```
 
 Add `--effort "<value>"` only when the orchestrator named a depth, and only with one of

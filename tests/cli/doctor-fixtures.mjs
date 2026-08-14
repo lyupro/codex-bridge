@@ -10,7 +10,13 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { resolveHost } from '../../cli/hosts.mjs';
-import { HOOK_DEFINITIONS, recordTarget, writeInstallRecord } from '../../cli/manifest.mjs';
+import {
+  buildInstallPlan,
+  HOOK_DEFINITIONS,
+  recordTarget,
+  writeInstallRecord,
+} from '../../cli/manifest.mjs';
+import { copyPlannedFile } from '../../cli/copy.mjs';
 
 export const ownPackage = { name: '@lyupro/codex-bridge', version: '0.1.0' };
 export const codexProbe = () => ({ available: true, value: 'codex-cli 1.2.3' });
@@ -27,9 +33,12 @@ export async function hostFixture(t) {
 
 export async function installedFixture(t) {
   const host = await hostFixture(t);
+  const agentPlan = (await buildInstallPlan(host))
+    .filter((item) => /[\\/]src[\\/]agents[\\/][^\\/]+\.md$/.test(item.source));
   const files = [
     { root: 'claude', path: 'agents/codex-bridge/run-codex.mjs' },
     { root: 'claude', path: 'agents/codex-bridge/required-inputs.mjs' },
+    ...agentPlan.map((item) => ({ root: item.root, path: item.relativeToRoot })),
     ...HOOK_DEFINITIONS.map(({ file }) => ({ root: 'brand', path: `hooks/${file}` })),
   ];
   for (const file of files) {
@@ -37,6 +46,7 @@ export async function installedFixture(t) {
     await fs.mkdir(path.dirname(target), { recursive: true });
     await fs.writeFile(target, file.root === 'brand' ? 'process.exitCode = 0;\n' : file.path);
   }
+  for (const item of agentPlan) await copyPlannedFile(item, host.brandRoot);
   const record = {
     ...ownPackage,
     installedAt: '2026-08-02T10:00:00.000Z',

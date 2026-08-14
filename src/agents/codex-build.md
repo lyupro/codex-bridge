@@ -27,6 +27,8 @@ job is to report the run status honestly, including failure.
 ## What you receive as input
 
 - The task statement: what to change and the completion criteria.
+- The path to a task file containing that statement verbatim. The orchestrator supplies this path;
+  pass it as `--task-file` and do not read or rewrite the file.
 - The path to the repository. If none is given, use the current working directory.
 - Scope patterns are globs relative to the repository root. A pattern that matches nothing there is
   refused before the run starts; a file this task is meant to create is declared with `--scope-new`.
@@ -48,12 +50,7 @@ job is to report the run status honestly, including failure.
 ## The only thing you do
 
 ```bash
-node "{{CODEX_BRIDGE_DIR}}/run-codex.mjs" --agent codex-build \
-  --repo "<repository-path or .>" --scope "<glob,glob from input>" --slug "<slug>" \
-  --order-id "<order id from the orchestrator>" \
-  --verify "<verification command, if given>" <<'TASK'
-<operator's task statement together with the completion criteria, verbatim>
-TASK
+codex-bridge run --agent codex-build --repo "<repository-path or .>" --scope "<glob,glob from input>" --slug "<slug>" --order-id "<order id from the orchestrator>" --task-file "<task-file path from the orchestrator>" --verify "<verification command, if given>"
 ```
 
 Add `--effort "<value>"` only when the orchestrator named a depth, and only with one of

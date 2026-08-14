@@ -14,8 +14,10 @@ response, log, worktree snapshots, and the verdict computed from them remain in 
 
 ### Hard dispatcher boundary
 
-The dispatcher does not perform the order. Its only job is to start a run through `run-codex.mjs`
-and return its result. If `run-codex.mjs` is missing, fails to start, exits without a
+The dispatcher does not perform the order. Its only job is to start a run through
+`codex-bridge run` and return its result. Using the package command is a permission contract, not
+a style choice: it lets host permission rules match a stable command instead of an expanded
+installation-specific path. If the command is missing, fails to start, exits without a
 `RUN=`/`ATTACH=` line, or the run cannot start for any other reason, the dispatcher must immediately
 return `FAIL — could not start the Codex run: <reason>` and stop.
 
@@ -30,45 +32,51 @@ directory, so this rule is enforced both in text and by an external guard.
 
 ## Running
 
-The task reaches `run-codex.mjs` through stdin. The examples below assume the package is installed
-in `~/.lyupro/.codex-bridge/`—the runner and its modules live in the `lib/` subdirectory. Before
-the package moved to two installation roots (2026-08-11), they lived in
-`~/.claude/agents/codex/`; old checklists and plans intentionally preserve those paths as a record
-of what was true at the time of the run.
+The orchestrator writes the task to a file and supplies its path with `--task-file`. Shipped agent
+definitions must call `codex-bridge run`; exposing the internal runner path breaks host permission
+matching and causes an approval prompt for every delegation. Direct stdin remains available for
+manual use, but stdin and `--task-file` cannot be supplied together.
 
 Reconnaissance:
 
 ```bash
-node ~/.lyupro/.codex-bridge/lib/run-codex.mjs \
+codex-bridge run \
   --agent codex-scout \
   --repo . \
   --slug auth-flow \
-  --effort medium < task.md
+  --order-id order-42 \
+  --effort medium \
+  --task-file task.md \
+  --question "Trace the authentication flow"
 ```
 
 Implementation:
 
 ```bash
-node ~/.lyupro/.codex-bridge/lib/run-codex.mjs \
+codex-bridge run \
   --agent codex-build \
   --repo . \
   --slug auth-flow \
+  --order-id order-42 \
   --scope "src/auth/**,tests/auth/**" \
-  --verify "npm test" < task.md
+  --verify "npm test" \
+  --task-file task.md
 ```
 
 Reviewing uncommitted changes:
 
 ```bash
-node ~/.lyupro/.codex-bridge/lib/run-codex.mjs \
+codex-bridge run \
   --agent codex-review \
   --repo . \
   --slug auth-flow-review \
-  --mode uncommitted < review-task.md
+  --order-id order-42-review \
+  --mode uncommitted \
+  --task-file review-task.md
 ```
 
-`--agent` is required. `--repo` defaults to the current directory, `--slug` is optional and
-defaults to the `order id`, `--effort` defaults to `medium`, and `--mode` defaults to `uncommitted`.
+`--agent` and `--order-id` are required. `--repo` defaults to the current directory, `--slug` is
+optional and defaults to the `order id`, `--effort` defaults to `medium`, and `--mode` defaults to `uncommitted`.
 The `--effort` value is passed to Codex as is; the runner checks only that it is a single word.
 `--no-wait` checks an existing run immediately: it returns its ready reply normally, or exit code `4`
 when the run is still in progress or no run exists. It never starts a new run and cannot be combined
@@ -133,12 +141,14 @@ the result is a refusal before attachment, directory creation, and quota, not an
 presented as the result of a new order:
 
 ```bash
-node ~/.lyupro/.codex-bridge/lib/run-codex.mjs \
+codex-bridge run \
   --agent codex-build \
   --repo . \
   --slug auth-flow \
+  --order-id order-42 \
   --continue \
-  --scope "src/auth/**,tests/auth/**" < follow-up.md
+  --scope "src/auth/**,tests/auth/**" \
+  --task-file follow-up.md
 ```
 
 where `follow-up.md` contains a line with the run name and reason:

@@ -33,7 +33,13 @@ ${source}
 syncBuiltinESMExports();
 process.argv = [process.execPath, ${JSON.stringify(LAUNCHER)}, ...${JSON.stringify(args)}];
 const { launcher } = await import(${JSON.stringify(LAUNCHER)});
-await launcher();
+try {
+  const exitCode = await launcher();
+  if (exitCode !== undefined) process.exitCode = exitCode;
+} catch (err) {
+  if (err?.exitCode) process.exitCode = err.exitCode;
+  else throw err;
+}
 `;
   return spawnSync(process.execPath, ['--input-type=module', '-e', script], {
     cwd,
@@ -52,6 +58,7 @@ childProcess.spawn = () => {
   const worker = new EventEmitter();
   worker.pid = 999999;
   worker.unref = () => {};
+  queueMicrotask(() => worker.emit('spawn'));
   return worker;
 };
 `;
@@ -197,13 +204,13 @@ test('an honest scope starts and scope-new is persisted in worker.json', (t) => 
 test('a missing --scope is still refused in args even with --scope-new', () => {
   const script = `
 import { parseArgs } from ${JSON.stringify(ARGS_MODULE)};
-parseArgs(${JSON.stringify([
+try { parseArgs(${JSON.stringify([
     '--agent', 'codex-build',
     '--repo', process.cwd(),
     '--slug', 'missing-scope',
     '--order-id', 'missing-scope-order',
     '--scope-new', 'src/new-file.mjs',
-  ])});
+  ])}); } catch (err) { process.exitCode = err.exitCode || 1; }
 `;
   const output = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
     encoding: 'utf8',
@@ -228,7 +235,7 @@ test('--scope-new is refused for the agents that never create a file', () => {
   for (const agent of ['codex-scout', 'codex-review']) {
     const script = `
 import { parseArgs } from ${JSON.stringify(ARGS_MODULE)};
-parseArgs(${JSON.stringify([
+try { parseArgs(${JSON.stringify([
       '--agent', agent,
       '--repo', process.cwd(),
       '--slug', 'no-new-paths',
@@ -236,7 +243,7 @@ parseArgs(${JSON.stringify([
       '--question', 'does the flag reach an agent that cannot use it?',
       '--scope', 'src/**',
       '--scope-new', 'src/new-file.mjs',
-    ])});
+    ])}); } catch (err) { process.exitCode = err.exitCode || 1; }
 `;
     const output = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
       encoding: 'utf8',

@@ -2,6 +2,7 @@
 /**
  * Runs one delegated Codex job end to end:
  *   node run-codex.mjs --agent <codex-scout|codex-build|codex-review> [options] < task.txt
+ *   codex-bridge run --agent <codex-scout|codex-build|codex-review> [options] --task-file task.txt
  *
  * Options:
  *   --agent     codex-scout | codex-build | codex-review   (required)
@@ -13,7 +14,7 @@
  *   --mode      uncommitted | base:<branch> | commit:<sha>, codex-review only
  *   --continue  acknowledge that this repo+slug already has runs (required if it does)
  *
- * The operator's task text arrives on stdin, verbatim.
+ * The operator's task text arrives verbatim through stdin or --task-file.
  *
  * Why this is a script and not a list of steps inside an agent prompt: a prompt can be
  * silently not followed, and twice it wasn't — one dispatcher reviewed the diff itself
@@ -51,6 +52,7 @@ import { writeFailure } from './write-meta.mjs';
 import { setWorkerDir, getRun, emitReply } from './runner/run-context.mjs';
 import { launcher } from './runner/launcher.mjs';
 import { worker } from './runner/worker.mjs';
+import { RunnerUsageError } from './runner/args.mjs';
 
 export { parseArgs } from './runner/args.mjs';
 export { runsPrefixInside, worktreeSnapshot } from './runner/git-state.mjs';
@@ -58,8 +60,6 @@ export { runsPrefixInside, worktreeSnapshot } from './runner/git-state.mjs';
 // `--worker <runDir>` and nothing else: the worker takes its whole order from worker.json in
 // that folder, so a half-parsed command line cannot make the two halves disagree about which
 // run they are working on.
-const WORKER_DIR = process.argv[2] === '--worker' ? process.argv[3] : null;
-
 /**
  * Only a direct call is a run. Imported — which is how the tests reach parseArgs(),
  * runsPrefixInside() and worktreeSnapshot() — this file must do nothing at all: no argument
@@ -68,8 +68,6 @@ const WORKER_DIR = process.argv[2] === '--worker' ? process.argv[3] : null;
  */
 const invokedDirectly =
   process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
-
-setWorkerDir(WORKER_DIR);
 
 // A crash of the runner itself still has to read as a FAIL, and that FAIL still has to
 // be backed by meta.json — otherwise there would be a second path by which a reply
@@ -104,10 +102,28 @@ if (invokedDirectly) {
   });
 }
 
-if (invokedDirectly) {
-  if (WORKER_DIR) {
-    worker(WORKER_DIR);
-  } else {
-    launcher();
+/**
+ * The package command and the historical file entry both cross this boundary. Keeping argv
+ * explicit prevents the public command from reconstructing or normalizing runner flags, while
+ * the worker sentinel remains private to the direct file invocation spawned by launcher.mjs.
+ */
+export async function runCodex(argv) {
+  const workerDir = argv[0] === '--worker' ? argv[1] : null;
+  setWorkerDir(workerDir);
+  try {
+    if (workerDir) return worker(workerDir);
+    return await launcher(argv);
+  } catch (err) {
+    if (err instanceof RunnerUsageError) return err.exitCode;
+    throw err;
   }
+}
+
+if (invokedDirectly) {
+  runCodex(process.argv.slice(2)).then((exitCode) => {
+    if (exitCode !== undefined) process.exitCode = exitCode;
+  }, (err) => {
+    // Preserve the direct entry's artifact-backed crash path for asynchronous launcher failures.
+    queueMicrotask(() => { throw err; });
+  });
 }

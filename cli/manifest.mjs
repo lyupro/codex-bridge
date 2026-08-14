@@ -115,11 +115,15 @@ export function rulesPlan(host, packageRoot = PACKAGE_ROOT) {
 
 export async function fileFingerprint(absolutePath) {
   try {
-    return createHash('sha256').update(await fs.readFile(absolutePath)).digest('hex');
+    return contentFingerprint(await fs.readFile(absolutePath));
   } catch (err) {
     if (err.code === 'ENOENT') return null;
     throw err;
   }
+}
+
+export function contentFingerprint(content) {
+  return createHash('sha256').update(content).digest('hex');
 }
 
 function targetBase(host, mapping) {

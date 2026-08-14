@@ -22,6 +22,10 @@ codexb install                  # the short name, same command
 
 Two other entry points reach the same command: `npx @lyupro/codex-bridge install` for a one-off run without a global install, and `node bin/codex-bridge.mjs install` from a clone. Every command below works through all three.
 
+Shipped agents invoke delegated runs through `codex-bridge run`. This is a permission contract,
+not a style choice: the stable package command lets host permission rules match the invocation
+without exposing an installation-specific absolute path and prompting on every delegation.
+
 Use `--scope project` to install the Claude Code-facing files under `<repo>/.claude`; the default user scope uses `~/.claude`.
 
 Installation has two roots:
@@ -56,7 +60,7 @@ If a global install and a clone coexist, you have two package copies. `codex-bri
 - **Every run leaves an audit folder.** The verbatim task, scope, before/after git state, events, report, verdict, and reason remain together.
 - **Zero runtime dependencies and zero build steps.** The package is plain `.mjs` on the Node.js standard library.
 
-The current suite contains **604 automated tests: 603 passing and 1 skipped**.
+The current suite contains **644 automated tests: 643 passing and 1 skipped**.
 
 ## Verify
 
@@ -115,6 +119,7 @@ Transport files from runs at least **30 days** old are pruned automatically when
 | `permissions [add\|remove] [--scope user\|project] [--host <path>]` | Inspect or manage optional shell rules. |
 | `uninstall [--scope user\|project] [--host <path>] [--dry-run]` | Remove recorded package files while preserving run artifacts. |
 | `doctor [--scope user\|project] [--host <path>]` | Diagnose the selected host and Codex connection. |
+| `run <runner options> --task-file <path>` | Start or attach to a delegated run through the permission-stable package command. |
 | `projects [<name>] [--json]` | List projects or runs in the run store. |
 | `prune <project> [<run>] [--purge] [--older-than <age>] [-f] [--json]` | Plan or perform operator-confirmed cleanup. |
 | `unlock [<project>\|--all]` | Close records whose runner is gone. |

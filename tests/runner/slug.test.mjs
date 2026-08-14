@@ -105,7 +105,8 @@ test('an old generic-slug folder is found by order id and task fingerprint', () 
 test('an order id that sanitizes to empty or separator-only slug is refused', () => {
   const script = `
 import { parseArgs } from ${JSON.stringify(ARGS_MODULE)};
-parseArgs(JSON.parse(process.env.CODEX_SLUG_ARGS));
+try { parseArgs(JSON.parse(process.env.CODEX_SLUG_ARGS)); }
+catch (err) { process.exitCode = err.exitCode || 1; }
 `;
 
   for (const orderId of ['...', '___', '   ']) {
