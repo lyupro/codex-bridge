@@ -25,6 +25,7 @@ import {
   withSettingsRun,
 } from './settings-merge.mjs';
 import { addRulesOwner, readRulesRegistry } from './rules-owners.mjs';
+import { addPermissionRules } from './permissions.mjs';
 import { readRunConfig, retentionNotice } from '../src/home/lib/run-config.mjs';
 
 const WARNING = '\u001b[33m';
@@ -158,6 +159,13 @@ async function installInRun({ host, dryRun = false, force = false, packageRoot, 
   }
   const hookResults = [];
   for (const { spec } of targets) hookResults.push(await mergeHook(host.settingsPath, spec));
+  // Uninstall has always removed these rules, and install never granted them — so removal took
+  // away what installation never gave. Without the rule the host refuses the package command,
+  // and the 2026-08-15 `cartoons-r136-scout-lock-scope` order shows what a dispatcher does next:
+  // it goes looking for a way around, down to the absolute path to run-codex.mjs that Plan_41
+  // removed. The rule follows the scope of the install, because host.settingsPath already is the
+  // scope — a --scope project install must not reach into the operator's global config.
+  const permissionResult = dryRun ? { added: 0 } : await addPermissionRules(host.settingsPath);
   const fingerprints = {};
   for (const item of plan) {
     fingerprints[item.root] ??= {};
@@ -188,7 +196,11 @@ async function installInRun({ host, dryRun = false, force = false, packageRoot, 
   });
   return {
     exitCode: 0,
-    output: retentionOutput(configuredRetentionLine, `Installed ${plan.length + 1} files and registered the ${targets.map(({ definition }) => definition.event).join(' and ')} hooks.`),
+    output: retentionOutput(
+      configuredRetentionLine,
+      `Installed ${plan.length + 1} files and registered the ${targets.map(({ definition }) => definition.event).join(' and ')} hooks.`
+        + `\nGranted ${permissionResult.added} permission rule(s) in ${host.settingsPath} so the host runs the package command without asking.`,
+    ),
   };
 }
 

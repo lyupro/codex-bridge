@@ -16,6 +16,7 @@ import {
   readInstallRecord,
   recordTarget,
 } from '../../cli/manifest.mjs';
+import { inspectPermissions, PERMISSION_RULES } from '../../cli/permissions.mjs';
 import { RULES_REGISTRY_NAME } from '../../cli/rules-owners.mjs';
 import { uninstall } from '../../cli/uninstall.mjs';
 import { update } from '../../cli/update.mjs';
@@ -285,4 +286,43 @@ test('invalid settings aborts before copying any package file', async (t) => {
   await assert.rejects(() => install({ host }), /cannot parse/);
   assert.equal(await fs.readFile(host.settingsPath, 'utf8'), '{ broken');
   assert.deepEqual(await allFiles(host.root), ['settings.json']);
+});
+
+// Uninstall removed these rules long before install granted them, so removal took away what
+// installation never gave — and a host without the rule refuses the package command. The
+// 2026-08-15 `cartoons-r136-scout-lock-scope` order shows the cost: the dispatcher answered the
+// refusal by hunting for the absolute path to run-codex.mjs that Plan_41 had removed.
+test('installing grants the permission rules in the scope it installed into', async (t) => {
+  const { host } = await fixture(t);
+  await install({ host });
+  const { settings } = await inspectPermissions(host.settingsPath);
+  for (const rule of PERMISSION_RULES.allow) assert.ok(settings.permissions.allow.includes(rule), rule);
+  for (const rule of PERMISSION_RULES.deny) assert.ok(settings.permissions.deny.includes(rule), rule);
+});
+
+test('installing twice does not duplicate a permission rule', async (t) => {
+  const { host } = await fixture(t);
+  await install({ host });
+  await install({ host, force: true });
+  const { settings } = await inspectPermissions(host.settingsPath);
+  const [first] = PERMISSION_RULES.allow;
+  assert.equal(settings.permissions.allow.filter((rule) => rule === first).length, 1);
+});
+
+test('a dry run grants nothing', async (t) => {
+  const { host } = await fixture(t);
+  const result = await install({ host, dryRun: true });
+  assert.equal(result.exitCode, 0);
+  const { settings } = await inspectPermissions(host.settingsPath);
+  const granted = settings.permissions?.allow ?? [];
+  for (const rule of PERMISSION_RULES.allow) assert.ok(!granted.includes(rule), rule);
+});
+
+test('uninstall takes back exactly what install granted', async (t) => {
+  const { host } = await fixture(t);
+  await install({ host });
+  await uninstall({ host });
+  const { settings } = await inspectPermissions(host.settingsPath);
+  const granted = settings.permissions?.allow ?? [];
+  for (const rule of PERMISSION_RULES.allow) assert.ok(!granted.includes(rule), rule);
 });
