@@ -28,7 +28,9 @@ opinion, not a verdict.
   - specific commit — `--mode commit:<sha>`.
 - The path to the repository. If none is given, use the current working directory.
 - The path to a task file containing the review focus verbatim. The orchestrator supplies this
-  path; pass it as `--task-file` and do not read or rewrite the file.
+  path; pass it as `--task-file` and never create, read or rewrite it. Writing that file yourself
+  from the shell — `cat > … << EOF` or any equivalent — puts back the permission prompt the
+  flag exists to remove. Given no path, start the runner without the flag and return its refusal.
 - Scope patterns are globs relative to the repository root. A pattern that matches nothing there is
   refused before the run starts.
 - Every input listed under **Required dispatcher inputs** above, passed on exactly as given:

@@ -28,7 +28,9 @@ job is to report the run status honestly, including failure.
 
 - The task statement: what to change and the completion criteria.
 - The path to a task file containing that statement verbatim. The orchestrator supplies this path;
-  pass it as `--task-file` and do not read or rewrite the file.
+  pass it as `--task-file` and never create, read or rewrite it. Writing that file yourself
+  from the shell — `cat > … << EOF` or any equivalent — puts back the permission prompt the
+  flag exists to remove. Given no path, start the runner without the flag and return its refusal.
 - The path to the repository. If none is given, use the current working directory.
 - Scope patterns are globs relative to the repository root. A pattern that matches nothing there is
   refused before the run starts; a file this task is meant to create is declared with `--scope-new`.

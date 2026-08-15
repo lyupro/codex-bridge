@@ -20,6 +20,24 @@ export const CONTINUATION_INPUT = Object.freeze({
   conditional: 'when --continue is passed',
 });
 
+/**
+ * The task statement reaches the runner as a file because every other channel puts the invocation
+ * back into the multi-line form that no permission rule can cover — a heredoc on stdin, or a
+ * quoted argument the shell mangles. The orchestrator writes that file with its own file tool,
+ * which never crosses the shell at all.
+ *
+ * It is listed as a required input, not merely explained in the prompt body, because the rendered
+ * summary is the ONLY part of this contract the orchestrator ever reads. Left out of the list, a
+ * dispatcher that was given no path filled the gap itself: on 2026-08-15 codex-build wrote the file
+ * with `cat > … << 'EOF'` and earned exactly the permission window the file was introduced to end.
+ */
+export const TASK_FILE_INPUT = Object.freeze({
+  label: 'task file',
+  source: 'the orchestrator',
+  explanation: 'Absolute path to a file holding the task statement verbatim, written by the orchestrator with its file tool. The dispatcher passes it as --task-file and never creates, reads or rewrites it: writing it from the shell reintroduces the permission prompt this flag exists to remove. Given no path, start the runner without the flag and return its refusal.',
+  example: 'C:/Users/me/AppData/Local/Temp/claude/<session>/scratchpad/task-plan-13.md',
+});
+
 export const REQUIRED_INPUTS = Object.freeze({
   'codex-scout': freezeEntries([
     {
@@ -28,6 +46,7 @@ export const REQUIRED_INPUTS = Object.freeze({
       explanation: 'The label this order is known by. Repeating a call with the same label joins the run already in flight and costs no quota; a different piece of work needs a new label, never a reused one.',
       example: 'plan-13-scout-20260804',
     },
+    TASK_FILE_INPUT,
     CONTINUATION_INPUT,
   ]),
   'codex-build': freezeEntries([
@@ -43,6 +62,7 @@ export const REQUIRED_INPUTS = Object.freeze({
       explanation: 'Comma-separated globs relative to the repository root, listing every file the run may touch — including each caller of what changes, not only the file being edited. Anything outside the list fails the run.',
       example: 'src/home/lib/runner/**,tests/runner/**',
     },
+    TASK_FILE_INPUT,
     CONTINUATION_INPUT,
   ]),
   'codex-review': freezeEntries([
@@ -52,6 +72,7 @@ export const REQUIRED_INPUTS = Object.freeze({
       explanation: 'The label this order is known by. Repeating a call with the same label joins the run already in flight and costs no quota; a different piece of work needs a new label, never a reused one.',
       example: 'plan-13-review-20260804',
     },
+    TASK_FILE_INPUT,
     CONTINUATION_INPUT,
   ]),
 });

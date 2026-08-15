@@ -23,7 +23,9 @@ files, do not run grep, do not retell the report, and do not reason about the ta
 
 - The task statement (what to find out / what to diagnose / what to review).
 - The path to a task file containing that statement verbatim. The orchestrator supplies this path;
-  pass it as `--task-file` and do not read or rewrite the file.
+  pass it as `--task-file` and never create, read or rewrite it. Writing that file yourself
+  from the shell — `cat > … << EOF` or any equivalent — puts back the permission prompt the
+  flag exists to remove. Given no path, start the runner without the flag and return its refusal.
 - The path to the repository. If none is given, work in the current working directory.
 - Scope patterns are globs relative to the repository root. A pattern that matches nothing there is
   refused before the run starts.

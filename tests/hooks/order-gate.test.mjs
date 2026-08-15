@@ -104,7 +104,11 @@ test('diagnosis appears only beneath the missing entry whose label has a candida
 
 test('a valid dispatcher call passes and keeps the last payload', async (t) => {
   const root = await fixture(t);
-  const input = payload('codex-build', 'order id: plan-13-build-20260804\nscope: src/home/hooks/order-gate.mjs');
+  const input = payload(
+    'codex-build',
+    'order id: plan-13-build-20260804\nscope: src/home/hooks/order-gate.mjs\n'
+      + 'task file: C:/Users/me/AppData/Local/Temp/claude/s/scratchpad/task-plan-13.md',
+  );
   const result = runGate(root, input);
   assert.equal(result.status, 0);
   assert.equal(result.stdout, '');
@@ -120,7 +124,8 @@ test('a conditional continuation grant is not an order-gate requirement', async 
     root,
     payload(
       'codex-build',
-      'order id: plan-13-build-20260804\nscope: src/home/hooks/order-gate.mjs\ncontinue: TODO',
+      'order id: plan-13-build-20260804\nscope: src/home/hooks/order-gate.mjs\n'
+        + 'task file: C:/Users/me/AppData/Local/Temp/claude/s/scratchpad/task-plan-13.md\ncontinue: TODO',
     ),
   );
   assert.equal(result.status, 0);

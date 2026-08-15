@@ -37,13 +37,13 @@ test('the immutable table lists each dispatcher input', () => {
     assert.equal(Object.isFrozen(entries), true);
     for (const entry of entries) assert.equal(Object.isFrozen(entry), true);
   }
-  assert.deepEqual(REQUIRED_INPUTS['codex-build'].map((entry) => entry.label), ['order id', 'scope', 'continue']);
+  assert.deepEqual(REQUIRED_INPUTS['codex-build'].map((entry) => entry.label), ['order id', 'scope', 'task file', 'continue']);
 });
 
 test('missingInputs reports every required value for every dispatcher', () => {
-  assert.deepEqual(missingInputs('codex-scout', '').map((entry) => entry.label), ['order id']);
-  assert.deepEqual(missingInputs('codex-build', '').map((entry) => entry.label), ['order id', 'scope']);
-  assert.deepEqual(missingInputs('codex-review', '').map((entry) => entry.label), ['order id']);
+  assert.deepEqual(missingInputs('codex-scout', '').map((entry) => entry.label), ['order id', 'task file']);
+  assert.deepEqual(missingInputs('codex-build', '').map((entry) => entry.label), ['order id', 'scope', 'task file']);
+  assert.deepEqual(missingInputs('codex-review', '').map((entry) => entry.label), ['order id', 'task file']);
 });
 
 test('template placeholders are missing even when their labels are present', () => {
@@ -51,8 +51,8 @@ test('template placeholders are missing even when their labels are present', () 
     'codex-build',
     'order id: <order id from the orchestrator>\nscope: TODO',
   );
-  assert.deepEqual(missing.map((entry) => entry.label), ['order id', 'scope']);
-  assert.deepEqual(missingInputs('codex-scout', 'order id: LABEL').map((entry) => entry.label), ['order id']);
+  assert.deepEqual(missing.map((entry) => entry.label), ['order id', 'scope', 'task file']);
+  assert.deepEqual(missingInputs('codex-scout', 'order id: LABEL').map((entry) => entry.label), ['order id', 'task file']);
 });
 
 test('diagnosis explains a candidate with a parenthesised qualifier', () => {
@@ -123,7 +123,11 @@ test('continuation grants reject placeholders and incomplete values', () => {
 
 test('valid values pass and the renderer uses the same entries', () => {
   assert.deepEqual(
-    missingInputs('codex-build', 'order id: plan-13-build-20260804\nscope: src/home/lib/runner/**,tests/runner/**'),
+    missingInputs(
+      'codex-build',
+      'order id: plan-13-build-20260804\nscope: src/home/lib/runner/**,tests/runner/**\n'
+        + 'task file: C:/Users/me/AppData/Local/Temp/claude/s/scratchpad/task-plan-13.md',
+    ),
     [],
   );
   // Rendered from the table rather than compared against copied literals: pass 2 writes this
