@@ -10,6 +10,7 @@ import path from 'node:path';
 import { AGENTS } from '../write-meta.mjs';
 import { ALLOWED_EFFORTS } from '../run-config.mjs';
 import { isAbsoluteTaskFilePath, requiredInputsFor } from '../required-inputs.mjs';
+import { parseTaskDocument } from './task-file.mjs';
 
 export class RunnerUsageError extends Error {
   constructor(message) {
@@ -23,7 +24,7 @@ export function die(message) {
   throw new RunnerUsageError(message);
 }
 
-export function readTaskText(opts) {
+export function readTaskDocument(opts) {
   const stdinText = process.stdin.isTTY ? '' : fs.readFileSync(0, 'utf8');
   if (opts['task-file'] !== undefined) {
     if (stdinText.trim()) {
@@ -42,10 +43,26 @@ export function readTaskText(opts) {
       die(`task file from --task-file could not be read: ${err.message}`);
     }
     if (!fileText.trim()) die(`task file from --task-file is empty: ${taskFile}`);
-    return fileText.trim();
+    let document;
+    try {
+      document = parseTaskDocument(fileText);
+    } catch (err) {
+      die(`${taskFile}: ${err.message}`);
+    }
+    if (document.questions.length && opts.questions?.length) {
+      die('questions were supplied through both --question and the task file; choose exactly one channel');
+    }
+    if (document.verify !== undefined && opts.verify !== undefined) {
+      die('verification command was supplied through both --verify and the task file; choose exactly one channel');
+    }
+    return document;
   }
   if (!stdinText.trim()) die('task text on stdin is empty');
-  return stdinText.trim();
+  try {
+    return parseTaskDocument(stdinText);
+  } catch (err) {
+    die(err.message);
+  }
 }
 
 function requiredInput(agentType, label) {
@@ -114,13 +131,11 @@ export function parseArgs(argv) {
     );
   }
   if (opts.agent === 'codex-scout') {
-    if (!opts.questions?.length) {
-      die(
-        '--question is required for codex-scout: repeat it once for every sub-question the orchestrator gave. ' +
-          'The runner will not infer questions from the task text; no quota was spent.',
-      );
-    }
-    if (opts.questions.some((question) => !String(question).trim())) {
+    // The requirement itself moved to the launcher, which is the first point that has seen both
+    // sources: questions now arrive either as flags or as a section of the task file, and this
+    // check runs before either file or stdin has been read. Only the shape of a supplied flag is
+    // still judged here.
+    if (opts.questions?.some((question) => !String(question).trim())) {
       die('--question must not be empty for codex-scout; no quota was spent');
     }
   }

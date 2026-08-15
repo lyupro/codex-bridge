@@ -30,7 +30,8 @@ import {
 import { attach } from './attach.mjs';
 import { setRun } from './run-context.mjs';
 import { loadRunEnv, RUN_ENV } from './run-env.mjs';
-import { parseArgs, die, readTaskText } from './args.mjs';
+import { parseArgs, die } from './args.mjs';
+import { settleTaskInput } from './task-input.mjs';
 import { parseContinuationGrant } from '../required-inputs.mjs';
 import { continuationRefusal } from './continuation.mjs';
 import { SCHEMAS } from './schemas.mjs';
@@ -48,7 +49,6 @@ import { validateScope } from './scope-check.mjs';
  * below is the CLI entry one level up — not this module, which has no command line of its own.
  */
 const RUNNER_ENTRY = fileURLToPath(new URL('../run-codex.mjs', import.meta.url));
-
 export const questionsFromFlags = (questionTexts = []) =>
   questionTexts.map((text, i) => ({ id: `Q${i + 1}`, text }));
 
@@ -95,8 +95,7 @@ export const runDirPath = (root, slug, runStamp = stamp()) => {
 export async function launcher(argv = process.argv.slice(2)) {
   loadRunEnv();
   const opts = parseArgs(argv);
-  const taskText = readTaskText(opts);
-
+  const taskText = settleTaskInput(opts);
   const topLevel = git(opts.repo, ['rev-parse', '--show-toplevel']);
   const isGitRepo = topLevel.status === 0;
   const repoRoot = isGitRepo ? topLevel.stdout.trim() : opts.repo;

@@ -46,15 +46,19 @@ const COORDINATES_ONLY = 'packages/x/src/source.ts:60-79, registry.ts:14';
 
 // --- explicit scout questions --------------------------------------------------------
 
-test('codex-scout refuses before launch without --question', () => {
-  const { code, stderr } = parseArgsInChild([
+// The requirement itself now lives in the launcher, which is the first point that has seen both
+// sources — flags and the task file's Questions section. Argument parsing runs before either the
+// file or stdin is read, so refusing here would reject a perfectly good file-carried order.
+// The refusal is covered end-to-end in tests/runner/task-file.test.mjs.
+test('parsing arguments no longer decides whether a scout has its questions', () => {
+  const { code, opts } = parseArgsInChild([
     '--agent',
     'codex-scout',
     '--order-id',
     'ord-1',
   ]);
-  assert.equal(code, 2);
-  assert.match(stderr, /--question is required/);
+  assert.equal(code, 0);
+  assert.equal(opts.questions, undefined);
 });
 
 test('repeatable flags build questions.json entries in the given order', () => {
