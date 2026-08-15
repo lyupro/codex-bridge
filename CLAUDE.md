@@ -70,6 +70,19 @@ read that file BEFORE the first edit, not from memory.**
   permission prompt. For the same reason the task statement travels as `--task-file` (absolute path,
   written by the orchestrator) rather than a heredoc, and `task file` is a required dispatcher input
   the order gate enforces. `tests/agents-command-boundary.test.mjs` fails on any regression.
+- **No free text reaches the command line at all.** Scout questions and the verification command
+  live in the task file, under `Questions` and `Verify` headings; the dispatchers no longer pass
+  `--question` or `--verify`. One list of forbidden sequences — `src/home/lib/shell-unsafe.mjs` — is
+  read by all three layers that police this: the order gate, the runner and
+  `tests/shell-unsafe-arguments.test.mjs`, which also checks the examples in `docs/overview.md` and
+  `README.md` for continuations and relative task-file paths. Never restate the list anywhere.
+- **A refused dispatcher fails; it never routes around the refusal.** No `run-codex.mjs` by path, no
+  interpreter, no retry in the other shell, and never advice to grant a rule on an internal file.
+  The self-execution block names the command only — it once said "start a run through
+  run-codex.mjs", and a dispatcher followed that sentence into three unmatchable calls in a row.
+- **`install` grants the permission rules in the scope it installed into**, global or `--scope
+  project`. `uninstall` removed them long before install granted them, and a host without the rule
+  refuses the package command.
 - **Agent and command markdown is placeholder-processed** on install: `{{CODEX_BRIDGE_DIR}}` becomes
   the installed runner directory, `~/.lyupro/.codex-bridge/lib/` — not the directory the markdown
   itself lands in. Keep the placeholder, never a real path.
