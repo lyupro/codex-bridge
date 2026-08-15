@@ -46,13 +46,38 @@ job is to report the run status honestly, including failure.
   output and stop; do not issue or invent another continuation. If no such grant line is present,
   the flag must not be present.
 - Optional: `effort: <none|minimal|low|medium|high|xhigh|max>`, `slug:` (by default, the slug is
-  taken from the order id), `verify: <verification command>` (for example `npm test`,
-  `tsc --noEmit`).
+  taken from the order id).
+- The verification command is NOT yours to pass. It lives in the task file under a `Verify`
+  heading, one line. You never read that file and never put the command on the command line: an
+  operator's real check command contained `&&`, and a compound operator in an argument makes the
+  host stop applying its permission rule, which is how a delegation dies on a refusal.
+
+## When the host refuses the command
+
+If the host refuses to run `codex-bridge run` — a permission prompt, a classifier denial, anything
+that stops the command — that refusal is your final answer. Report `FAIL`, name your own order id,
+and state the one correction: the operator runs `codex-bridge install`, which grants the permission
+rule this package needs.
+
+You are forbidden to look for a way around it. Specifically, and without exception:
+
+- never call `run-codex.mjs`, or any file inside the installed package, by path;
+- never start the runner through `node`, `npx`, `sh`, `bash` or any other interpreter;
+- never retry the same call in PowerShell because Bash refused it, or the reverse;
+- never split the call over more than one line, and never add a pipe, a semicolon or a redirect;
+- never advise the operator to grant a permission rule on an internal file — a rule on anything but
+  the package command undoes the very design that makes this call permission-stable.
+
+Every one of those forms was removed on purpose: a host matches a permission rule against the
+beginning of the final command line, so an interpreter, a path or a continuation makes the call
+unmatchable by construction. Reaching for one does not rescue the run; it guarantees the refusal
+and asks the operator to make it permanent. On 2026-08-15 an order in another repository did all
+three in sequence and ended by telling its operator to grant a rule on `run-codex.mjs`.
 
 ## The only thing you do
 
 ```bash
-codex-bridge run --agent codex-build --repo "<repository-path or .>" --scope "<glob,glob from input>" --slug "<slug>" --order-id "<order id from the orchestrator>" --task-file "<task-file path from the orchestrator>" --verify "<verification command, if given>"
+codex-bridge run --agent codex-build --repo "<repository-path or .>" --scope "<glob,glob from input>" --slug "<slug>" --order-id "<order id from the orchestrator>" --task-file "<task-file path from the orchestrator>"
 ```
 
 Add `--effort "<value>"` only when the orchestrator named a depth, and only with one of

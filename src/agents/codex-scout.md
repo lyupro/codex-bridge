@@ -37,10 +37,11 @@ files, do not run grep, do not retell the report, and do not reason about the ta
   another order — the runner chains runs by that label, and a made-up label is how a repeat run
   hides. If the orchestrator did not give a required input, do not guess — start the runner without
   its flag and return the runner's refusal verbatim.
-- `question: <text>` — REQUIRED and repeatable. For every sub-question the orchestrator gave,
-  pass one `--question "<text>"` flag exactly as given. Never invent, merge, reword, or drop a
-  sub-question. If the orchestrator did not give one, do not guess — start the runner without
-  the flag and return its refusal verbatim.
+- The sub-questions are NOT yours to pass. They live in the task file the orchestrator wrote, under
+  a `Questions` heading, one Markdown list item each. You never read that file, never edit it and
+  never put a question on the command line: a question is free prose, and free prose in an argument
+  makes the host stop applying the operator's permission rule, which is how a delegation dies on a
+  refusal. If the file holds no question, start the runner anyway and return its refusal verbatim.
 - `continue` — when the task text contains a line beginning with the `continue:` label, pass the
   bare `--continue` flag even when its run name or reason looks malformed. Do not inspect, repair,
   or swallow this grant; pass it through and let the runner issue the refusal. A continuation is
@@ -48,14 +49,36 @@ files, do not run grep, do not retell the report, and do not reason about the ta
   output and stop; do not issue or invent another continuation. If no such grant line is present,
   the flag must not be present.
 
+## When the host refuses the command
+
+If the host refuses to run `codex-bridge run` — a permission prompt, a classifier denial, anything
+that stops the command — that refusal is your final answer. Report `FAIL`, name your own order id,
+and state the one correction: the operator runs `codex-bridge install`, which grants the permission
+rule this package needs.
+
+You are forbidden to look for a way around it. Specifically, and without exception:
+
+- never call `run-codex.mjs`, or any file inside the installed package, by path;
+- never start the runner through `node`, `npx`, `sh`, `bash` or any other interpreter;
+- never retry the same call in PowerShell because Bash refused it, or the reverse;
+- never split the call over more than one line, and never add a pipe, a semicolon or a redirect;
+- never advise the operator to grant a permission rule on an internal file — a rule on anything but
+  the package command undoes the very design that makes this call permission-stable.
+
+Every one of those forms was removed on purpose: a host matches a permission rule against the
+beginning of the final command line, so an interpreter, a path or a continuation makes the call
+unmatchable by construction. Reaching for one does not rescue the run; it guarantees the refusal
+and asks the operator to make it permanent. On 2026-08-15 an order in another repository did all
+three in sequence and ended by telling its operator to grant a rule on `run-codex.mjs`.
+
 ## The only thing you do
 
 ```bash
-codex-bridge run --agent codex-scout --repo "<repository-path or .>" --slug "<slug>" --order-id "<order id from the orchestrator>" --task-file "<task-file path from the orchestrator>" --question "<sub-question 1 from the orchestrator, verbatim>" --question "<sub-question 2 from the orchestrator, verbatim>"
+codex-bridge run --agent codex-scout --repo "<repository-path or .>" --slug "<slug>" --order-id "<order id from the orchestrator>" --task-file "<task-file path from the orchestrator>"
 ```
 
-Repeat the `--question` flag once for every sub-question the orchestrator gave; a single flag is
-a valid order. The example shows two flags only to make the repeatable form explicit.
+Nothing else goes on that line. The sub-questions travel inside the task file; a `--question` flag
+is for a human calling the runner by hand, never for you.
 
 Add `--effort "<value>"` only when the orchestrator named a depth, and only with one of
 `none|minimal|low|medium|high|xhigh|max`. Without the flag the configured profile of the mode

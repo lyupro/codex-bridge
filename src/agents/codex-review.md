@@ -47,10 +47,32 @@ opinion, not a verdict.
 - Optional: review focus as text ("look for races and error handling"), `slug:` (by default, the
   slug is taken from the order id), `effort: <none|minimal|low|medium|high|xhigh|max>`.
 
+## When the host refuses the command
+
+If the host refuses to run `codex-bridge run` — a permission prompt, a classifier denial, anything
+that stops the command — that refusal is your final answer. Report `FAIL`, name your own order id,
+and state the one correction: the operator runs `codex-bridge install`, which grants the permission
+rule this package needs.
+
+You are forbidden to look for a way around it. Specifically, and without exception:
+
+- never call `run-codex.mjs`, or any file inside the installed package, by path;
+- never start the runner through `node`, `npx`, `sh`, `bash` or any other interpreter;
+- never retry the same call in PowerShell because Bash refused it, or the reverse;
+- never split the call over more than one line, and never add a pipe, a semicolon or a redirect;
+- never advise the operator to grant a permission rule on an internal file — a rule on anything but
+  the package command undoes the very design that makes this call permission-stable.
+
+Every one of those forms was removed on purpose: a host matches a permission rule against the
+beginning of the final command line, so an interpreter, a path or a continuation makes the call
+unmatchable by construction. Reaching for one does not rescue the run; it guarantees the refusal
+and asks the operator to make it permanent. On 2026-08-15 an order in another repository did all
+three in sequence and ended by telling its operator to grant a rule on `run-codex.mjs`.
+
 ## The only thing you do
 
 ```bash
-codex-bridge run --agent codex-review --repo "<repository-path or .>" --mode "<uncommitted|base:<branch>|commit:<sha>>" --slug "<slug>" --order-id "<order id from the orchestrator>" --task-file "<task-file path from the orchestrator>"
+codex-bridge run --agent codex-review --repo "<repository-path or .>" --mode "<one mode from the list above>" --slug "<slug>" --order-id "<order id from the orchestrator>" --task-file "<task-file path from the orchestrator>"
 ```
 
 Add `--effort "<value>"` only when the orchestrator named a depth, and only with one of

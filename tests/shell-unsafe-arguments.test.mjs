@@ -54,9 +54,9 @@ test('dispatcher command arguments contain no new shell-unsafe sequences', async
     const source = await fs.readFile(path.join(AGENTS_DIR, name), 'utf8');
     findings.push(...unsafeArguments(source, name));
   }
-  // Step 3 removes this pre-existing --mode placeholder; until then, freeze the known finding
-  // so every additional unsafe argument fails without breaking the required full suite.
-  assert.deepEqual(findings, [{ name: 'codex-review.md', flag: '--mode', sequence: '|' }]);
+  // The freeze that lived here named a --mode example spelling its alternatives with pipes. The
+  // example now carries one concrete value, so nothing is allowed through any more.
+  assert.deepEqual(findings, []);
 });
 
 test('the dispatcher guard catches mutations using every shared forbidden sequence', () => {
@@ -83,4 +83,38 @@ test('the order gate denies an unsafe labelled value and passes clean labelled v
   const passed = runGate(root, `${base}scope: src/**,tests/**`);
   assert.equal(passed.status, 0);
   assert.equal(passed.stdout, '');
+});
+
+// Documentation examples were covered by nothing at all, and the commit that made an absolute
+// --task-file mandatory turned four of them into instant refusals without a single test noticing.
+const DOC_FILES = ['docs/overview.md', 'README.md'];
+
+function docFindings(source, name) {
+  const findings = [...unsafeArguments(source, name)];
+  for (const block of commandBlocks(source)) {
+    if (!block.includes('codex-bridge run')) continue;
+    if (/\\\r?\n/.test(block)) findings.push({ name, flag: '<line continuation>', sequence: '\\' });
+    for (const match of block.matchAll(/--task-file(?:=|\s+)("[^"\r\n]*"|'[^'\r\n]*'|[^\s\r\n]+)/g)) {
+      const value = match[1].replace(/^["']|["']$/g, '');
+      const absolute = value.startsWith('/') || /^[A-Za-z]:[\/]/.test(value) || value.startsWith('<');
+      if (!absolute) findings.push({ name, flag: '--task-file', sequence: value });
+    }
+  }
+  return findings;
+}
+
+test('documented command examples stay runnable as written', async () => {
+  const findings = [];
+  for (const name of DOC_FILES) {
+    const source = await fs.readFile(path.join(ROOT, name), 'utf8');
+    findings.push(...docFindings(source, name));
+  }
+  assert.deepEqual(findings, []);
+});
+
+test('the documentation guard catches a relative task file and a continued line', () => {
+  const relative = '```bash\ncodex-bridge run --task-file task.md\n```';
+  assert.deepEqual(docFindings(relative, 'doc.md'), [{ name: 'doc.md', flag: '--task-file', sequence: 'task.md' }]);
+  const continued = '```bash\ncodex-bridge run \\\\\n  --task-file /abs/task.md\n```';
+  assert.deepEqual(docFindings(continued, 'doc.md'), [{ name: 'doc.md', flag: '<line continuation>', sequence: '\\' }]);
 });

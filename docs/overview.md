@@ -40,39 +40,26 @@ manual use, but stdin and `--task-file` cannot be supplied together.
 Reconnaissance:
 
 ```bash
-codex-bridge run \
-  --agent codex-scout \
-  --repo . \
-  --slug auth-flow \
-  --order-id order-42 \
-  --effort medium \
-  --task-file task.md \
-  --question "Trace the authentication flow"
+codex-bridge run --agent codex-scout --repo . --slug auth-flow --order-id order-42 --effort medium --task-file /abs/path/to/task.md
 ```
+
+One line, absolute path, no free text. The sub-questions live inside that file, under a `Questions`
+heading, one Markdown list item each — a host stops applying a permission rule the moment an
+argument carries prose with a metacharacter in it.
 
 Implementation:
 
 ```bash
-codex-bridge run \
-  --agent codex-build \
-  --repo . \
-  --slug auth-flow \
-  --order-id order-42 \
-  --scope "src/auth/**,tests/auth/**" \
-  --verify "npm test" \
-  --task-file task.md
+codex-bridge run --agent codex-build --repo . --slug auth-flow --order-id order-42 --scope "src/auth/**,tests/auth/**" --task-file /abs/path/to/task.md
 ```
+
+The verification command lives in the task file too, on one line under a `Verify` heading. An
+operator's real check command contained `&&`, which is exactly what unmatches the rule.
 
 Reviewing uncommitted changes:
 
 ```bash
-codex-bridge run \
-  --agent codex-review \
-  --repo . \
-  --slug auth-flow-review \
-  --order-id order-42-review \
-  --mode uncommitted \
-  --task-file review-task.md
+codex-bridge run --agent codex-review --repo . --slug auth-flow-review --order-id order-42-review --mode uncommitted --task-file /abs/path/to/review-task.md
 ```
 
 `--agent` and `--order-id` are required. `--repo` defaults to the current directory, `--slug` is
@@ -141,14 +128,7 @@ the result is a refusal before attachment, directory creation, and quota, not an
 presented as the result of a new order:
 
 ```bash
-codex-bridge run \
-  --agent codex-build \
-  --repo . \
-  --slug auth-flow \
-  --order-id order-42 \
-  --continue \
-  --scope "src/auth/**,tests/auth/**" \
-  --task-file follow-up.md
+codex-bridge run --agent codex-build --repo . --slug auth-flow --order-id order-42 --continue --scope "src/auth/**,tests/auth/**" --task-file /abs/path/to/follow-up.md
 ```
 
 where `follow-up.md` contains a line with the run name and reason:

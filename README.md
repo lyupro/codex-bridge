@@ -119,7 +119,7 @@ Transport files from runs at least **30 days** old are pruned automatically when
 | `permissions [add\|remove] [--scope user\|project] [--host <path>]` | Inspect or manage optional shell rules. |
 | `uninstall [--scope user\|project] [--host <path>] [--dry-run]` | Remove recorded package files while preserving run artifacts. |
 | `doctor [--scope user\|project] [--host <path>]` | Diagnose the selected host and Codex connection. |
-| `run <runner options> --task-file <path>` | Start or attach to a delegated run through the permission-stable package command. |
+| `run <runner options> --task-file <abs path>` | Start or attach to a delegated run through the permission-stable package command. The task file carries the statement, the scout questions and the verification command; its path must be absolute. Piping the statement on stdin is the alternative channel, and the two cannot be combined. |
 | `projects [<name>] [--json]` | List projects or runs in the run store. |
 | `prune <project> [<run>] [--purge] [--older-than <age>] [-f] [--json]` | Plan or perform operator-confirmed cleanup. |
 | `unlock [<project>\|--all]` | Close records whose runner is gone. |
