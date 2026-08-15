@@ -425,6 +425,8 @@ dilutes what actually must be followed.
 - contains `RUN=` with an existing directory;
 - is not issued over a live or abandoned run without a verdict;
 - **names every live `codex-build` run for this project, not only the one being quoted**;
+- **reports a run whose `order_id` is the one the dispatcher was ordered**, read from the
+  dispatcher's own transcript;
 - is confirmed by `meta.json`;
 - does not declare a status that contradicts `meta.json.status`.
 
@@ -440,6 +442,21 @@ The guard can stop a turn because the promise “the run is still active” is n
 worktree is occupied by worker. Form errors are blocked a limited number of times; for external
 state, once attempts are exhausted, the guard ends the turn through `continue: false` so an
 unconfirmed response cannot pass silently.
+
+## Order gate
+
+`hooks/order-gate.mjs` is the `PreToolUse` hook on the tool that launches a dispatcher. It refuses
+the call while it can still be corrected for free: when a required input is missing or still a
+template placeholder, when a labelled value carries a shell sequence that would make the command
+unmatchable by a permission rule, and when the ordered order id already belongs to a run whose task
+text differs — the collision the runner also refuses, caught one step earlier, before Codex is
+invoked at all. An explicit continuation grant is the one case that passes.
+
+The gate and the runner share one definition of which task owns an order id
+(`lib/runner/order-owner.mjs`); a second copy would drift, and drift between two such lists is what
+this package keeps paying for. Uncertain disk state — an unreadable task file, no runs directory
+yet, a run folder written a moment before its `status.json` — passes silently, per folder rather
+than per directory, so one stray folder cannot disarm the check for every other order.
 
 ## Worktree lock
 

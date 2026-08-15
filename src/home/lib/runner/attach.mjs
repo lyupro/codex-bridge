@@ -4,6 +4,7 @@ import path from 'node:path';
 import { readJsonFileSync } from '../json-file.mjs';
 import { IDENTITY_DEAD, IDENTITY_FOREIGN, processAlive, processIdentity } from '../process-identity.mjs';
 import { exitCodeFor, writeFailure, chainRuns } from '../write-meta.mjs';
+import { conflictingOrderOwner, runsForOrder } from './order-owner.mjs';
 
 // The attach call is the only process that waits for a worker it did not spawn. Keeping that
 // wait here leaves the launcher free to return before a caller's time ceiling kills it.
@@ -106,16 +107,13 @@ export async function waitForReply(runDir, workerPid, status = {}) {
 export async function attach({ runsRoot, repo, slug, taskHash, orderId, chain, isContinue, noWait } = {}) {
   if (isContinue) return null;
   const runs = chain || chainRuns(runsRoot, repo, slug, taskHash, orderId);
-  const sameOrder = runs
+  const runRecords = runs
     .map((run) => ({ run, status: readJsonFile(path.join(runsRoot, run, 'status.json')) }))
-    .filter(({ status }) => status && String(status.order_id ?? '') === String(orderId ?? ''));
+    .filter(({ status }) => status);
+  const sameOrder = runsForOrder(runRecords, orderId);
 
-  // On 2026-08-15 plan42-run3 reused plan42-run2's order id and was handed run2's verdict.
-  // Refuse only when both fingerprints are known so runs predating task_hash keep attaching.
-  const owner = sameOrder.at(-1);
-  const ownerHash = String(owner?.status.task_hash ?? '').trim().toLowerCase();
-  const incomingHash = String(taskHash ?? '').trim().toLowerCase();
-  if (ownerHash && incomingHash && ownerHash !== incomingHash) {
+  const owner = conflictingOrderOwner(runRecords, orderId, taskHash);
+  if (owner) {
     const ownerDir = path.join(runsRoot, owner.run);
     console.log(
       `Order id collision: ${JSON.stringify(String(orderId ?? ''))} already belongs to run folder ${ownerDir} ` +

@@ -29,6 +29,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { runOrderMismatch, transcriptOrderId } from '../lib/dispatcher-order.mjs';
 import { readJsonFileSync } from '../lib/json-file.mjs';
 import { resolveProjectRunsDir } from '../lib/runner/project-dir.mjs';
 import { runsRoot } from '../lib/runner/runs-root.mjs';
@@ -181,6 +182,7 @@ const stopText = (headline, observed, runStatus, folder = runDir) => {
       'command with the same --order-id attaches to this run rather than starting another.',
   ].join(' ');
 };
+const orderedOrderId = transcriptOrderId(input.agent_transcript_path);
 
 if (!runDir && !claimed) {
   // A reply that pronounces nothing cannot contradict the disk. It stays on the old, softer path:
@@ -264,12 +266,24 @@ if (silentLiveSibling) {
  * before status.json existed have none: behave exactly as before (meta.json decides).
  */
 const statusPath = path.join(runDir, 'status.json');
+let runStatus = null;
 if (fs.existsSync(statusPath)) {
-  let runStatus = null;
   try {
     runStatus = readJsonFileSync(statusPath);
   } catch {
     runStatus = null;
+  }
+  const mismatch = runOrderMismatch(orderedOrderId, runStatus, runDir);
+  if (mismatch) {
+    blockState(
+      mismatch.reason,
+      stopText(
+        `The reply guard stopped the session: the dispatcher returned another order's run ` +
+          `${MAX_STATE_BLOCKS} times.`,
+        mismatch.observed,
+        runStatus,
+      ),
+    );
   }
   if (runStatus?.state === 'running') {
     if (isPidAlive(runStatus.pid)) {

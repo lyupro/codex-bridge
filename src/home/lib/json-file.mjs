@@ -7,7 +7,7 @@
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 
-function parseJson(file, raw) {
+export function parseJsonText(file, raw) {
   const text = raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw;
   try {
     return JSON.parse(text);
@@ -17,14 +17,14 @@ function parseJson(file, raw) {
 }
 
 export async function readJsonFile(file) {
-  return parseJson(file, await fsp.readFile(file, 'utf8'));
+  return parseJsonText(file, await fsp.readFile(file, 'utf8'));
 }
 
 export async function readJsonFileWithRaw(file) {
   const raw = await fsp.readFile(file, 'utf8');
-  return { raw, value: parseJson(file, raw) };
+  return { raw, value: parseJsonText(file, raw) };
 }
 
 export function readJsonFileSync(file) {
-  return parseJson(file, fs.readFileSync(file, 'utf8'));
+  return parseJsonText(file, fs.readFileSync(file, 'utf8'));
 }

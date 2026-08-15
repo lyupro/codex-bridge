@@ -10,18 +10,25 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const GUARD = path.join(ROOT, 'src', 'home', 'hooks', 'reply-guard.mjs');
 
-function runGuard(root, reply, agentId = 'test-reply-guard') {
+function runGuard(root, reply, agentId = 'test-reply-guard', transcriptPath = undefined) {
   const repo = path.join(root, 'project');
   return spawnSync(process.execPath, [GUARD], {
     input: JSON.stringify({
       agent_type: 'codex-build',
       agent_id: agentId,
+      agent_transcript_path: transcriptPath,
       cwd: repo,
       last_assistant_message: reply,
     }),
     encoding: 'utf8',
     env: { ...process.env, CODEX_RUNS_ROOT: path.join(root, 'runs'), HOME: root, USERPROFILE: root },
   });
+}
+
+async function writeTranscript(root, promptText, name = 'transcript.jsonl') {
+  const transcriptPath = path.join(root, name);
+  await fs.writeFile(transcriptPath, `${JSON.stringify({ message: { content: promptText } })}\n`);
+  return transcriptPath;
 }
 
 async function fixture(t) {
@@ -301,4 +308,47 @@ test('an unreadable sibling status is fail-open', async (t) => {
   const result = runGuard(root, replyFor(own));
   assert.equal(result.status, 0);
   assert.equal(result.stdout, '');
+});
+
+test('a reply naming a run from another order is blocked as external state', async (t) => {
+  const { root, runs } = await fixture(t);
+  const run = await createRun(runs, 'wrong-order', {
+    ...ownStatus('wrong-order'),
+    order_id: 'run-two-order',
+  }, { status: 'OK' });
+  const transcriptPath = await writeTranscript(root, 'order id: run-three-order\ntask file: C:/task.md');
+  const result = runGuard(root, replyFor(run), 'wrong-order-agent', transcriptPath);
+  const decision = JSON.parse(result.stdout);
+  assert.equal(decision.decision, 'block');
+  assert.match(decision.reason, /run-three-order/);
+  assert.match(decision.reason, /run-two-order/);
+  assert.match(decision.reason, new RegExp(run.replaceAll('\\', '\\\\')));
+  assert.match(decision.reason, /Run the ordered order id/);
+  assert.match(decision.reason, /return that run's stdout verbatim/);
+});
+
+test('a reply naming the ordered run passes', async (t) => {
+  const { root, runs } = await fixture(t);
+  const run = await createRun(runs, 'matching-order', {
+    ...ownStatus('matching-order'),
+    order_id: 'matching-order-id',
+  }, { status: 'OK' });
+  const transcriptPath = await writeTranscript(root, 'order id: matching-order-id\ntask file: C:/task.md');
+  const result = runGuard(root, replyFor(run), 'matching-order-agent', transcriptPath);
+  assert.equal(result.stdout, '');
+});
+
+test('missing or malformed transcripts do not block an otherwise valid reply', async (t) => {
+  const { root, runs } = await fixture(t);
+  const run = await createRun(runs, 'diagnostic-only', {
+    ...ownStatus('diagnostic-only'),
+    order_id: 'stored-order',
+  }, { status: 'OK' });
+  const missing = runGuard(root, replyFor(run), 'missing-transcript', path.join(root, 'missing.jsonl'));
+  assert.equal(missing.stdout, '');
+
+  const malformedPath = path.join(root, 'malformed.jsonl');
+  await fs.writeFile(malformedPath, '{ malformed\n');
+  const malformed = runGuard(root, replyFor(run), 'malformed-transcript', malformedPath);
+  assert.equal(malformed.stdout, '');
 });

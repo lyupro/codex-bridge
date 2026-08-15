@@ -14,8 +14,20 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { diagnoseInput, missingInputs, shellUnsafeInputs } from '../lib/required-inputs.mjs';
+import { readJsonFileSync } from '../lib/json-file.mjs';
+import {
+  diagnoseInput,
+  extractValue,
+  missingInputs,
+  parseContinuationGrant,
+  shellUnsafeInputs,
+} from '../lib/required-inputs.mjs';
 import { SUBAGENT_TOOLS } from '../lib/hook-definitions.mjs';
+import { taskFingerprint } from '../lib/meta/chain.mjs';
+import { conflictingOrderOwner } from '../lib/runner/order-owner.mjs';
+import { resolveProjectRunsDir } from '../lib/runner/project-dir.mjs';
+import { runsRoot } from '../lib/runner/runs-root.mjs';
+import { parseTaskDocument } from '../lib/runner/task-file.mjs';
 
 const HOME = os.homedir();
 const LOG_DIR = path.join(HOME, '.claude', 'logs');
@@ -28,6 +40,16 @@ const GUARDED = new Set(['codex-scout', 'codex-build', 'codex-review']);
 const SUBAGENT_TOOL_NAMES = new Set(SUBAGENT_TOOLS);
 
 const pass = () => process.exit(0);
+const deny = (reason) => {
+  process.stdout.write(JSON.stringify({
+    hookSpecificOutput: {
+      hookEventName: 'PreToolUse',
+      permissionDecision: 'deny',
+      permissionDecisionReason: reason,
+    },
+  }));
+  process.exit(0);
+};
 
 let input;
 try {
@@ -52,30 +74,62 @@ if (!GUARDED.has(toolInput.subagent_type) || typeof toolInput.prompt !== 'string
 
 const missing = missingInputs(toolInput.subagent_type, toolInput.prompt);
 const unsafe = shellUnsafeInputs(toolInput.subagent_type, toolInput.prompt);
-if (!missing.length && !unsafe.length) pass();
+if (missing.length || unsafe.length) {
+  const reason = missing.length
+    ? [
+        'Order gate denied the Agent call because required dispatcher input(s) are missing or still placeholders.',
+        'Write each value in tool_input.prompt using `label: value` before launching the dispatcher:',
+        ...missing.flatMap((entry) => {
+          const lines = [`- ${entry.label}: ${entry.explanation} Example: \`${entry.example}\`.`];
+          const diagnosis = diagnoseInput(toolInput.prompt, entry.label);
+          if (diagnosis) lines.push(`  found \`${diagnosis.line}\`, ${diagnosis.reason}`);
+          return lines;
+        }),
+      ].join('\n')
+    : [
+        'Order gate denied the Agent call because labelled dispatcher input(s) contain forbidden shell sequences.',
+        'Correct each field before launching the dispatcher:',
+        ...unsafe.map(({ entry, sequence }) =>
+          `- ${entry.label}: found ${JSON.stringify(sequence)}; put free text in the task file and pass only a short command-line value.`),
+      ].join('\n');
+  deny(reason);
+}
 
-const reason = missing.length
-  ? [
-      'Order gate denied the Agent call because required dispatcher input(s) are missing or still placeholders.',
-      'Write each value in tool_input.prompt using `label: value` before launching the dispatcher:',
-      ...missing.flatMap((entry) => {
-        const lines = [`- ${entry.label}: ${entry.explanation} Example: \`${entry.example}\`.`];
-        const diagnosis = diagnoseInput(toolInput.prompt, entry.label);
-        if (diagnosis) lines.push(`  found \`${diagnosis.line}\`, ${diagnosis.reason}`);
-        return lines;
-      }),
-    ].join('\n')
-  : [
-      'Order gate denied the Agent call because labelled dispatcher input(s) contain forbidden shell sequences.',
-      'Correct each field before launching the dispatcher:',
-      ...unsafe.map(({ entry, sequence }) =>
-        `- ${entry.label}: found ${JSON.stringify(sequence)}; put free text in the task file and pass only a short command-line value.`),
-    ].join('\n');
+const readStatus = (file) => {
+  try {
+    return readJsonFileSync(file);
+  } catch {
+    return null;
+  }
+};
 
-process.stdout.write(JSON.stringify({
-  hookSpecificOutput: {
-    hookEventName: 'PreToolUse',
-    permissionDecision: 'deny',
-    permissionDecisionReason: reason,
-  },
-}));
+const orderId = extractValue(toolInput.prompt, 'order id');
+const taskFile = extractValue(toolInput.prompt, 'task file');
+if (!orderId || !taskFile || parseContinuationGrant(toolInput.prompt)) pass();
+
+try {
+  const taskDocument = parseTaskDocument(fs.readFileSync(taskFile, 'utf8'));
+  const taskHash = taskFingerprint(taskDocument.task);
+  const projectRunsDir = resolveProjectRunsDir(runsRoot(), input.cwd, { create: false }).dir;
+  // Per folder, not per directory: a run folder created a moment before its status.json, or any
+  // leftover beside the runs, would otherwise throw out of the whole check and silently disarm the
+  // gate for every other order. A guard that one stray folder switches off is not a guard.
+  const runs = fs.readdirSync(projectRunsDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => ({ run: entry.name, status: readStatus(path.join(projectRunsDir, entry.name, 'status.json')) }))
+    .filter(({ status }) => status);
+  const owner = conflictingOrderOwner(runs, orderId, taskHash);
+  if (owner) {
+    const ownerDir = path.join(projectRunsDir, owner.run);
+    deny(
+      `Order gate denied the Agent call because order id ${JSON.stringify(orderId)} already belongs ` +
+        `to run folder ${ownerDir} (slug ${owner.status.slug}, started_at ${owner.status.started_at}) ` +
+        'with a different task. Use a new order id, or provide an explicit continuation grant if ' +
+        'this is another pass of that order.',
+    );
+  }
+} catch {
+  // The 2026-08-15 collision guard is diagnostic: uncertain disk state must not block real work.
+}
+
+pass();

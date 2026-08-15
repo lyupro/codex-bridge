@@ -16,6 +16,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   with exit code `2` before printing anything, naming the folder that owns the id and the two
   remedies (a new `--order-id`, or `--continue`). Repeats of the same task, continuations, and runs
   recorded before the `task_hash` field attach exactly as before.
+- The same collision is now refused one step earlier and checked one step later. `order-gate` denies
+  the dispatcher call itself when the ordered id already belongs to a run with a different task —
+  before any quota is spent — and `reply-guard` blocks a reply whose run records a different
+  `order_id` than the one the orchestrator ordered, read from the dispatcher's own transcript. Both
+  read the single definition of "the same task" the runner uses; a second copy of that rule would
+  drift silently, which is the failure this change exists to end. Every uncertain disk state — an
+  unreadable task file, a missing runs directory, a run folder written before its `status.json` —
+  passes, because a guard nobody can predict is a guard everyone works around.
 - Delegating to a dispatcher no longer stops on a permission prompt. The shipped agent definitions
   started a run by absolute path — `node "<installed dir>/run-codex.mjs" --agent … \ …` — and a host
   matches permission rules against the beginning of a command line, so a rule written for this
