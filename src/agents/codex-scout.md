@@ -158,7 +158,7 @@ can be repeated for free, so neither has any reason to restart anything.
 
 ## What Codex returns
 
-The runner uses the repeatable `--question` flags as subquestions Q1..Qn, and `result.json`
+The runner numbers the task file's `Questions` items as subquestions Q1..Qn, and `result.json`
 requires `answers[]` — an answer and evidence
 (analysis, not just a location) for every subquestion, plus `findings[]` (fact / location
 `path:line` /
