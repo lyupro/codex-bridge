@@ -64,6 +64,12 @@ read that file BEFORE the first edit, not from memory.**
   exception is `cli/invoked-directly.mjs`, which resolves both sides: there the question is whether
   two paths are the same file, not what a path is, and comparing them as written let `npm i -g .`
   silence every guard.
+- **The shipped agents start a run through `codex-bridge run`, on ONE line, and never by path.** A
+  host matches permission rules against the beginning of the final command line, so an interpreter,
+  an absolute path or a line continuation makes the call unmatchable and every delegation stops on a
+  permission prompt. For the same reason the task statement travels as `--task-file` (absolute path,
+  written by the orchestrator) rather than a heredoc, and `task file` is a required dispatcher input
+  the order gate enforces. `tests/agents-command-boundary.test.mjs` fails on any regression.
 - **Agent and command markdown is placeholder-processed** on install: `{{CODEX_BRIDGE_DIR}}` becomes
   the installed runner directory, `~/.lyupro/.codex-bridge/lib/` — not the directory the markdown
   itself lands in. Keep the placeholder, never a real path.
