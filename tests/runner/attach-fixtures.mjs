@@ -38,6 +38,7 @@ export const running = (repo, overrides = {}) => ({
   pid: process.pid,
   agent: 'codex-build',
   slug: 'async-start',
+  task_hash: 'hash-1',
   order_id: 'order-1',
   repo,
   started_at: '2026-08-04T09:00:00.000Z',

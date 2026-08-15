@@ -80,10 +80,15 @@ Add `--effort "<value>"` only when the orchestrator named a depth, and only with
 decides, which is the intended default — a placeholder copied from this template is refused before
 Codex starts.
 
-The call does not wait. It starts the run and returns at once with `RUN=<path>` and a `STARTED`
-line. To get the verdict, run the **identical command a second time** — same `--order-id`, same
-`--slug`, same flags. That second call does not start a second run and costs no quota: it attaches
-to the run already in flight, prints `ATTACH=<path>`, blocks until the verdict exists and prints it.
+The call does not wait. It starts the run and returns at once with `RUN=<path> order-id=<id>` and a
+`STARTED` line. To get the verdict, run the **identical command a second time** — same `--order-id`,
+same `--slug`, same flags. That second call does not start a second run and costs no quota: it
+attaches to the run already in flight, prints `ATTACH=<path> order-id=<id> started=<time>`, blocks
+until the verdict exists and prints it.
+
+If the runner refuses with an order id collision — the id already belongs to a run whose task
+differs — that refusal is the whole answer: return `FAIL` with the runner's text, which names the
+remedy. Never retry under a different id of your own choosing; the order id is the orchestrator's.
 
 If the task text contains a line beginning with the `continue:` label, add the bare `--continue`
 flag even when its run name or reason looks malformed. Do not inspect, repair, or swallow the line;

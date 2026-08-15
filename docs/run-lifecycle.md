@@ -69,7 +69,8 @@ complete job before detaching from the launcher.
 9. A unique `<date_time>_<slug>` directory is created; on a name collision, `-2`, `-3`, and so on is
    appended.
 10. The first artifact written is `status.json` with `state=running` and the launcher pid. Stdout then
-    receives the line `RUN=<directory>`.
+    receives the line `RUN=<directory> order-id=<id>`. The id travels with the folder because a
+    reply naming a run cannot otherwise be checked against the order that was placed.
 11. A conflicting writing run or unavailable Codex CLI is closed through `meta.json` and `status.json`
     with status `FAIL` and state `aborted_pre_start`; no paid call has occurred. The separate state is
     not cosmetic: it lets the next startup distinguish an empty directory from a run backed by spent
@@ -100,14 +101,19 @@ directory creation, immediately after finding the chain and before the `--contin
 - **A run with this label already has `reply.txt`** — the verdict is printed from disk; the repeat
   responds rather than refusing. `--no-wait` does not change this branch or its existing verdict exit
   code.
+- **The label already belongs to a run whose task text differs** — the invocation refuses with exit
+  code `2`, naming the folder that owns the label, its slug and start time, and the two remedies: a
+  new `--order-id`, or `--continue`. Nothing is printed from the other run, no folder is created and
+  no quota is spent. Checked before every branch below, and skipped under `--continue` and whenever
+  either task hash is unknown, so runs older than the `task_hash` field keep attaching as they did.
 - **There is no `reply.txt`, and the pid is alive** — the invocation prints
-  `ATTACH=<directory> started=<time>`, waits for `reply.txt`, and prints it. The next line states
+  `ATTACH=<directory> order-id=<id> started=<time>`, waits for `reply.txt`, and prints it. The next line states
   that the run is already in progress, no new work was started, and this invocation is waiting for its
   verdict. When `reply.txt` already exists, the next line instead says this is the answer from the
   previous run and no new work was started. Codex is not invoked and quota is not spent. An interrupted
   repeat damages nothing: the next invocation attaches to the same run.
 - **There is no `reply.txt`, the pid is alive, and `--no-wait` was passed** — the invocation prints
-  `ATTACH=<directory> started=<time>`, reports how long the run has been in progress, and returns exit
+  `ATTACH=<directory> order-id=<id> started=<time>`, reports how long the run has been in progress, and returns exit
   code `4` immediately. This is a call outcome, not a run status; a later ordinary repeat still waits
   for and returns the saved verdict.
 - **No run exists for this order label and `--no-wait` was passed** — the invocation reports that no

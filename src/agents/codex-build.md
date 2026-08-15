@@ -96,10 +96,15 @@ command from this template is an argument error, and the run will not start. If 
 the flag
 must not be present in the command at all.
 
-The call does not wait. It starts the run and returns at once with `RUN=<path>` and a `STARTED`
-line. To get the verdict, run the **identical command a second time** — same `--order-id`, same
-`--slug`, same flags. That second call does not start a second run and costs no quota: it attaches
-to the run already in flight, prints `ATTACH=<path>`, blocks until the verdict exists and prints it.
+The call does not wait. It starts the run and returns at once with `RUN=<path> order-id=<id>` and a
+`STARTED` line. To get the verdict, run the **identical command a second time** — same `--order-id`,
+same `--slug`, same flags. That second call does not start a second run and costs no quota: it
+attaches to the run already in flight, prints `ATTACH=<path> order-id=<id> started=<time>`, blocks
+until the verdict exists and prints it.
+
+If the runner refuses with an order id collision — the id already belongs to a run whose task
+differs — that refusal is the whole answer: return `FAIL` with the runner's text, which names the
+remedy. Never retry under a different id of your own choosing; the order id is the orchestrator's.
 
 Background execution (`run_in_background`, `&`, `nohup`) is prohibited, and so is inventing a report
 from memory. If the attaching call is killed by a time ceiling, repeat the identical command once with

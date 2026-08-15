@@ -77,7 +77,7 @@ function buildArgs(repo, orderId, scope = 'src/existing.mjs', extra = []) {
 function runPath(output) {
   const line = output.stdout.split(/\r?\n/).find((part) => part.startsWith('RUN='));
   assert.ok(line, `launcher did not print a run path:\n${output.stdout}\n${output.stderr}`);
-  return line.slice(4).trim();
+  return line.slice(4).split(' order-id=', 1)[0].trim();
 }
 
 test('scope preflight refuses every structurally impossible spelling', (t) => {
@@ -191,6 +191,7 @@ test('an honest scope starts and scope-new is persisted in worker.json', (t) => 
   );
 
   assert.equal(output.status, 0, `${output.stdout}\n${output.stderr}`);
+  assert.match(output.stdout, /^RUN=.* order-id=new-order$/m);
   const runDir = runPath(output);
   const worker = JSON.parse(fs.readFileSync(path.join(runDir, 'worker.json'), 'utf8'));
   assert.deepEqual(worker.scope_new, ['src/new-file.mjs', 'src/another-new-file.mjs']);

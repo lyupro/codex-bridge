@@ -238,7 +238,7 @@ export async function launcher(argv = process.argv.slice(2)) {
 
   // Printed before anything can go wrong: even a dispatcher that dies mid-run leaves the
   // orchestrator with a folder to look into.
-  console.log(`RUN=${runDir}`);
+  console.log(`RUN=${runDir} order-id=${opts.orderId}`);
 
   // Before requireCodex, so a blocked run costs nothing at all.
   if (busy) {

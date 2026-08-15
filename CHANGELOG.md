@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- A run ordered under another run's order id is no longer answered with that run's verdict. On
+  2026-08-15 a build ordered as `plan42-run3` carried the id of `plan42-run2`, and the runner
+  printed run2's `OK`, run2's file list and run2's suite over a worktree where nothing had been
+  done — only a manual `git status` stopped a commit of work that did not exist. An order id names
+  one task: when the id already belongs to a run whose task text differs, the runner now refuses
+  with exit code `2` before printing anything, naming the folder that owns the id and the two
+  remedies (a new `--order-id`, or `--continue`). Repeats of the same task, continuations, and runs
+  recorded before the `task_hash` field attach exactly as before.
 - Delegating to a dispatcher no longer stops on a permission prompt. The shipped agent definitions
   started a run by absolute path — `node "<installed dir>/run-codex.mjs" --agent … \ …` — and a host
   matches permission rules against the beginning of a command line, so a rule written for this
@@ -28,6 +36,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - `codex-bridge run` — the public entry point for starting a delegated run, with the same flags,
   stdout and exit codes as the historical file invocation.
+- Both lines that identify a run to its caller carry the order they belong to:
+  `RUN=<path> order-id=<id>` and `ATTACH=<path> order-id=<id> started=<time>`. A reply naming a run
+  cannot be checked against the order that was placed unless the id travels with the folder.
 - Two structural guards that make the above regressions loud instead of silent: the install plan
   must stay isomorphic to the shipped home image, and every registered hook must actually start as
   a child process with its imports resolved.

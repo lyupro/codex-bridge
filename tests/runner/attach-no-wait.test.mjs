@@ -24,7 +24,7 @@ test('--no-wait prints a ready reply with the existing provenance and status cod
   const { code, lines } = await attaching(order(runsRoot, repo, { noWait: true }));
 
   assert.equal(code, 3);
-  assert.equal(lines[0], `ATTACH=${dir} started=2026-08-04T09:00:00.000Z`);
+  assert.equal(lines[0], `ATTACH=${dir} order-id=order-1 started=2026-08-04T09:00:00.000Z`);
   assert.match(lines[1], /previous run started at 2026-08-04T09:00:00.000Z; no new work was started/);
   assert.equal(lines[2], 'LIMIT — quota exhausted\nRun: somewhere');
 });
@@ -43,7 +43,7 @@ test('--no-wait reports a live run immediately with call outcome 4', async (t) =
 
   assert.equal(code, 4);
   assert.ok(Date.now() - before < 450, 'the state check must not enter the 500 ms polling loop');
-  assert.equal(lines[0], `ATTACH=${dir} started=${startedAt}`);
+  assert.equal(lines[0], `ATTACH=${dir} order-id=order-1 started=${startedAt}`);
   // The elapsed value is matched by shape, not to the second: pinning it to a one-second window
   // made the case fail whenever the identity probe took longer than that under a loaded suite.
   assert.match(lines[1], /Run is still in progress; elapsed 1m \d{1,2}s\./);

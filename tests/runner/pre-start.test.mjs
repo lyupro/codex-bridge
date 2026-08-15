@@ -54,7 +54,8 @@ if (exitCode !== undefined) process.exitCode = exitCode;
 function runStatus(output) {
   const line = output.stdout.split(/\r?\n/).find((part) => part.startsWith('RUN='));
   assert.ok(line, `launcher did not print a run path:\n${output.stdout}\n${output.stderr}`);
-  return JSON.parse(fs.readFileSync(path.join(line.slice(4), 'status.json'), 'utf8'));
+  const runDir = line.slice(4).split(' order-id=', 1)[0];
+  return JSON.parse(fs.readFileSync(path.join(runDir, 'status.json'), 'utf8'));
 }
 
 function baseArgs(agent, repo, orderId) {

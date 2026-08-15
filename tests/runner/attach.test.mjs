@@ -28,7 +28,7 @@ test('a live run of the same order is joined and its verdict printed', async (t)
   const { code, lines } = await attaching(order(runsRoot, repo));
 
   assert.equal(code, 0);
-  assert.equal(lines[0], `ATTACH=${dir} started=2026-08-04T09:00:00.000Z`);
+  assert.equal(lines[0], `ATTACH=${dir} order-id=order-1 started=2026-08-04T09:00:00.000Z`);
   assert.match(lines[1], /previous run started at 2026-08-04T09:00:00.000Z; no new work was started/);
   assert.match(lines[2], /OK — the work landed/);
 });
@@ -49,7 +49,7 @@ test('a live run still answers when a pre-start folder leads the full chain', as
 
   assert.deepEqual(chain, ['2026-08-04_080000_pre-start', '2026-08-04_090000_async-start']);
   assert.equal(code, 0);
-  assert.equal(lines[0], `ATTACH=${live} started=2026-08-04T09:00:00.000Z`);
+  assert.equal(lines[0], `ATTACH=${live} order-id=order-1 started=2026-08-04T09:00:00.000Z`);
   assert.match(lines[1], /previous run started at 2026-08-04T09:00:00.000Z; no new work was started/);
   assert.match(lines[2], /OK — the live work landed/);
 });
@@ -93,6 +93,75 @@ test('--continue never attaches: the orchestrator asked for another pass', async
   const { code } = await attaching(order(runsRoot, repo, { isContinue: true }));
 
   assert.equal(code, null);
+});
+
+test('a reused order id with a different task is refused before a run can start', async (t) => {
+  const runsRoot = fixture(t);
+  const repo = path.join(runsRoot, 'repo');
+  const name = '2026-08-15_090000_plan42-run2';
+  run(runsRoot, name, running(repo, {
+    slug: 'plan42-run2',
+    task_hash: 'run2-hash',
+    started_at: '2026-08-15T09:00:00.000Z',
+  }), {
+    'reply.txt': 'OK — run2 verdict\n',
+    'meta.json': JSON.stringify({ status: 'OK' }),
+  });
+
+  const { code, lines } = await attaching(
+    order(runsRoot, repo, { slug: 'plan42-run3', taskHash: 'run3-hash' }),
+  );
+
+  assert.equal(code, 2);
+  assert.match(lines[0], new RegExp(name));
+  assert.match(lines[0], /slug plan42-run2/);
+  assert.match(lines[0], /started_at 2026-08-15T09:00:00.000Z/);
+  assert.match(lines[0], /new --order-id/);
+  assert.match(lines[0], /--continue/);
+  assert.deepEqual(fs.readdirSync(runsRoot), [name]);
+});
+
+test('a reused order id with the identical normalized task hash still attaches', async (t) => {
+  const runsRoot = fixture(t);
+  const repo = path.join(runsRoot, 'repo');
+  run(runsRoot, '2026-08-15_090000_safe-repeat', running(repo, { task_hash: ' HASH-1 ' }), {
+    'reply.txt': 'OK — same task\n',
+    'meta.json': JSON.stringify({ status: 'OK' }),
+  });
+
+  const { code, lines } = await attaching(order(runsRoot, repo));
+
+  assert.equal(code, 0);
+  assert.equal(lines[2], 'OK — same task');
+});
+
+test('a reused order id with a different task is not refused under --continue', async (t) => {
+  const runsRoot = fixture(t);
+  const repo = path.join(runsRoot, 'repo');
+  const name = '2026-08-15_090000_continue';
+  run(runsRoot, name, running(repo, { task_hash: 'old-hash' }));
+
+  const { code, lines } = await attaching(
+    order(runsRoot, repo, { taskHash: 'new-hash', isContinue: true }),
+  );
+
+  assert.equal(code, null);
+  assert.deepEqual(lines, []);
+  assert.deepEqual(fs.readdirSync(runsRoot), [name]);
+});
+
+test('a stored run without task_hash keeps the legacy attach behavior', async (t) => {
+  const runsRoot = fixture(t);
+  const repo = path.join(runsRoot, 'repo');
+  run(runsRoot, '2026-08-15_090000_legacy', running(repo, { task_hash: undefined }), {
+    'reply.txt': 'OK — legacy run\n',
+    'meta.json': JSON.stringify({ status: 'OK' }),
+  });
+
+  const { code, lines } = await attaching(order(runsRoot, repo, { taskHash: 'new-hash' }));
+
+  assert.equal(code, 0);
+  assert.equal(lines[2], 'OK — legacy run');
 });
 
 test('the first --continue is allowed after exactly one finished run', (t) => {
@@ -264,7 +333,7 @@ test('the newest run of an order answers the repeat, not the pass before it', as
 
   const { lines } = await attaching(order(runsRoot, repo));
 
-  assert.equal(lines[0], `ATTACH=${second} started=2026-08-04T09:15:00.000Z`);
+  assert.equal(lines[0], `ATTACH=${second} order-id=order-1 started=2026-08-04T09:15:00.000Z`);
   assert.match(lines[1], /previous run started at 2026-08-04T09:15:00.000Z; no new work was started/);
   assert.equal(lines[2], 'OK — second');
 });
@@ -288,7 +357,7 @@ test('a continuation still running is joined instead of the answered pass before
 
   const { lines } = await attaching(order(runsRoot, repo));
 
-  assert.equal(lines[0], `ATTACH=${second} started=2026-08-04T09:15:00.000Z`);
+  assert.equal(lines[0], `ATTACH=${second} order-id=order-1 started=2026-08-04T09:15:00.000Z`);
   assert.match(lines[1], /run already in progress since 2026-08-04T09:15:00.000Z; no new work was started/);
   assert.equal(lines[2], 'OK — the continuation');
 });

@@ -141,9 +141,17 @@ Authorization is the line form: the `continue:` label, run directory name, `—`
 validation does not depend on whether the directory exists: the runner does not silently correct
 a mistyped name, but refuses with the latest run's name, status, and reason, plus a ready-made line
 for another attempt. Mentioning the word `continue:` in prose is not authorization. On a safe
-`attach`, the first line is `ATTACH=<directory> started=<time>`. For a saved reply, the next line says
-that it printed the answer from the previous run and no new work was started. For a live run, it says
-the run is already in progress, no new work was started, and this invocation is waiting for its verdict.
+`attach`, the first line is `ATTACH=<directory> order-id=<id> started=<time>`. For a saved reply, the
+next line says that it printed the answer from the previous run and no new work was started. For a
+live run, it says the run is already in progress, no new work was started, and this invocation is
+waiting for its verdict.
+
+An order id names one task. When the id already belongs to a run whose task text differs, the runner
+refuses with exit code `2` before printing anything from that run: it names the folder that owns the
+id, its slug and start time, and the two remedies — a new `--order-id`, or `--continue` if this
+really is another pass of the same order. The refusal exists because on 2026-08-15 a run ordered
+under the previous run's id was answered with that run's `OK`, its file list and its suite, over a
+worktree where nothing had been done.
 
 Authorization is single-use: it names the latest run in the chain, and continuation appends a
 later one, so the same line will not work twice. Details and all refusals are in
@@ -161,7 +169,7 @@ The runner consists of two processes:
 - launcher checks arguments and the environment, creates the directory, and starts worker;
 - detached worker invokes Codex, writes post-run snapshots, computes the verdict, and creates the response.
 
-Launcher prints `RUN=<path>` and waits for `reply.txt`, but interrupting it does not interrupt
+Launcher prints `RUN=<path> order-id=<id>` and waits for `reply.txt`, but interrupting it does not interrupt
 worker during normal process termination or a timeout in the calling shell. Worker does not depend
 on the dispatcher's stdout and closes the run with artifacts itself. Killing the entire process
 tree can terminate both halves; the next run will mark the remaining unclosed run as `abandoned`.

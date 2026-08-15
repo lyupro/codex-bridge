@@ -13,13 +13,13 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // The 2026-08-10_220535_plan25-2-install-table-two-roots incident showed that ATTACH alone
 // can be mistaken for this pass. Distinguish a saved answer from a live run whose verdict is
 // still pending so provenance is truthful while preserving the guarantee that no work restarted.
-function announceSavedReply(runDir, startedAt) {
-  console.log(`ATTACH=${runDir} started=${startedAt}`);
+function announceSavedReply(runDir, orderId, startedAt) {
+  console.log(`ATTACH=${runDir} order-id=${orderId} started=${startedAt}`);
   console.log(`This is the answer of the previous run started at ${startedAt}; no new work was started.`);
 }
 
-function announceLiveAttach(runDir, startedAt) {
-  console.log(`ATTACH=${runDir} started=${startedAt}`);
+function announceLiveAttach(runDir, orderId, startedAt) {
+  console.log(`ATTACH=${runDir} order-id=${orderId} started=${startedAt}`);
   console.log(
     `Attached to the run already in progress since ${startedAt}; no new work was started, and this invocation is waiting for its verdict.`,
   );
@@ -36,8 +36,8 @@ function elapsedSince(startedAt) {
   return `${seconds}s`;
 }
 
-function announcePending(runDir, startedAt) {
-  console.log(`ATTACH=${runDir} started=${startedAt}`);
+function announcePending(runDir, orderId, startedAt) {
+  console.log(`ATTACH=${runDir} order-id=${orderId} started=${startedAt}`);
   console.log(
     `Run is still in progress; elapsed ${elapsedSince(startedAt)}. Repeat the same command without --no-wait later to wait for its verdict.`,
   );
@@ -110,6 +110,21 @@ export async function attach({ runsRoot, repo, slug, taskHash, orderId, chain, i
     .map((run) => ({ run, status: readJsonFile(path.join(runsRoot, run, 'status.json')) }))
     .filter(({ status }) => status && String(status.order_id ?? '') === String(orderId ?? ''));
 
+  // On 2026-08-15 plan42-run3 reused plan42-run2's order id and was handed run2's verdict.
+  // Refuse only when both fingerprints are known so runs predating task_hash keep attaching.
+  const owner = sameOrder.at(-1);
+  const ownerHash = String(owner?.status.task_hash ?? '').trim().toLowerCase();
+  const incomingHash = String(taskHash ?? '').trim().toLowerCase();
+  if (ownerHash && incomingHash && ownerHash !== incomingHash) {
+    const ownerDir = path.join(runsRoot, owner.run);
+    console.log(
+      `Order id collision: ${JSON.stringify(String(orderId ?? ''))} already belongs to run folder ${ownerDir} ` +
+        `(slug ${owner.status.slug}, started_at ${owner.status.started_at}) with a different task. ` +
+        'Pass a new --order-id, or pass --continue if this really is another pass of the same order.',
+    );
+    return 2;
+  }
+
   // The run an order is currently about is its newest one, and the chain arrives oldest first.
   // Reading it from the end is the whole point: `--continue` adds a second run under the same
   // order, and while it was in flight a repeat used to be answered by the first run's reply.txt —
@@ -119,7 +134,7 @@ export async function attach({ runsRoot, repo, slug, taskHash, orderId, chain, i
     const entry = sameOrder[i];
     const dir = path.join(runsRoot, entry.run);
     if (fs.existsSync(path.join(dir, 'reply.txt'))) {
-      announceSavedReply(dir, entry.status.started_at);
+      announceSavedReply(dir, orderId, entry.status.started_at);
       console.log(fs.readFileSync(path.join(dir, 'reply.txt'), 'utf8').replace(/\s+$/, ''));
       return exitCodeFor(readJsonFile(path.join(dir, 'meta.json'))?.status);
     }
@@ -138,10 +153,10 @@ export async function attach({ runsRoot, repo, slug, taskHash, orderId, chain, i
   // On 2026-08-13 a killed waiting call became an invented FAIL over a run already finished OK.
   // A distinct call outcome lets the dispatcher inspect disk without mistaking pending for failure.
   if (noWait) {
-    announcePending(runDir, candidate.status.started_at);
+    announcePending(runDir, orderId, candidate.status.started_at);
     return 4;
   }
-  announceLiveAttach(runDir, candidate.status.started_at);
+  announceLiveAttach(runDir, orderId, candidate.status.started_at);
   const replyText = await waitForReply(runDir, candidate.status.pid, candidate.status);
   if (replyText !== null) {
     console.log(replyText);

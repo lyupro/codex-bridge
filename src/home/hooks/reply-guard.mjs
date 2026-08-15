@@ -115,7 +115,7 @@ const blockState = (reason, stopReason) => {
  * verdict is the stdout of the attaching call. Matching only `RUN=` would block every honest
  * answer given under the new contract as "did not delegate at all".
  */
-const cleanRunDir = (value) => value.trim().replace(/\s+started=\S*$/, '').replace(/[`"'*]+$/g, '');
+const cleanRunDir = (value) => value.trim().replace(/\s+(?:order-id|started)=.*$/, '').replace(/[`"'*]+$/g, '');
 const runDirs = [...reply.matchAll(/(?:RUN|ATTACH)=(.+?)(?:\r?\n|$)/g)].map((match) => cleanRunDir(match[1]));
 
 /**
