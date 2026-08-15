@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { firstShellUnsafeSequence } from './shell-unsafe.mjs';
 
 /**
  * Defines the inputs the orchestrator must give each Codex dispatcher.
@@ -196,6 +197,18 @@ export function missingInputs(agentType, promptText) {
     const value = extractValue(prompt, entry.label);
     if (isPlaceholder(value)) return true;
     return entry === TASK_FILE_INPUT && !isAbsoluteTaskFilePath(value);
+  });
+}
+
+/** Finds labelled command-line values that would disable the host's standing permission. */
+export function shellUnsafeInputs(agentType, promptText) {
+  const prompt = typeof promptText === 'string' ? promptText : '';
+  return requiredInputsFor(agentType).flatMap((entry) => {
+    if (entry.conditional) return [];
+    const value = extractValue(prompt, entry.label);
+    if (value === null || isPlaceholder(value)) return [];
+    const sequence = firstShellUnsafeSequence(value);
+    return sequence === null ? [] : [{ entry, sequence }];
   });
 }
 

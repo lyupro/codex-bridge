@@ -10,6 +10,7 @@ import path from 'node:path';
 import { AGENTS } from '../write-meta.mjs';
 import { ALLOWED_EFFORTS } from '../run-config.mjs';
 import { isAbsoluteTaskFilePath, requiredInputsFor } from '../required-inputs.mjs';
+import { firstShellUnsafeSequence } from '../shell-unsafe.mjs';
 import { parseTaskDocument } from './task-file.mjs';
 
 export class RunnerUsageError extends Error {
@@ -77,6 +78,19 @@ function requiredInput(agentType, label) {
 // template.
 const BOOLEAN_FLAGS = new Set(['continue', 'no-wait']);
 const REPEATABLE_FLAGS = new Set(['question']);
+// Plan_42 keeps free text in the task file because these command-line values otherwise disable
+// the host's standing permission before the runner can spend quota.
+const SHELL_CHECKED_FLAGS = Object.freeze([
+  'order-id',
+  'slug',
+  'scope',
+  'scope-new',
+  'repo',
+  'agent',
+  'effort',
+  'mode',
+  'task-file',
+]);
 const BOOLEAN_YES = /^(1|true|yes)$/i;
 const BOOLEAN_NO = /^(0|false|no)$/i;
 
@@ -113,6 +127,16 @@ export function parseArgs(argv) {
     }
     opts[name] = value;
     i += 1;
+  }
+  for (const name of SHELL_CHECKED_FLAGS) {
+    if (opts[name] === undefined) continue;
+    const sequence = firstShellUnsafeSequence(opts[name]);
+    if (sequence !== null) {
+      die(
+        `--${name} contains forbidden shell sequence ${JSON.stringify(sequence)}; ` +
+          'put free text in the task file and pass only a short command-line value.',
+      );
+    }
   }
   if (!opts.agent) die('--agent is required');
   if (!AGENTS[opts.agent]) die(`unknown --agent ${opts.agent}`);

@@ -14,7 +14,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { diagnoseInput, missingInputs } from '../lib/required-inputs.mjs';
+import { diagnoseInput, missingInputs, shellUnsafeInputs } from '../lib/required-inputs.mjs';
 import { SUBAGENT_TOOLS } from '../lib/hook-definitions.mjs';
 
 const HOME = os.homedir();
@@ -51,18 +51,26 @@ if (!toolInput || typeof toolInput !== 'object' || Array.isArray(toolInput)) pas
 if (!GUARDED.has(toolInput.subagent_type) || typeof toolInput.prompt !== 'string') pass();
 
 const missing = missingInputs(toolInput.subagent_type, toolInput.prompt);
-if (!missing.length) pass();
+const unsafe = shellUnsafeInputs(toolInput.subagent_type, toolInput.prompt);
+if (!missing.length && !unsafe.length) pass();
 
-const reason = [
-  'Order gate denied the Agent call because required dispatcher input(s) are missing or still placeholders.',
-  'Write each value in tool_input.prompt using `label: value` before launching the dispatcher:',
-  ...missing.flatMap((entry) => {
-    const lines = [`- ${entry.label}: ${entry.explanation} Example: \`${entry.example}\`.`];
-    const diagnosis = diagnoseInput(toolInput.prompt, entry.label);
-    if (diagnosis) lines.push(`  found \`${diagnosis.line}\`, ${diagnosis.reason}`);
-    return lines;
-  }),
-].join('\n');
+const reason = missing.length
+  ? [
+      'Order gate denied the Agent call because required dispatcher input(s) are missing or still placeholders.',
+      'Write each value in tool_input.prompt using `label: value` before launching the dispatcher:',
+      ...missing.flatMap((entry) => {
+        const lines = [`- ${entry.label}: ${entry.explanation} Example: \`${entry.example}\`.`];
+        const diagnosis = diagnoseInput(toolInput.prompt, entry.label);
+        if (diagnosis) lines.push(`  found \`${diagnosis.line}\`, ${diagnosis.reason}`);
+        return lines;
+      }),
+    ].join('\n')
+  : [
+      'Order gate denied the Agent call because labelled dispatcher input(s) contain forbidden shell sequences.',
+      'Correct each field before launching the dispatcher:',
+      ...unsafe.map(({ entry, sequence }) =>
+        `- ${entry.label}: found ${JSON.stringify(sequence)}; put free text in the task file and pass only a short command-line value.`),
+    ].join('\n');
 
 process.stdout.write(JSON.stringify({
   hookSpecificOutput: {
