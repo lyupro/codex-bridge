@@ -55,6 +55,14 @@ test('missing and empty task files name the task-file channel', (t) => {
   assert.match(emptyResult.stderr, /task file from --task-file is empty/);
 });
 
+test('--task-file refuses relative paths with the received value', (t) => {
+  const root = fixture(t);
+  fs.writeFileSync(path.join(root, 'task.md'), 'wrong task from cwd\n');
+  const result = run(RUNNER, args(root, 'task.md'), root);
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /--task-file must be an absolute path; got "task\.md"/);
+});
+
 test('stdin remains the fallback and an empty stdin names that channel', (t) => {
   const root = fixture(t);
   const accepted = run(RUNNER, args(root), root, 'task from stdin\n');
@@ -83,5 +91,24 @@ test('the direct file and package run command share task-channel output and exit
   const command = run(BIN, ['run', ...argv], root);
   assert.equal(command.status, direct.status);
   assert.equal(command.stdout, direct.stdout);
+  assert.equal(command.stderr, direct.stderr);
+});
+
+test('the direct file and package run command share the runner crash reply and exit code', (t) => {
+  const root = fixture(t);
+  const taskFile = path.join(root, 'task.md');
+  const runsRootFile = path.join(root, 'runs-root-file');
+  fs.writeFileSync(taskFile, 'force launcher crash\n');
+  fs.writeFileSync(runsRootFile, 'not a directory\n');
+  const argv = [
+    '--agent', 'codex-review', '--repo', root, '--order-id', 'crash-check', '--task-file', taskFile,
+  ];
+  const env = { ...process.env, CODEX_RUNS_ROOT: runsRootFile };
+  const direct = spawnSync(process.execPath, [RUNNER, ...argv], { cwd: root, encoding: 'utf8', env });
+  const command = spawnSync(process.execPath, [BIN, 'run', ...argv], { cwd: root, encoding: 'utf8', env });
+  assert.equal(direct.status, 1);
+  assert.equal(command.status, direct.status);
+  assert.equal(command.stdout, direct.stdout);
+  assert.match(command.stdout, /^FAIL — Codex runner crashed before creating the run folder:/);
   assert.equal(command.stderr, direct.stderr);
 });

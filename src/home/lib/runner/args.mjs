@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { AGENTS } from '../write-meta.mjs';
 import { ALLOWED_EFFORTS } from '../run-config.mjs';
-import { requiredInputsFor } from '../required-inputs.mjs';
+import { isAbsoluteTaskFilePath, requiredInputsFor } from '../required-inputs.mjs';
 
 export class RunnerUsageError extends Error {
   constructor(message) {
@@ -29,7 +29,12 @@ export function readTaskText(opts) {
     if (stdinText.trim()) {
       die('task text was supplied through both stdin and --task-file; choose exactly one channel');
     }
-    const taskFile = path.resolve(opts['task-file']);
+    const taskFile = opts['task-file'];
+    // The 2026-08-15 incident resolved a relative order against the repository cwd and ran an
+    // unrelated task.md. Refuse the supplied value instead of silently selecting another file.
+    if (!isAbsoluteTaskFilePath(taskFile)) {
+      die(`--task-file must be an absolute path; got ${JSON.stringify(taskFile)}`);
+    }
     let fileText;
     try {
       fileText = fs.readFileSync(taskFile, 'utf8');

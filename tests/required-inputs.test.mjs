@@ -11,6 +11,7 @@ import {
   CONTINUATION_INPUT,
   REQUIRED_INPUTS,
   diagnoseInput,
+  isAbsoluteTaskFilePath,
   missingInputs,
   parseContinuationGrant,
   renderRequiredInputSummary,
@@ -53,6 +54,21 @@ test('template placeholders are missing even when their labels are present', () 
   );
   assert.deepEqual(missing.map((entry) => entry.label), ['order id', 'scope', 'task file']);
   assert.deepEqual(missingInputs('codex-scout', 'order id: LABEL').map((entry) => entry.label), ['order id', 'task file']);
+});
+
+test('task-file input accepts Windows and POSIX absolute paths but rejects relative values', () => {
+  for (const value of ['C:/scratch/task.md', 'C:\\scratch\\task.md', '/tmp/task.md']) {
+    assert.equal(isAbsoluteTaskFilePath(value), true, value);
+  }
+  assert.equal(isAbsoluteTaskFilePath('task.md'), false);
+  assert.deepEqual(
+    missingInputs('codex-review', 'order id: absolute-check\ntask file: task.md').map((entry) => entry.label),
+    ['task file'],
+  );
+  assert.deepEqual(diagnoseInput('task file: task.md', 'task file'), {
+    line: 'task file: task.md',
+    reason: 'value `task.md` is not an absolute path',
+  });
 });
 
 test('diagnosis explains a candidate with a parenthesised qualifier', () => {

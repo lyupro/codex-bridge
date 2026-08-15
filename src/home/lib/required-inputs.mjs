@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 /**
  * Defines the inputs the orchestrator must give each Codex dispatcher.
  *
@@ -30,6 +32,8 @@ export const CONTINUATION_INPUT = Object.freeze({
  * summary is the ONLY part of this contract the orchestrator ever reads. Left out of the list, a
  * dispatcher that was given no path filled the gap itself: on 2026-08-15 codex-build wrote the file
  * with `cat > … << 'EOF'` and earned exactly the permission window the file was introduced to end.
+ * The 2026-08-15 relative-path incident also made the repository cwd silently choose a different
+ * task.md, so both the producer gate and runner use this cross-platform absolute-path contract.
  */
 export const TASK_FILE_INPUT = Object.freeze({
   label: 'task file',
@@ -84,6 +88,11 @@ function cleanValue(value) {
   return value.trim().replace(/^([`'\"])(.*)\1$/, '$2').trim();
 }
 
+export function isAbsoluteTaskFilePath(value) {
+  const cleaned = cleanValue(value);
+  return path.posix.isAbsolute(cleaned) || path.win32.isAbsolute(cleaned);
+}
+
 export function isPlaceholder(value) {
   const cleaned = cleanValue(value);
   if (!cleaned) return true;
@@ -131,7 +140,12 @@ export function diagnoseInput(promptText, label) {
   if (candidateLine === undefined) return null;
 
   const value = extractValue(candidateLine, label);
-  if (value !== null && !isPlaceholder(value)) return null;
+  if (value !== null && !isPlaceholder(value)) {
+    if (label === TASK_FILE_INPUT.label && !isAbsoluteTaskFilePath(value)) {
+      return { line: readableDiagnosisLine(candidateLine), reason: `value \`${value}\` is not an absolute path` };
+    }
+    return null;
+  }
 
   const line = readableDiagnosisLine(candidateLine);
   if (value !== null && isPlaceholder(value)) {
@@ -177,9 +191,12 @@ export function requiredInputsFor(agentType) {
 /** Returns required entries whose value is absent or is still an obvious template placeholder. */
 export function missingInputs(agentType, promptText) {
   const prompt = typeof promptText === 'string' ? promptText : '';
-  return requiredInputsFor(agentType).filter(
-    (entry) => !entry.conditional && isPlaceholder(extractValue(prompt, entry.label)),
-  );
+  return requiredInputsFor(agentType).filter((entry) => {
+    if (entry.conditional) return false;
+    const value = extractValue(prompt, entry.label);
+    if (isPlaceholder(value)) return true;
+    return entry === TASK_FILE_INPUT && !isAbsoluteTaskFilePath(value);
+  });
 }
 
 /** Renders the compact contract the orchestrator sees while choosing a dispatcher. */

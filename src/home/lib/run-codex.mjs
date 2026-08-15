@@ -77,7 +77,7 @@ const invokedDirectly =
 // One handler, here, for both halves: it has to catch a crash whichever branch below is
 // running, and a second registration inside launcher.mjs or worker.mjs would be a second
 // answer to the same question.
-if (invokedDirectly) {
+export function installRunnerCrashBoundary() {
   process.on('uncaughtException', (err) => {
     const { dir: currentRun, agent: currentAgent } = getRun();
     if (currentRun) {
@@ -119,11 +119,23 @@ export async function runCodex(argv) {
   }
 }
 
-if (invokedDirectly) {
-  runCodex(process.argv.slice(2)).then((exitCode) => {
-    if (exitCode !== undefined) process.exitCode = exitCode;
-  }, (err) => {
-    // Preserve the direct entry's artifact-backed crash path for asynchronous launcher failures.
+/**
+ * Both public entry forms must terminate through the runner's FAIL reply. The 2026-08-15
+ * package-command incident let launcher rejections escape to the CLI usage handler, making a
+ * runner crash indistinguishable from a refusal with exit 2.
+ */
+export async function runCodexCommand(argv) {
+  installRunnerCrashBoundary();
+  try {
+    return await runCodex(argv);
+  } catch (err) {
     queueMicrotask(() => { throw err; });
+    return new Promise(() => {});
+  }
+}
+
+if (invokedDirectly) {
+  runCodexCommand(process.argv.slice(2)).then((exitCode) => {
+    if (exitCode !== undefined) process.exitCode = exitCode;
   });
 }

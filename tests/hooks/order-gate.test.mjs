@@ -85,6 +85,17 @@ test('placeholder values are denied as missing inputs', async (t) => {
   assert.match(decision.permissionDecisionReason, /scope/);
 });
 
+test('a relative task file is denied before the dispatcher starts', async (t) => {
+  const root = await fixture(t);
+  const result = runGate(root, payload(
+    'codex-review',
+    'order id: relative-task-file\ntask file: task.md',
+  ));
+  const decision = JSON.parse(result.stdout).hookSpecificOutput;
+  assert.equal(decision.permissionDecision, 'deny');
+  assert.match(decision.permissionDecisionReason, /found `task file: task\.md`, value `task\.md` is not an absolute path/);
+});
+
 test('diagnosis appears only beneath the missing entry whose label has a candidate', async (t) => {
   const root = await fixture(t);
   const result = runGate(root, payload(
