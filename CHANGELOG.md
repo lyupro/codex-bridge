@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- No Claude Code host had registered the three dispatchers since 2026-08-10. The stop-guidance
+  sentence added that day — `` before `TaskStop`: TaskStop removes the wrapper … `` — was
+  substituted into the `description:` line of each agent's frontmatter, and an unquoted YAML scalar
+  cannot contain a colon followed by a space: the frontmatter did not parse, so the agents did not
+  exist as far as the host was concerned. `doctor` reported every file present the whole time,
+  because it counted files instead of reading them. Installation now re-emits frontmatter as valid
+  YAML — any value a reader would not take as a plain scalar is quoted, the sentence survives
+  verbatim — `doctor` parses each installed definition and checks its `name`, and the suite parses
+  everything the installer would write.
+
 - A run ordered under another run's order id is no longer answered with that run's verdict. On
   2026-08-15 a build ordered as `plan42-run3` carried the id of `plan42-run2`, and the runner
   printed run2's `OK`, run2's file list and run2's suite over a worktree where nothing had been

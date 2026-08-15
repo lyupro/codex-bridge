@@ -487,6 +487,14 @@ the host. `package.json`, required by npm outside that image, is the one documen
 | `~/.claude/commands/codex-bridge/` | two command files: `/codex-bridge:env` and `/codex-bridge:usage` |
 | `~/.codex/rules/` | Codex CLI rules file; the directory is not ours |
 
+Agent and command markdown is placeholder-processed on install, and the frontmatter is re-emitted as
+valid YAML afterwards: any value a YAML reader would not take as a plain scalar is double-quoted.
+This is not tidiness. On 2026-08-10 the stop-guidance sentence — `` before `TaskStop`: TaskStop
+removes the wrapper … `` — entered `description:` unquoted, and a colon followed by a space starts a
+nested mapping, so the frontmatter did not parse and Claude Code registered none of the three
+agents for five days while `doctor` reported every file present. `doctor` now parses each installed
+definition and checks its `name`, and the suite parses everything the installer would write.
+
 Exactly this minimum remains in external directories: an agent file elsewhere means the agent
 does not exist. Symlinks from `~/.claude` to our directory were rejected—creating them on Windows
 requires administrator rights, so installation would fail for an ordinary user.

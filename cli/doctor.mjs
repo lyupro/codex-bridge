@@ -16,6 +16,7 @@ import { recordTarget } from './install-record.mjs';
 import { inspectPermissions } from './permissions.mjs';
 import { commandFor, inspectHook } from './settings-merge.mjs';
 import { readRulesRegistry } from './rules-owners.mjs';
+import { parseFrontmatter } from './frontmatter.mjs';
 import { readRunConfig, retentionNotice } from '../src/home/lib/run-config.mjs';
 import { runsRoot } from '../src/home/lib/runner/runs-root.mjs';
 import { resolveProjectRunsDir } from '../src/home/lib/runner/project-dir.mjs';
@@ -47,9 +48,25 @@ async function agentsCheck(host, record) {
   const plan = await buildInstallPlan(host);
   const agents = plan.filter((item) => /[\\/]src[\\/]agents[\\/][^\\/]+\.md$/.test(item.source));
   const mismatches = [];
+  const unreadable = [];
   for (const item of agents) {
     const expected = contentFingerprint(await plannedContent(item, host.brandRoot));
     if (await fileFingerprint(item.target) !== expected) mismatches.push(path.basename(item.target));
+    const expectedName = path.basename(item.source, '.md');
+    try {
+      const frontmatter = parseFrontmatter(await fs.readFile(item.target, 'utf8'));
+      if (!frontmatter) throw new Error('frontmatter is missing');
+      if (frontmatter.name !== expectedName) {
+        throw new Error(`name is ${JSON.stringify(frontmatter.name)}, expected ${JSON.stringify(expectedName)}`);
+      }
+    } catch (err) {
+      unreadable.push(`${path.basename(item.target)} (${err.message})`);
+    }
+  }
+  // The 2026-08-10 registration failure left files present but unreadable by Claude Code; package
+  // drift remains advisory, while a definition the host cannot register must make doctor red.
+  if (unreadable.length) {
+    return check('agents', 'fail', `Installed agent definitions cannot be read: ${unreadable.join(', ')}; run codex-bridge update --force`);
   }
   return mismatches.length
     ? check('agents', 'warn', `Installed agent definitions differ from this package: ${mismatches.join(', ')}; run codex-bridge update --force`)
@@ -331,7 +348,8 @@ export async function diagnose({ host, codexProbe = probeCodex, bridgeProbe = pr
     !record ? 'warn' : missingFiles.length ? 'fail' : 'ok',
     !record ? 'not checked' : missingFiles.length ? `missing: ${missingFiles.join(', ')}` : `${record.files.length} installed file(s) present`,
   ));
-  checks.push(await agentsCheck(host, record));
+  const agents = await agentsCheck(host, record);
+  checks.push(agents);
   const rules = await rulesCheck(host, record);
   checks.push(rules);
   checks.push(await permissionsCheck(host));
@@ -353,7 +371,7 @@ export async function diagnose({ host, codexProbe = probeCodex, bridgeProbe = pr
   checks.push(projectRuns);
 
   return {
-    exitCode: !record || recordBroken || missingFiles.length || rules.status === 'fail'
+    exitCode: !record || recordBroken || missingFiles.length || agents.status === 'fail' || rules.status === 'fail'
       || retention.status === 'fail' || conventions.status === 'fail' || projectRuns.status === 'fail' ? 1 : 0,
     checks,
     record,

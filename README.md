@@ -89,7 +89,15 @@ Output on a healthy host (trimmed):
 [ok] liveRuns: 0 runs working right now
 ```
 
-`doctor` reports the selected host, package source, installed files and guards, Codex availability, retention policy, permissions, live runs, and the current repository's run folder.
+`doctor` reports the selected host, package source, installed files and guards, Codex availability, retention policy, permissions, live runs, and the current repository's run folder. The `agents` line is a read, not a file count: each installed definition is parsed and its `name` checked against the dispatcher it claims to be, because a definition the host cannot read is a dispatcher that does not exist while every other line still says `[ok]`.
+
+If a session answers `Agent type 'codex-build' not found`, a run can still be started without the dispatcher — the agent is a wrapper that types one command:
+
+```bash
+codex-bridge run --agent codex-build --repo <repository> --order-id <id> --scope <globs> --task-file <absolute path>
+```
+
+The trade-off is explicit: `order-gate` and `reply-guard` sit on the dispatcher call, so a direct run is unguarded and its result is judged by the worktree and the suite.
 
 ## Update
 

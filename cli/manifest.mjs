@@ -11,6 +11,7 @@ import {
 import { renderNoSelfExecution } from '../src/home/lib/no-self-execution.mjs';
 import { renderStopSummary } from '../src/home/lib/stop-contract.mjs';
 import { readJsonFile } from '../src/home/lib/json-file.mjs';
+import { normalizeFrontmatter } from './frontmatter.mjs';
 import {
   INSTALL_RECORD_NAME,
   RULES_NAME,
@@ -73,12 +74,13 @@ const posix = (value) => value.split(path.sep).join('/');
 
 export function replacePlaceholders(content, installationRoot) {
   const agentType = content.match(/^name:\s*([^\r\n]+)$/m)?.[1].trim();
-  return content
+  const replaced = content
     .replaceAll('{{CODEX_BRIDGE_DIR}}', posix(path.resolve(installationRoot)))
     .replaceAll('{{CODEX_REQUIRED_INPUTS_SUMMARY}}', renderRequiredInputSummary(agentType))
     .replaceAll('{{CODEX_REQUIRED_INPUTS}}', renderRequiredInputs(agentType))
     .replaceAll('{{CODEX_NO_SELF_EXECUTION}}', renderNoSelfExecution())
     .replaceAll('{{CODEX_STOP_SUMMARY}}', renderStopSummary());
+  return normalizeFrontmatter(replaced);
 }
 
 export async function packageInfo(packageRoot = PACKAGE_ROOT) {
