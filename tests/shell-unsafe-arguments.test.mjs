@@ -128,3 +128,16 @@ test('the shared no-self-execution block names the command, never the runner fil
   assert.doesNotMatch(block, /run-codex\.mjs/);
   assert.match(block, /codex-bridge run/);
 });
+
+// The reply guard repeats recovery instructions at each failure branch. Inspect only expressions
+// that become a block reason so its internal run-codex.mjs mechanics comment remains legitimate.
+test('reply guard block reasons name the package command, never the runner file', async () => {
+  const source = await fs.readFile(path.join(ROOT, 'src', 'home', 'hooks', 'reply-guard.mjs'), 'utf8');
+  const stringExpression = "(?:(?:'[^'\\r\\n]*'|`[^`]*`)\\s*(?:\\+\\s*)?)+";
+  const directReasons = [...source.matchAll(new RegExp(`(?:blockForm|blockState)\\(\\s*(${stringExpression})`, 'g'))];
+  const assignedReasons = [...source.matchAll(new RegExp(`\\bconst reason\\s*=\\s*(${stringExpression})\\s*;`, 'g'))];
+  const reasons = [...directReasons, ...assignedReasons].map((match) => match[1]);
+
+  assert.notEqual(reasons.length, 0);
+  assert.doesNotMatch(reasons.join('\n'), /run-codex\.mjs/);
+});

@@ -137,7 +137,7 @@ let searchedRunsDir = null;
 if (runDir && !fs.existsSync(runDir)) {
   blockForm(
     'Contract violated: the response has no RUN= or ATTACH= line with an existing run folder, so ' +
-      'delegation to Codex is not confirmed. Run run-codex.mjs and return its stdout ' +
+      'delegation to Codex is not confirmed. Run codex-bridge run and return its stdout ' +
       'verbatim — the ATTACH=<path> line and the status block below it. If no run occurred, ' +
       'report the runner status: your own analysis instead of Codex is prohibited in all outcomes.',
   );
@@ -190,7 +190,7 @@ if (!runDir && !claimed) {
   // needs. Only a reply that hands down a verdict earns the disk search below.
   blockForm(
     'Contract violated: the response has no RUN= or ATTACH= line, so delegation to Codex is not ' +
-      'confirmed. Run run-codex.mjs and return its stdout verbatim. If the runner refused before ' +
+      'confirmed. Run codex-bridge run and return its stdout verbatim. If the runner refused before ' +
       'creating a folder, return that refusal exactly as printed.',
   );
 }
@@ -207,7 +207,7 @@ if (!runDir) {
   if (!candidates.length) {
     blockState(
       'Contract violated: the response has no RUN= or ATTACH= line, and no recent run for this ' +
-        'dispatcher was found on disk. Run run-codex.mjs and return its stdout verbatim; your own ' +
+        'dispatcher was found on disk. Run codex-bridge run and return its stdout verbatim; your own ' +
         'analysis instead of Codex is prohibited in all outcomes.',
       stopText(
         `The reply guard stopped the session: the dispatcher responded ${MAX_STATE_BLOCKS} times ` +
@@ -290,7 +290,7 @@ if (fs.existsSync(statusPath)) {
       blockState(
         'Contract violated: status.json says state=running and the process is alive — the run is ' +
           'not finished, but you are already responding. The STARTED output of the starting call ' +
-          'is not a result. Repeat the identical run-codex.mjs command, same --order-id, with ' +
+          'is not a result. Repeat the identical codex-bridge run command, same --order-id, with ' +
           'timeout 1800000: it attaches to this same run, costs no quota, and prints the verdict.',
         stopText(
           `The reply guard stopped the session: the dispatcher responded ${MAX_STATE_BLOCKS} ` +
@@ -303,7 +303,7 @@ if (fs.existsSync(statusPath)) {
     if (!fs.existsSync(path.join(runDir, 'meta.json'))) {
       blockState(
         'Contract violated: status.json says state=running, but the process with this pid is dead ' +
-          'and meta.json is missing — the run is abandoned. Repeat the identical run-codex.mjs ' +
+          'and meta.json is missing — the run is abandoned. Repeat the identical codex-bridge run ' +
           'command, same --order-id, with timeout of at least 1800000 and return its stdout ' +
           'verbatim.',
         stopText(
@@ -320,7 +320,7 @@ if (fs.existsSync(statusPath)) {
   } else if (runStatus?.state === 'abandoned') {
     blockState(
       'Contract violated: status.json says state=abandoned — the runner died without a verdict. ' +
-        'Repeat the identical run-codex.mjs command, same --order-id, with timeout of at least ' +
+        'Repeat the identical codex-bridge run command, same --order-id, with timeout of at least ' +
         '1800000 and return its stdout verbatim.',
       stopText(
         `The reply guard stopped the session: the dispatcher responded ${MAX_STATE_BLOCKS} ` +
@@ -338,7 +338,7 @@ if (fs.existsSync(statusPath)) {
 const metaPath = path.join(runDir, 'meta.json');
 if (!fs.existsSync(metaPath)) {
   const reason = `Contract violated: run folder ${runDir} has no meta.json; nothing supports the ` +
-    'response. Run run-codex.mjs again and return its stdout verbatim.';
+    'response. Run codex-bridge run again and return its stdout verbatim.';
   if (discoveredRun) {
     blockState(
       reason,
