@@ -118,3 +118,13 @@ test('the documentation guard catches a relative task file and a continued line'
   const continued = '```bash\ncodex-bridge run \\\\\n  --task-file /abs/task.md\n```';
   assert.deepEqual(docFindings(continued, 'doc.md'), [{ name: 'doc.md', flag: '<line continuation>', sequence: '\\' }]);
 });
+
+// The block used to open with "start a run through run-codex.mjs". A dispatcher refused by the
+// host followed that sentence to the letter on 2026-08-15: the file by absolute path, then
+// PowerShell, then a request to grant a permission rule on the file itself.
+test('the shared no-self-execution block names the command, never the runner file', async () => {
+  const { renderNoSelfExecution } = await import('../src/home/lib/no-self-execution.mjs');
+  const block = renderNoSelfExecution();
+  assert.doesNotMatch(block, /run-codex\.mjs/);
+  assert.match(block, /codex-bridge run/);
+});
