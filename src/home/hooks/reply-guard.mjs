@@ -30,12 +30,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { runOrderMismatch, transcriptOrderId } from '../lib/dispatcher-order.mjs';
+import { recognizeHostRefusal } from '../lib/host-refusal.mjs';
 import { readJsonFileSync } from '../lib/json-file.mjs';
 import { resolveProjectRunsDir } from '../lib/runner/project-dir.mjs';
 import { runsRoot } from '../lib/runner/runs-root.mjs';
 import { isPidAlive, liveRuns, normalizePath, recentRuns } from './live-runs.mjs';
 import { FORM, MAX_STATE_BLOCKS, STATE, takeTry } from './guard-tries.mjs';
-
 const HOME = os.homedir();
 const LOG_DIR = path.join(HOME, '.claude', 'logs');
 const GUARDED = new Set(['codex-scout', 'codex-build', 'codex-review']);
@@ -86,18 +86,21 @@ if (!GUARDED.has(input.agent_type)) pass();
 
 const reply = String(input.last_assistant_message || '').trim();
 if (!reply) pass();
-
 const emit = (payload) => {
   process.stdout.write(JSON.stringify(payload));
   process.exit(0);
 };
-
 /** Wrong shape of reply: three tries, then the reply goes through as it always has. */
 const blockForm = (reason) => {
   if (takeTry(input.agent_id, FORM) !== 'granted') pass();
   emit({ decision: 'block', reason });
 };
-
+// The 2026-08-16 probe spent all state tries on an honest refusal; decide it before RUN/disk checks.
+const hostRefusal = recognizeHostRefusal(reply);
+if (hostRefusal.recognized) pass();
+if (hostRefusal.declaresFailure && hostRefusal.namesInstallRemedy && !hostRefusal.namesOrderId) {
+  blockForm('Contract violated: the host-refusal reply is missing the order id the orchestrator issued.');
+}
 /**
  * Wrong external state: three tries, then the turn ends with stopReason instead of the
  * silent pass. Silence here is what let a run in progress be reported as finished business
@@ -109,7 +112,6 @@ const blockState = (reason, stopReason) => {
   if (verdict === 'exhausted') emit({ continue: false, stopReason });
   pass();
 };
-
 /**
  * Either line names the run folder. `RUN=` is printed by the call that starts a run, `ATTACH=`
  * by the repeat that joins it — and since the launcher stopped waiting, the reply carrying the
@@ -118,7 +120,6 @@ const blockState = (reason, stopReason) => {
  */
 const cleanRunDir = (value) => value.trim().replace(/\s+(?:order-id|started)=.*$/, '').replace(/[`"'*]+$/g, '');
 const runDirs = [...reply.matchAll(/(?:RUN|ATTACH)=(.+?)(?:\r?\n|$)/g)].map((match) => cleanRunDir(match[1]));
-
 /**
  * Does this reply pronounce a verdict at all? Computed here rather than after meta.json is read,
  * because it decides whether an unnamed folder is worth searching the disk for.
@@ -183,7 +184,6 @@ const stopText = (headline, observed, runStatus, folder = runDir) => {
   ].join(' ');
 };
 const orderedOrderId = transcriptOrderId(input.agent_transcript_path);
-
 if (!runDir && !claimed) {
   // A reply that pronounces nothing cannot contradict the disk. It stays on the old, softer path:
   // three tries about the SHAPE of the answer and then through, which is what a quoted refusal

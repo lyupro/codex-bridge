@@ -75,6 +75,41 @@ test('an invented reply without any run folder is fail-closed', async (t) => {
 });
 
 /**
+ * The 2026-08-16 live permission-denial probe proved an honest host refusal was indistinguishable
+ * from skipped delegation and spent three state tries. A complete refusal is terminal evidence,
+ * so it must pass before any form or state budget is touched.
+ */
+test('a complete host refusal passes immediately without spending try budget', async (t) => {
+  const { root } = await fixture(t);
+  const result = runGuard(
+    root,
+    'FAIL — host denied order id `probe-refusal`. Run `codex-bridge install` to grant permission.',
+    'complete-host-refusal',
+  );
+  assert.equal(result.status, 0);
+  assert.equal(result.stdout, '');
+  await assert.rejects(
+    fs.access(path.join(root, '.claude', 'logs', 'codex-reply-guard.blocked.json')),
+    { code: 'ENOENT' },
+  );
+});
+
+test('a host refusal without its order id is blocked with the missing contract part', async (t) => {
+  const { root } = await fixture(t);
+  const result = runGuard(
+    root,
+    'FAIL — permission to run the command was denied. Run `codex-bridge install`.',
+    'host-refusal-without-order',
+  );
+  const decision = JSON.parse(result.stdout);
+  assert.equal(decision.decision, 'block');
+  assert.equal(
+    decision.reason,
+    'Contract violated: the host-refusal reply is missing the order id the orchestrator issued.',
+  );
+});
+
+/**
  * The runner refuses before it creates a folder — a repeat without `--continue`, an impossible
  * `--scope`, a missing `--question` — and quoting that refusal is the whole honest answer. The
  * first version of the disk search escalated it anyway: it found an unrelated recent run and
