@@ -493,7 +493,10 @@ This is not tidiness. On 2026-08-10 the stop-guidance sentence — `` before `Ta
 removes the wrapper … `` — entered `description:` unquoted, and a colon followed by a space starts a
 nested mapping, so the frontmatter did not parse and Claude Code registered none of the three
 agents for five days while `doctor` reported every file present. `doctor` now parses each installed
-definition and checks its `name`, and the suite parses everything the installer would write.
+definition and checks its `name`, and the suite parses everything the installer would write. A definition whose content differs from the packaged one is reported as `fail` and exits 1 rather
+than warning: the drift that matters is a call form no permission rule matches, and a host in that
+state stops every delegation while looking healthy to a script. The remedy printed with it is
+`codex-bridge update --force`.
 
 Exactly this minimum remains in external directories: an agent file elsewhere means the agent
 does not exist. Symlinks from `~/.claude` to our directory were rejected—creating them on Windows

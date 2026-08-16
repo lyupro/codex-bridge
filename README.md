@@ -89,7 +89,7 @@ Output on a healthy host (trimmed):
 [ok] liveRuns: 0 runs working right now
 ```
 
-`doctor` reports the selected host, package source, installed files and guards, Codex availability, retention policy, permissions, live runs, and the current repository's run folder. The `agents` line is a read, not a file count: each installed definition is parsed and its `name` checked against the dispatcher it claims to be, because a definition the host cannot read is a dispatcher that does not exist while every other line still says `[ok]`.
+`doctor` reports the selected host, package source, installed files and guards, Codex availability, retention policy, permissions, live runs, and the current repository's run folder. The `agents` line is a read, not a file count: each installed definition is parsed and its `name` checked against the dispatcher it claims to be, because a definition the host cannot read is a dispatcher that does not exist while every other line still says `[ok]`. Content that drifts from the packaged definition is a failure, not a warning: `doctor` exits 1 and names `codex-bridge update --force`, because a host running someone else's agent files may be calling the runner in a form no permission rule matches.
 
 If a session answers `Agent type 'codex-build' not found`, a run can still be started without the dispatcher — the agent is a wrapper that types one command:
 
