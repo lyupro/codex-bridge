@@ -141,3 +141,29 @@ test('reply guard block reasons name the package command, never the runner file'
   assert.notEqual(reasons.length, 0);
   assert.doesNotMatch(reasons.join('\n'), /run-codex\.mjs/);
 });
+
+// The reason parser above is bound to the shape of an expression — blockForm, blockState, const
+// reason — and the same defect it exists to catch lived one argument further along, in the
+// stopText() a session reads when a turn is ended. An invariant tied to a shape survives the
+// cleanup that removes the shape, exactly as the file-bound one survived two of them (Plan_46).
+// So the rule itself is checked instead: no line of hook code may name the runner file. Only
+// whole-line comments are exempt, because reply-guard legitimately explains run-codex.mjs
+// mechanics in one; a trailing comment naming it fails here, and its fix is a line above.
+test('no hook names the runner file outside a comment', async () => {
+  const dir = path.join(ROOT, 'src', 'home', 'hooks');
+  const names = (await fs.readdir(dir)).filter((name) => name.endsWith('.mjs'));
+  assert.notEqual(names.length, 0);
+
+  const offenders = [];
+  for (const name of names) {
+    const source = await fs.readFile(path.join(dir, name), 'utf8');
+    const code = source
+      .split(/\r?\n/)
+      .filter((line) => !/^\s*(?:\/\/|\*|\/\*)/.test(line))
+      .join('\n');
+    // A stripper that ate the code would pass this test on every file, silently.
+    assert.match(code, /\S/);
+    if (/run-codex\.mjs/.test(code)) offenders.push(name);
+  }
+  assert.deepEqual(offenders, []);
+});
