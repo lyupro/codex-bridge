@@ -49,6 +49,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   called a hook healthy on the strength of a line in `settings.json` without ever starting the file.
   The source now contains a literal image of the installed home, `src/home/`, and installation
   copies it one to one.
+- The reply guard no longer sends a refused dispatcher down the one road the host cannot allow.
+  Seven of its block texts said "Run run-codex.mjs and return its stdout verbatim" — the sentence
+  removed from every prompt in this release, because a command line naming a file can match no
+  permission rule. They were the worst place for it to survive: a dispatcher reads them at the one
+  moment it is looking for what to do next, having just had its answer rejected. All seven name
+  `codex-bridge run`. The invariant behind them was the actual defect and is now stated as a rule
+  rather than as a shape: no line of code in a hook may name the runner file, whole-line comments
+  excepted. The earlier expression-bound check could not see the text a session is shown when its
+  turn is ended, which is where the same sentence would have survived a fourth cleanup.
 
 ### Added
 
