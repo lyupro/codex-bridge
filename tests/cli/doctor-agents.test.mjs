@@ -35,6 +35,17 @@ test('doctor renders agent drift as an unbracketed update command', async (t) =>
   assert.doesNotMatch(rendered, /^\[(?:ok|warn)] agents:/m);
 });
 
+// Drift was advisory until a checklist run planted the pre-Plan_41 invocation — a file path instead
+// of the package command — in an installed definition. doctor stayed exit 0 while every delegation
+// would have stopped on a permission prompt, so a script could call that host healthy.
+test('doctor fails when an installed agent drifts from the package', async (t) => {
+  const { host, record } = await installedFixture(t);
+  const agent = record.files.find((file) => file.path.endsWith('codex-scout.md'));
+  await fs.appendFile(recordTarget(host, agent), '\nnode "C:/x/run-codex.mjs" --agent codex-scout\n');
+  const result = await diagnose({ host, codexProbe, bridgeProbe, currentPackage: ownPackage });
+  assert.equal(result.checks.find((item) => item.key === 'agents').status, 'fail');
+});
+
 test('doctor fails when an installed agent has unreadable frontmatter', async (t) => {
   const { host, record } = await installedFixture(t);
   const agent = record.files.find((file) => file.path.endsWith('codex-build.md'));

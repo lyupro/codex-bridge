@@ -58,6 +58,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   rather than as a shape: no line of code in a hook may name the runner file, whole-line comments
   excepted. The earlier expression-bound check could not see the text a session is shown when its
   turn is ended, which is where the same sentence would have survived a fourth cleanup.
+- `doctor` no longer calls a host healthy when an installed agent definition is not this package's.
+  Drift was advisory — a message, exit code 0 — while an unreadable definition was already fatal. A
+  checklist run planted the pre-0.5.2 invocation, a file path instead of the package command, in an
+  installed agent: `doctor` printed the drift and still exited 0, so a script or a CI step would
+  have called that host healthy while every delegation on it stopped at a permission prompt. Any
+  definition that differs from the package now exits 1 and names `codex-bridge update --force`.
 
 ### Added
 

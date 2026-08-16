@@ -63,13 +63,15 @@ async function agentsCheck(host, record) {
       unreadable.push(`${path.basename(item.target)} (${err.message})`);
     }
   }
-  // The 2026-08-10 registration failure left files present but unreadable by Claude Code; package
-  // drift remains advisory, while a definition the host cannot register must make doctor red.
+  // The 2026-08-10 registration failure left files present but unreadable by Claude Code. Drift was
+  // advisory until a 2026-08-16 checklist run planted the pre-Plan_41 invocation — a path instead of
+  // the package command — in an installed definition: doctor kept exit 0 while every delegation
+  // would stop on a permission prompt. A definition that is not this package's is not judged healthy.
   if (unreadable.length) {
     return check('agents', 'fail', `Installed agent definitions cannot be read: ${unreadable.join(', ')}; run codex-bridge update --force`);
   }
   return mismatches.length
-    ? check('agents', 'warn', `Installed agent definitions differ from this package: ${mismatches.join(', ')}; run codex-bridge update --force`)
+    ? check('agents', 'fail', `Installed agent definitions differ from this package: ${mismatches.join(', ')}; run codex-bridge update --force`)
     : check('agents', 'ok', `${agents.length} installed agent definition(s) match this package`);
 }
 
