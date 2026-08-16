@@ -8,6 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- The guard punished the very refusal the package demands. A dispatcher whose command the host
+  denies is told by its own prompt to answer `FAIL`, name its order id and name `codex-bridge
+  install`; the guard knew only `RUN=` and `ATTACH=`, so that honest answer read as "no run
+  exists" and was blocked three times before the exhausted try budget let it through. A probe on
+  2026-08-16 with `Bash(codex-bridge:*)` denied spent 31.5k tokens on an answer worth ten, and the
+  counter recorded `{"state": 3}` against it. A host refusal is now a recognised shape beside the
+  two run lines: a reply that declares failure, names its order id and names the remedy passes on
+  the first try, before any check that looks for a folder on disk. A reply that declares failure and
+  names the remedy but omits the order id is blocked with that exact part named — the prompt asked
+  for it in prose, and prose is a request a model can silently skip.
+
 - No Claude Code host had registered the three dispatchers since 2026-08-10. The stop-guidance
   sentence added that day — `` before `TaskStop`: TaskStop removes the wrapper … `` — was
   substituted into the `description:` line of each agent's frontmatter, and an unquoted YAML scalar
