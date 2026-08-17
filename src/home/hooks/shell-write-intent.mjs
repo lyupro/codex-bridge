@@ -31,6 +31,17 @@ function positional(args) {
   return args.filter((arg) => !arg.startsWith('-'));
 }
 
+/**
+ * Strip the directory and the Windows executable suffix before matching the command name.
+ * `INTERPRETERS` has always allowed `python.exe`; the command list did not, so `sed.exe -i` —
+ * the spelling Git Bash and PowerShell hand over on this platform — walked past the guard while
+ * the identical `sed -i` was refused (found accepting the 2026-08-17 smoke run, which had recorded
+ * that gap as intended behaviour).
+ */
+function commandName(token) {
+  return token.replace(/^.*[\\/]/, '').replace(/\.exe$/i, '').toLowerCase();
+}
+
 function heredocPaths(command, paths) {
   const header = command.match(/^(.*?<<-?\s*(['"]?)([A-Za-z_][\w-]*)\2[^\r\n]*)[\r\n]/s);
   if (!header || !INTERPRETERS.test(header[1])) return false;
@@ -60,9 +71,9 @@ export function shellWriteIntent(command) {
 
   for (const segment of command.split(/(?:&&|\|\||[;|\r\n])/)) {
     const parts = tokens(segment);
-    const index = parts.findIndex((part) => COMMANDS.has(part.replace(/^.*[\\/]/, '').toLowerCase()));
+    const index = parts.findIndex((part) => COMMANDS.has(commandName(part)));
     if (index < 0) continue;
-    const name = parts[index].replace(/^.*[\\/]/, '').toLowerCase();
+    const name = commandName(parts[index]);
     const args = parts.slice(index + 1);
     if (name === 'sed' && !args.some((arg) => /^-.*i/.test(arg))) continue;
     writes = true;

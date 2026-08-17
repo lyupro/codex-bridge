@@ -21,6 +21,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   hand. The recogniser states in its own header that its list is not complete and cannot become one
   — that is precisely why the witness stands behind it.
 
+- The recogniser knew `sed` and did not know `sed.exe`. Its interpreter pattern had always allowed
+  the suffix — `python.exe` opens a heredoc like `python` does — but the command list compared bare
+  basenames, so the spelling this platform hands over walked past the guard while the identical
+  command without the suffix was refused. Found accepting a delegated run of 2026-08-17 that had
+  recorded the gap as intended behaviour: a test asserting `sed.exe -i` is not a write. A test that
+  states a defect is true keeps it, so the recogniser now strips the suffix and the case asserts the
+  refusal.
+
 ## [0.5.2] - 2026-08-16
 
 ### Fixed
