@@ -47,6 +47,14 @@ export const STOP_TOOLS = Object.freeze(['TaskStop']);
 export const STOP_TOOL_MATCHER = STOP_TOOLS.join('|');
 
 /**
+ * The lock listens to file tools and shells through one registration, not two. A second definition
+ * naming the same file lands twice in the installation record, and that record forbids duplicate
+ * files — 33 tests failed on it the day the shell side was added. One hook, one entry, one matcher
+ * wide enough for both.
+ */
+export const LOCKED_TOOL_MATCHER = [...WRITE_TOOLS, ...SHELL_TOOLS].join('|');
+
+/**
  * Stable CLI names live beside each event and file because the Plan_19 drift incident left
  * registration, diagnostics, and the guard itself carrying different hook identities. The
  * dispatcher must consume this one list instead of guessing a name from a path at its call site.
@@ -54,7 +62,7 @@ export const STOP_TOOL_MATCHER = STOP_TOOLS.join('|');
 export const HOOK_DEFINITIONS = Object.freeze([
   Object.freeze({ name: 'reply-guard', event: 'SubagentStop', matcher: '*', file: 'reply-guard.mjs' }),
   Object.freeze({ name: 'order-gate', event: 'PreToolUse', matcher: SUBAGENT_TOOL_MATCHER, file: 'order-gate.mjs' }),
-  Object.freeze({ name: 'worktree-lock', event: 'PreToolUse', matcher: WRITE_TOOL_MATCHER, file: 'worktree-lock.mjs' }),
+  Object.freeze({ name: 'worktree-lock', event: 'PreToolUse', matcher: LOCKED_TOOL_MATCHER, file: 'worktree-lock.mjs' }),
   Object.freeze({ name: 'prune-guard', event: 'PreToolUse', matcher: SHELL_TOOL_MATCHER, file: 'prune-guard.mjs' }),
   Object.freeze({ name: 'worktree-witness', event: 'PostToolUse', matcher: SHELL_TOOL_MATCHER, file: 'worktree-witness.mjs' }),
   Object.freeze({ name: 'stop-guard', event: 'PreToolUse', matcher: STOP_TOOL_MATCHER, file: 'stop-guard.mjs' }),

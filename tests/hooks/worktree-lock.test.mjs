@@ -8,7 +8,8 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
   HOOK_DEFINITIONS,
-  WRITE_TOOL_MATCHER,
+  LOCKED_TOOL_MATCHER,
+  SHELL_TOOLS,
   WRITE_TOOLS,
 } from '../../src/home/lib/hook-definitions.mjs';
 
@@ -57,16 +58,39 @@ function runLock(root, runsRoot, toolName, rawPath, cwd = root) {
   });
 }
 
+function runShell(root, runsRoot, command, cwd = root) {
+  return spawnSync(process.execPath, [LOCK], {
+    input: JSON.stringify({
+      hook_event_name: 'PreToolUse',
+      tool_name: 'Bash',
+      tool_input: { command },
+      cwd,
+    }),
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      CODEX_RUNS_ROOT: runsRoot,
+      HOME: root,
+      USERPROFILE: root,
+    },
+  });
+}
+
 function assertPass(result) {
   assert.equal(result.status, 0);
   assert.equal(result.stdout, '');
 }
 
-test('the registry matcher covers every write tool the lock answers to', () => {
-  const definition = HOOK_DEFINITIONS.find((entry) => entry.file === 'worktree-lock.mjs');
-  assert.equal(definition.matcher, WRITE_TOOL_MATCHER);
+test('one registration routes every tool the lock answers to, write and shell alike', () => {
+  // Two entries naming worktree-lock.mjs put the same file twice into the installation record,
+  // which forbids duplicates — 33 tests failed on it on 2026-08-17. One entry, one wide matcher.
+  const entries = HOOK_DEFINITIONS.filter((entry) => entry.file === 'worktree-lock.mjs');
+  assert.equal(entries.length, 1);
+  const [definition] = entries;
+  assert.equal(definition.name, 'worktree-lock');
+  assert.equal(definition.matcher, LOCKED_TOOL_MATCHER);
   const matcher = new RegExp(`^(?:${definition.matcher})$`);
-  for (const toolName of WRITE_TOOLS) assert.ok(matcher.test(toolName), toolName);
+  for (const toolName of [...WRITE_TOOLS, ...SHELL_TOOLS]) assert.ok(matcher.test(toolName), toolName);
 });
 
 test('the lock denies writes inside a live codex-build repository for every write tool', async (t) => {
@@ -151,4 +175,42 @@ test('relative paths use the host cwd and malformed payloads pass', async (t) =>
     env: { ...process.env, CODEX_RUNS_ROOT: runsRoot, HOME: root, USERPROFILE: root },
   });
   assertPass(malformed);
+});
+
+test('the lock denies output redirection into a live build repository', async (t) => {
+  const { root, runsRoot } = await fixture(t);
+  const repo = path.join(root, 'repository');
+  await liveRun(runsRoot, { repo });
+  const target = path.join(repo, 'CHANGELOG.md');
+  const result = runShell(root, runsRoot, `printf changed > "${target}"`);
+  const decision = JSON.parse(result.stdout).hookSpecificOutput;
+  assert.equal(decision.permissionDecision, 'deny');
+  assert.match(decision.permissionDecisionReason, /CHANGELOG\.md/);
+});
+
+test('the lock denies an interpreter heredoc that names a held path', async (t) => {
+  const { root, runsRoot } = await fixture(t);
+  const repo = path.join(root, 'repository');
+  await liveRun(runsRoot, { repo });
+  const target = path.join(repo, 'generated.txt').replaceAll('\\', '/');
+  const command = `python - <<'PY'\nopen('${target}', 'w').write('changed')\nPY`;
+  const result = runShell(root, runsRoot, command);
+  const decision = JSON.parse(result.stdout).hookSpecificOutput;
+  assert.equal(decision.permissionDecision, 'deny');
+  assert.match(decision.permissionDecisionReason, /generated\.txt/);
+});
+
+test('the lock allows a shell command that merely reads', async (t) => {
+  const { root, runsRoot } = await fixture(t);
+  const repo = path.join(root, 'repository');
+  await liveRun(runsRoot, { repo });
+  assertPass(runShell(root, runsRoot, `git -C "${repo}" status --short`));
+});
+
+test('the lock allows a shell write outside every held repository', async (t) => {
+  const { root, runsRoot } = await fixture(t);
+  const repo = path.join(root, 'repository');
+  await liveRun(runsRoot, { repo });
+  const target = path.join(root, 'other-repository', 'file.txt');
+  assertPass(runShell(root, runsRoot, `printf changed > "${target}"`));
 });
