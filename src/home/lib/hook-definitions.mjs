@@ -56,5 +56,6 @@ export const HOOK_DEFINITIONS = Object.freeze([
   Object.freeze({ name: 'order-gate', event: 'PreToolUse', matcher: SUBAGENT_TOOL_MATCHER, file: 'order-gate.mjs' }),
   Object.freeze({ name: 'worktree-lock', event: 'PreToolUse', matcher: WRITE_TOOL_MATCHER, file: 'worktree-lock.mjs' }),
   Object.freeze({ name: 'prune-guard', event: 'PreToolUse', matcher: SHELL_TOOL_MATCHER, file: 'prune-guard.mjs' }),
+  Object.freeze({ name: 'worktree-witness', event: 'PostToolUse', matcher: SHELL_TOOL_MATCHER, file: 'worktree-witness.mjs' }),
   Object.freeze({ name: 'stop-guard', event: 'PreToolUse', matcher: STOP_TOOL_MATCHER, file: 'stop-guard.mjs' }),
 ]);

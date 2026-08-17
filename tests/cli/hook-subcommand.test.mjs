@@ -88,6 +88,32 @@ test('every definition name reaches its existing top-level guard', async (t) => 
       assert.equal(JSON.parse(result.stdout).hookSpecificOutput.permissionDecision, 'deny');
       continue;
     }
+    if (definition.file === 'worktree-witness.mjs') {
+      // PostToolUse arrives after the work is done, so this guard reports instead of denying:
+      // the branch below reproduces the 2026-08-16 incident — a live run scoped to src/** while
+      // the orchestrator changed CHANGELOG.md through a shell heredoc.
+      const repo = path.join(root, 'repository');
+      await fs.mkdir(repo, { recursive: true });
+      assert.equal(spawnSync('git', ['init', '-q', repo]).status, 0, definition.name);
+      const runsRoot = await liveRun(root, repo);
+      const dir = path.join(runsRoot, 'project', 'active-run');
+      await fs.writeFile(path.join(dir, 'git-before.txt'), '');
+      await fs.writeFile(path.join(dir, 'scope.txt'), 'src/**\n');
+      await fs.writeFile(path.join(repo, 'CHANGELOG.md'), 'changed by another hand\n');
+      const result = run(['hook', definition.name], JSON.stringify({
+        hook_event_name: 'PostToolUse',
+        tool_name: 'Bash',
+        tool_input: { command: 'python - <<PY' },
+        cwd: repo,
+      }), hookEnvironment(root, runsRoot));
+      assert.equal(result.status, 0, definition.name);
+      assert.match(
+        JSON.parse(result.stdout).hookSpecificOutput.additionalContext,
+        /CHANGELOG\.md/,
+        definition.name,
+      );
+      continue;
+    }
     if (definition.file === 'prune-guard.mjs') {
       const result = run(['hook', definition.name], JSON.stringify({
         tool_name: 'Bash',
