@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- The worktree lock knew writing by tool name, and a shell writes anyway. It denies edits inside a
+  repository held by a live `codex-build` run, but was registered only for
+  `Write|Edit|MultiEdit|NotebookEdit`; on 2026-08-16 a `python - <<PY` heredoc inside `Bash` walked
+  past it and appended to `CHANGELOG.md`, and the run reported `FAIL — out-of-scope changes (1)`
+  for work it had finished correctly. Two guards now cover the gap from both sides. The lock's
+  matcher takes in shell tools as well, and `shell-write-intent.mjs` refuses the obvious forms —
+  redirection, `tee`, `sed -i`, `cp`, `mv`, `rm`, `touch`, `truncate`, a heredoc fed to an
+  interpreter — before they run. Behind it, `worktree-witness.mjs` compares the tree after every
+  shell command against the run's recorded snapshot, drops everything inside the run's declared
+  scope, and names whatever is left: a run may only write inside its scope, so the rest is another
+  hand. The recogniser states in its own header that its list is not complete and cannot become one
+  — that is precisely why the witness stands behind it.
+
 ## [0.5.2] - 2026-08-16
 
 ### Fixed
