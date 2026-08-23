@@ -65,6 +65,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   host recorded, and a difference from the declared one is a `warn` naming both values and
   `codex-bridge update --force`.
 
+- The worktree lock refused four kinds of work it cannot protect. A miss by this guard is
+  survivable — the witness names the fact afterwards — but a false refusal has no backstop and
+  simply stops the orchestrator. An ignored path was refused, which made the plans and checklists a
+  live run is documented in unwritable, although a run is only ever failed for what
+  `git status` reports; an unexpanded shell variable was resolved against the working directory and
+  refused as a path inside the repository; a backtick in the TEXT of a heredoc was refused as a
+  path; and a comparison operator in code (`node -e "i>0?'yes':'no'"`) was read as a redirection.
+  The lock now passes a path git proves is ignored — and only that, so a missing repository or a
+  missing git keeps the refusal, while `.git` stays refused whatever git answers — a redirect
+  target wins over document text (the 2026-08-16 python heredoc is still refused), and a candidate
+  opening with `$`, `%` or a backtick, or holding a character no file name may contain, is not
+  reported as a target.
+
 ## [0.5.2] - 2026-08-16
 
 ### Fixed
