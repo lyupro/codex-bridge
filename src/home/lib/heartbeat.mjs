@@ -2,7 +2,10 @@
  * The one definition of run progress: a heartbeat file in the run folder, its age, and the
  * stale threshold. On 2026-08-06 run 2026-08-06_204007_build left a live worker waiting on
  * Codex's grandchild; a worker timer alone would have kept that dead run looking alive, so
- * the timer stops at exit.
+ * the timer stops at exit. The file's modification time is the run's best-effort sign of recent
+ * progress. A failed stamp is swallowed so this hint cannot prevent the run's normal verdict and
+ * artifacts. For an old record, a missing file is a legacy state that keeps its lock until its pid
+ * dies.
  */
 import fs from 'node:fs';
 import path from 'node:path';
