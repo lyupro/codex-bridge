@@ -44,6 +44,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   the sandbox each agent is entitled to is the one it actually gets. The value carries no quotes
   because the command line goes through cmd.exe, where a double quote is refused before launch.
 
+- A hook fix could not reach a host that already had the hook. Installation identifies our entry by
+  its command and ignores which matcher group it sits under — deliberately, because the matcher
+  grows whenever a host spelling is added and a lookup by matcher would register a duplicate and
+  orphan the old entry at uninstall — but nothing afterwards moved the entry to the matcher the
+  package declares now. A host installed before 2026-08-17 kept `Write|Edit|MultiEdit|NotebookEdit`
+  for the worktree lock while the package had been saying `…|Bash|PowerShell` for days:
+  `update --force` reported success and rewrote nothing, so the guard never saw a shell command and
+  two honest delegated runs were failed for a file written through their window. Merge now moves the
+  entry under the declared matcher, drops the group it emptied, leaves a group holding someone
+  else's hooks exactly as it was, and still cannot produce a second registration of our command for
+  one event.
+
 ## [0.5.2] - 2026-08-16
 
 ### Fixed
