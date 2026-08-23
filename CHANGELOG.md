@@ -56,6 +56,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   else's hooks exactly as it was, and still cannot produce a second registration of our command for
   one event.
 
+- `doctor` stated the matcher this package expects as though it had read it. Its hook line was built
+  from the registry, so a host still registered under an older matcher was reported as healthy with
+  the new matcher's text — on 2026-08-17 it printed `…|Bash|PowerShell` over a `settings.json` that
+  said `Write|Edit|MultiEdit|NotebookEdit`, and the operator had no way to see that the worktree
+  lock could not see a shell command at all. Same shape as the 2026-08-10 defect in this file:
+  a check that compares the package with itself cannot fail. The line now prints the matcher the
+  host recorded, and a difference from the declared one is a `warn` naming both values and
+  `codex-bridge update --force`.
+
 ## [0.5.2] - 2026-08-16
 
 ### Fixed

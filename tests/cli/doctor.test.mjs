@@ -51,12 +51,52 @@ test('complete installation with all files exits zero', async (t) => {
     HOOK_DEFINITIONS.filter(({ event }) => event === 'PreToolUse').length,
   );
   assert.ok(preToolUse.every((item) => item.status === 'ok'));
+  for (const definition of HOOK_DEFINITIONS.filter(({ event }) => event === 'PreToolUse')) {
+    const hook = preToolUse.find((item) => item.value.includes(definition.file));
+    assert.match(hook.value, new RegExp(`matcher ${definition.matcher.replaceAll('|', '\\|')} ->`));
+  }
   // Each line must name its own file. Matching the record by event alone reported the worktree
   // lock's matcher as pointing at order-gate.mjs, which is exactly the lie an operator reading
   // doctor cannot catch.
   for (const file of ['order-gate.mjs', 'worktree-lock.mjs', 'prune-guard.mjs', 'stop-guard.mjs']) {
     assert.equal(preToolUse.filter((item) => item.value.includes(file)).length, 1);
   }
+});
+
+test('doctor warns with the recorded and expected matcher when registration is outdated', async (t) => {
+  const { host, record } = await installedFixture(t);
+  const definition = HOOK_DEFINITIONS.find(({ name }) => name === 'worktree-lock');
+  const recorded = record.hooks.find((hook) => hook.event === definition.event
+    && path.basename(hook.path) === definition.file);
+  const outdatedMatcher = 'Write|Edit|MultiEdit|NotebookEdit';
+  const settings = JSON.parse(await fs.readFile(host.settingsPath, 'utf8'));
+  const group = settings.hooks[definition.event].find((item) => item.hooks
+    .some((hook) => hook.command === recorded.command));
+  group.matcher = outdatedMatcher;
+  await fs.writeFile(host.settingsPath, `${JSON.stringify(settings)}\n`);
+
+  const result = await diagnose({ host, codexProbe, currentPackage: ownPackage });
+  const hook = result.checks.find((item) => item.key === `hook:${definition.event}`
+    && item.value.includes(definition.file));
+  assert.equal(hook.status, 'warn');
+  assert.match(hook.value, new RegExp(`matcher ${outdatedMatcher.replaceAll('|', '\\|')} ->`));
+  assert.match(hook.value, new RegExp(`recorded matcher ${outdatedMatcher.replaceAll('|', '\\|')} differs from expected ${definition.matcher.replaceAll('|', '\\|')}`));
+  assert.match(hook.value, /run codex-bridge update --force/);
+});
+
+test('absent hook registration keeps the existing warning', async (t) => {
+  const { host } = await installedFixture(t);
+  const definition = HOOK_DEFINITIONS.find(({ name }) => name === 'worktree-lock');
+  const settings = JSON.parse(await fs.readFile(host.settingsPath, 'utf8'));
+  settings.hooks[definition.event] = settings.hooks[definition.event]
+    .filter((group) => !group.hooks.some((hook) => hook.command.includes(definition.file)));
+  await fs.writeFile(host.settingsPath, `${JSON.stringify(settings)}\n`);
+
+  const result = await diagnose({ host, codexProbe, currentPackage: ownPackage });
+  const hook = result.checks.find((item) => item.key === `hook:${definition.event}`
+    && item.value.includes(definition.file));
+  assert.equal(hook.status, 'warn');
+  assert.equal(hook.value, `${definition.event} matcher ${definition.matcher} does not point to the installed ${definition.file} (path command; installed copy ${ownPackage.name}@${ownPackage.version})`);
 });
 
 test('doctor reports the recorded hook form and the version that form executes', async (t) => {

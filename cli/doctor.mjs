@@ -254,19 +254,26 @@ async function hookChecks(host, record, bridgeProbe, ownPackage) {
         alternateCommands: [fullCommand, shortCommand],
       });
       if (state.present) {
+        const recordedMatcher = state.matchedMatcher;
         const command = state.matchedCommand || recorded.command || fullCommand;
         const form = command.startsWith('codex-bridge hook ') ? 'short' : 'path';
         const reason = form === 'short'
           ? 'PATH command uses the globally installed package'
           : 'full path uses the copy placed by the last install';
         const problems = [startFailure(definition, starts[index])].filter(Boolean);
+        // The matcher printed is the one the host recorded, never the one this package declares.
+        // Until 2026-08-23 the line stated the registry's own value, so a host stuck on the
+        // pre-shell matcher read as [ok] while the worktree lock never saw a Bash command — the
+        // same shape as the 2026-08-10 defect above, where doctor counted files instead of
+        // reading them. A check that compares the package to itself cannot fail.
+        if (recordedMatcher !== definition.matcher) problems.push(`recorded matcher ${recordedMatcher} differs from expected ${definition.matcher}; run codex-bridge update --force`);
         const commandVersion = form === 'short' ? bridge() : null;
         const globalVersion = probedVersion(commandVersion || { available: false });
         if (globalVersion && globalVersion !== ownPackage.version) {
           problems.push(`global PATH package version ${globalVersion} differs from ${packageSource().kind} version ${ownPackage.version}`);
         }
         const health = problems.length ? `; ${problems.join('; ')}` : '';
-        return check(key, problems.length ? 'warn' : 'ok', `${definition.event} matcher ${definition.matcher} -> ${expected} (${form} command; ${reason}; ${hookVersion(command, record, commandVersion)}${health})`);
+        return check(key, problems.length ? 'warn' : 'ok', `${definition.event} matcher ${recordedMatcher} -> ${expected} (${form} command; ${reason}; ${hookVersion(command, record, commandVersion)}${health})`);
       }
       const command = recorded.command || fullCommand;
       const form = command.startsWith('codex-bridge hook ') ? 'short' : 'path';
