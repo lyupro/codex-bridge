@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.3] - 2026-08-23
 
 ### Fixed
 
@@ -77,6 +77,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   target wins over document text (the 2026-08-16 python heredoc is still refused), and a candidate
   opening with `$`, `%` or a backtick, or holding a character no file name may contain, is not
   reported as a target.
+
+- Every number this package advertises about itself was wrong. The npm description said "5 guards,
+  604 tests" — a count three releases old, next to a registry that had grown a sixth hook the same
+  week — README said 705 while the suite ran 757, and CLAUDE.md said five guard hooks. Each was
+  caught by eye during a release, which is how the one in `package.json` survived three of them: a
+  number written in prose has no reader that can fail. The whole-suite run now compares the size
+  README claims against what the run reported and exits non-zero naming both, and a test holds the
+  guard count in README, CLAUDE.md and the package description against `HOOK_DEFINITIONS`. Deleting
+  the sentence fails the same way an outdated one does; a single-file run reports nothing to
+  compare and stays silent.
 
 ## [0.5.2] - 2026-08-16
 
