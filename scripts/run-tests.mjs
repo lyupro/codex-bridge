@@ -16,21 +16,50 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { ISOLATED_ROOTS } from './isolated-roots.mjs';
+import { readmeText, suiteCountMismatch } from './suite-count.mjs';
 
 const created = ISOLATED_ROOTS.map((name) => [
   name,
   fs.mkdtempSync(path.join(os.tmpdir(), `codex-bridge-test-${name.toLowerCase()}-`)),
 ]);
 const pattern = process.argv[2] || 'tests/**/*.test.mjs';
+// Only a whole-suite run can judge the README's number; a single file legitimately reports two.
+const wholeSuite = !process.argv[2];
+const tapFile = wholeSuite
+  ? path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'codex-bridge-test-summary-')), 'summary.tap')
+  : null;
+const repositoryRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
+
+// The spec reporter is named explicitly because the second reporter would otherwise replace it,
+// and the operator would lose the live output this command exists to show.
+const reporters = tapFile
+  ? ['--test-reporter=spec', '--test-reporter-destination=stdout',
+    '--test-reporter=tap', `--test-reporter-destination=${tapFile}`]
+  : [];
 
 try {
-  const result = spawnSync(process.execPath, ['--test', pattern], {
+  const result = spawnSync(process.execPath, ['--test', ...reporters, pattern], {
     stdio: 'inherit',
     env: { ...process.env, ...Object.fromEntries(created) },
   });
   process.exitCode = result.status ?? 1;
+  if (tapFile && process.exitCode === 0) {
+    let tap = null;
+    try {
+      tap = fs.readFileSync(tapFile, 'utf8');
+    } catch {
+      tap = null;
+    }
+    const mismatch = suiteCountMismatch(readmeText(path.join(repositoryRoot, 'README.md')), tap);
+    if (mismatch) {
+      process.stderr.write(`\nsuite-count: ${mismatch}\n`);
+      process.exitCode = 1;
+    }
+  }
 } finally {
   for (const [, directory] of created) fs.rmSync(directory, { recursive: true, force: true });
+  if (tapFile) fs.rmSync(path.dirname(tapFile), { recursive: true, force: true });
 }

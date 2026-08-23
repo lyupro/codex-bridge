@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this package is
 
 `@lyupro/codex-bridge` installs three Claude Code dispatcher agents (`codex-scout`, `codex-build`,
-`codex-review`), a delegating runner and five guard hooks into a Claude Code host, so
+`codex-review`), a delegating runner and six guard hooks into a Claude Code host, so
 implementation work runs on a Codex CLI subscription instead of the Claude one.
 
 Zero runtime dependencies, plain `.mjs` on the Node standard library, no build step — installing
