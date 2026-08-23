@@ -108,3 +108,90 @@ test('same-event hook removal follows the owned command when the matcher lookup 
     hooks: [{ type: 'command', command: gate.command, timeout: 10 }],
   }]);
 });
+
+test('merge moves an outdated matcher registration and removes the emptied group', async (t) => {
+  const target = await fixture(t);
+  const lock = spec(target, 'PreToolUse', 'Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell',
+    path.join(target.root, 'agents', 'codex', 'hooks', 'worktree-lock.mjs'));
+  await fs.writeFile(target.settingsPath, JSON.stringify({
+    hooks: {
+      PreToolUse: [{
+        matcher: 'Write|Edit|MultiEdit|NotebookEdit',
+        hooks: [{ type: 'command', command: lock.command, timeout: 10 }],
+      }],
+    },
+  }));
+
+  assert.deepEqual(await mergeHook(target.settingsPath, lock), {
+    changed: true,
+    createdGroup: true,
+    moved: true,
+  });
+  const settings = JSON.parse(await fs.readFile(target.settingsPath, 'utf8'));
+  assert.deepEqual(settings.hooks.PreToolUse, [{
+    matcher: lock.matcher,
+    hooks: [{ type: 'command', command: lock.command, timeout: 10 }],
+  }]);
+  assert.equal(settings.hooks.PreToolUse.flatMap((group) => group.hooks)
+    .filter((hook) => hook.command === lock.command).length, 1);
+});
+
+test('matcher move leaves a foreign hook in the old group untouched', async (t) => {
+  const target = await fixture(t);
+  const oldMatcher = 'Write|Edit|MultiEdit|NotebookEdit';
+  const lock = spec(target, 'PreToolUse', `${oldMatcher}|Bash|PowerShell`,
+    path.join(target.root, 'agents', 'codex', 'hooks', 'worktree-lock.mjs'));
+  const foreign = { type: 'command', command: 'foreign worktree hook', timeout: 27 };
+  await fs.writeFile(target.settingsPath, JSON.stringify({
+    hooks: {
+      PreToolUse: [{
+        matcher: oldMatcher,
+        hooks: [foreign, { type: 'command', command: lock.command, timeout: 10 }],
+      }],
+    },
+  }));
+
+  await mergeHook(target.settingsPath, lock);
+  const settings = JSON.parse(await fs.readFile(target.settingsPath, 'utf8'));
+  assert.deepEqual(settings.hooks.PreToolUse, [
+    { matcher: oldMatcher, hooks: [foreign] },
+    { matcher: lock.matcher, hooks: [{ type: 'command', command: lock.command, timeout: 10 }] },
+  ]);
+});
+
+test('merge does not rewrite or back up a registration already under the declared matcher', async (t) => {
+  const target = await fixture(t);
+  const lock = spec(target, 'PreToolUse', 'Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell',
+    path.join(target.root, 'agents', 'codex', 'hooks', 'worktree-lock.mjs'));
+  const original = `${JSON.stringify({
+    hooks: {
+      PreToolUse: [{
+        matcher: lock.matcher,
+        hooks: [{ type: 'command', command: lock.command, timeout: 10 }],
+      }],
+    },
+  }, null, 2)}\n`;
+  await fs.writeFile(target.settingsPath, original);
+
+  assert.deepEqual(await mergeHook(target.settingsPath, lock), { changed: false, createdGroup: false });
+  assert.equal(await fs.readFile(target.settingsPath, 'utf8'), original);
+  assert.deepEqual(await backups(target.root), []);
+});
+
+test('remove finds an owned registration under an outdated matcher', async (t) => {
+  const target = await fixture(t);
+  const lock = spec(target, 'PreToolUse', 'Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell',
+    path.join(target.root, 'agents', 'codex', 'hooks', 'worktree-lock.mjs'));
+  await fs.writeFile(target.settingsPath, JSON.stringify({
+    hooks: {
+      PreToolUse: [{
+        matcher: 'Write|Edit|MultiEdit|NotebookEdit',
+        hooks: [{ type: 'command', command: lock.command, timeout: 10 }],
+      }],
+    },
+  }));
+
+  assert.deepEqual(await removeHook(target.settingsPath, lock, { createdGroup: true }), { changed: true });
+  const settings = JSON.parse(await fs.readFile(target.settingsPath, 'utf8'));
+  assert.deepEqual(settings.hooks.PreToolUse, []);
+});

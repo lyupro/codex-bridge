@@ -134,29 +134,41 @@ const hasOwnCommand = (group, commands) => {
 };
 
 /**
- * Presence is decided by the command, not by the matcher it currently sits under.
+ * Presence is decided by the command, not by the matcher it currently sits under; writing then
+ * places that command under the matcher the package declares. These are two halves of one rule.
  *
  * The matcher is generated from the tool list in hook-definitions.mjs, so it changes whenever a
  * host spelling is added — `Agent` became `Agent|Task` in one release, and the write-tool matcher
  * will grow the same way. A host installed under the old matcher would then be invisible to the
  * new lookup: update would register a duplicate and uninstall would leave a hook pointing at a
- * deleted file. The command is this package's own absolute path, so it identifies our entry
- * wherever the group ended up.
+ * deleted file. Conversely, the 2026-08-17 host proved that finding alone is insufficient: its
+ * worktree lock stayed under the pre-shell matcher, so Bash never reached the guard. The command
+ * is this package's own absolute path, so it identifies our entry wherever the group ended up,
+ * and merge can move it without creating a duplicate.
  */
 export async function inspectHook(settingsPath, specOrPath) {
   const state = await readSettings(settingsPath);
   const spec = normalizeSpec(specOrPath);
   const commands = [spec.command, ...spec.alternateCommands];
   let matchedCommand;
+  let matchedMatcher;
+  let requiresMove = false;
   for (const group of groups(state.settings, spec.event)) {
-    const hook = groupHooks(group).find((entry) =>
-      entry?.type === 'command' && commands.includes(entry.command));
-    if (hook) {
-      matchedCommand = hook.command;
-      break;
+    for (const hook of groupHooks(group)) {
+      if (hook?.type !== 'command' || !commands.includes(hook.command)) continue;
+      matchedCommand ??= hook.command;
+      matchedMatcher ??= group?.matcher;
+      if (group?.matcher !== spec.matcher) requiresMove = true;
     }
   }
-  return { ...state, ...spec, present: Boolean(matchedCommand), matchedCommand };
+  return {
+    ...state,
+    ...spec,
+    present: Boolean(matchedCommand),
+    matchedCommand,
+    matchedMatcher,
+    requiresMove,
+  };
 }
 
 function backupName(settingsPath) {
@@ -227,10 +239,43 @@ export async function mergeHook(settingsPath, specOrPath, inspected) {
   return withMutationRun(settingsPath, async () => {
     const spec = normalizeSpec(specOrPath);
     const state = inspected || await inspectHook(settingsPath, spec);
-    if (state.present) return { changed: false, createdGroup: false };
+    if (state.present && !state.requiresMove) return { changed: false, createdGroup: false };
     const settings = structuredClone(state.settings);
     settings.hooks ??= {};
     if (!Array.isArray(settings.hooks[spec.event])) settings.hooks[spec.event] = [];
+    if (state.present) {
+      const eventGroups = settings.hooks[spec.event];
+      const commands = [spec.command, ...spec.alternateCommands];
+      let hookToMove;
+      let keptDeclaredHook = false;
+      for (let index = eventGroups.length - 1; index >= 0; index -= 1) {
+        const group = eventGroups[index];
+        if (!Array.isArray(group?.hooks)) continue;
+        const hadOwnHook = hasOwnCommand(group, commands);
+        group.hooks = group.hooks.filter((hook) => {
+          if (hook?.type !== 'command' || !commands.includes(hook.command)) return true;
+          hookToMove ??= hook;
+          if (group.matcher === spec.matcher && !keptDeclaredHook) {
+            keptDeclaredHook = true;
+            return true;
+          }
+          return false;
+        });
+        if (hadOwnHook && group.hooks.length === 0) eventGroups.splice(index, 1);
+      }
+      let group = eventGroups.find((entry) => entry?.matcher === spec.matcher);
+      const createdGroup = !group;
+      if (!keptDeclaredHook) {
+        if (!group) {
+          group = { matcher: spec.matcher, hooks: [] };
+          eventGroups.push(group);
+        }
+        if (!Array.isArray(group.hooks)) group.hooks = [];
+        group.hooks.push(hookToMove);
+      }
+      await atomicWrite(settingsPath, settings, state);
+      return { changed: true, createdGroup, moved: true };
+    }
     let group = settings.hooks[spec.event].find((entry) => entry?.matcher === spec.matcher);
     const createdGroup = !group;
     if (!group) {
