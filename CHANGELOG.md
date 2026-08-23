@@ -29,6 +29,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   states a defect is true keeps it, so the recogniser now strips the suffix and the case asserts the
   refusal.
 
+- Delegated read-only runs could not execute a single command. codex-cli 0.149.0 on Windows builds
+  its sandbox from `windows.sandbox` — `elevated` or `unelevated` — and the unelevated token refuses
+  CreateProcess outright: every command a run tried came back as
+  `Rejected("… rejected: blocked by policy")` before the process existed. The setting lives in the
+  operator's `config.toml`, which `--ignore-user-config` drops on purpose, so on 2026-08-23 every
+  `codex-scout` and `codex-review` run reported honestly that it could not read anything and was
+  then failed by its own quality gate for having no code references. `codex-build` kept working, and
+  that looked like "read-only is broken" — but it is the one agent that does not pass
+  `--ignore-user-config`, so it inherited the key from a line in a personal file the package does
+  not own; with that flag its `workspace-write` runs are refused just as flatly. Four probes on the
+  installed CLI, differing by this flag alone, separate the two. All three agents now pass
+  `-c windows.sandbox=elevated` on Windows, so isolation from the operator's config stays intact and
+  the sandbox each agent is entitled to is the one it actually gets. The value carries no quotes
+  because the command line goes through cmd.exe, where a double quote is refused before launch.
+
 ## [0.5.2] - 2026-08-16
 
 ### Fixed

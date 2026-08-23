@@ -3,10 +3,12 @@
  * there at all, and how its JSONL stdout reaches events.jsonl while stderr stays separate.
  *
  * The flag sets below are the ones the three agent files carried before, verbatim.
- * Sandboxes especially must not drift: codex-scout is read-only through
- * --ignore-user-config, codex-build needs workspace-write and must NOT get
- * --ignore-user-config, codex-review needs an explicit --sandbox read-only before the
- * `review` subcommand.
+ * Sandboxes especially must not drift: codex-scout and codex-review are read-only through an
+ * explicit --sandbox read-only, and codex-build needs workspace-write and must NOT get
+ * --ignore-user-config. What --ignore-user-config buys the two read-only agents is isolation
+ * from the operator's config, never the sandbox itself — reading it as the read-only guarantee
+ * is how the 2026-08-23 breakage stayed misdiagnosed as "read-only is broken" (see
+ * sandbox-flags.mjs for what actually stops a run from starting a process on Windows).
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -15,6 +17,7 @@ import { createHeartbeat, HEARTBEAT_INTERVAL_MS } from '../heartbeat.mjs';
 import { writeFailure } from '../write-meta.mjs';
 import { MAX_LOG } from './git-state.mjs';
 import { CLEAN_ENV, RUN_ENV } from './run-env.mjs';
+import { platformSandboxArgs } from './sandbox-flags.mjs';
 
 // Thirty seconds, not a fraction of one: after `exit` the pipe still holds whatever Codex wrote
 // last, and that tail carries `item.completed` — the result the verdict is read from. A quarter
@@ -323,6 +326,7 @@ export function codexArgs(opts, runDir, isGitRepo) {
       '-c',
       effort,
       ...NO_SUBAGENTS,
+      ...platformSandboxArgs(),
       ...modelArgs,
       '--sandbox',
       'read-only',
@@ -346,6 +350,7 @@ export function codexArgs(opts, runDir, isGitRepo) {
       '-c',
       effort,
       ...NO_SUBAGENTS,
+      ...platformSandboxArgs(),
       ...modelArgs,
       '--sandbox',
       'workspace-write',
@@ -378,6 +383,7 @@ export function codexArgs(opts, runDir, isGitRepo) {
     '-c',
     effort,
     ...NO_SUBAGENTS,
+    ...platformSandboxArgs(),
     ...modelArgs,
     '--sandbox',
     'read-only',
