@@ -10,6 +10,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { formatSilence, heartbeatAge } from '../lib/heartbeat.mjs';
 import { SHELL_TOOLS, WRITE_TOOLS } from '../lib/hook-definitions.mjs';
 import { runsRoot } from '../lib/runner/runs-root.mjs';
@@ -75,6 +76,22 @@ for (const rawPath of rawPaths) {
 if (!match) pass();
 
 const { status, dir } = match.owner;
+// A run is only ever failed for what `git status --porcelain` reports, and an ignored path never
+// appears there — the witness that grades a run does not see it either. Meanwhile the working
+// order for a live run is to touch exactly those files: plans and checklists live in ignored
+// folders. On 2026-08-23 this guard refused four such edits in five minutes, which is worse than
+// a miss: a miss has the witness behind it, a false refusal has nothing and reads as a broken
+// tool. Only a proven `ignored` passes — anything else (not a repository, git absent, any other
+// error) keeps the refusal, because "no proof it is ignored" is not "proof it is harmless".
+const repository = normalizePath(status.repo);
+const target = normalizePath(match.targetPath);
+const gitMetadata = target === `${repository}/.git` || target.startsWith(`${repository}/.git/`);
+if (!gitMetadata) {
+  const ignored = spawnSync('git', ['-C', status.repo, 'check-ignore', '--quiet', '--', match.targetPath], {
+    stdio: 'ignore',
+  });
+  if (ignored.status === 0) pass();
+}
 process.stdout.write(JSON.stringify({
   hookSpecificOutput: {
     hookEventName: 'PreToolUse',

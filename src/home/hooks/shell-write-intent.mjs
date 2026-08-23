@@ -18,9 +18,18 @@ function unquote(value) {
   return trimmed;
 }
 
+// A candidate holding a character no file name may contain is not a file name. The redirection
+// pattern cannot tell `>` the operator from `>` the redirect, so `node -e "i>0?'yes':'no'"` was
+// refused on 2026-08-23 naming the path `0?'yes` — a false refusal on a command that writes
+// nothing. Narrowing here costs nothing the witness does not already cover.
+const IMPOSSIBLE_IN_A_NAME = /[?*<>|"]/;
+
 function addPath(paths, value) {
   const candidate = unquote(value);
-  if (candidate && !candidate.startsWith('&') && !paths.includes(candidate)) paths.push(candidate);
+  if (candidate
+    && !['&', '$', '%', '`'].includes(candidate[0])
+    && !IMPOSSIBLE_IN_A_NAME.test(candidate)
+    && !paths.includes(candidate)) paths.push(candidate);
 }
 
 function tokens(segment) {
@@ -42,12 +51,24 @@ function commandName(token) {
   return token.replace(/^.*[\\/]/, '').replace(/\.exe$/i, '').toLowerCase();
 }
 
-function heredocPaths(command, paths) {
+/**
+ * Split a heredoc command into the shell around it and the document inside it.
+ *
+ * `shell` is everything the shell itself runs — the line opening the document AND every command
+ * after its closing marker. Dropping that tail hid `… <<EOF … EOF; echo x >> README.md` from the
+ * guard completely, and a live probe on 2026-08-23 wrote to a tracked file during a held run
+ * exactly that way. `paths` holds only what the document body names, which the caller uses just
+ * when the interpreter is itself the writer.
+ */
+function heredoc(command) {
   const header = command.match(/^(.*?<<-?\s*(['"]?)([A-Za-z_][\w-]*)\2[^\r\n]*)[\r\n]/s);
-  if (!header || !INTERPRETERS.test(header[1])) return false;
+  if (!header) return null;
+  const paths = [];
   const marker = header[3];
   const body = command.slice(header[0].length).split(/\r?\n/);
   const end = body.findIndex((line) => line.trim() === marker);
+  const shell = [header[1], ...(end < 0 ? [] : body.slice(end + 1))].join('\n');
+  if (!INTERPRETERS.test(header[1])) return { shell, paths, writes: false };
   const source = body.slice(0, end < 0 ? body.length : end).join('\n');
   for (const match of source.matchAll(/(['"])(.*?)\1/g)) {
     const value = match[2];
@@ -55,21 +76,29 @@ function heredocPaths(command, paths) {
       || /[\\/]/.test(value)
       || /(?:^|[\\/])[^\\/]+\.[A-Za-z0-9_-]+$/.test(value)) addPath(paths, value);
   }
-  return true;
+  return { header: header[1], paths, writes: true };
 }
 
 /** Returns `{ writes, paths }` for the deliberately obvious write forms this guard recognises. */
 export function shellWriteIntent(command) {
   if (typeof command !== 'string' || !command.trim()) return { writes: false, paths: [] };
   const paths = [];
-  let writes = heredocPaths(command, paths);
+  const document = heredoc(command);
+  const shell = document?.header ?? command;
+  let writes = document?.writes ?? false;
 
-  for (const match of command.matchAll(/(?<![<>=])(?:\d*)>>?(?![=>&])\s*("(?:\\.|[^"])*"|'[^']*'|[^\s;|&]+)/g)) {
+  for (const match of shell.matchAll(/(?<![<>=])(?:\d*)>>?(?![=>&])\s*("(?:\\.|[^"])*"|'[^']*'|[^\s;|&]+)/g)) {
     writes = true;
     addPath(paths, match[1]);
   }
 
-  for (const segment of command.split(/(?:&&|\|\||[;|\r\n])/)) {
+  // A real output redirect identifies the writer's destination. Body text is only evidence when
+  // the interpreter itself is the writer, as in the 2026-08-16 python heredoc incident.
+  if (!paths.length && document?.writes) {
+    for (const candidate of document.paths) addPath(paths, candidate);
+  }
+
+  for (const segment of shell.split(/(?:&&|\|\||[;|\r\n])/)) {
     const parts = tokens(segment);
     const index = parts.findIndex((part) => COMMANDS.has(commandName(part)));
     if (index < 0) continue;

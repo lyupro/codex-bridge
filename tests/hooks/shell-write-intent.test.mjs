@@ -10,6 +10,27 @@ test('recognises output redirection and preserves its named target', () => {
   });
 });
 
+test('does not report targets beginning with unresolved shell substitutions', () => {
+  for (const target of ['$SP/finding.md', '%SP%/finding.md', '`resolve-path`/finding.md']) {
+    assert.deepEqual(shellWriteIntent(`printf changed > "${target}"`), {
+      writes: true,
+      paths: [],
+    }, target);
+  }
+});
+
+test('a comparison operator inside code is not a redirection target', () => {
+  // `>` the operator and `>` the redirect are indistinguishable to the pattern, so the guard
+  // refuses to name any candidate carrying a character a file name cannot hold (2026-08-23).
+  const command = String.raw`node -e "const i=2;console.log(i>0?'yes':'no')"`;
+  assert.deepEqual(shellWriteIntent(command).paths, []);
+  // `|` is deliberately absent: in `printf x > x|y.txt` the shell itself ends the target at the
+  // pipe, so naming `x` there is correct rather than a false positive.
+  for (const target of ['out?.txt', 'a<b.txt', 'star*.txt']) {
+    assert.deepEqual(shellWriteIntent(`printf x > ${target}`).paths, [], target);
+  }
+});
+
 test('recognises numbered file-descriptor redirections', () => {
   // Protect the optional descriptor branch without broadening matches to descriptor duplication.
   const cases = [
@@ -73,6 +94,29 @@ test('recognises heredocs for each named interpreter and extracts path-like quot
       interpreter,
     );
   }
+});
+
+test('a redirect target takes precedence over path-like text in a heredoc body', () => {
+  const command = "python - > '/outside/finding.md' <<'PY'\nprint('CHANGELOG.md', '`')\nPY";
+  assert.deepEqual(shellWriteIntent(command), {
+    writes: true,
+    paths: ['/outside/finding.md'],
+  });
+});
+
+test('commands after a heredoc body are still examined', () => {
+  // Reading only the opening line hid every command after the closing marker: a live probe on
+  // 2026-08-23 appended to a tracked file this way while a run held the repository.
+  const command = [
+    "cat > /tmp/outside.md <<'EOF'",
+    'text',
+    'EOF',
+    'echo broken >> README.md',
+  ].join('\n');
+  assert.deepEqual(shellWriteIntent(command), {
+    writes: true,
+    paths: ['/tmp/outside.md', 'README.md'],
+  });
 });
 
 test('recognises executable-suffixed interpreters but not unrelated heredoc consumers', () => {
