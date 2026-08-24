@@ -1,111 +1,28 @@
 /** Diagnoses a Claude Code host without modifying it. */
-import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawn, spawnSync } from 'node:child_process';
-import {
-  buildInstallPlan,
-  contentFingerprint,
-  fileFingerprint,
-  HOOK_DEFINITIONS,
-  readInstallRecord,
-  packageInfo,
-} from './manifest.mjs';
-import { plannedContent } from './copy.mjs';
+import { spawnSync } from 'node:child_process';
+import { readInstallRecord, packageInfo } from './manifest.mjs';
 import { recordTarget } from './install-record.mjs';
-import { inspectPermissions } from './permissions.mjs';
-import { commandFor, inspectHook } from './settings-merge.mjs';
-import { readRulesRegistry } from './rules-owners.mjs';
-import { parseFrontmatter } from './frontmatter.mjs';
-import { readRunConfig, retentionNotice } from '../src/home/lib/run-config.mjs';
 import { runsRoot } from '../src/home/lib/runner/runs-root.mjs';
-import { resolveProjectRunsDir } from '../src/home/lib/runner/project-dir.mjs';
-import { allLiveRuns } from '../src/home/hooks/live-runs.mjs';
-import { STOP_COMMAND_TEMPLATE } from '../src/home/lib/stop-contract.mjs';
+import { check, renderDoctor } from './doctor-format.mjs';
+import {
+  agentsCheck,
+  conventionsCheck,
+  exists,
+  isFile,
+  permissionsCheck,
+  rulesCheck,
+} from './doctor-installation.mjs';
+import { hookChecks } from './doctor-hooks.mjs';
+import { liveRunsCheck, projectRunsCheck, retentionCheck } from './doctor-runs.mjs';
 
-const WARNING = '\u001b[33m';
-const RESET = '\u001b[0m';
-
-async function exists(target) {
-  try {
-    await fs.access(target);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function isFile(target) {
-  try {
-    return (await fs.stat(target)).isFile();
-  } catch {
-    return false;
-  }
-}
-
-async function agentsCheck(host, record) {
-  if (!record) return check('agents', 'warn', 'Agent definitions were not checked; run codex-bridge install');
-  const plan = await buildInstallPlan(host);
-  const agents = plan.filter((item) => /[\\/]src[\\/]agents[\\/][^\\/]+\.md$/.test(item.source));
-  const mismatches = [];
-  const unreadable = [];
-  for (const item of agents) {
-    const expected = contentFingerprint(await plannedContent(item, host.brandRoot));
-    if (await fileFingerprint(item.target) !== expected) mismatches.push(path.basename(item.target));
-    const expectedName = path.basename(item.source, '.md');
-    try {
-      const frontmatter = parseFrontmatter(await fs.readFile(item.target, 'utf8'));
-      if (!frontmatter) throw new Error('frontmatter is missing');
-      if (frontmatter.name !== expectedName) {
-        throw new Error(`name is ${JSON.stringify(frontmatter.name)}, expected ${JSON.stringify(expectedName)}`);
-      }
-    } catch (err) {
-      unreadable.push(`${path.basename(item.target)} (${err.message})`);
-    }
-  }
-  // The 2026-08-10 registration failure left files present but unreadable by Claude Code. Drift was
-  // advisory until a 2026-08-16 checklist run planted the pre-Plan_41 invocation — a path instead of
-  // the package command — in an installed definition: doctor kept exit 0 while every delegation
-  // would stop on a permission prompt. A definition that is not this package's is not judged healthy.
-  if (unreadable.length) {
-    return check('agents', 'fail', `Installed agent definitions cannot be read: ${unreadable.join(', ')}; run codex-bridge update --force`);
-  }
-  return mismatches.length
-    ? check('agents', 'fail', `Installed agent definitions differ from this package: ${mismatches.join(', ')}; run codex-bridge update --force`)
-    : check('agents', 'ok', `${agents.length} installed agent definition(s) match this package`);
-}
+export { renderDoctor };
 
 function bridgeCommandCheck(result) {
   return result.available
     ? check('command', 'ok', `codex-bridge resolves on PATH (${result.value})`)
     : check('command', 'warn', `codex-bridge does not resolve on PATH (${result.value}); run npm i -g @lyupro/codex-bridge`);
-}
-
-function check(key, status, value) {
-  return { key, status, value };
-}
-
-function retentionCheck(host) {
-  try {
-    const notice = retentionNotice(readRunConfig(host.brandConfigPath));
-    return check('retention', notice.enabled ? 'warn' : 'ok', notice.text);
-  } catch (err) {
-    return check('retention', 'fail', `invalid configuration: ${err.message}`);
-  }
-}
-
-async function conventionsCheck(host) {
-  const file = host.brandConventionsPath;
-  let content;
-  try {
-    content = await fs.readFile(file, 'utf8');
-  } catch (err) {
-    if (err.code === 'ENOENT') return check('conventions', 'ok', `${file} (not found; optional)`);
-    return check('conventions', 'fail', `cannot read ${file}: ${err.message}`);
-  }
-  return content.trim()
-    ? check('conventions', 'ok', `${file} (found)`)
-    : check('conventions', 'warn', `${file} (found but empty)`);
 }
 
 /**
@@ -129,43 +46,6 @@ function sourceCheck() {
   return check('source', 'ok', `${source.root} (${source.kind === 'installed copy' ? 'installed package' : source.kind})`);
 }
 
-/**
- * The runner asks git for the repository root before it picks a runs folder, so doctor has to
- * ask the same question: run from `src/home/lib/runner`, a plain cwd would name the folder `runner` and
- * report a location no run will ever use.
- */
-function repoRoot(cwd) {
-  const top = spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd, encoding: 'utf8' });
-  return top.status === 0 && top.stdout.trim() ? top.stdout.trim() : cwd;
-}
-
-/**
- * A marker that cannot be read is exactly what doctor exists to report, so it is caught here.
- * Left to propagate it would kill the whole diagnosis and hide the seven checks around it.
- */
-function projectRunsCheck() {
-  let resolved;
-  try {
-    resolved = resolveProjectRunsDir(runsRoot(), repoRoot(process.cwd()), { create: false });
-  } catch (err) {
-    return check('projectRuns', 'fail', err.message);
-  }
-  const note = resolved.reason === 'created' ? 'not created yet' : resolved.reason;
-  return check('projectRuns', 'ok', `${path.resolve(resolved.dir)} (${note})`);
-}
-
-function liveRunsCheck() {
-  let count;
-  try {
-    count = allLiveRuns(runsRoot(), { requireConfirmedIdentity: true }).length;
-  } catch (err) {
-    return check('liveRuns', 'warn', `working-run count unavailable: ${err.message}`);
-  }
-  if (!count) return check('liveRuns', 'ok', '0 runs working right now');
-  const noun = count === 1 ? 'run' : 'runs';
-  return check('liveRuns', 'warn', `${count} ${noun} working right now; stop with ${STOP_COMMAND_TEMPLATE}`);
-}
-
 export function probeCodex() {
   const command = process.platform === 'win32' ? process.env.ComSpec || 'cmd.exe' : 'codex';
   const args = process.platform === 'win32' ? ['/d', '/s', '/c', 'codex --version'] : ['--version'];
@@ -184,142 +64,6 @@ export function probeCodexBridge() {
     return { available: false, value: (result.stderr || result.error?.message || 'not found').trim() };
   }
   return { available: true, value: (result.stdout || result.stderr).trim() };
-}
-
-function hookVersion(command, record, bridgeResult) {
-  if (command.startsWith('codex-bridge hook ')) {
-    return bridgeResult.available
-      ? `global command ${bridgeResult.value}`
-      : `global command unavailable (${bridgeResult.value})`;
-  }
-  return `installed copy ${record.name}@${record.version}`;
-}
-
-function probedVersion(result) {
-  return result.available ? result.value.match(/(\d+\.\d+\.\d+(?:[-+][^\s]+)?)\s*$/)?.[1] : null;
-}
-
-function startHook(target) {
-  return new Promise((resolve) => {
-    const child = spawn(process.execPath, [target], {
-      stdio: ['ignore', 'ignore', 'pipe'],
-      windowsHide: true,
-    });
-    let stderr = '';
-    child.stderr.setEncoding('utf8');
-    child.stderr.on('data', (chunk) => { stderr += chunk; });
-    child.on('error', (error) => resolve({ status: null, stderr: error.message }));
-    child.on('close', (status) => resolve({ status, stderr }));
-  });
-}
-
-function startFailure(definition, result) {
-  if (result.status === 0) return null;
-  const lines = result.stderr.trim().split(/\r?\n/);
-  const resolver = lines.find((line) => /^Error \[ERR_MODULE_NOT_FOUND\]|Cannot find module/.test(line));
-  return `${definition.file} did not start: ${resolver || lines.find(Boolean) || `exit code ${result.status}`}`;
-}
-
-async function hookChecks(host, record, bridgeProbe, ownPackage) {
-  let bridgeResult;
-  const bridge = () => {
-    bridgeResult ??= bridgeProbe();
-    return bridgeResult;
-  };
-  const starts = record ? await Promise.all(HOOK_DEFINITIONS.map(async (definition) => {
-    const recorded = record.hooks.find((hook) => hook.event === definition.event
-      && path.basename(hook.path) === definition.file);
-    return recorded ? startHook(recordTarget(host, recorded)) : null;
-  })) : [];
-  return Promise.all(HOOK_DEFINITIONS.map(async (definition, index) => {
-    const key = `hook:${definition.event}`;
-    if (!record) return check(key, 'warn', 'cannot check before installation');
-    // The file, not just the event: PreToolUse carries two hooks of this package, and matching
-    // by event alone reported the worktree lock's matcher as pointing at order-gate.mjs. The
-    // hook line is the only place an operator can see WHICH file a matcher was registered for,
-    // so a wrong name here is worse than no line at all.
-    const recorded = record.hooks.find((hook) => hook.event === definition.event
-      && path.basename(hook.path) === definition.file);
-    if (!recorded) {
-      return check(key, 'warn', `${definition.event} hook is not present in the installation record`);
-    }
-    const expected = recordTarget(host, recorded);
-    const fullCommand = commandFor(expected);
-    const shortCommand = `codex-bridge hook ${definition.name}`;
-    try {
-      const state = await inspectHook(host.settingsPath, {
-        event: definition.event,
-        matcher: definition.matcher,
-        command: recorded.command || fullCommand,
-        alternateCommands: [fullCommand, shortCommand],
-      });
-      if (state.present) {
-        const recordedMatcher = state.matchedMatcher;
-        const command = state.matchedCommand || recorded.command || fullCommand;
-        const form = command.startsWith('codex-bridge hook ') ? 'short' : 'path';
-        const reason = form === 'short'
-          ? 'PATH command uses the globally installed package'
-          : 'full path uses the copy placed by the last install';
-        const problems = [startFailure(definition, starts[index])].filter(Boolean);
-        // The matcher printed is the one the host recorded, never the one this package declares.
-        // Until 2026-08-23 the line stated the registry's own value, so a host stuck on the
-        // pre-shell matcher read as [ok] while the worktree lock never saw a Bash command — the
-        // same shape as the 2026-08-10 defect above, where doctor counted files instead of
-        // reading them. A check that compares the package to itself cannot fail.
-        if (recordedMatcher !== definition.matcher) problems.push(`recorded matcher ${recordedMatcher} differs from expected ${definition.matcher}; run codex-bridge update --force`);
-        const commandVersion = form === 'short' ? bridge() : null;
-        const globalVersion = probedVersion(commandVersion || { available: false });
-        if (globalVersion && globalVersion !== ownPackage.version) {
-          problems.push(`global PATH package version ${globalVersion} differs from ${packageSource().kind} version ${ownPackage.version}`);
-        }
-        const health = problems.length ? `; ${problems.join('; ')}` : '';
-        return check(key, problems.length ? 'warn' : 'ok', `${definition.event} matcher ${recordedMatcher} -> ${expected} (${form} command; ${reason}; ${hookVersion(command, record, commandVersion)}${health})`);
-      }
-      const command = recorded.command || fullCommand;
-      const form = command.startsWith('codex-bridge hook ') ? 'short' : 'path';
-      const failure = startFailure(definition, starts[index]);
-      const commandVersion = form === 'short' ? bridge() : null;
-      return check(key, 'warn', `${definition.event} matcher ${definition.matcher} does not point to the installed ${definition.file} (${form} command; ${hookVersion(command, record, commandVersion)}${failure ? `; ${failure}` : ''})`);
-    } catch (err) {
-      const value = err.code === 'ENOENT' ? 'settings.json is absent' : `settings.json is invalid: ${err.message}`;
-      return check(key, 'warn', `${definition.event} hook: ${value}`);
-    }
-  }));
-}
-
-async function rulesCheck(host, record) {
-  if (!record) return check('rules', 'warn', 'cannot check before installation');
-  if (!record.rules) {
-    return check('rules', 'warn', 'rules were not installed by this installation; install or update will add them');
-  }
-  let registry;
-  try {
-    registry = await readRulesRegistry(host);
-  } catch (err) {
-    // Keep every diagnostic visible: package removal on a broken registry left the host without its watchdog.
-    return check('rules', 'fail', err.message);
-  }
-  const ownerNote = registry?.owners.length > 1 ? `; ${registry.owners.length} owners` : '';
-  const fingerprint = await fileFingerprint(record.rules.path);
-  if (!fingerprint) return check('rules', 'fail', `${record.rules.path}${ownerNote ? ` (${registry.owners.length} owners)` : ''}`);
-  return fingerprint === record.rules.fingerprint
-    ? check('rules', 'ok', `${record.rules.path} (matches record${ownerNote})`)
-    : check('rules', 'warn', `${record.rules.path} (modified after installation${ownerNote})`);
-}
-
-async function permissionsCheck(host) {
-  try {
-    const status = await inspectPermissions(host.settingsPath);
-    // Permission rules are an optional operator action; Plan_22 keeps their absence a warning so
-    // doctor does not turn a healthy installation red merely because hardening was not requested.
-    // The ask count is part of the line because a full set shadowed by `ask` reads as working and
-    // is not: the live run of Plan_22-1 found this line saying `installed (24/24)` over it.
-    const shadow = status.askCount ? `, ${status.askCount} shadowed by ask` : '';
-    return check('permissions', status.state === 'installed' ? 'ok' : 'warn',
-      `${status.state} (${status.present}/${status.total} own strings in allow/deny${shadow})`);
-  } catch (err) {
-    return check('permissions', 'warn', `cannot inspect permission rules: ${err.message}`);
-  }
 }
 
 export async function diagnose({ host, codexProbe = probeCodex, bridgeProbe = probeCodexBridge, currentPackage } = {}) {
@@ -364,7 +108,7 @@ export async function diagnose({ host, codexProbe = probeCodex, bridgeProbe = pr
   checks.push(await permissionsCheck(host));
   const bridge = bridgeProbe();
   checks.push(bridgeCommandCheck(bridge));
-  checks.push(...await hookChecks(host, record, () => bridge, ownPackage));
+  checks.push(...await hookChecks(host, record, () => bridge, ownPackage, packageSource().kind));
   const retention = retentionCheck(host);
   checks.push(retention);
   const conventions = await conventionsCheck(host);
@@ -386,14 +130,4 @@ export async function diagnose({ host, codexProbe = probeCodex, bridgeProbe = pr
     record,
     missingFiles,
   };
-}
-
-export function renderDoctor(result) {
-  return result.checks.map(({ key, status, value }) => {
-    if ((key === 'agents' || key === 'command') && status !== 'ok') return value;
-    const rendered = `[${status}] ${key}: ${value}`;
-    return ['retention', 'conventions', 'permissions', 'liveRuns'].includes(key) && status === 'warn'
-      ? `${WARNING}${rendered}${RESET}`
-      : rendered;
-  }).join('\n');
 }
