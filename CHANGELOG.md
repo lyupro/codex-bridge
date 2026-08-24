@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- A gate that holds every registered hook to one rule: a hook may not add anything to what the host
+  runs. A neighbouring package spent a whole plan undoing the opposite habit — its `PreToolUse` hook
+  wrapped the agent's command in a pipe, and because a host permission rule is matched against the
+  beginning of the final string and is not applied at all once that string carries a substitution or
+  a compound operator, every command it touched became unresolvable by the operator's own rules.
+  This package reported those windows on 2026-08-15 while carrying none of the cause. The gate reads
+  both behaviour and sources: a hook may return only the keys that refuse or speak
+  (`permissionDecision` of `deny` or `ask`, `permissionDecisionReason`, `additionalContext`), and no
+  hook source may mention a key that replaces what the host is about to run. `permissionDecision:
+  "allow"` is refused as well — the host stopped honouring it between 2.1.119 and 2.1.231, and while
+  it worked it was a blanket auto-approve over the operator's own deny rules.
+
 ## [0.5.3] - 2026-08-23
 
 ### Fixed

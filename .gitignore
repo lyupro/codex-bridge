@@ -48,3 +48,8 @@ rtk/
 docs/plans/
 docs/checklists/
 docs/audits/
+
+# Same nature: prompts handed over from other repositories of this operator (dacapo sent the hook
+# migration write-up on 2026-08-24). Incoming working material, not documentation of this package —
+# a reader of the storefront would take a neighbour's diagnosis for ours.
+docs/prompts/
