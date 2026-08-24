@@ -48,6 +48,12 @@ const FORBIDDEN_IN_COMMAND = ['`', '$(', '${', '&&', '||', '|', ';'];
 const PROBE_COMMAND = 'echo hi';
 
 /**
+ * How many hook answers the behavioural checks must actually inspect. Fixed rather than derived, so
+ * that losing a refusing input reddens the gate instead of quietly shrinking what it covers.
+ */
+const MINIMUM_ANSWERS = 2;
+
+/**
  * The input that makes a hook actually answer, where one exists without a live run fixture.
  *
  * Without these the behavioural checks below inspect almost nothing: on `echo hi` every guard
@@ -141,9 +147,11 @@ test('no hook returns a key that could change what the host runs', () => {
         }
       }
     }
-    // A whitelist that inspected nothing would pass forever; the refusing inputs above exist to
-    // keep this number above zero, so their loss is a failure rather than a quieter test.
-    assert.ok(seen >= Object.keys(REFUSING_PAYLOADS).length, 'no hook answered — the gate saw nothing');
+    // A whitelist that inspected nothing would pass forever. The count is compared against a fixed
+    // number, never against `REFUSING_PAYLOADS.length`: the first version of this line did exactly
+    // that, and emptying the payload table left the assertion reading `seen >= 0` — green while the
+    // gate examined nothing. A check that measures itself cannot fail (Plan_44, Plan_51).
+    assert.ok(seen >= MINIMUM_ANSWERS, `the gate saw ${seen} answers, expected at least ${MINIMUM_ANSWERS}`);
   });
 });
 
