@@ -461,17 +461,40 @@ than per directory, so one stray folder cannot disarm the check for every other 
 ## Worktree lock
 
 `hooks/worktree-lock.mjs` is a `PreToolUse` hook on file-writing tools (`Write`, `Edit`,
-`MultiEdit`, `NotebookEdit`). It rejects an edit if the file is inside a repository held by a live
-`codex-build` run and names the run directory, agent, slug, and repository.
+`MultiEdit`, `NotebookEdit`) and on the shell tools beside them. It rejects an edit if the file is
+inside a repository held by a live `codex-build` run and names the run directory, agent, slug, and
+repository.
 
 The guard reports; the lock prevents: learning about another run and being unable to corrupt its
 snapshot are different things, and the 2026-08-05 incident caused false test failures precisely on
 the second point. Paths are compared as everywhere in the package—forward slashes, no trailing
 slash, case-insensitive, and without `realpath`.
 
-Known limitation: an edit through `Bash` (for example, `sed -i`) bypasses the lock. Parsing the
-command line is unreliable, while blocking all of `Bash` is impossible—the run needs builds and
-tests.
+Known limitation: parsing a shell command line is unreliable, and blocking all of `Bash` is
+impossible—the run needs builds and tests. `shell-write-intent.mjs` refuses the obvious writing
+forms before they run, and `worktree-witness.mjs` compares the tree afterwards against the run's
+snapshot; between them a write that slips through is named rather than silently accepted.
+
+## Whether the host still applies a refusal
+
+Every guard above refuses work with `permissionDecision: "deny"`, and the sibling key of that same
+object stopped being honoured between hosts 2.1.119 and 2.1.231 without printing anything. The
+suite proves a hook returned a refusal; it cannot prove the host applied it.
+
+`codex-bridge doctor` therefore carries a `hostContract` line reporting what is known on this
+machine: never probed, probed on another host version, refusals ignored (which names the guards it
+makes inert and exits non-zero), verified, or a host whose version cannot be read.
+
+`codex-bridge doctor --probe-contract` performs the measurement. It builds a throwaway rig outside
+the repository, registers one temporary hook there refusing one marker command, runs the real host
+inside the rig with only the tool under test allowed and with settings read from the project alone,
+and judges by whether the marker file appeared. The verdict is written next to the installation and
+bound to the host version, because the host is what updates underneath an installation.
+
+The probe costs about ten seconds and one short host request, so it never runs on its own: not from
+`doctor` without the flag, not from `install`, not from the suite. A run that could not measure —
+no host on `PATH`, a crash, a timeout, a hook that never fired — records nothing and exits `2`; an
+absent marker counts as a refusal only when the hook fired and the host survived to the end.
 
 ## Installation into another Claude Code configuration
 
