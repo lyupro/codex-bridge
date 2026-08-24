@@ -18,9 +18,17 @@ import { readJsonFile } from '../src/home/lib/json-file.mjs';
 
 export const HOST_CONTRACT_RECORD_NAME = '.host-contract.json';
 
-// Derived rather than spelled out: Plan_17 §5 found installer and hook lists drifting apart once
-// the same name lived in two places, and advice naming a command this CLI no longer answers to is
-// worse than no advice. `CLI_NAMES[0]` is the canonical spelling; the aliases follow it.
+/**
+ * The command that will run the probe, kept here so the messages below gain it in one edit.
+ *
+ * It is deliberately NOT named in any message yet: `doctor --probe-contract` does not exist, and a
+ * package that tells an operator to run a command answering `unknown doctor option` has spent its
+ * credibility on the first line they read. The messages state what is known and stop there; the
+ * advice arrives in the same change as the command itself.
+ *
+ * Derived rather than spelled out for when that happens: Plan_17 §5 found installer and hook lists
+ * drifting apart once the same name lived in two places. `CLI_NAMES[0]` is the canonical spelling.
+ */
 export const PROBE_COMMAND = `${CLI_NAMES[0]} doctor --probe-contract`;
 
 export function hostContractPath(host) {
@@ -95,13 +103,13 @@ export function contractStatus({ record, version }) {
   if (!record) {
     return {
       state: 'unverified',
-      message: `The refusal contract has never been probed on this machine; run ${PROBE_COMMAND}.`,
+      message: `The refusal contract has never been probed on this machine (host ${version}).`,
     };
   }
   if (record.version !== version) {
     return {
       state: 'stale',
-      message: `The refusal contract was probed on host ${record.version}, but the current host is ${version}; run ${PROBE_COMMAND}.`,
+      message: `The refusal contract was probed on host ${record.version}, but the current host is ${version}.`,
     };
   }
   if (record.result === 'ignored') {
@@ -122,6 +130,6 @@ export function contractStatus({ record, version }) {
   }
   return {
     state: 'unverified',
-    message: `The refusal contract record is invalid; run ${PROBE_COMMAND}.`,
+    message: `The refusal contract record is invalid (host ${version}).`,
   };
 }

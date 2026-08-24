@@ -15,6 +15,7 @@ import {
   rulesCheck,
 } from './doctor-installation.mjs';
 import { hookChecks } from './doctor-hooks.mjs';
+import { contractStatus, detectHostVersion, readHostContract } from './host-contract.mjs';
 import { liveRunsCheck, projectRunsCheck, retentionCheck } from './doctor-runs.mjs';
 
 export { renderDoctor };
@@ -66,7 +67,14 @@ export function probeCodexBridge() {
   return { available: true, value: (result.stdout || result.stderr).trim() };
 }
 
-export async function diagnose({ host, codexProbe = probeCodex, bridgeProbe = probeCodexBridge, currentPackage } = {}) {
+export async function diagnose({
+  host,
+  codexProbe = probeCodex,
+  bridgeProbe = probeCodexBridge,
+  currentPackage,
+  contractRecord,
+  hostVersion,
+} = {}) {
   const checks = [sourceCheck()];
   const hostExists = await exists(host.root);
   checks.push(check('host', hostExists ? 'ok' : 'warn', `${host.root} (${host.scope}, ${hostExists ? 'exists' : 'absent'})`));
@@ -109,6 +117,14 @@ export async function diagnose({ host, codexProbe = probeCodex, bridgeProbe = pr
   const bridge = bridgeProbe();
   checks.push(bridgeCommandCheck(bridge));
   checks.push(...await hookChecks(host, record, () => bridge, ownPackage, packageSource().kind));
+  const hostContract = contractStatus({
+    record: contractRecord === undefined ? await readHostContract(host) : contractRecord,
+    version: hostVersion === undefined ? detectHostVersion() : hostVersion,
+  });
+  const hostContractStatus = hostContract.state === 'verified'
+    ? 'ok'
+    : hostContract.state === 'ignored' ? 'fail' : 'warn';
+  checks.push(check('hostContract', hostContractStatus, hostContract.message));
   const retention = retentionCheck(host);
   checks.push(retention);
   const conventions = await conventionsCheck(host);
@@ -125,7 +141,8 @@ export async function diagnose({ host, codexProbe = probeCodex, bridgeProbe = pr
 
   return {
     exitCode: !record || recordBroken || missingFiles.length || agents.status === 'fail' || rules.status === 'fail'
-      || retention.status === 'fail' || conventions.status === 'fail' || projectRuns.status === 'fail' ? 1 : 0,
+      || hostContractStatus === 'fail' || retention.status === 'fail' || conventions.status === 'fail'
+      || projectRuns.status === 'fail' ? 1 : 0,
     checks,
     record,
     missingFiles,

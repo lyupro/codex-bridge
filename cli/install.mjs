@@ -26,6 +26,7 @@ import {
 } from './settings-merge.mjs';
 import { addRulesOwner, readRulesRegistry } from './rules-owners.mjs';
 import { addPermissionRules } from './permissions.mjs';
+import { contractStatus, detectHostVersion, readHostContract } from './host-contract.mjs';
 import { readRunConfig, retentionNotice } from '../src/home/lib/run-config.mjs';
 
 const WARNING = '\u001b[33m';
@@ -56,6 +57,10 @@ function retentionOutput(line, output) {
   return `${output}\n${line}`;
 }
 
+function contractOutput(status, output) {
+  return status.state === 'verified' ? output : `${output}\n${status.message}`;
+}
+
 async function migrateLegacySeed(host, seed) {
   if (await targetExists(seed.target)) return;
   const legacyName = path.basename(seed.target) === 'config.json' ? 'run-config.json' : path.basename(seed.target);
@@ -73,10 +78,22 @@ async function migrateLegacySeed(host, seed) {
   await fs.rm(legacy, { force: true });
 }
 
-async function installInRun({ host, dryRun = false, force = false, packageRoot, env = process.env } = {}) {
+async function installInRun({
+  host,
+  dryRun = false,
+  force = false,
+  packageRoot,
+  env = process.env,
+  contractRecord,
+  hostVersion,
+} = {}) {
   // Validate the shared registry before writes; package removal on a broken registry left the host without its watchdog.
   await readRulesRegistry(host);
   const configuredRetentionLine = retentionLine(host);
+  const hostContract = contractStatus({
+    record: contractRecord === undefined ? await readHostContract(host) : contractRecord,
+    version: hostVersion === undefined ? detectHostVersion() : hostVersion,
+  });
   const plan = await buildInstallPlan(host, packageRoot);
   const rule = { ...rulesPlan(host, packageRoot), processing: 'copy' };
   const currentPackage = await packageInfo(packageRoot);
@@ -112,7 +129,7 @@ async function installInRun({ host, dryRun = false, force = false, packageRoot, 
     const files = conflicts.map(({ item }) => `  ${item.relativeToRoot || item.name}`).join('\n');
     return {
       exitCode: 1,
-      output: retentionOutput(configuredRetentionLine, `Conflicting files:\n${files}\nRun install again with --force to overwrite them.`),
+      output: contractOutput(hostContract, retentionOutput(configuredRetentionLine, `Conflicting files:\n${files}\nRun install again with --force to overwrite them.`)),
     };
   }
 
@@ -124,7 +141,10 @@ async function installInRun({ host, dryRun = false, force = false, packageRoot, 
   if (!changedFiles.length && !changedRule && inspectedHooks.every((state) => state.present)
     && recordHasHooks(record, targets) && sameRecord) {
     if (!dryRun) await addRulesOwner(host);
-    return { exitCode: 0, output: retentionOutput(configuredRetentionLine, 'codex-bridge is already installed; nothing to do.') };
+    return {
+      exitCode: 0,
+      output: contractOutput(hostContract, retentionOutput(configuredRetentionLine, 'codex-bridge is already installed; nothing to do.')),
+    };
   }
 
   if (dryRun) {
@@ -140,7 +160,7 @@ async function installInRun({ host, dryRun = false, force = false, packageRoot, 
         : `Would register ${definition.event} hook for matcher ${definition.matcher} with ${registration.form} command.`);
     });
     lines.push('Would write installation record in the brand root.');
-    return { exitCode: 0, output: retentionOutput(configuredRetentionLine, lines.join('\n')) };
+    return { exitCode: 0, output: contractOutput(hostContract, retentionOutput(configuredRetentionLine, lines.join('\n'))) };
   }
 
   // Claim ownership of the shared rules file before writing anything. Claiming it last meant a
@@ -196,10 +216,13 @@ async function installInRun({ host, dryRun = false, force = false, packageRoot, 
   });
   return {
     exitCode: 0,
-    output: retentionOutput(
-      configuredRetentionLine,
-      `Installed ${plan.length + 1} files and registered the ${targets.map(({ definition }) => definition.event).join(' and ')} hooks.`
-        + `\nGranted ${permissionResult.added} permission rule(s) in ${host.settingsPath} so the host runs the package command without asking.`,
+    output: contractOutput(
+      hostContract,
+      retentionOutput(
+        configuredRetentionLine,
+        `Installed ${plan.length + 1} files and registered the ${targets.map(({ definition }) => definition.event).join(' and ')} hooks.`
+          + `\nGranted ${permissionResult.added} permission rule(s) in ${host.settingsPath} so the host runs the package command without asking.`,
+      ),
     ),
   };
 }

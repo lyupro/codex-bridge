@@ -20,6 +20,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   "allow"` is refused as well — the host stopped honouring it between 2.1.119 and 2.1.231, and while
   it worked it was a blanket auto-approve over the operator's own deny rules.
 
+- `doctor` and `install` now say whether this host still honours a hook refusal. Every guard in this
+  package refuses work with `permissionDecision: "deny"`, and the sibling key of that same object
+  died quietly — a neighbouring package established that `"allow"` stopped being honoured somewhere
+  between host 2.1.119 and 2.1.231, with no error printed on the way. Nothing here would have
+  noticed `deny` going the same way, because the suite checks that a hook RETURNED a refusal, never
+  that the host APPLIED it. The record is bound to a host version, since that is what changes
+  underneath an installation, and reports five states: never probed, probed on another version,
+  refusals ignored (which names the guards it makes inert and exits non-zero), verified, and a host
+  whose version cannot be read. The probe that writes the record is not implemented yet, so no
+  message advises a command that does not answer — a test enforces that.
+
 ## [0.5.3] - 2026-08-23
 
 ### Fixed

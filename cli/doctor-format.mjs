@@ -16,7 +16,7 @@ export function renderDoctor(result) {
   return result.checks.map(({ key, status, value }) => {
     if ((key === 'agents' || key === 'command') && status !== 'ok') return value;
     const rendered = `[${status}] ${key}: ${value}`;
-    return ['retention', 'conventions', 'permissions', 'liveRuns'].includes(key) && status === 'warn'
+    return ['retention', 'conventions', 'permissions', 'liveRuns', 'hostContract'].includes(key) && status === 'warn'
       ? `${WARNING}${rendered}${RESET}`
       : rendered;
   }).join('\n');

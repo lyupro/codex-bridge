@@ -60,7 +60,7 @@ If a global install and a clone coexist, you have two package copies. `codex-bri
 - **Every run leaves an audit folder.** The verbatim task, scope, before/after git state, events, report, verdict, and reason remain together.
 - **Zero runtime dependencies and zero build steps.** The package is plain `.mjs` on the Node.js standard library.
 
-The current suite contains **774 automated tests: 773 passing and 1 skipped**.
+The current suite contains **781 automated tests: 780 passing and 1 skipped**.
 
 ## Verify
 

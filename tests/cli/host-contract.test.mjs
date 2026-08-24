@@ -16,10 +16,27 @@ import {
   writeHostContract,
 } from '../../cli/host-contract.mjs';
 
-test('the advised probe command is built from the canonical CLI name, not spelled out', () => {
-  // A second copy of the command in this file would pass while the module advised a name the CLI
+test('the probe command is built from the canonical CLI name, not spelled out', () => {
+  // A second copy of the command in this file would pass while the module named something the CLI
   // no longer answers to — the drift Plan_17 §5 records, reproduced inside its own gate.
   assert.equal(PROBE_COMMAND, `${CLI_NAMES[0]} doctor --probe-contract`);
+});
+
+test('no message advises a command the CLI does not answer to yet', () => {
+  // `doctor --probe-contract` is not implemented. Until it is, a message naming it would send an
+  // operator to `unknown doctor option` — the package spending its credibility on the first line
+  // they read. This test fails the day the advice is added without the command.
+  const states = [
+    { record: null, version: null },
+    { record: null, version: '2.1.240' },
+    { record: { version: '2.1.231', result: 'honored' }, version: '2.1.240' },
+    { record: { version: '2.1.240', result: 'ignored' }, version: '2.1.240' },
+    { record: { version: '2.1.240', result: 'honored' }, version: '2.1.240' },
+    { record: { version: '2.1.240', result: 'nonsense' }, version: '2.1.240' },
+  ];
+  for (const input of states) {
+    assert.ok(!contractStatus(input).message.includes(PROBE_COMMAND), JSON.stringify(input));
+  }
 });
 
 test('hostContractPath places the record in the brand root and requires that root', () => {
@@ -42,7 +59,7 @@ test('contractStatus reports a machine that has never been probed', () => {
   const status = contractStatus({ record: null, version: '2.1.240' });
   assert.equal(status.state, 'unverified');
   assert.match(status.message, /never been probed/);
-  assert.match(status.message, new RegExp(PROBE_COMMAND));
+  assert.match(status.message, /2\.1\.240/);
 });
 
 test('contractStatus reports a record made for another host version', () => {
@@ -53,7 +70,6 @@ test('contractStatus reports a record made for another host version', () => {
   assert.equal(status.state, 'stale');
   assert.match(status.message, /2\.1\.231/);
   assert.match(status.message, /2\.1\.240/);
-  assert.match(status.message, new RegExp(PROBE_COMMAND));
 });
 
 test('contractStatus loudly names inert guards when refusals are ignored', () => {
