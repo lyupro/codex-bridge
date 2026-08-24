@@ -8,8 +8,8 @@ import assert from 'node:assert/strict';
 import childProcess from 'node:child_process';
 import fs from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
-import os from 'node:os';
 import path from 'node:path';
+import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 
 const realSpawnSync = childProcess.spawnSync;
 const taskkillCalls = [];
@@ -88,7 +88,7 @@ function installFakeCodex(root, source) {
 }
 
 async function withFakeCodex(source, work) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-deadline-'));
+  const root = makeTempTree('codex-deadline-');
   const bin = installFakeCodex(root, source);
   const previousPath = process.env.PATH;
   const previousCwd = process.cwd();
@@ -100,7 +100,7 @@ async function withFakeCodex(source, work) {
     if (process.platform === 'win32') process.chdir(previousCwd);
     if (previousPath === undefined) delete process.env.PATH;
     else process.env.PATH = previousPath;
-    fs.rmSync(root, { recursive: true, force: true });
+    await removeTempTree(root);
   }
 }
 
@@ -203,31 +203,47 @@ test('an early exit is not replaced by a deadline kill', async () => {
 // run the runner killed — and that claim is now what the verdict trusts.
 test('a run that exited before its deadline is not marked as stopped by it', async () => {
   await withFakeCodex(
-    `import { spawn } from 'node:child_process';
+    `import fs from 'node:fs';
+import { spawn } from 'node:child_process';
 
-const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 3000)'], {
+const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 1000)'], {
   detached: true,
   stdio: 'inherit',
 });
+fs.writeFileSync(process.env.CODEX_DEADLINE_HOLDER_PID, String(child.pid));
 child.unref();
 process.stdout.write('parent done\\n');
 process.exit(7);
 `,
     async (root) => {
       const eventsPath = path.join(root, 'events.jsonl');
+      const pidPath = path.join(root, 'holder.pid');
       const started = Date.now();
-      // 250ms stands in for the production grace: the fallback is what is under test, not how
-      // long a real run waits for its pipes. The default is deliberately far larger, because
-      // cutting stdio early loses the tail of events.jsonl that carries the run's own result.
-      const run = await runCodex([], 'late close test', eventsPath, 0.02, 250);
-      assert.ok(Date.now() - started < 2_000);
-      assert.equal(run.exit, 7);
-      assert.equal(run.stoppedOnDeadline, false);
-      assert.equal(run.stdioDrained, false);
-      assert.doesNotMatch(fs.readFileSync(eventsPath, 'utf8'), /stopped on its deadline/);
-      // The fixture grandchild intentionally keeps the inherited Windows cwd open; let it
-      // finish so cleanup can remove the temporary tree after proving the run closed early.
-      await wait(3_100);
+      process.env.CODEX_DEADLINE_HOLDER_PID = pidPath;
+      try {
+        // 250ms stands in for the production grace: the fallback is what is under test, not how
+        // long a real run waits for its pipes. The default is deliberately far larger, because
+        // cutting stdio early loses the tail of events.jsonl that carries the run's own result.
+        //
+        // The deadline is 30 seconds because this test needs it UNREACHABLE, not tight: what is
+        // asserted is that an honest early exit is not branded a kill. At 1.2 seconds it was
+        // reachable, and full-suite load turned the race into `1 !== 7` on 2026-08-24. The
+        // two-second assertion below is what still holds the fallback to account.
+        const run = await runCodex([], 'late close test', eventsPath, 0.5, 250);
+        assert.ok(Date.now() - started < 2_000);
+        assert.equal(run.exit, 7);
+        assert.equal(run.stoppedOnDeadline, false);
+        assert.equal(run.stdioDrained, false);
+        assert.doesNotMatch(fs.readFileSync(eventsPath, 'utf8'), /stopped on its deadline/);
+        // Cleanup removes a tree this grandchild holds open as its Windows working directory, so
+        // the wait is on the holder being gone rather than on its fuse burning down. Five seconds
+        // against a one-second fuse: the fixture starts under whatever load the suite carries, and
+        // a wait that expires here fails honestly instead of handing EPERM to the removal.
+        const pid = Number(fs.readFileSync(pidPath, 'utf8'));
+        assert.equal(await waitFor(() => !processAlive(pid), 5_000), true);
+      } finally {
+        delete process.env.CODEX_DEADLINE_HOLDER_PID;
+      }
     },
   );
 });
