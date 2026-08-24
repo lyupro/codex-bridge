@@ -19,15 +19,15 @@ import { readJsonFile } from '../src/home/lib/json-file.mjs';
 export const HOST_CONTRACT_RECORD_NAME = '.host-contract.json';
 
 /**
- * The command that will run the probe, kept here so the messages below gain it in one edit.
+ * The command that runs the probe, kept here so every message gains it in one edit.
  *
- * It is deliberately NOT named in any message yet: `doctor --probe-contract` does not exist, and a
- * package that tells an operator to run a command answering `unknown doctor option` has spent its
- * credibility on the first line they read. The messages state what is known and stop there; the
- * advice arrives in the same change as the command itself.
+ * It stayed unnamed in the messages until the command existed: a package that sends an operator to
+ * a command answering `unknown doctor option` has spent its credibility on the first line they
+ * read. The advice arrived in the same change as the command, and only in the states a probe can
+ * actually change — a message that advises a run which would tell you nothing new is noise.
  *
- * Derived rather than spelled out for when that happens: Plan_17 §5 found installer and hook lists
- * drifting apart once the same name lived in two places. `CLI_NAMES[0]` is the canonical spelling.
+ * Derived rather than spelled out: Plan_17 §5 found installer and hook lists drifting apart once
+ * the same name lived in two places. `CLI_NAMES[0]` is the canonical spelling.
  */
 export const PROBE_COMMAND = `${CLI_NAMES[0]} doctor --probe-contract`;
 
@@ -103,13 +103,13 @@ export function contractStatus({ record, version }) {
   if (!record) {
     return {
       state: 'unverified',
-      message: `The refusal contract has never been probed on this machine (host ${version}).`,
+      message: `The refusal contract has never been probed on this machine (host ${version}); run ${PROBE_COMMAND}.`,
     };
   }
   if (record.version !== version) {
     return {
       state: 'stale',
-      message: `The refusal contract was probed on host ${record.version}, but the current host is ${version}.`,
+      message: `The refusal contract was probed on host ${record.version}, but the current host is ${version}; run ${PROBE_COMMAND}.`,
     };
   }
   if (record.result === 'ignored') {
@@ -119,7 +119,7 @@ export function contractStatus({ record, version }) {
       .join(', ');
     return {
       state: 'ignored',
-      message: `DANGER: Host ${version} does not honour hook refusals, so every guard is inert: ${guards}.`,
+      message: `DANGER: Host ${version} does not honour hook refusals, so every guard is inert: ${guards}. Re-run ${PROBE_COMMAND} once the host updates.`,
     };
   }
   if (record.result === 'honored') {
@@ -130,6 +130,6 @@ export function contractStatus({ record, version }) {
   }
   return {
     state: 'unverified',
-    message: `The refusal contract record is invalid (host ${version}).`,
+    message: `The refusal contract record is invalid (host ${version}); run ${PROBE_COMMAND}.`,
   };
 }

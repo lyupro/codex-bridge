@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /** Dispatches codex-bridge CLI arguments to focused command modules. */
 import { diagnose, renderDoctor } from '../cli/doctor.mjs';
+import { probeContract } from '../cli/probe-contract.mjs';
 import { isInvokedDirectly } from '../cli/invoked-directly.mjs';
 import { hook } from '../cli/hook.mjs';
 import { resolveHost } from '../cli/hosts.mjs';
@@ -23,7 +24,7 @@ Usage:
   codex-bridge update [--scope user|project] [--host <path>] [--dry-run] [--force]
   codex-bridge permissions [add|remove] [--scope user|project] [--host <path>]
   codex-bridge uninstall [--scope user|project] [--host <path>] [--dry-run]
-  codex-bridge doctor [--scope user|project] [--host <path>]
+  codex-bridge doctor [--scope user|project] [--host <path>] [--probe-contract]
   codex-bridge run <runner options> --task-file <path>
   codex-bridge projects [<name>] [--json]
   codex-bridge prune <project> [<run>] [--purge] [--older-than <age>] [-f] [--json]
@@ -41,7 +42,7 @@ Commands:
   update    Update a recorded codex-bridge installation
   permissions Show, add, or remove optional shell permission rules
   uninstall Remove installed files while preserving run artifacts
-  doctor    Diagnose the selected Claude Code host
+  doctor    Diagnose the selected Claude Code host (--probe-contract measures on a live host)
   run       Start or attach to a delegated Codex run
   projects  List projects or runs from the run store
   prune     Remove archived transport, or purge selected run folders
@@ -54,13 +55,15 @@ Hook dispatch:
 
 const HOOK_COMMAND = 'hook';
 
-function commandOptions(command, argv) {
+export function commandOptions(command, argv) {
   const options = {};
   const booleanFlags = command === 'install' || command === 'update' ? new Set(['--dry-run', '--force'])
-    : command === 'uninstall' ? new Set(['--dry-run']) : new Set();
+    : command === 'uninstall' ? new Set(['--dry-run'])
+      : command === 'doctor' ? new Set(['--probe-contract']) : new Set();
   const flagNames = new Map([
     ['--dry-run', 'dryRun'],
     ['--force', 'force'],
+    ['--probe-contract', 'probeContract'],
   ]);
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -89,10 +92,21 @@ export async function main(argv, io = console) {
   }
   if (command === 'run') return runCodexCommand(rest);
   if (command === 'doctor') {
-    const host = resolveHost(commandOptions(command, rest));
+    const options = commandOptions(command, rest);
+    const host = resolveHost(options);
+    // The probe runs BEFORE the diagnosis so the `hostContract` line below carries the verdict just
+    // measured. Printing the diagnosis first and the measurement after would answer one question
+    // twice in one output, with the older answer on top (Plan_52 D25).
+    let probe = null;
+    if (options.probeContract) {
+      probe = await probeContract({ host });
+      io.log(`probe: ${probe.message}`);
+    }
     const result = await diagnose({ host });
     io.log(renderDoctor(result));
-    return result.exitCode;
+    // An inconclusive probe wrote nothing and measured nothing; exiting 0 would let a failed
+    // measurement pass silently in a script (Plan_52 D26).
+    return probe && probe.state === 'inconclusive' ? 2 : result.exitCode;
   }
   if (command === 'stop') {
     if (rest.length !== 1) {

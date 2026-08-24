@@ -22,19 +22,34 @@ test('the probe command is built from the canonical CLI name, not spelled out', 
   assert.equal(PROBE_COMMAND, `${CLI_NAMES[0]} doctor --probe-contract`);
 });
 
-test('no message advises a command the CLI does not answer to yet', () => {
-  // `doctor --probe-contract` is not implemented. Until it is, a message naming it would send an
-  // operator to `unknown doctor option` — the package spending its credibility on the first line
-  // they read. This test fails the day the advice is added without the command.
-  const states = [
-    { record: null, version: null },
+test('the CLI answers to the command every message advises', async () => {
+  // The inverse of the gate this test replaced: until 859ed85 no message could name
+  // `doctor --probe-contract`, because the CLI answered `unknown doctor option`. Advice nobody can
+  // run is the same defect in the other direction, so this asks the argument parser itself instead
+  // of trusting the string. It parses rather than runs: running would spend host quota per suite.
+  const { commandOptions } = await import('../../bin/codex-bridge.mjs');
+  const [, command, flag] = PROBE_COMMAND.split(' ');
+  assert.equal(command, 'doctor');
+  assert.deepEqual(commandOptions(command, [flag]), { probeContract: true });
+});
+
+test('a message advises the probe exactly when a probe would change its answer', () => {
+  // Advice on `verified` or on a host whose version cannot be read is noise: the first has nothing
+  // to learn, the second cannot run the probe at all.
+  const advising = [
     { record: null, version: '2.1.240' },
     { record: { version: '2.1.231', result: 'honored' }, version: '2.1.240' },
     { record: { version: '2.1.240', result: 'ignored' }, version: '2.1.240' },
-    { record: { version: '2.1.240', result: 'honored' }, version: '2.1.240' },
     { record: { version: '2.1.240', result: 'nonsense' }, version: '2.1.240' },
   ];
-  for (const input of states) {
+  for (const input of advising) {
+    assert.ok(contractStatus(input).message.includes(PROBE_COMMAND), JSON.stringify(input));
+  }
+  const silent = [
+    { record: null, version: null },
+    { record: { version: '2.1.240', result: 'honored' }, version: '2.1.240' },
+  ];
+  for (const input of silent) {
     assert.ok(!contractStatus(input).message.includes(PROBE_COMMAND), JSON.stringify(input));
   }
 });

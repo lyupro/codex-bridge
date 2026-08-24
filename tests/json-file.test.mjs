@@ -21,6 +21,10 @@ const stdinHookExpressions = Object.freeze({
   'src/home/hooks/reply-guard.mjs': "JSON.parse(fs.readFileSync(0, 'utf8'))",
   'src/home/hooks/stop-guard.mjs': "JSON.parse(fs.readFileSync(0, 'utf8'))",
   'src/home/hooks/worktree-lock.mjs': "JSON.parse(fs.readFileSync(0, 'utf8'))",
+  // Not a hook file itself: it carries the source of the throwaway probe hook as a template, and
+  // that hook reads its payload from stdin exactly like the five above. The rig it runs in has no
+  // access to this package, so the shared reader cannot be imported there.
+  'cli/probe-contract.mjs': "JSON.parse(fs.readFileSync(0, 'utf8'))",
 });
 
 async function fixture(t, content) {

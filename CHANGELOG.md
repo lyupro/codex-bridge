@@ -28,8 +28,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   that the host APPLIED it. The record is bound to a host version, since that is what changes
   underneath an installation, and reports five states: never probed, probed on another version,
   refusals ignored (which names the guards it makes inert and exits non-zero), verified, and a host
-  whose version cannot be read. The probe that writes the record is not implemented yet, so no
-  message advises a command that does not answer — a test enforces that.
+  whose version cannot be read.
+
+- `codex-bridge doctor --probe-contract` performs that measurement on a live host, and every message
+  that a probe could change now names it. The probe builds a throwaway rig outside the repository,
+  registers one temporary hook there that refuses one marker command, runs the real host inside it
+  and judges by whether the marker file appeared. Three conditions were bought by a measurement that
+  first reported a working host as dead: only the tool under test is allowed (`--allowedTools Bash`),
+  because the nested session otherwise sidesteps the refusal with `Write` and writes its own report
+  of being blocked into the marker file; the verdict comes from what executed, never from what the
+  model said about it; and settings are read from the project alone, or the operator's own hooks get
+  measured instead. A crash, a timeout or a hook that never fired records nothing and exits 2 — an
+  absent marker is only evidence when the host survived to the end, and a probe that announced a
+  contract as verified without measuring it would be the very silence this record exists to break.
 
 ## [0.5.3] - 2026-08-23
 
