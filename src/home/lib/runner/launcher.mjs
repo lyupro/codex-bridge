@@ -2,15 +2,9 @@
  * The half the caller can kill: every preparation and every refusal that costs no quota,
  * then the spawn of the worker and the immediate return; a repeated call waits for the reply.
  *
- * The order it leaves for the worker is worker.json in the run folder — after the split
- * that file is the only connection between the two halves. It is written here with
- * `agent`, `slug`, `order_id`, `repo`, `is_git_repo`, `launcher_pid`, `budget_minutes`, `scope_new`
- * and `args`;
- * worker.mjs reads `repo`, `agent`, `args`, `is_git_repo` and `budget_minutes`. The extra fields
- * are deliberate: `slug`, `order_id`, `launcher_pid` and `scope_new` are what a run folder read
- * back months later needs in order to explain itself — which order it belonged to and which new
- * paths it declared included. Nothing may be dropped from this shape without changing worker.mjs
- * and saying so out loud.
+ * The order it leaves for the worker is worker.json in the run folder — after the split that file
+ * is the only connection between the two halves. Its shape and the reason for every field live in
+ * worker-order.mjs, which writes it.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -37,7 +31,9 @@ import { continuationRefusal } from './continuation.mjs';
 import { SCHEMAS } from './schemas.mjs';
 import { INSTRUCTIONS } from './prompts.mjs';
 import { git, headSha, branchName, worktreeSnapshot, reviewScope } from './git-state.mjs';
-import { codexArgs, requireCodex, runMode, unsafeForCmd } from './codex-cmd.mjs';
+import { codexArgs, runMode, runProfile } from './codex-args.mjs';
+import { writeWorkerOrder } from './worker-order.mjs';
+import { requireCodex, unsafeForCmd } from './codex-cmd.mjs';
 import { runsRoot } from './runs-root.mjs';
 import { resolveProjectRunsDir } from './project-dir.mjs';
 import { cleanupRetention } from '../retention.mjs';
@@ -344,26 +340,18 @@ export async function launcher(argv = process.argv.slice(2)) {
     console.log(reply);
     return 1;
   }
-  fs.writeFileSync(
-    path.join(runDir, 'worker.json'),
-    `${JSON.stringify(
-      {
-        agent: opts.agent,
-        slug: opts.slug,
-        order_id: opts.orderId,
-        repo: repoRoot,
-        is_git_repo: isGitRepo,
-        launcher_pid: process.pid,
-        // The mode's wall-clock budget, resolved here and never re-read by the worker: a run
-        // that consulted config.json twice could end up honouring two different limits.
-        budget_minutes: RUN_ENV?.budgets?.[runMode(opts.agent)],
-        scope_new: opts.scopeNewPatterns,
-        args: codexArgv,
-      },
-      null,
-      2,
-    )}\n`,
-  );
+  writeWorkerOrder(runDir, {
+    agent: opts.agent,
+    slug: opts.slug,
+    orderId: opts.orderId,
+    repo: repoRoot,
+    isGitRepo,
+    launcherPid: process.pid,
+    budgetMinutes: RUN_ENV?.budgets?.[runMode(opts.agent)],
+    scopeNew: opts.scopeNewPatterns,
+    profile: runProfile({ ...opts, repo: repoRoot }),
+    args: codexArgv,
+  });
 
   // detached + unref + no stdio: the worker leaves the caller's process group, so a Ctrl+C
   // or a timeout kill aimed at the dispatcher's shell does not reach it, and it holds no

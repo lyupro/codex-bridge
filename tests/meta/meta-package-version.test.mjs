@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { collect } from '../../src/home/lib/write-meta.mjs';
-import { codexArgs } from '../../src/home/lib/runner/codex-cmd.mjs';
+import { codexArgs } from '../../src/home/lib/runner/codex-args.mjs';
 import { loadRunEnv } from '../../src/home/lib/runner/run-env.mjs';
 import { buildResult, makeRun } from './test-fixtures.mjs';
 

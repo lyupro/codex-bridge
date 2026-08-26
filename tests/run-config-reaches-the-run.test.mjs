@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { withTempTree } from './temp-tree.mjs';
 
 const RUN_ENV = new URL('../src/home/lib/runner/run-env.mjs', import.meta.url).href;
-const CODEX_CMD = new URL('../src/home/lib/runner/codex-cmd.mjs', import.meta.url).href;
+const CODEX_ARGS = new URL('../src/home/lib/runner/codex-args.mjs', import.meta.url).href;
 
 test('the operator home profile reaches the assembled Codex command', async () => {
   await withTempTree('codex-brand-home-', async (brandHome) => {
@@ -20,7 +20,7 @@ test('the operator home profile reaches the assembled Codex command', async () =
 
     const source = `
       import { loadRunEnv } from ${JSON.stringify(RUN_ENV)};
-      import { codexArgs } from ${JSON.stringify(CODEX_CMD)};
+      import { codexArgs } from ${JSON.stringify(CODEX_ARGS)};
       loadRunEnv();
       const args = codexArgs(
         { agent: 'codex-build', repo: process.cwd() },

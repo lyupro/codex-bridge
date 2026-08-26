@@ -3,7 +3,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
-import { codexArgs, unsafeForCmd } from '../../src/home/lib/runner/codex-cmd.mjs';
+import { codexArgs } from '../../src/home/lib/runner/codex-args.mjs';
+import { unsafeForCmd } from '../../src/home/lib/runner/codex-cmd.mjs';
 import { platformSandboxArgs, WINDOWS_SANDBOX } from '../../src/home/lib/runner/sandbox-flags.mjs';
 import { loadRunEnv } from '../../src/home/lib/runner/run-env.mjs';
 

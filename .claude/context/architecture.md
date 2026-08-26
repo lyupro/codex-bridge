@@ -33,9 +33,11 @@ hand-edited files stop the run unless `--force`.
   from its own module location any more.
 - `runner/` is one concern per module: `run-context` holds the run in progress, `run-env` reads
   `run-config.json`, `args` refuses the command line, `schemas`/`prompts` are what each agent is
-  asked for, `git-state` snapshots the tree, `codex-cmd` invokes the CLI with `sandbox-flags`
-  naming what the platform needs before a sandboxed process can start at all,
-  `project-dir`/`runs-root` place the artifacts, `conventions` pastes the rules a run is judged by into `task.md` — the
+  asked for, `git-state` snapshots the tree, `codex-args` decides what Codex is asked to run — model,
+  reasoning depth and the flag set per agent, with `sandbox-flags` naming what the platform needs
+  before a sandboxed process can start at all — while `codex-cmd` starts and stops that process and
+  knows nothing about the arguments' meaning; `worker-order` writes the launcher's order into
+  worker.json, `project-dir`/`runs-root` place the artifacts, `conventions` pastes the rules a run is judged by into `task.md` — the
   seeded host-wide `conventions.md` and the worked repository's optional `.codex-conventions.md`,
   verbatim under one heading, because "read file X" is hope and a run is free not to.
 - `write-meta.mjs` is the only reader of a finished run's artifacts. `meta/` splits it: `paths`

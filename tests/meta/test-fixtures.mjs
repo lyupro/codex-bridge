@@ -52,6 +52,9 @@ export function makeRun({
   status,
   events,
   args,
+  // The ordered worker, as the launcher records it. Absent means an archived run: one from before
+  // worker.json carried a profile at all.
+  profile,
 } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-run-'));
   const writesDiagnostic = stderr === undefined && log !== OK_LOG;
@@ -71,7 +74,9 @@ export function makeRun({
   } else if (quotaEvent) {
     fs.writeFileSync(path.join(dir, 'events.jsonl'), `${JSON.stringify(quotaEvent)}\n`);
   }
-  if (args !== undefined) fs.writeFileSync(path.join(dir, 'worker.json'), JSON.stringify({ args }));
+  if (args !== undefined || profile !== undefined) {
+    fs.writeFileSync(path.join(dir, 'worker.json'), JSON.stringify({ args, profile }));
+  }
   if (status !== undefined) fs.writeFileSync(path.join(dir, 'status.json'), JSON.stringify(status));
   if (result !== undefined) fs.writeFileSync(path.join(dir, file), JSON.stringify(result));
   fs.writeFileSync(path.join(dir, 'state-before.txt'), before);

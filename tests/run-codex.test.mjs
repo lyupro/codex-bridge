@@ -15,7 +15,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { parseArgs, runsPrefixInside, worktreeSnapshot } from '../src/home/lib/run-codex.mjs';
-import { codexArgs } from '../src/home/lib/runner/codex-cmd.mjs';
+import { codexArgs } from '../src/home/lib/runner/codex-args.mjs';
 import { loadRunEnv } from '../src/home/lib/runner/run-env.mjs';
 import { runsRoot } from '../src/home/lib/runner/runs-root.mjs';
 

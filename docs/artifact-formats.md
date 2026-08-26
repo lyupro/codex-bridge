@@ -87,8 +87,9 @@ a possibly hung process, but does not allow `unlock` to close the record: a conf
 | `usage` | The `usage` object from `turn.completed`, exactly as sent by the CLI, with all numeric values; for multiple turns they are summed. |
 | `tokens` | `input_tokens + output_tokens` from events; `null` if no turn reported usage. |
 | `tokens_reported` | Whether a token count was recognized. `false` does not mean zero usage. |
-| `model` | Value of the `model:` line from the log, or `null`. |
-| `sandbox` | Value of the `sandbox:` line from the log, or `null`. |
+| `profile` | The worker that was ordered, copied from `worker.json`: `model` (empty when nothing was pinned), `model_source` (`config` or `codex default`), `effort` and `effort_source` (`request`, `config` or `fallback`). `null` for runs recorded before the field existed. The reply prints it as one row, because a run answering on a model nobody ordered was invisible for three releases (2026-08-26). |
+| `model` | The model the run was ordered with, from `profile.model` or the `-m` argument; `null` when nothing was pinned and Codex chose. The CLI never reports the model it served, so this is what was asked for, not what answered. |
+| `sandbox` | The `--sandbox` argument the run was started with, or `null`. |
 | `env` | Contents of `env.json`; may be `null` for an old or early run. |
 | `session_id` | Value of the `session id:` line from the log, or `null`. |
 

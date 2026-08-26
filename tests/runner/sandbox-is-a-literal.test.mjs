@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
-import { codexArgs } from '../../src/home/lib/runner/codex-cmd.mjs';
+import { codexArgs } from '../../src/home/lib/runner/codex-args.mjs';
 import { loadRunEnv } from '../../src/home/lib/runner/run-env.mjs';
 
 const SANDBOX_BY_AGENT = new Map([

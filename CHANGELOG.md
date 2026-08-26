@@ -59,6 +59,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   end-to-end test fails if a configured profile stops reaching the assembled Codex command line — the
   existing unit tests injected the profile as an argument and could not see the file at all.
 
+- Every reply now names the worker that ran it: `Model: <model> at <depth> effort (<where the depth
+  came from>)`, beside the log link. `worker.json` and `meta.json` carry the same profile, including
+  whether the model came from the configuration or was left to Codex, and whether the depth came
+  from the request, the configuration or the fallback. A dispatcher reads these rows and nothing
+  else, and for three releases none of them named a model at all — which is why a run on a model
+  nobody ordered could go unnoticed. A depth silently served by the fallback is the same silence one
+  level down, so it is reported the same way. Runs recorded before the field simply keep their old
+  replies.
+
 - `minimal` is no longer accepted as a reasoning effort. It passed validation and was then rejected
   by the model itself (`Unsupported value: 'minimal' is not supported with the … model`), so an order
   died four seconds after launch on quota already spent. The allowed set is now exactly what the

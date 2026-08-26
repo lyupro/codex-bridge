@@ -28,7 +28,7 @@ import { splitRunChanges } from './meta/environment.mjs';
 import { readEvents } from './meta/events.mjs';
 import { writeStatus } from './meta/run-state.mjs';
 import { resolveStatus } from './meta/verdict.mjs';
-import { AGENTS, failReply, limitReply } from './meta/reply.mjs';
+import { AGENTS, failReply, limitReply, withProfileRow } from './meta/reply.mjs';
 
 function readRunnerVersion() {
   try {
@@ -122,7 +122,12 @@ export function collect(runDir, agent, exitCode) {
     tokens: events.tokens,
     tokens_reported: events.tokens !== null,
     usage: events.usage,
-    model: argValue('-m'),
+    // The ordered profile, straight from worker.json; null for runs made before it was recorded.
+    // `model` stays for readers that already know it, and now answers for a run that pinned
+    // nothing instead of going quiet: an absent -m used to be indistinguishable from a model
+    // the operator had configured and never received (2026-08-26).
+    profile: worker?.profile ?? null,
+    model: worker?.profile?.model || argValue('-m'),
     sandbox: argValue('--sandbox'),
     // Null for runs made before env.json existed: absence is not the same as "both off".
     env: readJson(path.join(runDir, 'env.json')),
@@ -143,7 +148,10 @@ export function collect(runDir, agent, exitCode) {
     file: (name) => path.join(runDir, name),
   };
   const reply =
-    status === 'OK' ? cfg.reply(ctx) : status === 'LIMIT' ? limitReply(ctx, meta) : failReply(ctx, meta);
+    withProfileRow(
+      status === 'OK' ? cfg.reply(ctx) : status === 'LIMIT' ? limitReply(ctx, meta) : failReply(ctx, meta),
+      meta,
+    );
 
   return { meta, reply: reply.join('\n') };
 }

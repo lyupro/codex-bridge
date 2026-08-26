@@ -139,6 +139,33 @@ function reviewReply(ctx) {
   ];
 }
 
+/**
+ * Which worker actually ran, printed next to the log link.
+ *
+ * A dispatcher reads these rows and nothing else, so a run on the wrong model was invisible here
+ * for three releases: the configured profile never reached the command line, and no reply said
+ * which model had answered (2026-08-26). The row names the depth's origin too — a `fallback`
+ * depth on a mode configured for `max` is the same silence one level down.
+ */
+export function profileRow(meta) {
+  const profile = meta?.profile;
+  if (!profile?.effort) return null;
+  const model = profile.model || 'codex default';
+  return `Model: ${model} at ${profile.effort} effort (${profile.effort_source})`;
+}
+
+/**
+ * Inserted before the row carrying the log link, or appended when a reply has none. The link is
+ * matched anywhere in the row, not at its start: scout and review put it after the report path,
+ * and the profile belongs beside it in every reply rather than only in two of them.
+ */
+export function withProfileRow(rows, meta) {
+  const row = profileRow(meta);
+  if (!row) return rows;
+  const at = rows.findIndex((r) => r.includes('Log: '));
+  return at === -1 ? [...rows, row] : [...rows.slice(0, at), row, ...rows.slice(at)];
+}
+
 export function failReply(ctx, meta) {
   const retention = retentionReply(ctx.runDir);
   return [
