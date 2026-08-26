@@ -2,8 +2,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
+import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { resolveHost } from '../../cli/hosts.mjs';
 import { diagnose } from '../../cli/doctor.mjs';
 import { install } from '../../cli/install.mjs';
@@ -13,8 +13,8 @@ import { uninstall } from '../../cli/uninstall.mjs';
 import { update } from '../../cli/update.mjs';
 
 async function fixture(t, name) {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-json-command-'));
-  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const root = makeTempTree('bridge-json-command-');
+  t.after(() => removeTempTree(root));
   return {
     root,
     host: resolveHost({

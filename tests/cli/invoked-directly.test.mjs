@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
+import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { isInvokedDirectly } from '../../cli/invoked-directly.mjs';
 
 const run = promisify(execFile);
@@ -38,8 +39,8 @@ test('the CLI prints its version when started through a symlink', async (t) => {
   // `npm i -g .` links the global package at the clone, so argv[1] names the link while the module
   // resolves to its target. Comparing the two as written made the CLI exit 0 in silence — and a
   // guard that prints nothing permits everything it was installed to refuse.
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-link-'));
-  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const root = makeTempTree('bridge-link-');
+  t.after(() => removeTempTree(root));
   const link = path.join(root, 'codex-bridge.mjs');
   try {
     await fs.symlink(BIN, link, 'file');

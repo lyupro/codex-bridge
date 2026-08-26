@@ -2,8 +2,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
+import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { parsePruneArgs } from '../../cli/prune-args.mjs';
 import { prunePlan, runIsOlderThan, TRANSPORT_FILES } from '../../cli/prune-plan.mjs';
 import { recursiveSize } from '../../cli/runs-inventory.mjs';
@@ -12,8 +12,8 @@ import { TRANSPORT_FILES as RETENTION_FILES } from '../../src/home/lib/retention
 const NOW = Date.parse('2026-08-06T12:00:00.000Z');
 
 function fixture(t) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'prune-plan-'));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const root = makeTempTree('prune-plan-');
+  t.after(() => removeTempTree(root));
   return root;
 }
 
