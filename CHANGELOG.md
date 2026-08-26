@@ -42,6 +42,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   absent marker is only evidence when the host survived to the end, and a probe that announced a
   contract as verified without measuring it would be the very silence this record exists to break.
 
+### Fixed
+
+- A run now reads the operator's configuration instead of the copy shipped inside the package. The
+  installer seeds `config.json` into `~/.lyupro/.codex-bridge/`, the CLI read it from there, and the
+  runner built its own path from the module it happened to live in — so `codex-bridge run` opened the
+  package's seed, in which no profile is ever configured. A model and a reasoning depth pinned by the
+  operator on 5 August reached no run at all: every run silently used defaults, `env.json` recorded
+  `"models": {}`, `meta.json` recorded no model because no `-m` was ever passed, and `doctor` kept
+  confirming the setting because it resolved the path correctly. Three releases shipped that way, and
+  it surfaced only when a service refused a reasoning level and the command line in the run folder
+  turned out to name no model. Installed from npm, the file the runner read also sat inside
+  `node_modules` and was replaced by every update, contradicting the documented promise that
+  configured profiles survive one. There is now one resolver of the host home for both halves of the
+  repository, the printed state names the file together with where that path came from, and an
+  end-to-end test fails if a configured profile stops reaching the assembled Codex command line — the
+  existing unit tests injected the profile as an argument and could not see the file at all.
+
+- `minimal` is no longer accepted as a reasoning effort. It passed validation and was then rejected
+  by the model itself (`Unsupported value: 'minimal' is not supported with the … model`), so an order
+  died four seconds after launch on quota already spent. The allowed set is now exactly what the
+  service enumerates: `none`, `low`, `medium`, `high`, `xhigh`, `max`. A validator that admits a
+  known-dead value is worse than no validator: it moves the refusal past the point where refusing is
+  free.
+
 ## [0.5.3] - 2026-08-23
 
 ### Fixed

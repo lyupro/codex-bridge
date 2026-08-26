@@ -27,6 +27,10 @@ hand-edited files stop the run unless `--force`.
   **launcher** (`runner/launcher.mjs`): every refusal that costs no quota happens here, before the
   detached **worker** (`runner/worker.mjs`) is spawned. The split exists because the calling shell
   dies long before a 20-minute run does; the worker closes the run with artifacts either way.
+- `brand-home.mjs` answers one question for both halves of the repository: where the host-side files
+  live (`CODEX_BRIDGE_HOME`, else `~/.lyupro/.codex-bridge/`) and whether that answer came from the
+  override or the default. `run-config.mjs` and `cli/hosts.mjs` ask it; nothing derives that path
+  from its own module location any more.
 - `runner/` is one concern per module: `run-context` holds the run in progress, `run-env` reads
   `run-config.json`, `args` refuses the command line, `schemas`/`prompts` are what each agent is
   asked for, `git-state` snapshots the tree, `codex-cmd` invokes the CLI with `sandbox-flags`

@@ -29,7 +29,7 @@ files, do not run grep, do not retell the report, and do not reason about the ta
 - The path to the repository. If none is given, work in the current working directory.
 - Scope patterns are globs relative to the repository root. A pattern that matches nothing there is
   refused before the run starts.
-- Optional: `effort: <none|minimal|low|medium|high|xhigh|max>` — Codex reasoning depth.
+- Optional: `effort: <none|low|medium|high|xhigh|max>` — Codex reasoning depth.
 - Optional: `slug: <short-name>` for the run folder; by default, the slug is taken from the order
   id.
 - Every input listed under **Required dispatcher inputs** above, passed on exactly as given:
@@ -81,7 +81,7 @@ Nothing else goes on that line. The sub-questions travel inside the task file; a
 is for a human calling the runner by hand, never for you.
 
 Add `--effort "<value>"` only when the orchestrator named a depth, and only with one of
-`none|minimal|low|medium|high|xhigh|max`. Without the flag the configured profile of the mode
+`none|low|medium|high|xhigh|max`. Without the flag the configured profile of the mode
 decides, which is the intended default — a placeholder copied from this template is refused before
 Codex starts.
 

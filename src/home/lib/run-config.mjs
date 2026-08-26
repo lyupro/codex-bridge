@@ -19,10 +19,18 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { BRAND_CONFIG_PATH, BRAND_HOME } from './brand-home.mjs';
 import { readJsonFileSync } from './json-file.mjs';
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-export const CONFIG_PATH = path.join(HERE, '..', 'config.json');
+export const CONFIG_PATH = BRAND_CONFIG_PATH;
+
+/**
+ * Every print of the state says which file was read AND why that one. The defect this replaced was
+ * invisible precisely because the path was never shown beside its origin: two files named
+ * config.json, and no way to tell from the output which of them the run had just used.
+ */
+const ORIGIN =
+  BRAND_HOME.source === 'CODEX_BRIDGE_HOME' ? 'from CODEX_BRIDGE_HOME' : 'default location';
 
 const BUDGET_KEY = 'budgets';
 const BUDGET_MODES = ['scout', 'build', 'review'];
@@ -73,7 +81,11 @@ const MODEL_KEYS = ['scout', 'build', 'review'];
  * fallback depth the dispatcher happens to pass.
  */
 const PROFILE_KEYS = ['model', 'effort'];
-export const ALLOWED_EFFORTS = Object.freeze(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
+// Exactly the values the service enumerates, and no more. `minimal` sat here until 2026-08-26,
+// passed validation and was rejected by the model itself after the run had started
+// ("Unsupported value: 'minimal' is not supported with the … model"), so an order died four
+// seconds in on quota already spent. A validator that admits a known-dead value is worse than none.
+export const ALLOWED_EFFORTS = Object.freeze(['none', 'low', 'medium', 'high', 'xhigh', 'max']);
 /**
  * The language a run answers in. Left to the model it followed the task, the surrounding docs or
  * its own default: an English order came back in Russian, and artifacts of one project ended up in
@@ -308,13 +320,13 @@ function main(argv) {
 
   if (!key) {
     const config = readRunConfig();
-    console.log([...state(config), `File: ${CONFIG_PATH}`].join('\n'));
+    console.log([...state(config), `File: ${CONFIG_PATH} (${ORIGIN})`].join('\n'));
     return 0;
   }
 
   if (key === 'reset') {
     writeRunConfig({ ...DEFAULTS });
-    console.log([...state(DEFAULTS), `Reset to defaults · ${CONFIG_PATH}`].join('\n'));
+    console.log([...state(DEFAULTS), `Reset to defaults · ${CONFIG_PATH} (${ORIGIN})`].join('\n'));
     return 0;
   }
 
@@ -334,7 +346,7 @@ function main(argv) {
 
   const config = { ...readRunConfig(), [key]: value === 'on' };
   writeRunConfig(config);
-  console.log([...state(config), `File: ${CONFIG_PATH}`].join('\n'));
+  console.log([...state(config), `File: ${CONFIG_PATH} (${ORIGIN})`].join('\n'));
   return 0;
 }
 

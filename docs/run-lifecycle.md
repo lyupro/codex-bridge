@@ -30,13 +30,14 @@ response begins the launcher sequence below.
 Order matters: early refusals must happen before Codex is invoked, and the worker must receive the
 complete job before detaching from the launcher.
 
-1. `loadRunEnv()` reads `run-config.json` and fixes the environment flags. A configuration error ends
-   the command without creating a run directory.
+1. `loadRunEnv()` reads the host's `config.json` — resolved by `brand-home.mjs` from
+   `CODEX_BRIDGE_HOME` or `~/.lyupro/.codex-bridge/`, never from the package directory — and fixes
+   the environment flags. A configuration error ends the command without creating a run directory.
 2. `parseArgs()` validates the CLI, including mandatory `--agent` and `--order-id` for all modes,
    `--scope` for build, and at least one `--question` for scout. The orchestrator supplies the job label
    and subquestions; the runner does not invent them and will not start without them. A flag name in
    place of a value (`--question --continue`) counts as a missing value. `--effort` is checked against
-   the Codex set (`none|minimal|low|medium|high|xhigh|max`) here as well — before invocation, not from
+   the Codex set (`none|low|medium|high|xhigh|max`) here as well — before invocation, not from
    an API response.
 3. The launcher reads stdin and rejects an empty task.
 4. The repository root is determined through git; `--repo` is used for a non-git directory.

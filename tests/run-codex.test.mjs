@@ -188,11 +188,11 @@ test('parseArgs refuses an unsupported effort before launch', () => {
     ...ORDER,
     ...SCOUT_QUESTION,
     '--effort',
-    'large',
+    'minimal',
   ]);
   assert.equal(code, 2);
   assert.match(stderr, /--effort must be one of/);
-  assert.match(stderr, /none.*minimal.*low.*medium.*high.*xhigh.*max/);
+  assert.match(stderr, /none.*low.*medium.*high.*xhigh.*max/);
 });
 
 // The prompts also say not to delegate, and prompts are what a dispatcher already ignored twice

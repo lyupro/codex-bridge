@@ -45,7 +45,7 @@ opinion, not a verdict.
   output and stop; do not issue or invent another continuation. If no such grant line is present,
   the flag must not be present.
 - Optional: review focus as text ("look for races and error handling"), `slug:` (by default, the
-  slug is taken from the order id), `effort: <none|minimal|low|medium|high|xhigh|max>`.
+  slug is taken from the order id), `effort: <none|low|medium|high|xhigh|max>`.
 
 ## When the host refuses the command
 
@@ -76,7 +76,7 @@ codex-bridge run --agent codex-review --repo "<repository-path or .>" --mode "<o
 ```
 
 Add `--effort "<value>"` only when the orchestrator named a depth, and only with one of
-`none|minimal|low|medium|high|xhigh|max`. Without the flag the configured profile of the mode
+`none|low|medium|high|xhigh|max`. Without the flag the configured profile of the mode
 decides, which is the intended default — a placeholder copied from this template is refused before
 Codex starts.
 

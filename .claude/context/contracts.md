@@ -18,6 +18,13 @@ here. Nothing was reworded on the way out.
   `docs/worker-contract.md`.
 - **`src/home/config.json` is seeded, never overwritten.** It is the host's file (models, effort,
   `environmentPaths`), like a `.env`. `SEEDED_SOURCES` in `cli/manifest.mjs`.
+- **A seeded file is read from the host home, never from the package.** `src/home/lib/brand-home.mjs`
+  is the only resolver of that home (`CODEX_BRIDGE_HOME`, else `~/.lyupro/.codex-bridge/`); no module
+  derives the path from its own location. The runner did exactly that until 2026-08-26 and read the
+  package copy for three releases while the operator edited the home one — a pinned model and effort
+  reached no run at all, and `doctor` confirmed the setting because the CLI resolved the path
+  correctly. `tests/run-config-reaches-the-run.test.mjs` is the end-to-end gate; a unit test that
+  injects the profile cannot catch this class and did not.
 - **`codex-runs/` is user data.** Uninstall never touches it; the install record is forbidden from
   naming it.
 - **Model ids live only in `config.json`.** No model literal belongs in `.mjs` code.

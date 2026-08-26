@@ -151,7 +151,11 @@ test('models must be known modes holding profiles of known string fields', () =>
   );
   assert.throws(
     () => readRunConfig(tempFile('{"models": {"build": {"effort": "large"}}}')),
-    /effort.*one of:.*none.*minimal.*low.*medium.*high.*xhigh.*max/,
+    /effort.*one of:.*none.*low.*medium.*high.*xhigh.*max/,
+  );
+  assert.throws(
+    () => readRunConfig(tempFile('{"models": {"build": {"effort": "minimal"}}}')),
+    /effort.*one of:.*none.*low.*medium.*high.*xhigh.*max/,
   );
   // An empty field used to be dropped as if it had never been written, which walked the run past
   // the whitelist above and into another profile's depth.

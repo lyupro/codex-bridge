@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { resolveBrandHome } from '../src/home/lib/brand-home.mjs';
 
 function repositoryRoot(start) {
   let current = path.resolve(start);
@@ -35,9 +36,9 @@ export function resolveHost({
   // Plan_25 moves package-owned runtime files out of foreign Claude settings, whose absolute
   // hook paths caused the package-file-layout incident. Keep the brand root overrideable so tests
   // and later installation steps never need to know the operator's home directory.
-  const resolvedBrandRoot = path.resolve(
-    brandRoot || process.env.CODEX_BRIDGE_HOME || path.join(homedir, '.lyupro', '.codex-bridge'),
-  );
+  const resolvedBrandRoot = brandRoot
+    ? path.resolve(brandRoot)
+    : resolveBrandHome({ homedir, env: process.env }).root;
   const brandPaths = {
     brandRoot: resolvedBrandRoot,
     brandHooksDir: path.join(resolvedBrandRoot, 'hooks'),

@@ -334,6 +334,16 @@ The `config.json` file belongs to the host, not the package: the installer creat
 with default values and never touches it again—not during `install --force`, `update`, or
 `uninstall`. Configured profiles survive package updates.
 
+The file a run reads is always the host one. `src/home/lib/brand-home.mjs` is the single resolver of
+that path—`CODEX_BRIDGE_HOME` when set, otherwise `~/.lyupro/.codex-bridge/`—and both the CLI and the
+runner ask it rather than deriving a path of their own. Until 2026-08-26 the runner built the path
+from its own module directory and therefore read the copy shipped inside the package: a model and an
+effort pinned in the host file never reached a single run, `env.json` recorded `"models": {}`, and
+`doctor` kept confirming the setting because the CLI resolved the path correctly. Printing the state
+(`node ~/.lyupro/.codex-bridge/lib/run-config.mjs`) now names the file together with where the path
+came from, and `tests/run-config-reaches-the-run.test.mjs` fails if a configured profile stops
+reaching the assembled Codex command line.
+
 The same installer places restrictions for delegated runs: `codex-bridge.rules` goes into
 `$CODEX_HOME/rules/` (by default `~/.codex/rules/`) and prohibits Codex commands that change the
 repository's history, branches, and index. The operator's personal `default.rules` is not changed:

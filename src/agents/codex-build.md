@@ -45,7 +45,7 @@ job is to report the run status honestly, including failure.
   assigned by the orchestrator, never chosen by you. After the verdict, return the exact attaching
   output and stop; do not issue or invent another continuation. If no such grant line is present,
   the flag must not be present.
-- Optional: `effort: <none|minimal|low|medium|high|xhigh|max>`, `slug:` (by default, the slug is
+- Optional: `effort: <none|low|medium|high|xhigh|max>`, `slug:` (by default, the slug is
   taken from the order id).
 - The verification command is NOT yours to pass. It lives in the task file under a `Verify`
   heading, one line. You never read that file and never put the command on the command line: an
@@ -81,7 +81,7 @@ codex-bridge run --agent codex-build --repo "<repository-path or .>" --scope "<g
 ```
 
 Add `--effort "<value>"` only when the orchestrator named a depth, and only with one of
-`none|minimal|low|medium|high|xhigh|max`. Without the flag the configured profile of the mode
+`none|low|medium|high|xhigh|max`. Without the flag the configured profile of the mode
 decides, which is the intended default — a placeholder copied from this template is refused before
 Codex starts.
 
