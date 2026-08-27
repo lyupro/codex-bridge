@@ -25,7 +25,10 @@ git config core.hooksPath .githooks        # enable the pre-commit size gate (on
 
 **Never run `node --test` directly.** `scripts/run-tests.mjs` gives the suite a throwaway
 `CODEX_HOME`; without it the installer tests drop `codex-bridge.rules` into the operator's real
-`~/.codex/rules/`. `tests/home-isolation.test.mjs` fails loudly if that isolation is missing.
+`~/.codex/rules/`. `tests/home-isolation.test.mjs` fails loudly if that isolation is missing. The
+same command hands out `CODEX_BRIDGE_TEST_TMP`, the one root every temporary tree is created under
+and swept from — `tests/temp-tree.mjs` refuses to create a tree without it rather than quietly
+falling back to the shared temp directory.
 
 ## Architecture
 

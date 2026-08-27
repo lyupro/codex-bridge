@@ -25,6 +25,8 @@ const created = ISOLATED_ROOTS.map((name) => [
   name,
   fs.mkdtempSync(path.join(os.tmpdir(), `codex-bridge-test-${name.toLowerCase()}-`)),
 ]);
+// Fixtures created temporary trees no one removed, so keep them under one disposable root.
+const testTmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-bridge-test-tmp-'));
 const pattern = process.argv[2] || 'tests/**/*.test.mjs';
 // Only a whole-suite run can judge the README's number; a single file legitimately reports two.
 const wholeSuite = !process.argv[2];
@@ -43,7 +45,7 @@ const reporters = tapFile
 try {
   const result = spawnSync(process.execPath, ['--test', ...reporters, pattern], {
     stdio: 'inherit',
-    env: { ...process.env, ...Object.fromEntries(created) },
+    env: { ...process.env, ...Object.fromEntries(created), CODEX_BRIDGE_TEST_TMP: testTmpRoot },
   });
   process.exitCode = result.status ?? 1;
   if (tapFile && process.exitCode === 0) {
@@ -61,5 +63,6 @@ try {
   }
 } finally {
   for (const [, directory] of created) fs.rmSync(directory, { recursive: true, force: true });
+  fs.rmSync(testTmpRoot, { recursive: true, force: true });
   if (tapFile) fs.rmSync(path.dirname(tapFile), { recursive: true, force: true });
 }
