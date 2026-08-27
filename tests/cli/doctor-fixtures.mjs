@@ -7,8 +7,8 @@
  * two drift, which is the failure the fixture itself guards against.
  */
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
+import { makeTempTree } from '../temp-tree.mjs';
 import { resolveHost } from '../../cli/hosts.mjs';
 import {
   buildInstallPlan,
@@ -22,7 +22,7 @@ export const ownPackage = { name: '@lyupro/codex-bridge', version: '0.1.0' };
 export const codexProbe = () => ({ available: true, value: 'codex-cli 1.2.3' });
 
 export async function hostFixture(t) {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-doctor-'));
+  const root = makeTempTree('bridge-doctor-');
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   return resolveHost({
     host: root,
@@ -80,7 +80,7 @@ export async function installedFixture(t) {
 }
 
 export async function runsRootFixture(t) {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-runs-'));
+  const root = makeTempTree('bridge-runs-');
   const previous = process.env.CODEX_RUNS_ROOT;
   process.env.CODEX_RUNS_ROOT = root;
   t.after(async () => {

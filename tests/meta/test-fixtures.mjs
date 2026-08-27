@@ -7,8 +7,8 @@
  * stays defined in that file instead.
  */
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
+import { makeTempTree } from '../temp-tree.mjs';
 
 /** Diagnostic text retained as an input for archived-run compatibility cases. */
 export const OK_LOG = 'model: gpt-5.6-sol\nsandbox: workspace-write\ntokens used\n104 098\n';
@@ -59,7 +59,7 @@ export function makeRun({
   // worker.json carried a profile at all.
   profile,
 } = {}) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-run-'));
+  const dir = makeTempTree('codex-run-');
   const writesDiagnostic = stderr === undefined && log !== OK_LOG;
   const quotaEvent = writesDiagnostic && args === undefined && /rate.?limit|quota|429/i.test(log)
     ? { type: 'error', message: log.trim() }
@@ -108,7 +108,7 @@ export function makeRun({
  * `after` is a pass that was killed before it could snapshot the tree.
  */
 export function makeChainRoot(runs) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-runs-'));
+  const root = makeTempTree('codex-runs-');
   for (const run of runs) {
     const dir = path.join(root, run.name);
     fs.mkdirSync(dir);

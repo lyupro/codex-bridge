@@ -6,13 +6,13 @@
  * let the two drift until they described different runs while claiming to describe one.
  */
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { makeTempTree } from '../temp-tree.mjs';
 import { attach } from '../../src/home/lib/runner/attach.mjs';
 
 export function fixture(t) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'attach-'));
+  const root = makeTempTree('attach-');
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   return root;
 }
