@@ -34,6 +34,9 @@ export const CHAIN_SLUG = 'plan6-b1';
 /** A run directory on disk, because collect() deliberately reads artifacts, not arguments. */
 export function makeRun({
   log = OK_LOG,
+  // `null` is a run that has no stderr.log at all, which is not the same as one whose stderr.log is
+  // empty. Three meta tests used to say it by writing the file and deleting it a line later; a
+  // state belongs in the fixture, not in a sequence of actions that leaves the reader guessing.
   stderr,
   result,
   before = '',
@@ -61,7 +64,7 @@ export function makeRun({
   const quotaEvent = writesDiagnostic && args === undefined && /rate.?limit|quota|429/i.test(log)
     ? { type: 'error', message: log.trim() }
     : null;
-  if (stderr !== undefined || events !== undefined || writesDiagnostic) {
+  if (stderr !== null && (stderr !== undefined || events !== undefined || writesDiagnostic)) {
     fs.writeFileSync(path.join(dir, 'stderr.log'), stderr ?? (writesDiagnostic ? log : ''));
   }
   if (events !== undefined) {

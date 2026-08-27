@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { collect } from '../../src/home/lib/write-meta.mjs';
 import { codexArgs } from '../../src/home/lib/runner/codex-args.mjs';
 import { loadRunEnv } from '../../src/home/lib/runner/run-env.mjs';
+import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { buildResult, makeRun } from './test-fixtures.mjs';
 
 const packageJson = JSON.parse(
@@ -43,8 +44,8 @@ test('every runner mode selects only a contract sandbox', () => {
 });
 
 test('a run without runner_version is reported as legacy without a sandbox warning', (t) => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-usage-'));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const root = makeTempTree('codex-usage-');
+  t.after(() => removeTempTree(root));
   const runDir = path.join(root, 'project', '2026-07-29_2325_review-codex-agents');
   fs.mkdirSync(runDir, { recursive: true });
   fs.writeFileSync(

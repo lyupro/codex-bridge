@@ -2,7 +2,6 @@
 /** Guards the single definition of a run that never started Codex. */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import path from 'node:path';
 import { abortedPreStart, startedRuns } from '../../src/home/lib/write-meta.mjs';
 import { makeChainRoot } from './test-fixtures.mjs';
@@ -44,6 +43,9 @@ test('a non-empty session id remains a started run and needs continuation permis
 });
 
 test('retention deleting events.jsonl does not turn a paid run into pre-start', () => {
+  // What retention leaves behind: no events.jsonl on disk, while meta still records its byte count.
+  // The fixture writes none for this run, so the state is already the one under test — a write
+  // followed by a removal said the same thing and only looked like a step that mattered.
   const root = makeChainRoot([
     {
       name: 'retained-paid-run',
@@ -51,8 +53,6 @@ test('retention deleting events.jsonl does not turn a paid run into pre-start', 
       meta: retroactiveMeta({ session_id: 'thread-456', events_bytes: 128 }),
     },
   ]);
-  fs.writeFileSync(path.join(root, 'retained-paid-run', 'events.jsonl'), '{"type":"thread.started"}\n');
-  fs.rmSync(path.join(root, 'retained-paid-run', 'events.jsonl'), { force: true });
 
   assert.equal(abortedPreStart(path.join(root, 'retained-paid-run')), false);
   assert.deepEqual(startedRuns(root, ['retained-paid-run']), ['retained-paid-run']);

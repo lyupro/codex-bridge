@@ -5,8 +5,6 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import path from 'node:path';
 import { transportGap } from '../../src/home/lib/meta/transport.mjs';
 import { makeRun } from './test-fixtures.mjs';
 
@@ -28,10 +26,10 @@ test('an archived run without --json is not reported as damaged', () => {
 test('a recorded deadline without stderr.log remains a transport mismatch', () => {
   const dir = makeRun({
     args: ['exec', '--json'],
+    stderr: null,
     events: [],
     status: { stopped_on_deadline: true, elapsed_ms: 10 },
   });
-  fs.rmSync(path.join(dir, 'stderr.log'));
 
   assert.match(transportGap(dir), /deadline watch/);
 });

@@ -5,7 +5,6 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import path from 'node:path';
 import { collect } from '../../src/home/lib/write-meta.mjs';
 import { outOfScope, reportVersusWork } from '../../src/home/lib/meta/verdict.mjs';
@@ -245,16 +244,16 @@ test('a new run missing events.jsonl is a damaged-evidence failure', () => {
   assert.match(meta.reason, /quota refusal cannot be told apart/);
 });
 
-// A deadline watcher and stderr.log are produced by the same worker. Removing stderr.log after
-// that fact is recorded must remain a consistency failure, even when the event stream exists.
+// A deadline watcher and stderr.log are produced by the same worker. A run fixture without stderr.log
+// must remain a consistency failure, even when the event stream exists.
 test('a deadline watcher without stderr.log is a damaged-evidence failure', () => {
   const dir = makeRun({
     args: ['exec', '--json'],
+    stderr: null,
     events: [],
     status: { stopped_on_deadline: false, elapsed_ms: 4200 },
     result: emptyBuild,
   });
-  fs.rmSync(path.join(dir, 'stderr.log'));
   const { meta } = collect(dir, 'codex-build', 1);
   assert.equal(meta.status, 'FAIL');
   assert.match(meta.reason, /artifacts disagree/);
