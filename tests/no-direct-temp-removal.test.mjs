@@ -16,6 +16,7 @@ const installerOwnedReason = 'Removes installer-owned files to exercise missing-
 const lockReleaseReason = 'Releases a held lock file on a timer to play its holder, not a tree removal.';
 const exclusions = new Map([
   ['cli/doctor.test.mjs', installerOwnedReason],
+  ['cli/doctor-rules.test.mjs', installerOwnedReason],
   ['cli/install.test.mjs', installerOwnedReason],
   // The test writes the lock file itself to stand in for a live holder, then removes it on a timer
   // so the holder is seen releasing it: the removal is the thing being tested (2026-08-11 — the

@@ -108,7 +108,13 @@ export async function addPermissionRules(settingsPath) {
         added += 1;
       }
     }
-    return { changed: added > 0, added };
+    const status = permissionStatus(settings);
+    return {
+      changed: added > 0,
+      added,
+      present: status.present,
+      total: status.total,
+    };
   });
 }
 

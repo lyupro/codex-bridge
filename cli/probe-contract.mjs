@@ -23,6 +23,10 @@ const exists = async (target) => {
   }
 };
 
+function lastNonEmptyLine(output) {
+  return String(output ?? '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean).at(-1);
+}
+
 export function judgeProbe({ markerExists, hookFired, hostResult }) {
   if (markerExists) {
     return { result: 'ignored', reason: 'The marker command ran despite the hook refusal.' };
@@ -41,7 +45,9 @@ export function judgeProbe({ markerExists, hookFired, hostResult }) {
     return { result: null, reason: `The host was terminated by signal ${hostResult.signal}.` };
   }
   if (hostResult.status !== 0) {
-    return { result: null, reason: `The host exited with status ${String(hostResult.status)}.` };
+    const output = lastNonEmptyLine(hostResult.stderr) || lastNonEmptyLine(hostResult.stdout);
+    const detail = output ? `: ${output.slice(0, 200)}` : '';
+    return { result: null, reason: `The host exited with status ${String(hostResult.status)}${detail}.` };
   }
   if (!hookFired) {
     return { result: null, reason: 'The probe hook never received the marker command.' };

@@ -25,7 +25,7 @@ import {
   withSettingsRun,
 } from './settings-merge.mjs';
 import { addRulesOwner, readRulesRegistry } from './rules-owners.mjs';
-import { addPermissionRules } from './permissions.mjs';
+import { addPermissionRules, inspectPermissions } from './permissions.mjs';
 import { contractStatus, detectHostVersion, readHostContract } from './host-contract.mjs';
 import { readRunConfig, retentionNotice } from '../src/home/lib/run-config.mjs';
 
@@ -59,6 +59,36 @@ function retentionOutput(line, output) {
 
 function contractOutput(status, output) {
   return status.state === 'verified' ? output : `${output}\n${status.message}`;
+}
+
+function naturalList(items) {
+  if (items.length < 2) return items.join('');
+  return items.length === 2
+    ? items.join(' and ')
+    : `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`;
+}
+
+function hookSummary(targets) {
+  const counts = new Map();
+  for (const { definition } of targets) {
+    counts.set(definition.event, (counts.get(definition.event) || 0) + 1);
+  }
+  const events = [...counts].map(([event, count]) => `${count} ${event}`);
+  return `${targets.length} hooks: ${naturalList(events)}`;
+}
+
+function permissionOutput(result, settingsPath) {
+  if (result.dryRun) return `Would evaluate permission rules in ${settingsPath}; settings unchanged.`;
+  if (result.added > 0) {
+    return `Granted ${result.added} of ${result.total} permission rule(s) in ${settingsPath} so the host runs the package command without asking.`;
+  }
+  // Zero granted is the good outcome only when the whole set is there. Saying "all are in place"
+  // off the count of what was added would state the opposite of the truth on a host someone had
+  // edited by hand, and permission windows are exactly what the operator would then not understand.
+  if (result.present < result.total) {
+    return `${result.present} of ${result.total} permission rules are in place in ${settingsPath}; run codex-bridge install --force to restore the rest.`;
+  }
+  return `All ${result.total} permission rules are already in place in ${settingsPath}, so the host runs the package command without asking.`;
 }
 
 async function migrateLegacySeed(host, seed) {
@@ -140,7 +170,22 @@ async function installInRun({
     { path: rule.target, fingerprint: ruleState.fingerprint });
   if (!changedFiles.length && !changedRule && inspectedHooks.every((state) => state.present)
     && recordHasHooks(record, targets) && sameRecord) {
-    if (!dryRun) await addRulesOwner(host);
+    if (!dryRun) {
+      await addRulesOwner(host);
+      // Read, never write: this branch's whole claim is that there is nothing to do, and a
+      // sentence about permission rules must not be paid for by quietly restoring one.
+      const permissionResult = await inspectPermissions(host.settingsPath);
+      return {
+        exitCode: 0,
+        output: contractOutput(
+          hostContract,
+          retentionOutput(
+            configuredRetentionLine,
+            `codex-bridge is already installed; nothing to do.\n${permissionOutput(permissionResult, host.settingsPath)}`,
+          ),
+        ),
+      };
+    }
     return {
       exitCode: 0,
       output: contractOutput(hostContract, retentionOutput(configuredRetentionLine, 'codex-bridge is already installed; nothing to do.')),
@@ -185,7 +230,9 @@ async function installInRun({
   // it goes looking for a way around, down to the absolute path to run-codex.mjs that Plan_41
   // removed. The rule follows the scope of the install, because host.settingsPath already is the
   // scope — a --scope project install must not reach into the operator's global config.
-  const permissionResult = dryRun ? { added: 0 } : await addPermissionRules(host.settingsPath);
+  const permissionResult = dryRun
+    ? { dryRun: true, added: 0, present: 0, total: 0 }
+    : await addPermissionRules(host.settingsPath);
   const fingerprints = {};
   for (const item of plan) {
     fingerprints[item.root] ??= {};
@@ -220,8 +267,8 @@ async function installInRun({
       hostContract,
       retentionOutput(
         configuredRetentionLine,
-        `Installed ${plan.length + 1} files and registered the ${targets.map(({ definition }) => definition.event).join(' and ')} hooks.`
-          + `\nGranted ${permissionResult.added} permission rule(s) in ${host.settingsPath} so the host runs the package command without asking.`,
+        `Installed ${plan.length} files and the Codex rules file, and registered ${hookSummary(targets)}.`
+          + `\n${permissionOutput(permissionResult, host.settingsPath)}`,
       ),
     ),
   };

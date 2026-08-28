@@ -169,9 +169,23 @@ test('probeContract writes no record after an inconclusive host exit', async () 
   try {
     assert.equal(scenario.result.state, 'inconclusive');
     assert.equal(scenario.result.result, null);
+    assert.equal(scenario.result.message, 'The host exited with status 1.');
     assert.equal(scenario.result.recorded, false);
     assert.equal(fs.existsSync(hostContractPath(scenario.host)), false);
     assert.equal(fs.existsSync(scenario.rigDir), false);
+  } finally {
+    scenario.cleanup();
+  }
+});
+
+test('probeContract includes the final non-empty stderr line for an inconclusive host exit', async () => {
+  const scenario = await runProbeScenario('inconclusive-output', () => ({
+    status: 1,
+    stderr: 'first host message\n  actionable host failure  \n',
+    stdout: 'stdout fallback\n',
+  }));
+  try {
+    assert.equal(scenario.result.message, 'The host exited with status 1: actionable host failure.');
   } finally {
     scenario.cleanup();
   }

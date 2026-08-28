@@ -57,6 +57,8 @@ test('permissions add builds the complete matrix and preserves foreign settings'
 
   const result = await permissions({ host, action: 'add' });
   assert.equal(result.added, 24);
+  assert.equal(result.present, ALL_PERMISSION_RULES.length);
+  assert.equal(result.total, ALL_PERMISSION_RULES.length);
   assert.equal(PERMISSION_RULES.allow.length, 12);
   assert.equal(PERMISSION_RULES.deny.length, 12);
 
@@ -81,6 +83,9 @@ test('repeated permissions add is idempotent and does not create another backup'
 
   assert.equal(first.added, 24);
   assert.equal(second.added, 0);
+  assert.equal(first.present, ALL_PERMISSION_RULES.length);
+  assert.equal(second.present, ALL_PERMISSION_RULES.length);
+  assert.equal(second.total, ALL_PERMISSION_RULES.length);
   assert.deepEqual(await backups(host), before);
   for (const [name, rules] of Object.entries(PERMISSION_RULES)) {
     for (const rule of rules) {

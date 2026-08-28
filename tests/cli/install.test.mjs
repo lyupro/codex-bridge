@@ -73,6 +73,22 @@ test('install copies the exact plan, expands placeholders, and writes a valid re
   const plan = await buildInstallPlan(host);
   const result = await install({ host });
   assert.equal(result.exitCode, 0);
+  const hookCounts = new Map();
+  for (const { event } of HOOK_DEFINITIONS) {
+    hookCounts.set(event, (hookCounts.get(event) || 0) + 1);
+  }
+  const hookLabels = [...hookCounts].map(([event, count]) => `${count} ${event}`);
+  const hookList = hookLabels.length === 1
+    ? hookLabels[0]
+    : hookLabels.length === 2
+      ? hookLabels.join(' and ')
+      : `${hookLabels.slice(0, -1).join(', ')} and ${hookLabels.at(-1)}`;
+  assert.ok(
+    result.output.includes(`Installed ${plan.length} files and the Codex rules file, and registered ${HOOK_DEFINITIONS.length} hooks: ${hookList}.`),
+    result.output,
+  );
+  const permissionTotal = Object.values(PERMISSION_RULES).flat().length;
+  assert.match(result.output, new RegExp(`Granted ${permissionTotal} of ${permissionTotal} permission rule\\(s\\)`));
   const record = await readInstallRecord(host);
   assert.deepEqual(record.files, plan.map((item) => ({ root: item.root, path: item.relativeToRoot })));
   assert.equal(record.rules.path, path.join(host.codexRulesDir, 'codex-bridge.rules'));
@@ -210,9 +226,37 @@ test('second install is a complete no-op with unchanged mtimes and no new backup
   const result = await install({ host });
   assert.equal(result.exitCode, 0);
   assert.match(result.output, /nothing to do/);
+  const permissionTotal = Object.values(PERMISSION_RULES).flat().length;
+  assert.match(result.output, new RegExp(`All ${permissionTotal} permission rules are already in place`));
+  assert.doesNotMatch(result.output, /Granted 0/);
   assert.equal((await fs.stat(recordPath)).mtimeMs, before.record);
   assert.equal((await fs.stat(host.settingsPath)).mtimeMs, before.settings);
   assert.deepEqual(await backups(host), before.backups);
+});
+
+// The no-op branch reports the permission set by reading it, never by granting it: a sentence about
+// rules must not be paid for by silently restoring one under the heading "nothing to do". So a host
+// someone edited by hand has to hear that the set is incomplete instead of "all are in place".
+test('a hand-edited host is told its permission set is incomplete, not that all rules are in place', async (t) => {
+  const { host } = await fixture(t);
+  await fs.mkdir(host.root, { recursive: true });
+  await fs.writeFile(host.settingsPath, JSON.stringify({ model: 'test' }));
+  await install({ host });
+  const settings = JSON.parse(await fs.readFile(host.settingsPath, 'utf8'));
+  const removed = settings.permissions.allow.filter((rule) => PERMISSION_RULES.allow.includes(rule))[0];
+  settings.permissions.allow = settings.permissions.allow.filter((rule) => rule !== removed);
+  await fs.writeFile(host.settingsPath, `${JSON.stringify(settings)}\n`);
+  const beforeSettings = (await fs.stat(host.settingsPath)).mtimeMs;
+
+  const result = await install({ host });
+  const total = Object.values(PERMISSION_RULES).flat().length;
+  assert.equal(result.exitCode, 0);
+  assert.match(result.output, new RegExp(`${total - 1} of ${total} permission rules are in place`));
+  assert.match(result.output, /install --force to restore the rest/);
+  assert.doesNotMatch(result.output, /All \d+ permission rules are already in place/);
+  assert.equal((await fs.stat(host.settingsPath)).mtimeMs, beforeSettings);
+  const after = JSON.parse(await fs.readFile(host.settingsPath, 'utf8'));
+  assert.equal(after.permissions.allow.includes(removed), false);
 });
 
 test('dry-run reports actions without creating the host, files, directories, or backups', async (t) => {
@@ -220,6 +264,7 @@ test('dry-run reports actions without creating the host, files, directories, or 
   const result = await install({ host, dryRun: true });
   assert.equal(result.exitCode, 0);
   assert.match(result.output, /Would create/);
+  assert.doesNotMatch(result.output, /permission rules are already in place|Granted \d/);
   await assert.rejects(() => fs.access(host.root), { code: 'ENOENT' });
   await assert.rejects(() => fs.access(host.brandRoot), { code: 'ENOENT' });
   await assert.rejects(() => fs.access(installRecordPath(host)), { code: 'ENOENT' });
