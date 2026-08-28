@@ -45,17 +45,6 @@ const exclusions = new Map([
   ['retention.test.mjs', migrationReason],
   ['run-codex.test.mjs', migrationReason],
   ['run-config.test.mjs', migrationReason],
-  ['runner/continuation-grant.test.mjs', migrationReason],
-  ['runner/continuation.test.mjs', migrationReason],
-  ['runner/conventions.test.mjs', migrationReason],
-  ['runner/pre-start.test.mjs', migrationReason],
-  ['runner/project-dir.test.mjs', migrationReason],
-  ['runner/reply-guard.test.mjs', migrationReason],
-  ['runner/scope.test.mjs', migrationReason],
-  ['runner/shell-unsafe.test.mjs', migrationReason],
-  ['runner/slug.test.mjs', migrationReason],
-  ['runner/task-file.test.mjs', migrationReason],
-  ['runner/task-input.test.mjs', migrationReason],
   ['shell-unsafe-arguments.test.mjs', migrationReason],
 ]);
 

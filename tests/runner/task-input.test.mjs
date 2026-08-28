@@ -2,18 +2,18 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const RUNNER = path.join(ROOT, 'src', 'home', 'lib', 'run-codex.mjs');
 const BIN = path.join(ROOT, 'bin', 'codex-bridge.mjs');
 
 function fixture(t) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'task-input-'));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const root = makeTempTree('task-input-');
+  t.after(() => removeTempTree(root));
   return root;
 }
 

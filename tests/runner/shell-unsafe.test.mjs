@@ -2,10 +2,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import {
   firstShellUnsafeSequence,
   SHELL_UNSAFE_SEQUENCES,
@@ -14,12 +14,12 @@ import {
 const RUNNER = fileURLToPath(new URL('../../src/home/lib/run-codex.mjs', import.meta.url));
 
 function fixture(t, task) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'shell-unsafe-'));
+  const root = makeTempTree('shell-unsafe-');
   const repo = path.join(root, 'repo');
   const taskFile = path.join(root, 'task.md');
   fs.mkdirSync(repo);
   fs.writeFileSync(taskFile, task);
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  t.after(() => removeTempTree(root));
   return { root, repo, taskFile };
 }
 

@@ -2,15 +2,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { continuationRefusal } from '../../src/home/lib/runner/continuation.mjs';
 import { startedRuns } from '../../src/home/lib/write-meta.mjs';
 
 function fixture(t) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'continuation-'));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const root = makeTempTree('continuation-');
+  t.after(() => removeTempTree(root));
   return root;
 }
 

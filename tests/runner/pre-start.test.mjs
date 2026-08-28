@@ -8,18 +8,18 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { resolveProjectRunsDir } from '../../src/home/lib/runner/project-dir.mjs';
 
 const RUN_CODEX = fileURLToPath(new URL('../../src/home/lib/run-codex.mjs', import.meta.url));
 const LAUNCHER = new URL('../../src/home/lib/runner/launcher.mjs', import.meta.url).href;
 
 function fixture(t, suffix) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), `pre-start-${suffix}-`));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const root = makeTempTree(`pre-start-${suffix}-`);
+  t.after(() => removeTempTree(root));
   return root;
 }
 

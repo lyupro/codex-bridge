@@ -1,10 +1,9 @@
 /** Regression coverage for Plan_29 slug derivation and legacy chain lookup. */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { chainRuns, taskFingerprint } from '../../src/home/lib/meta/chain.mjs';
 import { parseArgs } from '../../src/home/lib/runner/args.mjs';
 import { makeRunDir, runDirPath } from '../../src/home/lib/runner/launcher.mjs';
@@ -47,8 +46,8 @@ test('a date outside the start of a slug is preserved', () => {
 });
 
 test('run directory collisions still receive a numeric suffix', (t) => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'slug-collision-'));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const root = makeTempTree('slug-collision-');
+  t.after(() => removeTempTree(root));
   const base = runDirPath(root, '2026-08-13_plan4', RUN_STAMP);
 
   assert.equal(makeRunDir(base), base);

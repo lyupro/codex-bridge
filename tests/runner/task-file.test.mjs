@@ -2,19 +2,19 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { parseTaskDocument } from '../../src/home/lib/runner/task-file.mjs';
 
 const RUNNER = fileURLToPath(new URL('../../src/home/lib/run-codex.mjs', import.meta.url));
 
 function fixture(t, text) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'task-document-'));
+  const root = makeTempTree('task-document-');
   const taskFile = path.join(root, 'task.md');
   fs.writeFileSync(taskFile, text);
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  t.after(() => removeTempTree(root));
   return { root, taskFile };
 }
 

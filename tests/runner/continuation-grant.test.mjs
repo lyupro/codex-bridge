@@ -2,10 +2,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { parseContinuationGrant } from '../../src/home/lib/required-inputs.mjs';
 import { resolveProjectRunsDir } from '../../src/home/lib/runner/project-dir.mjs';
 
@@ -18,8 +18,8 @@ const OUTCOME_REASON = 'run stopped on its deadline after 1500014 ms';
 const GRANT_REASON = 'retry the unfinished verification';
 
 function fixture(t) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'continuation-grant-'));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const root = makeTempTree('continuation-grant-');
+  t.after(() => removeTempTree(root));
   return root;
 }
 

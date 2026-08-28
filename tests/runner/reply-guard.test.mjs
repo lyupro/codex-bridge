@@ -2,16 +2,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 
 const GUARD = fileURLToPath(new URL('../../src/home/hooks/reply-guard.mjs', import.meta.url));
 
 test('cleanRunDir keeps only the folder from the new ATTACH line shape', (t) => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'reply-guard-order-id-'));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const root = makeTempTree('reply-guard-order-id-');
+  t.after(() => removeTempTree(root));
   const runDir = path.join(root, '2026-08-15_090000_plan42-run2');
   fs.mkdirSync(runDir);
   fs.writeFileSync(path.join(runDir, 'meta.json'), JSON.stringify({ status: 'OK' }));

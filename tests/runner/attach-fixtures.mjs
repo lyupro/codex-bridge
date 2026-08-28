@@ -8,12 +8,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { makeTempTree } from '../temp-tree.mjs';
+import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { attach } from '../../src/home/lib/runner/attach.mjs';
 
 export function fixture(t) {
   const root = makeTempTree('attach-');
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  t.after(() => removeTempTree(root));
   return root;
 }
 
