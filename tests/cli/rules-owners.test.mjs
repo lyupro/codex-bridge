@@ -2,8 +2,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
+import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import {
   addRulesOwner,
   isLockTaken,
@@ -12,8 +12,8 @@ import {
 } from '../../cli/rules-owners.mjs';
 
 test('concurrent owner registrations retain every owner', async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-rules-owners-'));
-  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const root = makeTempTree('bridge-rules-owners-');
+  t.after(() => removeTempTree(root));
   const codexRulesDir = path.join(root, 'codex-home', 'rules');
   const hosts = ['first-host', 'second-host'].map((name) => ({
     root: path.join(root, name),
@@ -28,8 +28,8 @@ test('concurrent owner registrations retain every owner', async (t) => {
 });
 
 test('a lock left behind by a dead process does not block the next owner', async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-rules-stale-'));
-  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const root = makeTempTree('bridge-rules-stale-');
+  t.after(() => removeTempTree(root));
   const codexRulesDir = path.join(root, 'codex-home', 'rules');
   const host = { root: path.join(root, 'host'), codexRulesDir };
 
@@ -58,8 +58,8 @@ test('a taken lock is recognised by every code Windows uses for it', () => {
 });
 
 test('a lock a live process is holding is waited for, not stolen', async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-rules-live-lock-'));
-  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const root = makeTempTree('bridge-rules-live-lock-');
+  t.after(() => removeTempTree(root));
   const codexRulesDir = path.join(root, 'codex-home', 'rules');
   const host = { root: path.join(root, 'host'), codexRulesDir };
 

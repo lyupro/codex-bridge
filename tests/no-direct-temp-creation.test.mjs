@@ -6,11 +6,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const testsRoot = path.dirname(fileURLToPath(import.meta.url));
-const migrationReason = 'Awaiting migration under Plan_53.';
-const exclusions = new Map([
-  ['cli/rules-owners.test.mjs', migrationReason],
-  ['cli/stop.test.mjs', migrationReason],
-]);
+// Empty on purpose since Plan_53 batch 6c: every test file creates its temporary trees through the
+// helper, so nothing needs excusing. An entry here is not a normal thing to add — a new direct
+// mkdtemp means the tree is born outside the suite's own root, which is what the helper exists to
+// prevent. Migrate the caller instead.
+const exclusions = new Map();
 
 function findMjsFiles(dir) {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {

@@ -4,10 +4,10 @@ import assert from 'node:assert/strict';
 import childProcess, { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
-import os from 'node:os';
 import path from 'node:path';
 import { HEARTBEAT_FILE } from '../../src/home/lib/heartbeat.mjs';
 import { resolveProjectRunsDir } from '../../src/home/lib/runner/project-dir.mjs';
+import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 
 const realSpawnSync = childProcess.spawnSync;
 if (process.platform === 'win32') {
@@ -32,12 +32,12 @@ after(() => {
 });
 
 function fixture(t) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'stop-'));
+  const root = makeTempTree('stop-');
   const project = path.join(root, 'project');
   const runsRoot = path.join(root, 'runs');
   fs.mkdirSync(project);
   const projectRuns = resolveProjectRunsDir(runsRoot, project).dir;
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  t.after(() => removeTempTree(root));
   return { project, projectRuns, runsRoot };
 }
 

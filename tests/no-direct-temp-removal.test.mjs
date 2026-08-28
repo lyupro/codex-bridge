@@ -6,7 +6,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const testsRoot = path.dirname(fileURLToPath(import.meta.url));
-const migrationReason = 'Awaiting migration under Plan_53.';
 // Not a tree removal and never will be: the test deletes one artifact file from a run to say the
 // artifact is missing, which is what the witness is being asked about. The gate deliberately does
 // not learn to tell a file from a tree — narrowing it to `recursive: true` was considered in batch
@@ -14,11 +13,14 @@ const migrationReason = 'Awaiting migration under Plan_53.';
 // being a convention.
 const singleArtifactReason = 'Removes single run artifacts to express a missing file, not trees.';
 const installerOwnedReason = 'Removes installer-owned files to exercise missing-file recovery, not trees.';
+const lockReleaseReason = 'Releases a held lock file on a timer to play its holder, not a tree removal.';
 const exclusions = new Map([
   ['cli/doctor.test.mjs', installerOwnedReason],
   ['cli/install.test.mjs', installerOwnedReason],
-  ['cli/rules-owners.test.mjs', migrationReason],
-  ['cli/stop.test.mjs', migrationReason],
+  // The test writes the lock file itself to stand in for a live holder, then removes it on a timer
+  // so the holder is seen releasing it: the removal is the thing being tested (2026-08-11 — the
+  // product must wait for a lock it does not own rather than steal it), not cleanup.
+  ['cli/rules-owners.test.mjs', lockReleaseReason],
   ['cli/uninstall.test.mjs', installerOwnedReason],
   // The files this one removes were written by a real install(), not by a fixture: the test deletes
   // an installed file to prove update refuses and --force restores it. Not a tree removal.
