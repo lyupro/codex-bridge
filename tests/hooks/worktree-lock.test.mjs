@@ -277,6 +277,15 @@ test('the lock allows a shell command that merely reads', async (t) => {
   assertPass(runShell(root, runsRoot, `git -C "${repo}" status --short`));
 });
 
+test('the lock allows a read-only pipeline with a quoted redirect character', async (t) => {
+  const { root, runsRoot } = await fixture(t);
+  const repo = path.join(root, 'repository');
+  await initializeRepository(repo);
+  await liveRun(runsRoot, { repo });
+  const command = String.raw`awk '/^Host x/' ~/.ssh/config | sed -E 's#(A ).*#\1<redacted>#' | head -10`;
+  assertPass(runShell(root, runsRoot, command, repo));
+});
+
 test('the lock allows a shell write outside every held repository', async (t) => {
   const { root, runsRoot } = await fixture(t);
   const repo = path.join(root, 'repository');

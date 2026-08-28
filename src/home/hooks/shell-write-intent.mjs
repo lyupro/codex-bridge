@@ -36,6 +36,33 @@ function tokens(segment) {
   return segment.match(/"(?:\\.|[^"])*"|'[^']*'|[^\s]+/g) ?? [];
 }
 
+// A `>` inside a quoted argument is text, not a redirect. The 2026-08-28 worktree-lock refusal
+// named `#'` from `sed -E 's#(A ).*#\1<redacted>#'` because this scan previously read raw text.
+function quotedCharacters(command) {
+  const quoted = new Uint8Array(command.length);
+  let quote = null;
+  for (let index = 0; index < command.length; index += 1) {
+    const character = command[index];
+    if (quote === "'") {
+      if (character === "'") quote = null;
+      else quoted[index] = 1;
+    } else if (quote === '"') {
+      if (character === '\\' && index + 1 < command.length) {
+        quoted[index] = 1;
+        quoted[index + 1] = 1;
+        index += 1;
+      } else if (character === '"') quote = null;
+      else quoted[index] = 1;
+    } else if (character === '\\' && index + 1 < command.length) {
+      index += 1;
+    } else if (character === "'" || character === '"') {
+      quote = character;
+      quoted[index] = 1;
+    }
+  }
+  return quote ? null : quoted;
+}
+
 function positional(args) {
   return args.filter((arg) => !arg.startsWith('-'));
 }
@@ -86,8 +113,10 @@ export function shellWriteIntent(command) {
   const document = heredoc(command);
   const shell = document?.header ?? command;
   let writes = document?.writes ?? false;
+  const quoted = quotedCharacters(shell);
 
   for (const match of shell.matchAll(/(?<![<>=])(?:\d*)>>?(?![=>&])\s*("(?:\\.|[^"])*"|'[^']*'|[^\s;|&]+)/g)) {
+    if (quoted && quoted[match.index]) continue;
     writes = true;
     addPath(paths, match[1]);
   }

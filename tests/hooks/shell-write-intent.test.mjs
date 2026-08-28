@@ -10,6 +10,44 @@ test('recognises output redirection and preserves its named target', () => {
   });
 });
 
+test('ignores redirect characters inside quoted arguments', () => {
+  const commands = [
+    String.raw`awk '/^Host x/' ~/.ssh/config | sed -E 's#(A ).*#\1<redacted>#' | head -10`,
+    'grep -n "a > b" README.md',
+    String.raw`git log --format='%h <%an>'`,
+  ];
+  for (const command of commands) {
+    assert.deepEqual(shellWriteIntent(command), { writes: false, paths: [] }, command);
+  }
+});
+
+test('keeps real redirects after quoted arguments and with quoted targets', () => {
+  const cases = [
+    ['echo hi > "my file.txt"', ['my file.txt']],
+    ["echo 'some text' > out.txt", ['out.txt']],
+    ['echo hi >> log.txt', ['log.txt']],
+    ['cmd 2> err.txt', ['err.txt']],
+    ['echo hi >out.txt', ['out.txt']],
+  ];
+  for (const [command, paths] of cases) {
+    assert.deepEqual(shellWriteIntent(command), { writes: true, paths }, command);
+  }
+});
+
+test('does not hide a sed target after its quoted expression', () => {
+  assert.deepEqual(shellWriteIntent("sed -i 's#a#b#' README.md"), {
+    writes: true,
+    paths: ['README.md'],
+  });
+});
+
+test('keeps conservative write intent for an unbalanced quote', () => {
+  assert.deepEqual(shellWriteIntent("echo 'unfinished > out.txt"), {
+    writes: true,
+    paths: ['out.txt'],
+  });
+});
+
 test('does not report targets beginning with unresolved shell substitutions', () => {
   for (const target of ['$SP/finding.md', '%SP%/finding.md', '`resolve-path`/finding.md']) {
     assert.deepEqual(shellWriteIntent(`printf changed > "${target}"`), {
