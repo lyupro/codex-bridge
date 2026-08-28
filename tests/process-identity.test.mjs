@@ -3,7 +3,6 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -17,13 +16,14 @@ import {
   IDENTITY_UNVERIFIED,
   processIdentity,
 } from '../src/home/lib/process-identity.mjs';
+import { makeTempTree } from './temp-tree.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const now = Date.now();
 const recordedStart = now - 10_000;
 
 function runDir() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'codex-process-identity-'));
+  return makeTempTree('codex-process-identity-');
 }
 
 function status(overrides = {}) {

@@ -2,7 +2,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -13,6 +12,7 @@ import {
 import { readJson as readArtifactJson } from '../src/home/lib/meta/paths.mjs';
 import { readRunConfig, DEFAULTS } from '../src/home/lib/run-config.mjs';
 import { readJsonFile as readAttachedJson } from '../src/home/lib/runner/attach.mjs';
+import { makeTempTree, removeTempTree } from './temp-tree.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const stdinHookExpressions = Object.freeze({
@@ -28,8 +28,8 @@ const stdinHookExpressions = Object.freeze({
 });
 
 async function fixture(t, content) {
-  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-json-file-'));
-  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const directory = makeTempTree('bridge-json-file-');
+  t.after(() => removeTempTree(directory));
   const file = path.join(directory, 'settings.json');
   await fs.writeFile(file, content);
   return file;
@@ -66,8 +66,8 @@ test('shared JSON parse errors name the path and preserve the original cause', a
 });
 
 test('nullable and optional readers keep their missing-file contracts', async (t) => {
-  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-json-missing-'));
-  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const directory = makeTempTree('bridge-json-missing-');
+  t.after(() => removeTempTree(directory));
   const missing = path.join(directory, 'missing.json');
   assert.equal(readArtifactJson(missing), null);
   assert.equal(readAttachedJson(missing), null);

@@ -2,7 +2,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +9,7 @@ import {
   firstShellUnsafeSequence,
   SHELL_UNSAFE_SEQUENCES,
 } from '../src/home/lib/shell-unsafe.mjs';
+import { makeTempTree, removeTempTree } from './temp-tree.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const AGENTS_DIR = path.join(ROOT, 'src', 'agents');
@@ -70,8 +70,8 @@ test('the dispatcher guard catches mutations using every shared forbidden sequen
 });
 
 test('the order gate denies an unsafe labelled value and passes clean labelled values', async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'shell-unsafe-gate-'));
-  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const root = makeTempTree('shell-unsafe-gate-');
+  t.after(() => removeTempTree(root));
   const base = 'order id: plan-42-build\ntask file: C:/Temp/task-plan-42.md\n';
   const denied = runGate(root, `${base}scope: src/**;tests/**`);
   const decision = JSON.parse(denied.stdout).hookSpecificOutput;

@@ -2,16 +2,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { cleanupRetention } from '../src/home/lib/retention.mjs';
 import { readRunConfig } from '../src/home/lib/run-config.mjs';
+import { makeTempTree, removeTempTree } from './temp-tree.mjs';
 
 const NOW = Date.parse('2026-08-06T12:00:00.000Z');
 
 function fixture(t) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'retention-'));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const root = makeTempTree('retention-');
+  t.after(() => removeTempTree(root));
   return root;
 }
 

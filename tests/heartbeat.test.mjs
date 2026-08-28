@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { makeTempTree } from './temp-tree.mjs';
 import {
   createHeartbeat,
   heartbeatAge,
@@ -14,7 +15,7 @@ import {
 } from '../src/home/lib/heartbeat.mjs';
 
 function runDir() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'codex-heartbeat-'));
+  return makeTempTree('codex-heartbeat-');
 }
 
 test('heartbeat stamps are throttled so a large stream does not write per chunk', () => {

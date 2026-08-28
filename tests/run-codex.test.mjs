@@ -18,6 +18,7 @@ import { parseArgs, runsPrefixInside, worktreeSnapshot } from '../src/home/lib/r
 import { codexArgs } from '../src/home/lib/runner/codex-args.mjs';
 import { loadRunEnv } from '../src/home/lib/runner/run-env.mjs';
 import { runsRoot } from '../src/home/lib/runner/runs-root.mjs';
+import { makeTempTree } from './temp-tree.mjs';
 
 /** Resolved from this file, so a copied folder tests its own copy of the runner. */
 const RUN_CODEX = new URL('../src/home/lib/run-codex.mjs', import.meta.url).href;
@@ -54,8 +55,8 @@ test('importing the runner starts nothing', () => {
   // Every refusal and every artifact of a run lives behind a direct call. Imported — which is
   // how the cases here reach it — the file must not parse arguments, read stdin, take the
   // --worker branch or spawn anything: a runner that ran on import would run inside the tests.
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-home-'));
-  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-cwd-'));
+  const home = makeTempTree('codex-home-');
+  const cwd = makeTempTree('codex-cwd-');
   const source = `await import(${JSON.stringify(RUN_CODEX)});
 process.stdout.write('imported');`;
 
@@ -283,7 +284,7 @@ test('all runner modes request the structured JSON event stream', () => {
  * the fixture answers for itself instead of for whatever ~/.gitconfig happens to exclude.
  */
 function withHomeRepo(body) {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-home-'));
+  const home = makeTempTree('codex-home-');
   const keys = ['HOME', 'USERPROFILE', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_SYSTEM'];
   const saved = keys.map((key) => [key, process.env[key]]);
   process.env.HOME = home;
@@ -334,7 +335,7 @@ test('the runs root uses a non-empty environment override, trimmed', () => {
 });
 
 test('the run folder prefix is calculated from the environment root', () => {
-  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-repo-'));
+  const repo = makeTempTree('codex-repo-');
   withRunsRoot(path.join(repo, 'artifacts'), () => {
     assert.equal(runsPrefixInside(repo), 'artifacts/');
   });

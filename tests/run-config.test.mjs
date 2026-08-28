@@ -14,9 +14,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { readRunConfig, writeRunConfig, disableFlags, DEFAULTS } from '../src/home/lib/run-config.mjs';
 import { runMode } from '../src/home/lib/runner/codex-args.mjs';
+import { makeTempTree } from './temp-tree.mjs';
 
 const tempFile = (content) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-cfg-'));
+  const dir = makeTempTree('codex-cfg-');
   const file = path.join(dir, 'run-config.json');
   if (content !== undefined) fs.writeFileSync(file, content);
   return file;

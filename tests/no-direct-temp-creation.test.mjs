@@ -8,7 +8,6 @@ import { fileURLToPath } from 'node:url';
 const testsRoot = path.dirname(fileURLToPath(import.meta.url));
 const migrationReason = 'Awaiting migration under Plan_53.';
 const exclusions = new Map([
-  ['check-file-size.test.mjs', migrationReason],
   ['cli/codex-bridge.test.mjs', migrationReason],
   ['cli/doctor.test.mjs', migrationReason],
   ['cli/hook-subcommand.test.mjs', migrationReason],
@@ -30,15 +29,8 @@ const exclusions = new Map([
   ['cli/unlock.test.mjs', migrationReason],
   ['cli/update-legacy-layout.test.mjs', migrationReason],
   ['cli/update.test.mjs', migrationReason],
-  ['heartbeat.test.mjs', migrationReason],
-  ['json-file.test.mjs', migrationReason],
   ['meta/paths.test.mjs', migrationReason],
   ['meta/run-state.test.mjs', migrationReason],
-  ['process-identity.test.mjs', migrationReason],
-  ['retention.test.mjs', migrationReason],
-  ['run-codex.test.mjs', migrationReason],
-  ['run-config.test.mjs', migrationReason],
-  ['shell-unsafe-arguments.test.mjs', migrationReason],
 ]);
 
 function findMjsFiles(dir) {

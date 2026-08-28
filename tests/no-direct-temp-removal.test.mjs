@@ -14,7 +14,6 @@ const migrationReason = 'Awaiting migration under Plan_53.';
 // being a convention.
 const singleArtifactReason = 'Removes single run artifacts to express a missing file, not trees.';
 const exclusions = new Map([
-  ['check-file-size.test.mjs', migrationReason],
   ['cli/codex-bridge.test.mjs', migrationReason],
   ['cli/doctor-fixtures.mjs', migrationReason],
   ['cli/doctor-runtime.test.mjs', migrationReason],
@@ -40,10 +39,6 @@ const exclusions = new Map([
   ['cli/update-legacy-layout.test.mjs', migrationReason],
   ['cli/update.test.mjs', migrationReason],
   ['hooks/worktree-witness.test.mjs', singleArtifactReason],
-  ['json-file.test.mjs', migrationReason],
-  ['retention.test.mjs', migrationReason],
-  ['shell-unsafe-arguments.test.mjs', migrationReason],
-  ['write-meta-outcome.test.mjs', migrationReason],
 ]);
 
 function findMjsFiles(dir) {

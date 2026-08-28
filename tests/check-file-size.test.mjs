@@ -6,9 +6,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 import { run, isSpecificExclude } from '../scripts/check-file-size.mjs';
+import { makeTempTree, removeTempTree } from './temp-tree.mjs';
 
 /** Builds a file with an exact number of lines: N-1 newlines, split('\n').length === N. */
 function linesOf(count) {
@@ -29,8 +29,8 @@ function baseConfig(overrides = {}) {
 
 /** Creates a temp fixture repo: writes files + a config, returns paths and an auto-cleanup. */
 async function makeFixture(t, files, config) {
-  const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), 'check-file-size-'));
-  t.after(() => fs.rm(rootDir, { recursive: true, force: true }));
+  const rootDir = makeTempTree('check-file-size-');
+  t.after(() => removeTempTree(rootDir));
 
   for (const [relPath, content] of Object.entries(files)) {
     const full = path.join(rootDir, relPath);
@@ -119,15 +119,15 @@ test('--json prints valid JSON with a violators field', async (t) => {
 });
 
 test('a missing config file gives exit 2', async (t) => {
-  const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), 'check-file-size-'));
-  t.after(() => fs.rm(rootDir, { recursive: true, force: true }));
+  const rootDir = makeTempTree('check-file-size-');
+  t.after(() => removeTempTree(rootDir));
   const result = await run({ rootDir, configPath: path.join(rootDir, 'nope.json') });
   assert.equal(result.exitCode, 2);
 });
 
 test('a malformed config file gives exit 2', async (t) => {
-  const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), 'check-file-size-'));
-  t.after(() => fs.rm(rootDir, { recursive: true, force: true }));
+  const rootDir = makeTempTree('check-file-size-');
+  t.after(() => removeTempTree(rootDir));
   const configPath = path.join(rootDir, '.file-size-limit.json');
   await fs.writeFile(configPath, '{ this is not json');
   const result = await run({ rootDir, configPath });

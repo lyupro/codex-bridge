@@ -16,8 +16,6 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import path from 'node:path';
 import { collect } from '../src/home/lib/write-meta.mjs';
 import { SCHEMAS } from '../src/home/lib/runner/schemas.mjs';
 import { INSTRUCTIONS } from '../src/home/lib/runner/prompts.mjs';
@@ -127,9 +125,9 @@ test('a build with no snapshot admits the tree state is unknown', () => {
   // the mistake status.json's tree_after: false exists to prevent.
   const dir = makeRun({
     schema: BUILD_SCHEMA,
+    after: null,
     result: build([], { outcome: 'fail', summary: 'killed by the deadline' }),
   });
-  fs.rmSync(path.join(dir, 'state-after.txt'));
   const { reply } = collect(dir, 'codex-build', 0);
   assert.match(reply, /Worktree: unknown — the run left no worktree snapshot/);
 });

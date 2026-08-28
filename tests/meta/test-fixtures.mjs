@@ -40,6 +40,9 @@ export function makeRun({
   stderr,
   result,
   before = '',
+  // `null` is a run that left no state-after.txt at all — what a killed run leaves behind — as
+  // opposed to `''`, a run that snapshotted an unchanged tree. Same reason as `stderr` above: the
+  // test used to create the file and delete it, which reads as a step that matters.
   after = '',
   file = 'result.json',
   questions,
@@ -83,7 +86,7 @@ export function makeRun({
   if (status !== undefined) fs.writeFileSync(path.join(dir, 'status.json'), JSON.stringify(status));
   if (result !== undefined) fs.writeFileSync(path.join(dir, file), JSON.stringify(result));
   fs.writeFileSync(path.join(dir, 'state-before.txt'), before);
-  fs.writeFileSync(path.join(dir, 'state-after.txt'), after);
+  if (after !== null) fs.writeFileSync(path.join(dir, 'state-after.txt'), after);
   if (questions !== undefined) fs.writeFileSync(path.join(dir, 'questions.json'), JSON.stringify(questions));
   if (schema !== undefined) fs.writeFileSync(path.join(dir, 'schema.json'), JSON.stringify(schema));
   if (scope !== undefined) fs.writeFileSync(path.join(dir, 'scope.txt'), scope);
