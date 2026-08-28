@@ -1,12 +1,12 @@
 /** Builds the throwaway host both the install and uninstall suites work against. */
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { makeTempTree } from '../temp-tree.mjs';
+import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { resolveHost } from '../../cli/hosts.mjs';
 
 export async function fixture(t) {
   const root = makeTempTree('bridge-install-');
-  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  t.after(() => removeTempTree(root));
   return {
     root,
     host: resolveHost({

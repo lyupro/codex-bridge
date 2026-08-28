@@ -1,10 +1,10 @@
 /** Verifies the version-bound memory that detects silent host refusal regressions. */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { CLI_NAMES } from '../../src/home/lib/cli-names.mjs';
+import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import {
   HOST_CONTRACT_RECORD_NAME,
   PROBE_COMMAND,
@@ -144,7 +144,7 @@ test('detectHostVersion returns null when command execution throws', () => {
 });
 
 test('readHostContract returns null for a missing file, malformed JSON, or missing version', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-bridge-host-contract-read-'));
+  const root = makeTempTree('codex-bridge-host-contract-read-');
   const host = { brandRoot: root };
   try {
     assert.equal(await readHostContract(host), null);
@@ -153,12 +153,12 @@ test('readHostContract returns null for a missing file, malformed JSON, or missi
     fs.writeFileSync(hostContractPath(host), JSON.stringify({ result: 'honored' }), 'utf8');
     assert.equal(await readHostContract(host), null);
   } finally {
-    fs.rmSync(root, { recursive: true, force: true });
+    await removeTempTree(root);
   }
 });
 
 test('readHostContract returns the fields from a valid record', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-bridge-host-contract-valid-'));
+  const root = makeTempTree('codex-bridge-host-contract-valid-');
   const host = { brandRoot: root };
   const record = {
     version: '2.1.240',
@@ -169,12 +169,12 @@ test('readHostContract returns the fields from a valid record', async () => {
     fs.writeFileSync(hostContractPath(host), JSON.stringify({ ...record, extra: true }), 'utf8');
     assert.deepEqual(await readHostContract(host), record);
   } finally {
-    fs.rmSync(root, { recursive: true, force: true });
+    await removeTempTree(root);
   }
 });
 
 test('writeHostContract creates a missing brand root and round-trips atomically', async () => {
-  const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-bridge-host-contract-write-'));
+  const parent = makeTempTree('codex-bridge-host-contract-write-');
   const host = { brandRoot: path.join(parent, 'missing-brand-root') };
   const now = new Date('2026-08-24T10:30:00.000Z');
   try {
@@ -193,6 +193,6 @@ test('writeHostContract creates a missing brand root and round-trips atomically'
     });
     assert.deepEqual(fs.readdirSync(host.brandRoot), [HOST_CONTRACT_RECORD_NAME]);
   } finally {
-    fs.rmSync(parent, { recursive: true, force: true });
+    await removeTempTree(parent);
   }
 });

@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { resolveHost } from '../../cli/hosts.mjs';
 import {
   claudeBoundary,
@@ -15,8 +16,8 @@ import {
 const hostFor = (homedir) => resolveHost({ homedir });
 
 async function tempHome(t) {
-  const homedir = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-remove-'));
-  t.after(() => fs.rm(homedir, { recursive: true, force: true }));
+  const homedir = makeTempTree('bridge-remove-');
+  t.after(() => removeTempTree(homedir));
   return homedir;
 }
 
@@ -65,8 +66,6 @@ test('the walk stops at the boundary and never removes it', async (t) => {
   const boundary = path.join(homedir, 'boundary');
   const leaf = path.join(boundary, 'one', 'two', 'file.mjs');
   await fs.mkdir(path.dirname(leaf), { recursive: true });
-  await fs.writeFile(leaf, 'x\n');
-  await fs.rm(leaf);
   await removeEmptyParents(leaf, boundary);
   await assert.rejects(() => fs.access(path.join(boundary, 'one')), { code: 'ENOENT' });
   await fs.access(boundary);

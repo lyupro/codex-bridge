@@ -7,8 +7,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
+import { makeTempTree } from '../temp-tree.mjs';
 import {
   writeStatus,
   markAbandoned,
@@ -31,7 +31,7 @@ function setHeartbeatAge(runDir, age) {
 }
 
 test('writeFailure() leaves status.json in the failed state', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-run-'));
+  const dir = makeTempTree('codex-run-');
   const { meta } = writeFailure(dir, 'codex-build', 'boom');
   assert.equal(meta.status, 'FAIL');
   const status = JSON.parse(fs.readFileSync(path.join(dir, 'status.json'), 'utf8'));
@@ -40,7 +40,7 @@ test('writeFailure() leaves status.json in the failed state', () => {
 });
 
 test('writeFailure() can record a refusal that never started Codex', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-run-'));
+  const dir = makeTempTree('codex-run-');
   const { meta } = writeFailure(dir, 'codex-build', 'Codex was not started', [], true);
   const status = JSON.parse(fs.readFileSync(path.join(dir, 'status.json'), 'utf8'));
 
@@ -52,7 +52,7 @@ test('writeFailure() can record a refusal that never started Codex', () => {
 });
 
 test('markAbandoned marks a dead, meta-less running run as abandoned', () => {
-  const runsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-runs-'));
+  const runsRoot = makeTempTree('codex-runs-');
   const runDir = path.join(runsRoot, 'run1');
   fs.mkdirSync(runDir);
   writeStatus(runDir, { state: 'running', pid: DEAD_PID, repo: '/repo', agent: 'codex-build' });
@@ -69,7 +69,7 @@ test('an abandoned run says its tree was never snapshotted either', () => {
   // 2026-07-31_114736 wrote eleven files and left no state-after.txt, so the next pass of
   // that task started from a base that already contained them. The missing verdict was
   // recorded; the missing snapshot was not, and that is what made the later arithmetic lie.
-  const runsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-runs-'));
+  const runsRoot = makeTempTree('codex-runs-');
   const runDir = path.join(runsRoot, 'run-killed');
   fs.mkdirSync(runDir);
   writeStatus(runDir, { state: 'running', pid: DEAD_PID, repo: '/repo', agent: 'codex-build' });
@@ -83,7 +83,7 @@ test('an abandoned run says its tree was never snapshotted either', () => {
 });
 
 test('markAbandoned writes a FAIL verdict with the later worktree file list', () => {
-  const runsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-runs-'));
+  const runsRoot = makeTempTree('codex-runs-');
   const runDir = path.join(runsRoot, 'run-files');
   fs.mkdirSync(runDir);
   writeStatus(runDir, { state: 'running', pid: DEAD_PID, repo: '/repo', agent: 'codex-build' });
@@ -102,7 +102,7 @@ test('markAbandoned writes a FAIL verdict with the later worktree file list', ()
 });
 
 test('markAbandoned repairs a dead running run that already has a meta.json to finished', () => {
-  const runsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-runs-'));
+  const runsRoot = makeTempTree('codex-runs-');
   const runDir = path.join(runsRoot, 'run2');
   fs.mkdirSync(runDir);
   writeStatus(runDir, { state: 'running', pid: DEAD_PID, repo: '/repo', agent: 'codex-build' });
@@ -120,7 +120,7 @@ test('markAbandoned repairs a dead running run that already has a meta.json to f
 });
 
 test('markAbandoned keeps a pre-Plan_20 running record without heartbeat alive', () => {
-  const runsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-runs-'));
+  const runsRoot = makeTempTree('codex-runs-');
   const runDir = path.join(runsRoot, 'run3');
   fs.mkdirSync(runDir);
   const before = writeStatus(runDir, { state: 'running', pid: process.pid, repo: '/repo', agent: 'codex-build' });
@@ -136,7 +136,7 @@ test('markAbandoned keeps a pre-Plan_20 running record without heartbeat alive',
 // lives would make markAbandoned the second writer of its meta.json — the live worker reaches
 // collect() afterwards and overwrites the verdict. `stop` closes stalled runs, killing first.
 test('markAbandoned leaves a live-pid run alone even when its heartbeat is stale', () => {
-  const runsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-runs-'));
+  const runsRoot = makeTempTree('codex-runs-');
   const runDir = path.join(runsRoot, 'stalled');
   fs.mkdirSync(runDir);
   writeStatus(runDir, { state: 'running', pid: process.pid, repo: '/repo', agent: 'codex-build' });
@@ -149,7 +149,7 @@ test('markAbandoned leaves a live-pid run alone even when its heartbeat is stale
 });
 
 test('activeRun keeps a pre-Plan_20 build run without heartbeat live', () => {
-  const runsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-runs-'));
+  const runsRoot = makeTempTree('codex-runs-');
   const runDir = path.join(runsRoot, 'build-alive');
   fs.mkdirSync(runDir);
   writeStatus(runDir, { state: 'running', pid: process.pid, repo: '/repo/a', agent: 'codex-build' });
@@ -160,7 +160,7 @@ test('activeRun keeps a pre-Plan_20 build run without heartbeat live', () => {
 // Two writing runs in one worktree is the 2026-08-05 incident. A stalled run still owns the
 // tree while its process can wake up; the operator ends it with `stop`, which kills it first.
 test('activeRun still refuses a second writing run while the pid lives', () => {
-  const runsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-runs-'));
+  const runsRoot = makeTempTree('codex-runs-');
   const runDir = path.join(runsRoot, 'build-stalled');
   fs.mkdirSync(runDir);
   writeStatus(runDir, { state: 'running', pid: process.pid, repo: '/repo/a', agent: 'codex-build' });
@@ -170,7 +170,7 @@ test('activeRun still refuses a second writing run while the pid lives', () => {
 });
 
 test('activeRun ignores a live build run against a different repo', () => {
-  const runsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-runs-'));
+  const runsRoot = makeTempTree('codex-runs-');
   const runDir = path.join(runsRoot, 'build-alive');
   fs.mkdirSync(runDir);
   writeStatus(runDir, { state: 'running', pid: process.pid, repo: '/repo/a', agent: 'codex-build' });
@@ -179,7 +179,7 @@ test('activeRun ignores a live build run against a different repo', () => {
 });
 
 test('activeRun ignores a live scout run when asked about a build', () => {
-  const runsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-runs-'));
+  const runsRoot = makeTempTree('codex-runs-');
   const runDir = path.join(runsRoot, 'scout-alive');
   fs.mkdirSync(runDir);
   writeStatus(runDir, { state: 'running', pid: process.pid, repo: '/repo/a', agent: 'codex-scout' });
@@ -188,7 +188,7 @@ test('activeRun ignores a live scout run when asked about a build', () => {
 });
 
 test('activeRun ignores a running entry whose pid is dead', () => {
-  const runsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-runs-'));
+  const runsRoot = makeTempTree('codex-runs-');
   const runDir = path.join(runsRoot, 'build-dead');
   fs.mkdirSync(runDir);
   writeStatus(runDir, { state: 'running', pid: DEAD_PID, repo: '/repo/b', agent: 'codex-build' });

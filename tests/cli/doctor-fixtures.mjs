@@ -8,7 +8,7 @@
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { makeTempTree } from '../temp-tree.mjs';
+import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { resolveHost } from '../../cli/hosts.mjs';
 import {
   buildInstallPlan,
@@ -23,7 +23,7 @@ export const codexProbe = () => ({ available: true, value: 'codex-cli 1.2.3' });
 
 export async function hostFixture(t) {
   const root = makeTempTree('bridge-doctor-');
-  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  t.after(() => removeTempTree(root));
   return resolveHost({
     host: root,
     codexHome: path.join(root, 'codex-home'),
@@ -86,7 +86,7 @@ export async function runsRootFixture(t) {
   t.after(async () => {
     if (previous === undefined) delete process.env.CODEX_RUNS_ROOT;
     else process.env.CODEX_RUNS_ROOT = previous;
-    await fs.rm(root, { recursive: true, force: true });
+    await removeTempTree(root);
   });
   return root;
 }

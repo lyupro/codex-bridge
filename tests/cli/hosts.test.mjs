@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { resolveHost } from '../../cli/hosts.mjs';
+import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 
 /**
  * Removes the suite's own CODEX_BRIDGE_HOME for the duration of one test.
@@ -46,8 +47,8 @@ test('user scope resolves beneath the supplied home directory', (t) => {
 });
 
 test('project scope finds the repository root above cwd', (t) => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-project-'));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const root = makeTempTree('bridge-project-');
+  t.after(() => removeTempTree(root));
   fs.mkdirSync(path.join(root, '.git'));
   const nested = path.join(root, 'one', 'two');
   fs.mkdirSync(nested, { recursive: true });

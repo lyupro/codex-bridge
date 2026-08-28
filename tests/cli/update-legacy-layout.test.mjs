@@ -2,16 +2,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
+import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { resolveHost } from '../../cli/hosts.mjs';
 import { install } from '../../cli/install.mjs';
 import { update } from '../../cli/update.mjs';
 import { installRecordPath, legacyInstallRecordPath } from '../../cli/manifest.mjs';
 
 async function fixture(t) {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-legacy-'));
-  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const root = makeTempTree('bridge-legacy-');
+  t.after(() => removeTempTree(root));
   return resolveHost({
     host: path.join(root, 'host'),
     codexHome: path.join(root, 'codex-home'),

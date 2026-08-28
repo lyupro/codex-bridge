@@ -6,6 +6,7 @@ import path from 'node:path';
 import { diagnose, renderDoctor } from '../../cli/doctor.mjs';
 import { HEARTBEAT_FILE, HEARTBEAT_STALE_MS } from '../../src/home/lib/heartbeat.mjs';
 import { STOP_COMMAND_TEMPLATE } from '../../src/home/lib/stop-contract.mjs';
+import { removeTempTree } from '../temp-tree.mjs';
 import { codexProbe, installedFixture, ownPackage, runsRootFixture } from './doctor-fixtures.mjs';
 
 async function createWorkingRun(root, name, { heartbeat = true } = {}) {
@@ -71,7 +72,7 @@ test('doctor counts only confirmed fresh working runs and keeps the host healthy
   assert.equal(working.exitCode, 0);
   assert.match(renderDoctor(working), /\u001b\[33m\[warn\] liveRuns:/);
 
-  await fs.rm(live, { recursive: true, force: true });
+  await removeTempTree(live);
   const stale = await createWorkingRun(runs, 'stale');
   const heartbeat = path.join(stale, HEARTBEAT_FILE);
   const old = new Date(Date.now() - HEARTBEAT_STALE_MS - 1_000);
@@ -80,7 +81,7 @@ test('doctor counts only confirmed fresh working runs and keeps the host healthy
   assert.equal(staleResult.checks.find((item) => item.key === 'liveRuns').value, '0 runs working right now');
   assert.equal(staleResult.checks.find((item) => item.key === 'liveRuns').status, 'ok');
 
-  await fs.rm(stale, { recursive: true, force: true });
+  await removeTempTree(stale);
   await createWorkingRun(runs, 'unconfirmed', { heartbeat: false });
   const unconfirmed = await diagnose({ host, codexProbe, currentPackage: ownPackage });
   assert.equal(unconfirmed.checks.find((item) => item.key === 'liveRuns').value, '0 runs working right now');

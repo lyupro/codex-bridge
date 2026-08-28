@@ -13,31 +13,24 @@ const migrationReason = 'Awaiting migration under Plan_53.';
 // two and rejected, because a tree can then be removed one file at a time and the rule goes back to
 // being a convention.
 const singleArtifactReason = 'Removes single run artifacts to express a missing file, not trees.';
+const installerOwnedReason = 'Removes installer-owned files to exercise missing-file recovery, not trees.';
 const exclusions = new Map([
   ['cli/codex-bridge.test.mjs', migrationReason],
-  ['cli/doctor-fixtures.mjs', migrationReason],
-  ['cli/doctor-runtime.test.mjs', migrationReason],
   ['cli/doctor.test.mjs', migrationReason],
   ['cli/hook-subcommand.test.mjs', migrationReason],
-  ['cli/host-contract.test.mjs', migrationReason],
-  ['cli/host-fixture.mjs', migrationReason],
-  ['cli/hosts.test.mjs', migrationReason],
-  ['cli/install-record.test.mjs', migrationReason],
   ['cli/install.test.mjs', migrationReason],
   ['cli/probe-contract.test.mjs', migrationReason],
   ['cli/projects.test.mjs', migrationReason],
   ['cli/prune.test.mjs', migrationReason],
   ['cli/read.test.mjs', migrationReason],
-  ['cli/remove-layout.test.mjs', migrationReason],
   ['cli/rules-owners.test.mjs', migrationReason],
   ['cli/runs-inventory.test.mjs', migrationReason],
-  ['cli/seeded-files.test.mjs', migrationReason],
-  ['cli/settings-merge.test.mjs', migrationReason],
   ['cli/stop.test.mjs', migrationReason],
   ['cli/uninstall.test.mjs', migrationReason],
   ['cli/unlock.test.mjs', migrationReason],
-  ['cli/update-legacy-layout.test.mjs', migrationReason],
-  ['cli/update.test.mjs', migrationReason],
+  // The files this one removes were written by a real install(), not by a fixture: the test deletes
+  // an installed file to prove update refuses and --force restores it. Not a tree removal.
+  ['cli/update.test.mjs', installerOwnedReason],
   ['hooks/worktree-witness.test.mjs', singleArtifactReason],
 ]);
 
