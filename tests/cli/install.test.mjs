@@ -2,7 +2,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
@@ -22,6 +21,7 @@ import { uninstall } from '../../cli/uninstall.mjs';
 import { update } from '../../cli/update.mjs';
 import { normalizeRepoPath } from '../../src/home/lib/runner/project-dir.mjs';
 import { allFiles, fixture } from './host-fixture.mjs';
+import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 
 async function backups(host) {
   try {
@@ -153,8 +153,8 @@ test('a corrupt rules registry aborts update before removing or writing any file
 });
 
 test('install and update keep one normalized owner without duplicates', async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-owners-'));
-  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const root = makeTempTree('bridge-owners-');
+  t.after(() => removeTempTree(root));
   const host = resolveHost({
     host: path.join(root, 'Host'),
     codexHome: path.join(root, 'codex-home'),

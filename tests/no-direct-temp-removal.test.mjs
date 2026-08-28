@@ -15,13 +15,11 @@ const migrationReason = 'Awaiting migration under Plan_53.';
 const singleArtifactReason = 'Removes single run artifacts to express a missing file, not trees.';
 const installerOwnedReason = 'Removes installer-owned files to exercise missing-file recovery, not trees.';
 const exclusions = new Map([
-  ['cli/doctor.test.mjs', migrationReason],
-  ['cli/install.test.mjs', migrationReason],
-  ['cli/probe-contract.test.mjs', migrationReason],
-  ['cli/projects.test.mjs', migrationReason],
+  ['cli/doctor.test.mjs', installerOwnedReason],
+  ['cli/install.test.mjs', installerOwnedReason],
   ['cli/rules-owners.test.mjs', migrationReason],
   ['cli/stop.test.mjs', migrationReason],
-  ['cli/uninstall.test.mjs', migrationReason],
+  ['cli/uninstall.test.mjs', installerOwnedReason],
   // The files this one removes were written by a real install(), not by a fixture: the test deletes
   // an installed file to prove update refuses and --force restores it. Not a tree removal.
   ['cli/update.test.mjs', installerOwnedReason],

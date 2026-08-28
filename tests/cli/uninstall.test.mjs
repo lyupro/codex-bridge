@@ -2,7 +2,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 import { resolveHost } from '../../cli/hosts.mjs';
 import { install } from '../../cli/install.mjs';
@@ -20,6 +19,7 @@ import {
 import { uninstall } from '../../cli/uninstall.mjs';
 import { normalizeRepoPath } from '../../src/home/lib/runner/project-dir.mjs';
 import { allFiles, fixture } from './host-fixture.mjs';
+import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 
 test('a missing registry is distinct from an empty owner list', () => {
   assert.equal(remainingRulesOwners(null, { root: String.raw`C:\Repos\Current` }), null);
@@ -43,8 +43,8 @@ test('other owners remain when the current path differs in case and slashes', ()
 });
 
 test('uninstall leaves shared rules for another owner and removes them for the last owner', async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-shared-owners-'));
-  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const root = makeTempTree('bridge-shared-owners-');
+  t.after(() => removeTempTree(root));
   const codexHome = path.join(root, 'codex-home');
   const first = resolveHost({
     host: path.join(root, 'first-host'),

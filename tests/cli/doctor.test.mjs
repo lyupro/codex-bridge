@@ -2,7 +2,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { diagnose, renderDoctor } from '../../cli/doctor.mjs';
@@ -17,6 +16,7 @@ import { RULES_REGISTRY_NAME } from '../../cli/rules-owners.mjs';
 import { normalizeRepoPath, PROJECT_MARKER } from '../../src/home/lib/runner/project-dir.mjs';
 import { projectFolder } from '../../src/home/lib/write-meta.mjs';
 import { codexProbe, hostFixture, installedFixture, ownPackage, runsRootFixture } from './doctor-fixtures.mjs';
+import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 
 async function addRules(host, record, content = 'prefix_rule(pattern=["safe"], decision="allow")\n') {
   const rulePath = path.join(host.codexRulesDir, 'codex-bridge.rules');
@@ -360,15 +360,15 @@ test('an unreadable project marker fails one check, not the whole diagnosis', as
 test('doctor names the folder the runner would use, not the current subdirectory', async (t) => {
   const { host } = await installedFixture(t);
   await runsRootFixture(t);
-  const repo = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-repo-'));
+  const repo = makeTempTree('bridge-repo-');
   spawnSync('git', ['init'], { cwd: repo, stdio: 'ignore' });
   const nested = path.join(repo, 'src', 'runner');
   await fs.mkdir(nested, { recursive: true });
   const previousCwd = process.cwd();
   process.chdir(nested);
-  t.after(async () => {
+  t.after(() => {
     process.chdir(previousCwd);
-    await fs.rm(repo, { recursive: true, force: true });
+    removeTempTree(repo);
   });
   const result = await diagnose({ host, codexProbe, currentPackage: ownPackage });
   const [dir, note] = result.checks.find((item) => item.key === 'projectRuns').value.split(' (');

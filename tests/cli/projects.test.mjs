@@ -2,14 +2,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { projects } from '../../cli/projects.mjs';
 import { HEARTBEAT_FILE } from '../../src/home/lib/heartbeat.mjs';
 import { STOP_COMMAND_TEMPLATE } from '../../src/home/lib/stop-contract.mjs';
+import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 
 function fixture(t) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'projects-command-'));
+  const root = makeTempTree('projects-command-');
   const project = path.join(root, 'sample');
   const run = path.join(project, '2026-08-06_090000_sample');
   fs.mkdirSync(run, { recursive: true });
@@ -19,7 +19,7 @@ function fixture(t) {
     tokens: 21,
     finished_at: '2026-08-06T09:00:00.000Z',
   }));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  t.after(() => removeTempTree(root));
   return root;
 }
 
@@ -51,7 +51,7 @@ test('a project name renders its run rows', (t) => {
 // A narrow terminal printed `running` as `…nning`, which reads as a damaged run rather than one
 // still in flight. Long names are what a narrow table shortens; a verdict is one whole word.
 test('a narrow table shortens the run name, never the verdict', (t) => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'projects-narrow-'));
+  const root = makeTempTree('projects-narrow-');
   const run = path.join(root, 'sample', '2026-08-06_090000_a-deliberately-long-run-name');
   fs.mkdirSync(run, { recursive: true });
   fs.writeFileSync(path.join(run, 'meta.json'), JSON.stringify({
@@ -59,7 +59,7 @@ test('a narrow table shortens the run name, never the verdict', (t) => {
     status: 'running',
     tokens: 21,
   }));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  t.after(() => removeTempTree(root));
 
   const result = projects(['sample'], { runsRootPath: root, terminalWidth: 40 });
 
@@ -73,7 +73,7 @@ test('a narrow table shortens the run name, never the verdict', (t) => {
 // 14:42 as `12:46`, which is the machine's zone offset wearing the face of a different run. One
 // moment, two shapes, one column — the printed strings have to agree, on any machine.
 test('a UTC stamp and a folder name of the same moment print alike', (t) => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'projects-clock-'));
+  const root = makeTempTree('projects-clock-');
   const iso = '2026-08-06T09:00:00.000Z';
   const at = new Date(iso);
   const pad = (value) => String(value).padStart(2, '0');
@@ -90,7 +90,7 @@ test('a UTC stamp and a folder name of the same moment print alike', (t) => {
   }));
   // No artifacts at all, so this project's timestamp can only come from the folder name.
   fs.mkdirSync(path.join(root, 'bare', folder), { recursive: true });
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  t.after(() => removeTempTree(root));
 
   const output = projects([], { runsRootPath: root, terminalWidth: 120 }).output;
   const stamps = [...output.matchAll(/(\d{4}-\d{2}-\d{2} \d{2}:\d{2})/g)].map(([, stamp]) => stamp);

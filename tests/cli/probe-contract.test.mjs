@@ -2,7 +2,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { hostContractPath, readHostContract } from '../../cli/host-contract.mjs';
@@ -12,8 +11,7 @@ import {
   judgeProbe,
   probeContract,
 } from '../../cli/probe-contract.mjs';
-
-const makeTemp = (name) => fs.mkdtempSync(path.join(os.tmpdir(), name));
+import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 
 test('judgeProbe reports a marker as an ignored refusal', () => {
   assert.deepEqual(judgeProbe({
@@ -49,7 +47,7 @@ test('judgeProbe keeps every unmeasured outcome inconclusive', () => {
 });
 
 test('buildRig registers exactly one Bash PreToolUse hook and a simple marker command', async () => {
-  const root = makeTemp('codex-bridge-probe-rig-');
+  const root = makeTempTree('codex-bridge-probe-rig-');
   try {
     const rig = await buildRig(root);
     const settings = JSON.parse(fs.readFileSync(path.join(root, '.claude', 'settings.json'), 'utf8'));
@@ -63,12 +61,12 @@ test('buildRig registers exactly one Bash PreToolUse hook and a simple marker co
       assert.ok(!rig.command.includes(forbidden), forbidden);
     }
   } finally {
-    fs.rmSync(root, { recursive: true, force: true });
+    removeTempTree(root);
   }
 });
 
 test('the generated hook refuses the marker command and journals exactly once', async () => {
-  const root = makeTemp('codex-bridge-probe-hook-refuse-');
+  const root = makeTempTree('codex-bridge-probe-hook-refuse-');
   try {
     const rig = await buildRig(root);
     const hookPath = path.join(root, '.claude', 'hooks', 'probe-hook.mjs');
@@ -86,12 +84,12 @@ test('the generated hook refuses the marker command and journals exactly once', 
     });
     assert.deepEqual(fs.readFileSync(rig.journalPath, 'utf8').split('\n'), [PROBE_MARKER, '']);
   } finally {
-    fs.rmSync(root, { recursive: true, force: true });
+    removeTempTree(root);
   }
 });
 
 test('the generated hook stays silent for an unrelated command', async () => {
-  const root = makeTemp('codex-bridge-probe-hook-pass-');
+  const root = makeTempTree('codex-bridge-probe-hook-pass-');
   try {
     const rig = await buildRig(root);
     const hookPath = path.join(root, '.claude', 'hooks', 'probe-hook.mjs');
@@ -103,12 +101,12 @@ test('the generated hook stays silent for an unrelated command', async () => {
     assert.equal(child.stdout, '');
     assert.equal(fs.existsSync(rig.journalPath), false);
   } finally {
-    fs.rmSync(root, { recursive: true, force: true });
+    removeTempTree(root);
   }
 });
 
 async function runProbeScenario(name, runHost) {
-  const root = makeTemp(`codex-bridge-probe-${name}-`);
+  const root = makeTempTree(`codex-bridge-probe-${name}-`);
   const host = { brandRoot: path.join(root, 'brand') };
   const rigRoot = path.join(root, 'rig-root');
   let rigDir;
@@ -123,9 +121,9 @@ async function runProbeScenario(name, runHost) {
         return runHost({ command, args, options });
       },
     });
-    return { result, host, rigDir, cleanup: () => fs.rmSync(root, { recursive: true, force: true }) };
+    return { result, host, rigDir, cleanup: () => removeTempTree(root) };
   } catch (error) {
-    fs.rmSync(root, { recursive: true, force: true });
+    removeTempTree(root);
     throw error;
   }
 }
