@@ -2,11 +2,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { main } from '../../bin/codex-bridge.mjs';
+import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..', '..');
@@ -34,8 +34,8 @@ test('--help and -h print the command list', () => {
 });
 
 test('run forwards runner arguments and returns the runner exit code unchanged', async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-bin-run-'));
-  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const root = makeTempTree('bridge-bin-run-');
+  t.after(() => removeTempTree(root));
   const taskFile = path.join(root, 'task.md');
   await fs.writeFile(taskFile, 'check current state\n');
   const result = run(
@@ -82,9 +82,9 @@ test('shared option parser rejects flags outside each command contract', () => {
   assert.match(update.stderr, /unknown update option/);
 });
 
-test('update flags reach the command handler', async (t) => {
-  const host = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-bin-update-'));
-  t.after(() => fs.rm(host, { recursive: true, force: true }));
+test('update flags reach the command handler', (t) => {
+  const host = makeTempTree('bridge-bin-update-');
+  t.after(() => removeTempTree(host));
   const result = run(
     ['update', '--host', host, '--scope', 'project', '--dry-run', '--force'],
     { CODEX_HOME: path.join(host, 'codex-home'), CODEX_BRIDGE_HOME: path.join(host, 'brand') },
@@ -94,9 +94,9 @@ test('update flags reach the command handler', async (t) => {
   assert.doesNotMatch(result.stderr, /unknown update option/);
 });
 
-test('doctor subcommand diagnoses only the explicit temporary host', async (t) => {
-  const host = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-bin-doctor-'));
-  t.after(() => fs.rm(host, { recursive: true, force: true }));
+test('doctor subcommand diagnoses only the explicit temporary host', (t) => {
+  const host = makeTempTree('bridge-bin-doctor-');
+  t.after(() => removeTempTree(host));
   const result = run(
     ['doctor', '--host', host],
     { CODEX_HOME: path.join(host, 'codex-home'), CODEX_BRIDGE_HOME: path.join(host, 'brand') },

@@ -2,11 +2,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { HOOK_DEFINITIONS } from '../../src/home/lib/hook-definitions.mjs';
+import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const BIN = path.join(ROOT, 'bin', 'codex-bridge.mjs');
@@ -19,9 +19,9 @@ function run(args, input, env = {}) {
   });
 }
 
-async function fixture(t, prefix = 'bridge-hook-') {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
-  t.after(() => fs.rm(root, { recursive: true, force: true }));
+function fixture(t, prefix = 'bridge-hook-') {
+  const root = makeTempTree(prefix);
+  t.after(() => removeTempTree(root));
   return root;
 }
 
@@ -51,7 +51,7 @@ function hookEnvironment(root, runsRoot = path.join(root, 'runs')) {
 
 test('every definition name reaches its existing top-level guard', async (t) => {
   for (const definition of HOOK_DEFINITIONS) {
-    const root = await fixture(t, `bridge-hook-${definition.name}-`);
+    const root = fixture(t, `bridge-hook-${definition.name}-`);
     const env = hookEnvironment(root);
     if (definition.file === 'reply-guard.mjs') {
       const input = { agent_type: 'not-a-codex-dispatcher', marker: 'reply-probe' };
@@ -136,7 +136,7 @@ test('every definition name reaches its existing top-level guard', async (t) => 
 });
 
 test('stdin and the guard exit status pass through the CLI unchanged', async (t) => {
-  const root = await fixture(t);
+  const root = fixture(t);
   const input = JSON.stringify({
     hook_event_name: 'PreToolUse',
     tool_name: 'Agent',

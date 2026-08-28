@@ -8,19 +8,13 @@ import { fileURLToPath } from 'node:url';
 const testsRoot = path.dirname(fileURLToPath(import.meta.url));
 const migrationReason = 'Awaiting migration under Plan_53.';
 const exclusions = new Map([
-  ['cli/codex-bridge.test.mjs', migrationReason],
   ['cli/doctor.test.mjs', migrationReason],
-  ['cli/hook-subcommand.test.mjs', migrationReason],
   ['cli/install.test.mjs', migrationReason],
   ['cli/probe-contract.test.mjs', migrationReason],
   ['cli/projects.test.mjs', migrationReason],
-  ['cli/prune.test.mjs', migrationReason],
-  ['cli/read.test.mjs', migrationReason],
   ['cli/rules-owners.test.mjs', migrationReason],
-  ['cli/runs-inventory.test.mjs', migrationReason],
   ['cli/stop.test.mjs', migrationReason],
   ['cli/uninstall.test.mjs', migrationReason],
-  ['cli/unlock.test.mjs', migrationReason],
 ]);
 
 function findMjsFiles(dir) {

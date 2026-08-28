@@ -2,18 +2,18 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { prune } from '../../cli/prune.mjs';
 import { chainRuns } from '../../src/home/lib/meta/chain.mjs';
+import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 
 const NOW = Date.parse('2026-08-06T12:00:00.000Z');
 const TRANSPORT = ['events.jsonl', 'stderr.log', 'raw.log'];
 const KEEP = ['meta.json', 'report.md', 'result.json', 'state-before.txt', 'state-after.txt', 'git-before.txt', 'git-after.txt', 'diff.stat', 'status.json', 'worker.json', 'schema.json', 'task.md', 'reply.txt'];
 
 function fixture(t) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'prune-command-'));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const root = makeTempTree('prune-command-');
+  t.after(() => removeTempTree(root));
   return root;
 }
 

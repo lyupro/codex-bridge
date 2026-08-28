@@ -2,13 +2,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { listProjectRuns, listProjects, recursiveSize } from '../../cli/runs-inventory.mjs';
+import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 
 function fixture(t) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'runs-inventory-'));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const root = makeTempTree('runs-inventory-');
+  t.after(() => removeTempTree(root));
   return root;
 }
 
