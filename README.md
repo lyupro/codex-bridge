@@ -126,10 +126,10 @@ Transport files from runs at least **30 days** old are pruned automatically when
 | `update [--scope user\|project] [--host <path>] [--dry-run] [--force]` | Refresh a recorded installation. |
 | `permissions [add\|remove] [--scope user\|project] [--host <path>]` | Inspect or manage optional shell rules. |
 | `uninstall [--scope user\|project] [--host <path>] [--dry-run]` | Remove recorded package files while preserving run artifacts. |
-| `doctor [--scope user\|project] [--host <path>]` | Diagnose the selected host and Codex connection. |
+| `doctor [--scope user\|project] [--host <path>] [--probe-contract]` | Diagnose the selected host and Codex connection. `--probe-contract` measures on a live host whether it still honours a hook refusal, and records the answer. |
 | `run <runner options> --task-file <abs path>` | Start or attach to a delegated run through the permission-stable package command. The task file carries the statement, the scout questions and the verification command; its path must be absolute. Piping the statement on stdin is the alternative channel, and the two cannot be combined. |
 | `projects [<name>] [--json]` | List projects or runs in the run store. |
-| `prune <project> [<run>] [--purge] [--older-than <age>] [-f] [--json]` | Plan or perform operator-confirmed cleanup. |
+| `prune <project> [<run>] [--purge] [--older-than <age>] [-f] [--json]`<br>`prune --all-projects [--older-than <age>] [-f] [--json]` | Plan or perform operator-confirmed cleanup, for one project or across the whole run store. |
 | `unlock [<project>\|--all]` | Close records whose runner is gone. |
 | `read <run>` | Render a run's structured event stream. |
 | `stop <run>` | Stop a run and record a `FAIL` verdict. |
