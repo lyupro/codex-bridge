@@ -7,6 +7,12 @@ import { fileURLToPath } from 'node:url';
 
 const testsRoot = path.dirname(fileURLToPath(import.meta.url));
 const migrationReason = 'Awaiting migration under Plan_53.';
+// Not a tree removal and never will be: the test deletes one artifact file from a run to say the
+// artifact is missing, which is what the witness is being asked about. The gate deliberately does
+// not learn to tell a file from a tree — narrowing it to `recursive: true` was considered in batch
+// two and rejected, because a tree can then be removed one file at a time and the rule goes back to
+// being a convention.
+const singleArtifactReason = 'Removes single run artifacts to express a missing file, not trees.';
 const exclusions = new Map([
   ['check-file-size.test.mjs', migrationReason],
   ['cli/codex-bridge.test.mjs', migrationReason],
@@ -33,12 +39,7 @@ const exclusions = new Map([
   ['cli/unlock.test.mjs', migrationReason],
   ['cli/update-legacy-layout.test.mjs', migrationReason],
   ['cli/update.test.mjs', migrationReason],
-  ['hooks/no-command-rewrite.test.mjs', migrationReason],
-  ['hooks/order-gate.test.mjs', migrationReason],
-  ['hooks/reply-guard.test.mjs', migrationReason],
-  ['hooks/stop-guard.test.mjs', migrationReason],
-  ['hooks/worktree-lock.test.mjs', migrationReason],
-  ['hooks/worktree-witness.test.mjs', migrationReason],
+  ['hooks/worktree-witness.test.mjs', singleArtifactReason],
   ['json-file.test.mjs', migrationReason],
   ['retention.test.mjs', migrationReason],
   ['shell-unsafe-arguments.test.mjs', migrationReason],

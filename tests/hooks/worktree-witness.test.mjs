@@ -2,7 +2,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -10,18 +9,19 @@ import {
   HOOK_DEFINITIONS,
   SHELL_TOOL_MATCHER,
 } from '../../src/home/lib/hook-definitions.mjs';
+import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const WITNESS = path.join(ROOT, 'src', 'home', 'hooks', 'worktree-witness.mjs');
 
 async function fixture(t) {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-worktree-witness-'));
+  const root = makeTempTree('bridge-worktree-witness-');
   const repo = path.join(root, 'repository');
   const runsRoot = path.join(root, 'runs');
   await fs.mkdir(repo, { recursive: true });
   await fs.mkdir(runsRoot, { recursive: true });
   assert.equal(spawnSync('git', ['init', '-q', repo]).status, 0);
-  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  t.after(() => removeTempTree(root));
   return { root, repo, runsRoot };
 }
 

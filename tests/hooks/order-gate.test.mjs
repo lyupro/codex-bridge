@@ -2,13 +2,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { HOOK_DEFINITIONS, SUBAGENT_TOOLS } from '../../src/home/lib/hook-definitions.mjs';
 import { taskFingerprint } from '../../src/home/lib/meta/chain.mjs';
 import { parseTaskDocument } from '../../src/home/lib/runner/task-file.mjs';
+import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const GATE = path.join(ROOT, 'src', 'home', 'hooks', 'order-gate.mjs');
@@ -27,8 +27,8 @@ function runGate(root, input) {
 }
 
 async function fixture(t) {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-order-gate-'));
-  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const root = makeTempTree('bridge-order-gate-');
+  t.after(() => removeTempTree(root));
   return root;
 }
 

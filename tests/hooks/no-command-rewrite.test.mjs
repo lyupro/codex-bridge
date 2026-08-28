@@ -19,10 +19,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { HOOK_DEFINITIONS } from '../../src/home/lib/hook-definitions.mjs';
+import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 
 const HOOKS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'src', 'home', 'hooks');
 
@@ -112,11 +112,11 @@ function answersOf(definition, runsRoot) {
 }
 
 function withEmptyRunsRoot(body) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-bridge-rewrite-gate-'));
+  const dir = makeTempTree('codex-bridge-rewrite-gate-');
   try {
     return body(dir);
   } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
+    removeTempTree(dir);
   }
 }
 

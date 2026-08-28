@@ -2,13 +2,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { HEARTBEAT_FILE } from '../../src/home/lib/heartbeat.mjs';
 import { STOP_REASON, renderStopCommand } from '../../src/home/lib/stop-contract.mjs';
 import { STOP_TOOLS } from '../../src/home/lib/hook-definitions.mjs';
+import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const GUARD = path.join(ROOT, 'src', 'home', 'hooks', 'stop-guard.mjs');
@@ -37,10 +37,10 @@ function runGuard(root, input) {
 }
 
 async function fixture(t) {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-stop-guard-'));
+  const root = makeTempTree('bridge-stop-guard-');
   const runs = path.join(root, 'runs', 'project');
   await fs.mkdir(runs, { recursive: true });
-  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  t.after(() => removeTempTree(root));
   return { root, runs };
 }
 

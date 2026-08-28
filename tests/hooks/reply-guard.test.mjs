@@ -2,10 +2,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const GUARD = path.join(ROOT, 'src', 'home', 'hooks', 'reply-guard.mjs');
@@ -32,11 +32,11 @@ async function writeTranscript(root, promptText, name = 'transcript.jsonl') {
 }
 
 async function fixture(t) {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-reply-guard-'));
+  const root = makeTempTree('bridge-reply-guard-');
   const runs = path.join(root, 'runs', 'project');
   await fs.mkdir(runs, { recursive: true });
   await fs.writeFile(path.join(runs, '.project.json'), `${JSON.stringify({ repo: path.join(root, 'project') })}\n`);
-  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  t.after(() => removeTempTree(root));
   return { root, runs };
 }
 
@@ -194,8 +194,8 @@ test('a folderless reply ignores runs from another agent and stale runs', async 
 });
 
 test('folderless lookup does not create a project directory or marker', async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-reply-guard-no-create-'));
-  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const root = makeTempTree('bridge-reply-guard-no-create-');
+  t.after(() => removeTempTree(root));
   const result = runGuard(root, 'FAIL — invented dispatcher verdict.', 'no-create');
   assert.equal(JSON.parse(result.stdout).decision, 'block');
   await assert.rejects(fs.access(path.join(root, 'runs')), { code: 'ENOENT' });
@@ -213,8 +213,8 @@ test('folderless lookup is fail-open when a status file is broken', async (t) =>
 });
 
 test('folderless lookup is fail-open when the project candidate is not a directory', async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'bridge-reply-guard-unavailable-'));
-  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const root = makeTempTree('bridge-reply-guard-unavailable-');
+  t.after(() => removeTempTree(root));
   await fs.mkdir(path.join(root, 'runs'));
   await fs.writeFile(path.join(root, 'runs', 'project'), 'unavailable');
   const result = runGuard(root, 'FAIL — invented dispatcher verdict.', 'unavailable-disk');
