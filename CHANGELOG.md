@@ -4,6 +4,33 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.5] - 2026-08-28
+
+### Fixed
+
+- The write guard now reads quoting, so a redirect character inside a quoted argument is text rather
+  than an operator. While a delegated run held the repository, `sed -E 's#(A ).*#<redacted>#'` was
+  refused as a write to a file named `#'`: the scan ran over raw text, so the `>` looked like a
+  redirect and the token after it looked like its destination. The file already carried a defence
+  against this class, added after a `node -e` expression was misread the same way, but that defence
+  filtered candidates holding characters no file name may contain and the one refused here held
+  none. The guard still fails closed: when quotes cannot be balanced the scan behaves exactly as
+  before, because answering "no write here" to a line it cannot parse would be worse than the false
+  refusal being removed.
+- The installation summary no longer reads as a bug. Four `PreToolUse` guards printed as
+  `PreToolUse and PreToolUse and PreToolUse and PreToolUse` because the sentence joined every hook's
+  event; it now groups by event and counts.
+- The installed-file count agrees with `doctor`. The summary counted the Codex rules file among the
+  files while `doctor` reports it on its own line, so `68` sat next to `67` and read as a lost file.
+- `Granted 0 permission rule(s)` no longer reports the good outcome as if it were a failure. When
+  the set is complete the summary says so; on a host whose settings were edited by hand it says how
+  many rules are missing and how to restore them, instead of claiming all are in place while the
+  operator gets permission windows. The already-installed branch reports the set by reading it —
+  granting there would have restored a deleted rule under the heading "nothing to do".
+- A contract probe that refuses to judge now carries the host's own words. `The host exited with
+  status 1.` was the entire account of a failure on a live host; the last non-empty line the host
+  printed is now part of the reason. What counts as honoured, ignored or inconclusive is unchanged.
+
 ## [0.5.4] - 2026-08-28
 
 ### Added
