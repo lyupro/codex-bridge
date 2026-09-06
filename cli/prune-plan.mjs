@@ -51,7 +51,7 @@ function gentleAction(root, project, run) {
   if (!files.length) return null;
   return {
     kind: 'run',
-    mode: 'gentle',
+    strategy: 'gentle',
     project,
     run: run.run,
     path: runDir,
@@ -65,7 +65,7 @@ function runPurgeAction(root, project, run) {
   const runDir = path.join(root, project, run.run);
   return {
     kind: 'run',
-    mode: 'purge',
+    strategy: 'purge',
     project,
     run: run.run,
     path: runDir,
@@ -79,7 +79,7 @@ function projectPurgeAction(root, project, runs) {
   const projectDir = path.join(root, project);
   return {
     kind: 'project',
-    mode: 'purge',
+    strategy: 'purge',
     project,
     run: null,
     path: projectDir,
@@ -194,7 +194,7 @@ export function prunePlan(args = {}, options = {}) {
   return {
     root,
     scope,
-    mode: args.purge ? 'purge' : 'gentle',
+    strategy: args.purge ? 'purge' : 'gentle',
     project: args.projectName || null,
     run: args.runName || null,
     olderThan: age,

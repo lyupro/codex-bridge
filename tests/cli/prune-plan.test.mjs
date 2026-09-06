@@ -38,7 +38,9 @@ test('gentle plans name only transport files and leave the rest outside targets'
 
   const plan = prunePlan(parsePruneArgs(['alpha']), { runsRootPath: root, now: NOW });
 
+  assert.equal(plan.strategy, 'gentle');
   assert.equal(plan.actions.length, 1);
+  assert.equal(plan.actions[0].strategy, 'gentle');
   assert.deepEqual(plan.actions[0].targets, TRANSPORT_FILES.map((name) => path.join(run, name)));
   assert.equal(fs.existsSync(path.join(run, 'meta.json')), true);
   assert.equal(fs.existsSync(path.join(run, 'state-before.txt')), true);
@@ -75,7 +77,9 @@ test('project purge plans one project-folder target and uses inventory sizing', 
 
   const plan = prunePlan(parsePruneArgs(['alpha', '--purge']), { runsRootPath: root, now: NOW });
 
+  assert.equal(plan.strategy, 'purge');
   assert.equal(plan.actions.length, 1);
+  assert.equal(plan.actions[0].strategy, 'purge');
   assert.deepEqual(plan.actions[0].targets, [project]);
   assert.equal(plan.bytes, recursiveSize(project));
   assert.equal(fs.existsSync(project), true);
@@ -89,7 +93,7 @@ test('all-projects plan is gentle and excludes a recent or undated run', (t) => 
 
   const plan = prunePlan(parsePruneArgs(['--all-projects']), { runsRootPath: root, now: NOW });
 
-  assert.equal(plan.mode, 'gentle');
+  assert.equal(plan.strategy, 'gentle');
   assert.deepEqual(plan.actions.map((action) => action.project), ['alpha']);
   assert.equal(fs.existsSync(path.join(root, 'beta', '2026-08-06_110000_recent', 'events.jsonl')), true);
   assert.equal(fs.existsSync(path.join(root, 'gamma', 'manual-run', 'events.jsonl')), true);

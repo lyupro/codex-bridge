@@ -22,4 +22,17 @@ test('long names shrink while numbers and dates remain complete', () => {
   assert.match(output, /123456789/);
   assert.match(output, /2026-08-06T09:00:00\.000Z/);
   assert.doesNotMatch(output, /[┌┐└┘├┤┬┴┼─│]/);
+
+  for (const [column, expected] of [
+    [{ truncate: undefined }, '…hij'],
+    [{ fixed: true, truncate: undefined }, 'abcdefghij'],
+    [{ truncate: 'start' }, '…hij'],
+    [{ truncate: 'end' }, 'abc…'],
+    [{ truncate: null }, 'abcdefghij'],
+    [{ fixed: true, truncate: 'end' }, 'abc…'],
+  ]) {
+    assert.equal(renderTable([
+      { key: 'name', header: 'name', ...column },
+    ], [{ name: 'abcdefghij' }], { width: 4 }), `name\n${expected}`);
+  }
 });

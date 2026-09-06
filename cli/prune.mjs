@@ -34,7 +34,7 @@ function commandText(args) {
 function actionPayload(action) {
   return {
     kind: action.kind,
-    mode: action.mode,
+    strategy: action.strategy,
     project: action.project,
     run: action.run,
     targets: action.targets,
@@ -45,7 +45,7 @@ function actionPayload(action) {
 function basePayload(plan) {
   return {
     scope: plan.scope,
-    mode: plan.mode,
+    strategy: plan.strategy,
     project: plan.project,
     run: plan.run,
     olderThan: ageText(plan.olderThan),
@@ -57,7 +57,7 @@ function basePayload(plan) {
 
 function planLines(plan, args) {
   const lines = [
-    `Prune plan: ${plan.mode} ${plan.scope}.`,
+    `Prune plan: ${plan.strategy} ${plan.scope}.`,
     plan.olderThan ? `Age filter: older than ${ageText(plan.olderThan)} (folder name date).` : 'Age filter: none.',
   ];
   for (const action of plan.actions) {
@@ -160,8 +160,8 @@ function linkedSegment(target, root) {
   return null;
 }
 
-function currentTargetBytes(target, mode) {
-  if (mode === 'purge') {
+function currentTargetBytes(target, strategy) {
+  if (strategy === 'purge') {
     // The inventory's recursive measurement is the same accounting used by projects and keeps
     // the report honest when a purge contains nested files.
     return recursiveSize(target);
@@ -176,7 +176,7 @@ function currentTargetBytes(target, mode) {
 async function confirmAll(plan, args, options) {
   const prompt = options.prompt || defaultPrompt;
   for (const action of plan.actions) {
-    const question = action.mode === 'purge'
+    const question = action.strategy === 'purge'
       ? `Delete folder ${action.path}?`
       : `Delete archived transport from ${action.project}/${action.run}?\n  ${action.targets.join('\n  ')}`;
     let answer;
@@ -211,9 +211,9 @@ async function execute(plan, options) {
         failed.push({ target, error: `refusing to delete through a link: ${linked}` });
         continue;
       }
-      const bytes = currentTargetBytes(target, action.mode);
+      const bytes = currentTargetBytes(target, action.strategy);
       try {
-        fs.rmSync(target, { recursive: action.mode === 'purge', force: false });
+        fs.rmSync(target, { recursive: action.strategy === 'purge', force: false });
         removed.push(target);
         sizes.push(bytes);
       } catch (err) {

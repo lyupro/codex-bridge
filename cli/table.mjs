@@ -23,10 +23,10 @@ export function truncateStart(value, width) {
   return `…${Array.from(text).slice(-(width - 1)).join('')}`;
 }
 
-function fit(value, width, mode) {
+function fit(value, width, truncate) {
   if (displayWidth(value) <= width) return value;
-  if (mode === 'start') return truncateStart(value, width);
-  if (mode === 'end') return `${Array.from(value).slice(0, Math.max(0, width - 1)).join('')}…`;
+  if (truncate === 'start') return truncateStart(value, width);
+  if (truncate === 'end') return `${Array.from(value).slice(0, Math.max(0, width - 1)).join('')}…`;
   return value;
 }
 
@@ -39,7 +39,7 @@ function normalizeColumn(column) {
     header: String(column.header ?? column.label ?? column.key),
     kind,
     align: column.align || (kind === 'number' ? 'right' : 'left'),
-    mode: column.truncate === undefined ? (fixed ? null : 'start') : column.truncate,
+    truncate: column.truncate === undefined ? (fixed ? null : 'start') : column.truncate,
   };
 }
 
@@ -65,7 +65,7 @@ function columnWidths(columns, rows, width) {
 
   const flexible = columns
     .map((column, index) => ({ column, index }))
-    .filter(({ column }) => column.mode === 'start' || column.mode === 'end');
+    .filter(({ column }) => column.truncate === 'start' || column.truncate === 'end');
   while (spare < 0) {
     let changed = false;
     for (const { column, index } of flexible) {
@@ -84,7 +84,7 @@ function columnWidths(columns, rows, width) {
 function renderRow(row, columns, widths, header = false) {
   return columns.map((column, index) => {
     const value = header ? column.header : rowValue(row, column);
-    const rendered = fit(value, widths[index], header ? null : column.mode);
+    const rendered = fit(value, widths[index], header ? null : column.truncate);
     const padding = Math.max(0, widths[index] - displayWidth(rendered));
     if (index === columns.length - 1) {
       return column.align === 'right' ? `${' '.repeat(padding)}${rendered}` : rendered;
