@@ -31,7 +31,8 @@ import { continuationRefusal } from './continuation.mjs';
 import { SCHEMAS } from './schemas.mjs';
 import { INSTRUCTIONS } from './prompts.mjs';
 import { git, headSha, branchName, worktreeSnapshot, reviewScope } from './git-state.mjs';
-import { codexArgs, runMode, runProfile } from './codex-args.mjs';
+import { agentRole } from '../agents.mjs';
+import { codexArgs, runProfile } from './codex-args.mjs';
 import { writeWorkerOrder } from './worker-order.mjs';
 import { requireCodex, unsafeForCmd } from './codex-cmd.mjs';
 import { runsRoot } from './runs-root.mjs';
@@ -347,7 +348,7 @@ export async function launcher(argv = process.argv.slice(2)) {
     repo: repoRoot,
     isGitRepo,
     launcherPid: process.pid,
-    budgetMinutes: RUN_ENV?.budgets?.[runMode(opts.agent)],
+    budgetMinutes: RUN_ENV?.budgets?.[agentRole(opts.agent)],
     scopeNew: opts.scopeNewPatterns,
     profile: runProfile({ ...opts, repo: repoRoot }),
     args: codexArgv,

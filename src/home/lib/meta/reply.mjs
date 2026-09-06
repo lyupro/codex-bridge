@@ -1,9 +1,9 @@
 /**
  * Renders the reply lines a dispatcher is allowed to return, one format per agent.
  *
- * AGENTS is the registry of the three dispatchers: for each one it names the result file
- * that run writes, how to tell that file is filled in, and which of the three reply
- * strategies below renders it. FAIL and LIMIT bypass the per-agent strategy — a run that
+ * AGENTS adds reply strategies to the shared agent registry: for each one it describes how
+ * to tell the result file is filled in and which of the three reply strategies below
+ * renders it. FAIL and LIMIT bypass the per-agent strategy — a run that
  * produced nothing has nothing agent-specific left to say.
  *
  * The lines built here ARE the reply. Agents forward this text verbatim instead of
@@ -11,6 +11,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { AGENTS as AGENT_DEFINITIONS } from '../agents.mjs';
 import { changedPaths, line, readJson, readText } from './paths.mjs';
 import { splitRunChanges } from './environment.mjs';
 import { scoutCoverage } from './verdict.mjs';
@@ -47,17 +48,17 @@ function retentionReply(runDir) {
 
 export const AGENTS = {
   'codex-scout': {
-    result: 'result.json',
+    ...AGENT_DEFINITIONS['codex-scout'],
     filled: (r) => Boolean(String(r?.answer || '').trim()),
     reply: scoutReply,
   },
   'codex-build': {
-    result: 'result.json',
+    ...AGENT_DEFINITIONS['codex-build'],
     filled: (r) => Boolean(String(r?.summary || '').trim()),
     reply: buildReply,
   },
   'codex-review': {
-    result: 'review.json',
+    ...AGENT_DEFINITIONS['codex-review'],
     filled: (r) => Boolean(String(r?.verdict || '').trim()),
     reply: reviewReply,
   },

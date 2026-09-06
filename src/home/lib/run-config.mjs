@@ -19,6 +19,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { AGENTS } from './agents.mjs';
 import { BRAND_CONFIG_PATH, BRAND_HOME } from './brand-home.mjs';
 import { readJsonFileSync } from './json-file.mjs';
 
@@ -33,8 +34,7 @@ const ORIGIN =
   BRAND_HOME.source === 'CODEX_BRIDGE_HOME' ? 'from CODEX_BRIDGE_HOME' : 'default location';
 
 const BUDGET_KEY = 'budgets';
-const BUDGET_MODES = ['scout', 'build', 'review'];
-const DEFAULT_BUDGETS = { scout: 15, build: 25, review: 20 };
+const ROLES = Object.values(AGENTS).map(({ role }) => role);
 const RETENTION_KEY = 'retention';
 const RETENTION_FIELDS = ['enabled', 'days'];
 const DEFAULT_RETENTION = { enabled: true, days: 30 };
@@ -63,7 +63,7 @@ export const DEFAULTS = {
   hooks: false,
   plugins: false,
   models: {},
-  budgets: DEFAULT_BUDGETS,
+  budgets: Object.fromEntries(Object.values(AGENTS).map(({ role, budget }) => [role, budget])),
   retention: DEFAULT_RETENTION,
   environmentPaths: DEFAULT_ENVIRONMENT_PATHS,
   answerLanguage: 'English',
@@ -73,9 +73,8 @@ export const DEFAULTS = {
 const SWITCH_KEYS = ['hooks', 'plugins'];
 const LIST_KEYS = ['environmentPaths'];
 const OBJECT_KEYS = ['models'];
-const MODEL_KEYS = ['scout', 'build', 'review'];
 /**
- * A mode is configured as a pair, not as a model alone: reasoning depth is half of what a
+ * A role is configured as a pair, not as a model alone: reasoning depth is half of what a
  * model is worth. A cheap model at its default depth is a different worker from the same
  * model at "max", and pinning only the name would have silently kept every run at the
  * fallback depth the dispatcher happens to pass.
@@ -146,31 +145,31 @@ export function retentionNotice(config) {
 function readBudgets(file, value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error(
-      `${file}: key “${BUDGET_KEY}” must be an object keyed by ${BUDGET_MODES.join(', ')}, ` +
+      `${file}: key “${BUDGET_KEY}” must be an object keyed by ${ROLES.join(', ')}, ` +
         `each holding a positive number of minutes, not ${JSON.stringify(value)}`,
     );
   }
-  const budgets = { ...DEFAULT_BUDGETS };
-  for (const [mode, minutes] of Object.entries(value)) {
-    if (!BUDGET_MODES.includes(mode)) {
+  const budgets = { ...DEFAULTS.budgets };
+  for (const [role, minutes] of Object.entries(value)) {
+    if (!ROLES.includes(role)) {
       throw new Error(
-        `${file}: key “${BUDGET_KEY}” has unknown mode “${mode}”. ` +
-          `Only ${BUDGET_MODES.join(', ')} are allowed`,
+        `${file}: key “${BUDGET_KEY}” has unknown role “${role}”. ` +
+          `Only ${ROLES.join(', ')} are allowed`,
       );
     }
     if (typeof minutes === 'string' && !minutes.trim()) {
       throw new Error(
-        `${file}: key “${BUDGET_KEY}.${mode}” is empty; remove the field to use the default ` +
-          `(${DEFAULT_BUDGETS[mode]} minutes), or give it a positive number of minutes`,
+        `${file}: key “${BUDGET_KEY}.${role}” is empty; remove the field to use the default ` +
+          `(${DEFAULTS.budgets[role]} minutes), or give it a positive number of minutes`,
       );
     }
     if (typeof minutes !== 'number' || !Number.isFinite(minutes) || minutes <= 0) {
       throw new Error(
-        `${file}: key “${BUDGET_KEY}.${mode}” must be a positive number of minutes, ` +
+        `${file}: key “${BUDGET_KEY}.${role}” must be a positive number of minutes, ` +
           `not ${JSON.stringify(minutes)}`,
       );
     }
-    budgets[mode] = minutes;
+    budgets[role] = minutes;
   }
   return budgets;
 }
@@ -225,20 +224,20 @@ export function readRunConfig(file = CONFIG_PATH) {
     if (OBJECT_KEYS.includes(key)) {
       if (!value || typeof value !== 'object' || Array.isArray(value)) {
         throw new Error(
-          `${file}: key “${key}” must be an object keyed by ${MODEL_KEYS.join(', ')}, ` +
+          `${file}: key “${key}” must be an object keyed by ${ROLES.join(', ')}, ` +
             `each holding {"model": "...", "effort": "..."}, not ${JSON.stringify(value)}`,
         );
       }
       const models = {};
-      for (const [mode, profile] of Object.entries(value)) {
-        if (!MODEL_KEYS.includes(mode)) {
+      for (const [role, profile] of Object.entries(value)) {
+        if (!ROLES.includes(role)) {
           throw new Error(
-            `${file}: key “${key}” has unknown mode “${mode}”. Only ${MODEL_KEYS.join(', ')} are allowed`,
+            `${file}: key “${key}” has unknown role “${role}”. Only ${ROLES.join(', ')} are allowed`,
           );
         }
         if (!profile || typeof profile !== 'object' || Array.isArray(profile)) {
           throw new Error(
-            `${file}: key “${key}.${mode}” must be an object like ` +
+            `${file}: key “${key}.${role}” must be an object like ` +
               `{"model": "...", "effort": "..."}, not ${JSON.stringify(profile)}`,
           );
         }
@@ -246,13 +245,13 @@ export function readRunConfig(file = CONFIG_PATH) {
         for (const [field, fieldValue] of Object.entries(profile)) {
           if (!PROFILE_KEYS.includes(field)) {
             throw new Error(
-              `${file}: key “${key}.${mode}” has unknown field “${field}”. ` +
+              `${file}: key “${key}.${role}” has unknown field “${field}”. ` +
                 `Only ${PROFILE_KEYS.join(', ')} are allowed`,
             );
           }
           if (typeof fieldValue !== 'string') {
             throw new Error(
-              `${file}: key “${key}.${mode}.${field}” must be a string, not ${JSON.stringify(fieldValue)}`,
+              `${file}: key “${key}.${role}.${field}” must be a string, not ${JSON.stringify(fieldValue)}`,
             );
           }
           const trimmed = fieldValue.trim();
@@ -260,7 +259,7 @@ export function readRunConfig(file = CONFIG_PATH) {
           // would send the run to another profile's depth past every check below.
           if (!trimmed) {
             throw new Error(
-              `${file}: key “${key}.${mode}.${field}” is empty; remove the field to fall back, ` +
+              `${file}: key “${key}.${role}.${field}” is empty; remove the field to fall back, ` +
                 'or give it a value',
             );
           }
@@ -268,17 +267,17 @@ export function readRunConfig(file = CONFIG_PATH) {
         }
         if (resolved.effort && /\s/.test(resolved.effort)) {
           throw new Error(
-            `${file}: key “${key}.${mode}.effort” must be a single word; ` +
+            `${file}: key “${key}.${role}.effort” must be a single word; ` +
               `allowed values: ${ALLOWED_EFFORTS.join(', ')}`,
           );
         }
         if (resolved.effort && !ALLOWED_EFFORTS.includes(resolved.effort)) {
           throw new Error(
-            `${file}: key “${key}.${mode}.effort” must be one of: ` +
+            `${file}: key “${key}.${role}.effort” must be one of: ` +
               `${ALLOWED_EFFORTS.join(', ')}; got ${JSON.stringify(resolved.effort)}`,
           );
         }
-        if (Object.keys(resolved).length) models[mode] = resolved;
+        if (Object.keys(resolved).length) models[role] = resolved;
       }
       config[key] = models;
       continue;
@@ -305,13 +304,13 @@ const state = (config) => [
   ),
   `environmentPaths: ${(config.environmentPaths || []).length} patterns — changes in them are ` +
     'treated as environment work, not run work',
-  `models: ${MODEL_KEYS.map((key) => {
+  `models: ${ROLES.map((key) => {
     const profile = config.models?.[key];
     if (!profile?.model && !profile?.effort) return `${key}: default — chosen by Codex`;
     const model = profile.model || 'default model';
     return `${key}: ${model}${profile.effort ? ` at ${profile.effort} effort` : ''}`;
   }).join('; ')}`,
-  `budgets: ${BUDGET_MODES.map((mode) => `${mode}: ${config.budgets?.[mode] ?? DEFAULT_BUDGETS[mode]} minutes`).join('; ')}`,
+  `budgets: ${ROLES.map((role) => `${role}: ${config.budgets?.[role] ?? DEFAULTS.budgets[role]} minutes`).join('; ')}`,
   `retention: ${config.retention?.enabled ? `on — transport older than ${config.retention.days} days` : 'off — automatic cleanup disabled'}`,
 ];
 

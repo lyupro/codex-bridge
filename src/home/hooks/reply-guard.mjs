@@ -29,6 +29,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { AGENTS } from '../lib/agents.mjs';
 import { runOrderMismatch, transcriptOrderId } from '../lib/dispatcher-order.mjs';
 import { recognizeHostRefusal } from '../lib/host-refusal.mjs';
 import { readJsonFileSync } from '../lib/json-file.mjs';
@@ -65,7 +66,7 @@ import {
 // The broader hook-directory scan protects the extracted verdict text from the same incident.
 const HOME = os.homedir();
 const LOG_DIR = path.join(HOME, '.claude', 'logs');
-const GUARDED = new Set(['codex-scout', 'codex-build', 'codex-review']);
+const GUARDED = new Set(Object.keys(AGENTS));
 
 /**
  * How many times a single agent may be blocked over the SHAPE of its reply — no RUN= line,

@@ -14,15 +14,16 @@
  * run from starting a process on Windows).
  */
 import path from 'node:path';
+import { agentRole } from '../agents.mjs';
 import { CLEAN_ENV, RUN_ENV } from './run-env.mjs';
 import { platformSandboxArgs } from './sandbox-flags.mjs';
 
 /**
- * Which model runs a mode, and how deep it reasons.
+ * Which model runs a role, and how deep it reasons.
  *
- * Three sources, in this order: what the dispatcher asked for this one task, the mode's
+ * Three sources, in this order: what the dispatcher asked for this one task, the role's
  * configured profile, and finally a depth to fall back on. The order is the whole point —
- * pinning a model without its depth leaves every run at the fallback, which is how a mode
+ * pinning a model without its depth leaves every run at the fallback, which is how a role
  * configured for maximum reasoning would quietly keep working at the shallowest setting.
  */
 const FALLBACK_EFFORT = 'medium';
@@ -37,17 +38,6 @@ const FALLBACK_EFFORT = 'medium';
 const NO_SUBAGENTS = ['-c', 'agents.enabled=false'];
 
 /**
- * Which configured mode an agent is. One table, because the launcher needs the same answer to
- * pick a run's time budget: a second copy of this mapping is a second place to forget a mode.
- */
-export const runMode = (agent) =>
-  ({
-    'codex-scout': 'scout',
-    'codex-build': 'build',
-    'codex-review': 'review',
-  })[agent];
-
-/**
  * Which model and depth this run gets, and — as part of the same answer — where each came from.
  *
  * The provenance is not decoration. A configured profile failed to reach any run for three
@@ -57,9 +47,9 @@ export const runMode = (agent) =>
  * `fallback`, in the order the values are consulted above.
  */
 export function runProfile(opts) {
-  const mode = runMode(opts.agent);
+  const role = agentRole(opts.agent);
   // opts.models is how tests state a configuration; a real run reads the one loaded for it.
-  const configured = (opts.models || RUN_ENV?.models || {})[mode] || {};
+  const configured = (opts.models || RUN_ENV?.models || {})[role] || {};
   return {
     model: configured.model || '',
     model_source: configured.model ? 'config' : 'codex default',

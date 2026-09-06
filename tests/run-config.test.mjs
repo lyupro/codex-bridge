@@ -13,7 +13,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { readRunConfig, writeRunConfig, disableFlags, DEFAULTS } from '../src/home/lib/run-config.mjs';
-import { runMode } from '../src/home/lib/runner/codex-args.mjs';
+import { agentRole } from '../src/home/lib/agents.mjs';
 import { makeTempTree } from './temp-tree.mjs';
 
 const tempFile = (content) => {
@@ -29,17 +29,18 @@ test('an absent file means defaults, not an error', () => {
 });
 
 /**
- * The launcher resolves a run's budget as budgets[runMode(agent)] and writes it into
- * worker.json. A mode present in one table and missing from the other makes that expression
+ * The launcher resolves a run's budget as budgets[agentRole(agent)] and writes it into
+ * worker.json. A role present in one table and missing from the other makes that expression
  * undefined, which the deadline reads as "no budget" — the limit would then be silently absent
- * for exactly one agent, the failure mode this step exists to remove.
+ * for exactly one agent, the failure mode this step exists to remove. Since Plan_56 both tables
+ * are derived from one registry, so this test now proves the derivation, not two hand-kept lists.
  */
-test('every agent maps to a mode that has a budget', () => {
+test('every agent maps to a role that has a budget', () => {
   for (const agent of ['codex-scout', 'codex-build', 'codex-review']) {
-    const mode = runMode(agent);
-    assert.ok(mode, `${agent} has no mode`);
-    assert.equal(typeof DEFAULTS.budgets[mode], 'number', `${mode} has no default budget`);
-    assert.ok(DEFAULTS.budgets[mode] > 0);
+    const role = agentRole(agent);
+    assert.ok(role, `${agent} has no role`);
+    assert.equal(typeof DEFAULTS.budgets[role], 'number', `${role} has no default budget`);
+    assert.ok(DEFAULTS.budgets[role] > 0);
   }
 });
 
@@ -66,7 +67,7 @@ test('an empty environment list is a decision, not a default', () => {
   assert.deepEqual(readRunConfig(file).environmentPaths, []);
 });
 
-test('a mode is configured as a model and a reasoning depth, both trimmed', () => {
+test('a role is configured as a model and a reasoning depth, both trimmed', () => {
   const file = tempFile(
     '{"models": {"scout": {"model": "  model-s  ", "effort": " high "}, "build": {"model": "model-b"}}}',
   );
@@ -76,7 +77,7 @@ test('a mode is configured as a model and a reasoning depth, both trimmed', () =
   });
 });
 
-test('budgets default per mode and merge when only one mode is written', () => {
+test('budgets default per role and merge when only one role is written', () => {
   assert.deepEqual(DEFAULTS.budgets, { scout: 15, build: 25, review: 20 });
   assert.deepEqual(readRunConfig(tempFile('{"budgets": {"build": 7.5}}')).budgets, {
     scout: 15,
@@ -91,7 +92,7 @@ test('budgets reject every invalid shape with an actionable message', () => {
   assert.throws(() => readRunConfig(tempFile('{"budgets": 5}')), /budgets.*must be an object/);
   assert.throws(
     () => readRunConfig(tempFile('{"budgets": {"deploy": 5}}')),
-    /budgets.*unknown mode.*deploy.*scout, build, review/,
+    /budgets.*unknown role.*deploy.*scout, build, review/,
   );
   assert.throws(
     () => readRunConfig(tempFile('{"budgets": {"build": "5"}}')),
@@ -128,11 +129,11 @@ test('an absent models key leaves model choice to Codex', () => {
   assert.deepEqual(readRunConfig(tempFile('{"hooks": true}')).models, {});
 });
 
-test('models must be known modes holding profiles of known string fields', () => {
+test('models must be known roles holding profiles of known string fields', () => {
   assert.throws(() => readRunConfig(tempFile('{"models": []}')), /models.*must be an object/);
   assert.throws(
     () => readRunConfig(tempFile('{"models": {"deploy": {"model": "model-d"}}}')),
-    /unknown mode.*deploy.*scout, build, review/,
+    /unknown role.*deploy.*scout, build, review/,
   );
   assert.throws(
     () => readRunConfig(tempFile('{"models": {"build": "model-b"}}')),

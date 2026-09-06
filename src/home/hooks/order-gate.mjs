@@ -14,6 +14,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { AGENTS } from '../lib/agents.mjs';
 import { readJsonFileSync } from '../lib/json-file.mjs';
 import {
   diagnoseInput,
@@ -31,7 +32,7 @@ import { parseTaskDocument } from '../lib/runner/task-file.mjs';
 
 const HOME = os.homedir();
 const LOG_DIR = path.join(HOME, '.claude', 'logs');
-const GUARDED = new Set(['codex-scout', 'codex-build', 'codex-review']);
+const GUARDED = new Set(Object.keys(AGENTS));
 /**
  * Both spellings of the subagent-launching tool, from the same list the installer builds its
  * matcher from. Recognising only the name this host happens to use would make the gate silent
