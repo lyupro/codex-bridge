@@ -103,7 +103,7 @@ function heredoc(command) {
       || /[\\/]/.test(value)
       || /(?:^|[\\/])[^\\/]+\.[A-Za-z0-9_-]+$/.test(value)) addPath(paths, value);
   }
-  return { header: header[1], paths, writes: true };
+  return { shell, paths, writes: true };
 }
 
 /** Returns `{ writes, paths }` for the deliberately obvious write forms this guard recognises. */
@@ -111,7 +111,12 @@ export function shellWriteIntent(command) {
   if (typeof command !== 'string' || !command.trim()) return { writes: false, paths: [] };
   const paths = [];
   const document = heredoc(command);
-  const shell = document?.header ?? command;
+  // The document body is prose until an interpreter makes it code. Reading `header` here while
+  // heredoc() returned `shell` meant the whole command, body included, went through shell parsing
+  // whenever the writer was plain `cat`: on 2026-09-06 the lock refused four harmless commands,
+  // the last of them because a sentence in a task file said "Do not touch the installer" and
+  // `touch` is in COMMANDS, so every following word became a write target under the repository.
+  const shell = document?.shell ?? command;
   let writes = document?.writes ?? false;
   const quoted = quotedCharacters(shell);
 

@@ -182,3 +182,41 @@ test('plain reads and unrelated shell commands do not claim write intent', () =>
   assert.deepEqual(shellWriteIntent('git status --short'), { writes: false, paths: [] });
   assert.deepEqual(shellWriteIntent('sed -n 1,20p src/file.mjs'), { writes: false, paths: [] });
 });
+
+test('prose inside a plain heredoc names no write target', () => {
+  // The four commands the lock refused on 2026-09-06, all writing outside the repository or not
+  // at all. The last one is the class the earlier three only hinted at: `header` was read where
+  // heredoc() returned `shell`, so with a plain writer the body went through shell parsing, and
+  // an ordinary English sentence containing a command name turned its next words into targets.
+  const target = '/c/Users/operator/session/notes.md';
+  const document = (body) => [
+    `cat > ${target} << 'EOF'`,
+    ...body,
+    'EOF',
+  ].join('\n');
+  const bodies = [
+    ['Put the audit under docs/audits/ inside the repository, not here.'],
+    ['See checklist-draft.md for the wording of step three.'],
+    ['Windows spells it C:\Users\operator\config.json in the message.'],
+    ['- Do not touch the installer, the permission rules or anything about speed.'],
+  ];
+  for (const body of bodies) {
+    assert.deepEqual(
+      shellWriteIntent(document(body)),
+      { writes: true, paths: [target] },
+      body[0],
+    );
+  }
+});
+
+test('an interpreter heredoc still exposes commands after its closing marker', () => {
+  // The tail was reachable only through the non-interpreter branch, which returned it under a
+  // different field name than the caller read. Naming one field fixed both directions at once.
+  const command = [
+    "python - <<'PY'",
+    "write('CHANGELOG.md', 'changed')",
+    'PY',
+    'echo broken >> README.md',
+  ].join('\n');
+  assert.deepEqual(shellWriteIntent(command), { writes: true, paths: ['README.md'] });
+});
