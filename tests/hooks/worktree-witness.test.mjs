@@ -26,6 +26,14 @@ async function fixture(t) {
 }
 
 async function liveRun(runsRoot, repo, statusOverrides = {}) {
+  // A pid carries the start time of THAT process or the record means nothing: identity compares
+  // the two against a 1000ms tolerance (process-identity.mjs), and overriding one alone leaves a
+  // pid belonging to process A dated by process B. This file wrote exactly that shape and the
+  // suite paid for it — Windows handed the dead pid to a freshly spawned neighbour, whose start
+  // sat ~37ms from the test process's own, so a dead run read as alive and the witness fired.
+  if ('pid' in statusOverrides && !('process_started_at' in statusOverrides)) {
+    throw new Error('liveRun: overriding pid requires process_started_at of that same process');
+  }
   const dir = path.join(runsRoot, 'project', '2026-08-16_split-guard');
   await fs.mkdir(dir, { recursive: true });
   await fs.writeFile(path.join(dir, 'status.json'), `${JSON.stringify({
@@ -114,10 +122,20 @@ test('runs that are not live do not own repository changes', async (t) => {
   const deadProcess = spawnSync(process.execPath, ['-e', '']);
   assert.equal(deadProcess.status, 0);
   assert.ok(Number.isInteger(deadProcess.pid));
+  // Stale ownership means a run that started long ago, so the record is dated to its own
+  // started_at rather than to this moment. Both roads then lead to "not live" without depending
+  // on the pid staying free: an untaken pid answers ESRCH, and a pid Windows has already reused
+  // answers with today's start time, which no tolerance can reconcile with August. Reading the
+  // dead process's real start time would not do — a neighbour can seize the pid within the same
+  // second it died, land inside the tolerance, and pass for this run all over again.
+  const runStartedAt = Date.parse('2026-08-16T10:00:00.000Z');
 
   for (const { name, status } of [
     { name: 'finished run', status: { state: 'finished' } },
-    { name: 'dead process', status: { pid: deadProcess.pid } },
+    {
+      name: 'dead process',
+      status: { pid: deadProcess.pid, process_started_at: runStartedAt },
+    },
   ]) {
     await t.test(name, async (t) => {
       const { root, repo, runsRoot } = await fixture(t);
