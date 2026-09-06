@@ -6,6 +6,7 @@ import { isInvokedDirectly } from '../cli/invoked-directly.mjs';
 import { hook } from '../cli/hook.mjs';
 import { resolveHost } from '../cli/hosts.mjs';
 import { install } from '../cli/install.mjs';
+import { model } from '../cli/model.mjs';
 import { projects } from '../cli/projects.mjs';
 import { read } from '../cli/read.mjs';
 import { runCodexCommand } from '../src/home/lib/run-codex.mjs';
@@ -26,6 +27,7 @@ Usage:
   codex-bridge uninstall [--scope user|project] [--host <path>] [--dry-run]
   codex-bridge doctor [--scope user|project] [--host <path>] [--probe-contract]
   codex-bridge run <runner options> --task-file <path>
+  codex-bridge model [list]
   codex-bridge projects [<name>] [--json]
   codex-bridge prune <project> [<run>] [--purge] [--older-than <age>] [-f] [--json]
   codex-bridge prune --all-projects [--older-than <age>] [-f] [--json]
@@ -44,6 +46,7 @@ Commands:
   uninstall Remove installed files while preserving run artifacts
   doctor    Diagnose the selected Claude Code host (--probe-contract measures on a live host)
   run       Start or attach to a delegated Codex run
+  model     Show machine-wide model profiles or list the live catalogue
   projects  List projects or runs from the run store
   prune     Remove archived transport, or purge selected run folders
   unlock    Close running records whose runner is gone
@@ -129,6 +132,11 @@ export async function main(argv, io = console) {
   }
   if (command === 'projects') {
     const result = projects(rest);
+    io.log(result.output);
+    return result.exitCode;
+  }
+  if (command === 'model') {
+    const result = await model(rest);
     io.log(result.output);
     return result.exitCode;
   }

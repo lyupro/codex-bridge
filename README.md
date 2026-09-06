@@ -60,7 +60,7 @@ If a global install and a clone coexist, you have two package copies. `codex-bri
 - **Every run leaves an audit folder.** The verbatim task, scope, before/after git state, events, report, verdict, and reason remain together.
 - **Zero runtime dependencies and zero build steps.** The package is plain `.mjs` on the Node.js standard library.
 
-The current suite contains **823 automated tests: 822 passing and 1 skipped**.
+The current suite contains **842 automated tests: 841 passing and 1 skipped**.
 
 ## Verify
 
@@ -128,6 +128,7 @@ Transport files from runs at least **30 days** old are pruned automatically when
 | `uninstall [--scope user\|project] [--host <path>] [--dry-run]` | Remove recorded package files while preserving run artifacts. |
 | `doctor [--scope user\|project] [--host <path>] [--probe-contract]` | Diagnose the selected host and Codex connection. `--probe-contract` measures on a live host whether it still honours a hook refusal, and records the answer. |
 | `run <runner options> --task-file <abs path>` | Start or attach to a delegated run through the permission-stable package command. The task file carries the statement, the scout questions and the verification command; its path must be absolute. Piping the statement on stdin is the alternative channel, and the two cannot be combined. |
+| `model [list]` | Show the model, effort and provenance of each role, with the config path; `model list` prints the live catalogue from Codex, hidden models included and marked. The profile is machine-wide, shared by every project on this machine. |
 | `projects [<name>] [--json]` | List projects or runs in the run store. |
 | `prune <project> [<run>] [--purge] [--older-than <age>] [-f] [--json]`<br>`prune --all-projects [--older-than <age>] [-f] [--json]` | Plan or perform operator-confirmed cleanup, for one project or across the whole run store. |
 | `unlock [<project>\|--all]` | Close records whose runner is gone. |
