@@ -1,9 +1,10 @@
-/** Shows the machine-wide delegated profiles and the live model catalogue (Plan_56 step 2). */
+/** Shows and edits machine-wide delegated profiles using the live catalogue (Plan_56). */
 import path from 'node:path';
 import { AGENTS } from '../src/home/lib/agents.mjs';
 import { CONFIG_PATH, readRunConfig } from '../src/home/lib/run-config.mjs';
 import { runProfile } from '../src/home/lib/runner/codex-args.mjs';
 import { fetchCatalogue, parseCatalogue } from './model-catalogue.mjs';
+import { editModelProfile } from './model-set.mjs';
 import { renderTable } from './table.mjs';
 
 const PROFILE_COLUMNS = ['role', 'model', 'effort', 'source']
@@ -23,7 +24,7 @@ function profileSource(profile) {
   return model === effort ? model : `model: ${model}; effort: ${effort}`;
 }
 
-/** Returns output for the dispatcher; neither reading path writes configuration. */
+/** Returns output for the dispatcher; only explicit set/unset actions write configuration. */
 export async function model(argv = [], options = {}) {
   let action;
   let optionArgs = argv;
@@ -31,8 +32,11 @@ export async function model(argv = [], options = {}) {
     action = argv[0];
     optionArgs = argv.slice(1);
   }
+  if (action === 'set' || action === 'unset') {
+    return editModelProfile(action, optionArgs, options);
+  }
   if (action && action !== 'list') {
-    return { exitCode: 2, output: `codex-bridge model: unknown action "${action}". Use model or model list.` };
+    return { exitCode: 2, output: `codex-bridge model: unknown action "${action}". Use model, model list, model set or model unset.` };
   }
   if (optionArgs.length) {
     return { exitCode: 2, output: `codex-bridge model: unexpected argument "${optionArgs[0]}".` };

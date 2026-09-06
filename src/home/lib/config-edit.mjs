@@ -32,15 +32,29 @@ function replaceValue(file, raw, key, value) {
   }
   if (replacements.length) {
     for (const [start, end] of replacements.reverse()) {
-      raw = raw.slice(0, start) + value + raw.slice(end);
+      raw = raw.slice(0, start) + indented(raw, start, value) + raw.slice(end);
     }
     return raw;
   }
   const newline = raw.includes('\r\n') ? '\r\n' : '\n';
   const trailing = raw.slice(lastEnd, tokens.at(-1).index);
-  const addition = `${tokens.length > 2 ? ',' : ''}${newline}  ${JSON.stringify(key)}: ${value}`
+  const addition = `${tokens.length > 2 ? ',' : ''}${newline}  ${JSON.stringify(key)}: `
+    + value.replaceAll('\n', `${newline}  `)
     + (trailing.includes('\n') ? '' : newline);
   return raw.slice(0, lastEnd) + addition + raw.slice(lastEnd);
+}
+
+/**
+ * A serialized object knows its own shape but not how deep it is being pasted, so every line
+ * after the first came out flush against the margin: writing a role profile left `"models"`
+ * indented by two and its `"build"` by none. The file stayed valid JSON and became unreadable
+ * for the operator who edits it by hand, which is the audience this whole path exists for.
+ */
+function indented(raw, start, value) {
+  const lineStart = raw.lastIndexOf('\n', start) + 1;
+  const indent = /^[ \t]*/.exec(raw.slice(lineStart, start))[0];
+  const newline = raw.includes('\r\n') ? '\r\n' : '\n';
+  return indent ? value.replaceAll('\n', `${newline}${indent}`) : value;
 }
 
 /** Accepts { key, value } or { reset: true }; the complete config belongs to this boundary. */

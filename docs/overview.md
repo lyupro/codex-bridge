@@ -315,12 +315,16 @@ node ~/.lyupro/.codex-bridge/lib/run-config.mjs hooks off
 node ~/.lyupro/.codex-bridge/lib/run-config.mjs reset
 ```
 
-`models` determines what each mode runs on: an object with `scout`, `build`, and `review` keys,
-each containing optional `model` and `effort`. The key is edited directly in the file—it is not a
-switch. A configured model reaches `codex exec` through the `-m` flag, while reasoning depth is
-chosen in this order: the request's explicit `--effort`, then the mode profile, then `medium`. An
-empty or missing profile means “Codex decides”; model identifiers live only here and do not appear
-in code.
+`models` determines what each role runs on: an object with `scout`, `build`, and `review` keys,
+each containing optional `model` and `effort`. Edit it with `codex-bridge model set <role> <model>
+[effort]`, which checks the pair against that model's entry in the live catalogue before writing,
+and `codex-bridge model unset <role>`, which returns the role to whatever Codex chooses. A
+configured model reaches `codex exec` through the `-m` flag, while reasoning depth is chosen in
+this order: the request's explicit `--effort`, then the role profile, then `medium`. Reading the
+config and parsing `--effort` check only the form of the depth, never a list of values: that path
+runs at the start of every delegated run and must not wait on the network, and Codex refuses an
+unusable depth in its own words. An empty or missing profile means “Codex decides”; model
+identifiers live only here and do not appear in code.
 
 ```json
 {

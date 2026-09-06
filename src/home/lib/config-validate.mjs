@@ -48,11 +48,8 @@ export const OBJECT_KEYS = ['models'];
  * fallback depth the dispatcher happens to pass.
  */
 const PROFILE_KEYS = ['model', 'effort'];
-// Exactly the values the service enumerates, and no more. `minimal` sat here until 2026-08-26,
-// passed validation and was rejected by the model itself after the run had started
-// ("Unsupported value: 'minimal' is not supported with the … model"), so an order died four
-// seconds in on quota already spent. A validator that admits a known-dead value is worse than none.
-export const ALLOWED_EFFORTS = Object.freeze(['none', 'low', 'medium', 'high', 'xhigh', 'max']);
+// Plan_56 step 3: model set validates pairs live; delegated runs check form offline and let
+// Codex judge support, because a flat list both admitted unsupported depths and rejected new ones.
 /**
  * The language a run answers in. Left to the model it followed the task, the surrounding docs or
  * its own default: an English order came back in Russian, and artifacts of one project ended up in
@@ -211,14 +208,7 @@ export function validateRunConfig(file, parsed) {
         }
         if (resolved.effort && /\s/.test(resolved.effort)) {
           throw new Error(
-            `${file}: key “${key}.${role}.effort” must be a single word; ` +
-              `allowed values: ${ALLOWED_EFFORTS.join(', ')}`,
-          );
-        }
-        if (resolved.effort && !ALLOWED_EFFORTS.includes(resolved.effort)) {
-          throw new Error(
-            `${file}: key “${key}.${role}.effort” must be one of: ` +
-              `${ALLOWED_EFFORTS.join(', ')}; got ${JSON.stringify(resolved.effort)}`,
+            `${file}: key “${key}.${role}.effort” must be a non-empty single word with no whitespace`,
           );
         }
         if (Object.keys(resolved).length) models[role] = resolved;
@@ -233,4 +223,3 @@ export function validateRunConfig(file, parsed) {
   }
   return config;
 }
-

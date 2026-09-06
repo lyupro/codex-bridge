@@ -8,7 +8,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { AGENTS } from '../write-meta.mjs';
-import { ALLOWED_EFFORTS } from '../run-config.mjs';
 import { isAbsoluteTaskFilePath, requiredInputsFor } from '../required-inputs.mjs';
 import { firstShellUnsafeSequence } from '../shell-unsafe.mjs';
 import { parseTaskDocument } from './task-file.mjs';
@@ -165,14 +164,11 @@ export function parseArgs(argv) {
       die('--question must not be empty for codex-scout; no quota was spent');
     }
   }
-  const allowedEfforts = ALLOWED_EFFORTS.join(', ');
   // Left unset when not given, rather than defaulted here: the role's configured profile is
   // what fills the gap, and a default applied this early would always win over it.
-  if (opts.effort !== undefined && /\s/.test(opts.effort)) {
-    die(`--effort must be a single word; allowed values: ${allowedEfforts}`);
-  }
-  if (opts.effort !== undefined && !ALLOWED_EFFORTS.includes(opts.effort)) {
-    die(`--effort must be one of: ${allowedEfforts}; got ${JSON.stringify(opts.effort)}`);
+  // Plan_56 step 3: support belongs to the live catalogue on write and Codex at run start.
+  if (opts.effort !== undefined && (!opts.effort || /\s/.test(opts.effort))) {
+    die(`--effort must be a non-empty single word with no whitespace; got ${JSON.stringify(opts.effort)}`);
   }
   opts.repo = path.resolve(opts.repo || process.cwd());
   const slugSource = opts.slug ? '--slug' : '--order-id';

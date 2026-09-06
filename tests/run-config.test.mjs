@@ -152,14 +152,17 @@ test('models must be known roles holding profiles of known string fields', () =>
     () => readRunConfig(tempFile('{"models": {"build": {"effort": "very high"}}}')),
     /effort.*single word/,
   );
-  assert.throws(
-    () => readRunConfig(tempFile('{"models": {"build": {"effort": "large"}}}')),
-    /effort.*one of:.*none.*low.*medium.*high.*xhigh.*max/,
-  );
-  assert.throws(
-    () => readRunConfig(tempFile('{"models": {"build": {"effort": "minimal"}}}')),
-    /effort.*one of:.*none.*low.*medium.*high.*xhigh.*max/,
-  );
+  // Plan_56 D24: reading checks the FORM of the depth, never a list of values. A list here would
+  // have to reach the catalogue to be right, and this path runs at the start of every delegated
+  // run — it would wait on the network and fail without it. Codex refuses an unusable depth with
+  // its own words, which are more accurate than a copy of its list going stale: `ultra` was
+  // rejected here while gpt-6-astra accepted it, and `none` was accepted here while no model has it.
+  for (const depth of ['ultra', 'large', 'minimal', 'none']) {
+    assert.equal(
+      readRunConfig(tempFile(`{"models": {"build": {"effort": "${depth}"}}}`)).models.build.effort,
+      depth,
+    );
+  }
   // An empty field used to be dropped as if it had never been written, which walked the run past
   // the whitelist above and into another profile's depth.
   assert.throws(() => readRunConfig(tempFile('{"models": {"build": {"effort": "  "}}}')), /effort.*is empty/);

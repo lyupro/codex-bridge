@@ -65,6 +65,8 @@ function catalogueRow(entry, index) {
   ])];
   return {
     slug,
+    supportedReasoningLevels: levels,
+    hidden: visibility !== 'list',
     'reasoning levels': levels.length ? levels.join(', ') : 'not specified',
     'default level': defaultLevel,
     'fast tier': fastTiers.length ? `yes (${fastTiers.join(', ')})` : 'no',

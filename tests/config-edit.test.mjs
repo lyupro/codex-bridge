@@ -73,7 +73,9 @@ test('every invalid edit is refused by the reader and leaves the original bytes 
     { key: 'plugins', value: null },
     { key: 'hook', value: true },
     { key: 'environmentPaths', value: [1] },
-    { key: 'models', value: { build: { effort: 'minimal' } } },
+    // Plan_56 D24: the value of a depth is no longer judged here, only its form — the live
+    // catalogue judges the pair on write, and Codex judges it at run start.
+    { key: 'models', value: { build: { effort: 'two words' } } },
     { key: 'budgets', value: { build: 0 } },
     { key: 'retention', value: { enabled: true, days: -1 } },
     { key: 'answerLanguage', value: '' },
@@ -197,4 +199,24 @@ test('the CLI changes only its switch and reset keeps the existing printed state
   const shown = run();
   assert.equal(reset.replace('Reset to defaults · ', 'File: '), shown);
   assert.deepEqual(readRunConfig(file), DEFAULTS);
+});
+
+test('a nested value is pasted at the depth of the key it replaces', async () => {
+  // The serialized object knows its own shape but not how deep it lands: "models" sat at two
+  // spaces while its first role sat at none, leaving valid JSON that no longer read as a file a
+  // person edits by hand — which is the only reason this path writes over raw text at all.
+  const { file } = fixture('{\n  "hooks": false,\n  "models": {\n    "review": { "model": "m" }\n  }\n}\n');
+  await editRunConfig({ key: 'models', value: { build: { model: 'n', effort: 'high' } } }, file);
+  const written = fs.readFileSync(file, 'utf8');
+  assert.match(written, /\n {2}"models": \{\n {4}"build": \{\n {6}"model": "n",\n {6}"effort": "high"\n {4}\}\n {2}\}/);
+  assert.deepEqual(readRunConfig(file).models, { build: { model: 'n', effort: 'high' } });
+});
+
+test('a nested value added to a file that lacks the key keeps the two-space margin', async () => {
+  const { file } = fixture('{\n  "hooks": false\n}\n');
+  await editRunConfig({ key: 'models', value: { scout: { effort: 'low' } } }, file);
+  assert.match(
+    fs.readFileSync(file, 'utf8'),
+    /\n {2}"models": \{\n {4}"scout": \{\n {6}"effort": "low"\n {4}\}\n {2}\}\n\}/,
+  );
 });

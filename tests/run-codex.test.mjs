@@ -182,18 +182,20 @@ test('--continue does not swallow the flag that follows it', () => {
   assert.equal(opts.scope, 'src/**');
 });
 
-test('parseArgs refuses an unsupported effort before launch', () => {
-  const { code, stderr } = parseArgsInChild([
-    '--agent',
-    'codex-scout',
-    ...ORDER,
-    ...SCOUT_QUESTION,
-    '--effort',
-    'minimal',
-  ]);
-  assert.equal(code, 2);
-  assert.match(stderr, /--effort must be one of/);
-  assert.match(stderr, /none.*low.*medium.*high.*xhigh.*max/);
+test('parseArgs leaves effort support to Codex at launch', () => {
+  for (const effort of ['minimal', 'ultra', 'none', 'future-depth']) {
+    const { code, opts } = parseArgsInChild(['--agent', 'codex-scout', ...ORDER, ...SCOUT_QUESTION, '--effort', effort]);
+    assert.equal(code, 0, effort);
+    assert.equal(opts.effort, effort);
+  }
+});
+
+test('parseArgs refuses empty or whitespace-containing efforts before launch', () => {
+  for (const effort of ['', ' ', 'two words', ' leading', 'trailing ', 'line\nbreak']) {
+    const { code, stderr } = parseArgsInChild(['--agent', 'codex-scout', ...ORDER, ...SCOUT_QUESTION, '--effort', effort]);
+    assert.equal(code, 2, JSON.stringify(effort));
+    assert.match(stderr, /--effort must be a non-empty single word with no whitespace|forbidden shell sequence/);
+  }
 });
 
 // The prompts also say not to delegate, and prompts are what a dispatcher already ignored twice

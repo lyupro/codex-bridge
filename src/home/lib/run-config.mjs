@@ -22,7 +22,7 @@ import { BRAND_CONFIG_PATH, BRAND_HOME } from './brand-home.mjs';
 import { readJsonFileSync } from './json-file.mjs';
 import { editRunConfig } from './config-edit.mjs';
 import { DEFAULTS, ROLES, SWITCH_KEYS, LIST_KEYS, OBJECT_KEYS, validateRunConfig } from './config-validate.mjs';
-export { DEFAULTS, DEFAULT_ENVIRONMENT_PATHS, ALLOWED_EFFORTS } from './config-validate.mjs';
+export { DEFAULTS, DEFAULT_ENVIRONMENT_PATHS } from './config-validate.mjs';
 
 export const CONFIG_PATH = BRAND_CONFIG_PATH;
 
@@ -101,7 +101,8 @@ async function main(argv) {
     const known = LIST_KEYS.includes(key)
       ? `“${key}” is a pattern list, not a switch: edit it directly in ${CONFIG_PATH}`
       : OBJECT_KEYS.includes(key)
-        ? `“${key}” is configured in the file, not as a switch: edit it directly in ${CONFIG_PATH}`
+        ? `“${key}” is not a switch: change it with “codex-bridge model set <role> <model> [effort]” `
+          + `or “codex-bridge model unset <role>”, which check the pair against the live catalogue`
         : `unknown switch “${key}”. Allowed: ${SWITCH_KEYS.join(', ')}, reset`;
     console.error(`run-config: ${known}`);
     return 2;

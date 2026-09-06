@@ -1,4 +1,4 @@
-/** Verifies the read-only profile command and its dispatcher contract (Plan_56 step 2). */
+/** Verifies profile reads, catalogue-checked edits and dispatcher contracts (Plan_56). */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { model } from '../../cli/model.mjs';
+import { validateRunConfig } from '../../src/home/lib/config-validate.mjs';
 import { HELP, main } from '../../bin/codex-bridge.mjs';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 
@@ -126,7 +127,7 @@ test('model refuses unsupported actions and arguments before reading or fetching
       fetchCatalogue: () => assert.fail('invalid arguments must not fetch a catalogue'),
     });
     assert.equal(result.exitCode, 2, argv.join(' '));
-    assert.match(result.output, /unknown action|unexpected argument/);
+    assert.match(result.output, /unknown action|unexpected argument|role is required/);
   }
   assert.equal(fs.readFileSync(configPath, 'utf8'), source);
 });
@@ -160,11 +161,206 @@ test('dispatcher forwards model arguments and returns the command exit code', as
 });
 
 test('Plan_56 additions stay below 400 lines and use role terminology', () => {
-  const files = ['cli/model.mjs', 'cli/model-catalogue.mjs', 'bin/codex-bridge.mjs',
+  const files = ['cli/model.mjs', 'cli/model-set.mjs', 'cli/model-catalogue.mjs', 'bin/codex-bridge.mjs',
     'tests/cli/model.test.mjs', 'tests/cli/model-catalogue.test.mjs'];
   for (const file of files) {
     const source = fs.readFileSync(path.join(ROOT, file), 'utf8');
     assert.ok(source.trimEnd().split('\n').length <= 400, file);
     if (file.startsWith('cli/')) assert.doesNotMatch(source, /\bmode\b/, file);
   }
+});
+
+function catalogueEntry(slug, efforts, visibility = 'list') {
+  return { slug, supported_reasoning_levels: efforts.map((effort) => ({ effort })), visibility };
+}
+const catalogue = (...entries) => () => JSON.stringify({ models: entries });
+const savedModels = (configPath) => JSON.parse(fs.readFileSync(configPath, 'utf8')).models;
+
+test('set writes exactly one role immediately using positional, option and mixed arguments', async (t) => {
+  for (const role of roles) {
+    const profiles = configuredProfiles();
+    const { configPath } = fixture(t, profiles);
+    const modelId = randomUUID();
+    const effort = randomUUID();
+    const forms = [[modelId, effort], ['--model', modelId, '--effort', effort], [modelId, '--effort', effort]];
+    const result = await model(['set', role, ...forms[roles.indexOf(role)]], {
+      configPath, fetchCatalogue: catalogue(catalogueEntry(modelId, [effort])),
+    });
+    assert.equal(result.exitCode, 0, result.output);
+    assert.deepEqual(savedModels(configPath), { ...profiles, [role]: { model: modelId, effort } });
+    const previous = profiles[role];
+    assert.ok(
+      result.output.includes(`${role}: ${previous.model} at ${previous.effort} effort -> ${modelId} at ${effort} effort`),
+      result.output,
+    );
+    assert.match(result.output, /Machine-wide: shared by every project on this machine, not per-project\./);
+  }
+});
+
+test('set and unset refuse absent or unknown roles and malformed arguments before fetching', async (t) => {
+  const { configPath, source } = fixture(t, configuredProfiles());
+  for (const action of ['set', 'unset']) {
+    for (const role of [undefined, 'unknown-role']) {
+      const result = await model([action, ...(role ? [role] : [])], {
+        configPath, fetchCatalogue: () => assert.fail('invalid role must not fetch'),
+      });
+      assert.equal(result.exitCode, 2);
+      assert.match(result.output, /role is required|unknown role/);
+      assert.ok(result.output.includes(roles.join(', ')));
+    }
+  }
+  for (const argv of [['set', 'build'], ['set', 'build', '--model'], ['set', 'build', '--effort'],
+    ['set', 'build', '--unknown'], ['set', 'build', 'a', 'b', 'extra'],
+    ['set', 'build', 'a', '--model', 'b'], ['set', 'build', ''],
+    ['set', 'build', 'two words'], ['set', 'build', 'a', 'two words'], ['unset', 'build', 'extra']]) {
+    assert.equal((await model(argv, { configPath,
+      fetchCatalogue: () => assert.fail('invalid arguments must not fetch') })).exitCode, 2, argv.join(' '));
+  }
+  assert.equal(fs.readFileSync(configPath, 'utf8'), source);
+});
+
+test('unknown models and unsupported explicit or retained efforts refuse without writing', async (t) => {
+  const profiles = configuredProfiles();
+  const { configPath, source } = fixture(t, profiles);
+  const modelId = randomUUID();
+  const efforts = [randomUUID(), randomUUID()];
+  const other = catalogueEntry(randomUUID(), [profiles.build.effort]);
+  const fetchCatalogue = catalogue(catalogueEntry(modelId, efforts), other);
+  for (const args of [[randomUUID(), efforts[0]], [modelId, profiles.build.effort], [modelId]]) {
+    const result = await model(['set', 'build', ...args], { configPath, fetchCatalogue });
+    assert.equal(result.exitCode, 2);
+    assert.ok(result.output.includes(modelId));
+    if (args[0] !== modelId) {
+      assert.match(result.output, /unknown model/);
+      assert.ok(result.output.includes(other.slug));
+    } else {
+      assert.ok(result.output.includes(efforts.join(', ')));
+      assert.ok(result.output.includes(profiles.build.effort));
+      assert.match(result.output, /not supported/);
+      if (args.length === 1) assert.match(result.output, /existing effort/);
+    }
+    assert.equal(fs.readFileSync(configPath, 'utf8'), source);
+  }
+});
+
+test('hidden catalogue models are written with an explicit hidden notice', async (t) => {
+  for (const visibility of ['hide', 'none']) {
+    const { configPath } = fixture(t, configuredProfiles());
+    const modelId = randomUUID();
+    const effort = randomUUID();
+    const result = await model(['set', 'review', modelId, effort], {
+      configPath, fetchCatalogue: catalogue(catalogueEntry(modelId, [effort], visibility)),
+    });
+    assert.equal(result.exitCode, 0, result.output);
+    assert.match(result.output, /hidden in the Codex catalogue/);
+    assert.deepEqual(savedModels(configPath).review, { model: modelId, effort });
+  }
+});
+
+test('every set fetches fresh and catalogue failures never reuse a previous success', async (t) => {
+  const { configPath } = fixture(t, configuredProfiles());
+  const modelId = randomUUID();
+  const effort = randomUUID();
+  let calls = 0;
+  const fetchCatalogue = async () => {
+    calls += 1;
+    if (calls > 1) throw new Error('authentication expired');
+    return catalogue(catalogueEntry(modelId, [effort]))();
+  };
+  const args = ['set', 'scout', modelId, effort];
+  assert.equal((await model(args, { configPath, fetchCatalogue })).exitCode, 0);
+  const source = fs.readFileSync(configPath, 'utf8');
+  const failed = await model(args, { configPath, fetchCatalogue });
+  assert.equal(calls, 2);
+  assert.equal(failed.exitCode, 1);
+  assert.match(failed.output, /live catalogue unavailable; refusing to set scout: authentication expired/);
+  for (const payload of ['{broken', '{}', catalogue(catalogueEntry(modelId, [null]))()]) {
+    const result = await model(args, { configPath, fetchCatalogue: () => payload });
+    assert.equal(result.exitCode, 1);
+    assert.match(result.output, /live catalogue unavailable/);
+  }
+  assert.equal(fs.readFileSync(configPath, 'utf8'), source);
+});
+
+test('model-only and effort-only edits preserve unspecified fields and never materialize defaults', async (t) => {
+  const profiles = configuredProfiles();
+  profiles.review = {};
+  profiles.scout.model = `  ${profiles.scout.model}  `;
+  profiles.build.effort = ` ${profiles.build.effort} `;
+  const { configPath } = fixture(t, profiles);
+  const raw = fs.readFileSync(configPath, 'utf8').replace('{', '{\n  "retention": {"enabled": false, "days": "leave untouched"},');
+  fs.writeFileSync(configPath, raw);
+  const modelId = randomUUID();
+  const effort = randomUUID();
+  const fetchCatalogue = catalogue(catalogueEntry(modelId, [profiles.build.effort.trim(), effort]));
+  assert.equal((await model(['set', 'build', modelId], { configPath, fetchCatalogue })).exitCode, 0);
+  assert.deepEqual(savedModels(configPath), { ...profiles, build: { ...profiles.build, model: modelId } });
+  assert.equal((await model(['set', 'build', '--effort', effort], { configPath, fetchCatalogue })).exitCode, 0);
+  assert.deepEqual(savedModels(configPath), { ...profiles, build: { model: modelId, effort } });
+  assert.ok(fs.readFileSync(configPath, 'utf8').includes('"retention": {"enabled": false, "days": "leave untouched"}'));
+  assert.equal((await model(['set', 'review', modelId], { configPath, fetchCatalogue })).exitCode, 0);
+  assert.deepEqual(savedModels(configPath).review, { model: modelId });
+});
+
+test('set creates a missing config only after validation and refuses effort without a model', async (t) => {
+  const { root } = fixture(t, {});
+  const configPath = path.join(root, 'new', 'config.json');
+  const modelId = randomUUID();
+  const effort = randomUUID();
+  const args = ['set', 'scout', modelId, effort];
+  assert.equal((await model(args, { configPath, fetchCatalogue: () => { throw new Error('offline'); } })).exitCode, 1);
+  const missing = await model(['set', 'scout', '--effort', effort], {
+    configPath, fetchCatalogue: catalogue(catalogueEntry(modelId, [effort])),
+  });
+  assert.equal(missing.exitCode, 2);
+  assert.match(missing.output, /no configured model/);
+  assert.equal(fs.existsSync(path.dirname(configPath)), false);
+  assert.equal((await model(args, { configPath,
+    fetchCatalogue: catalogue(catalogueEntry(modelId, [effort])) })).exitCode, 0);
+  assert.deepEqual(JSON.parse(fs.readFileSync(configPath, 'utf8')), { models: { scout: { model: modelId, effort } } });
+});
+
+test('unset removes exactly the named role without fetching and reports Codex chooses', async (t) => {
+  for (const role of roles) {
+    const profiles = configuredProfiles();
+    const { configPath } = fixture(t, profiles);
+    const result = await model(['unset', role], {
+      configPath, fetchCatalogue: () => assert.fail('unset must not fetch'),
+    });
+    assert.equal(result.exitCode, 0, result.output);
+    // The profile is stated as the sentence the config module already uses for one, not as a
+    // serialized object: two spellings of one idea is the defect this whole plan is about.
+    const { model: modelId, effort } = profiles[role];
+    assert.ok(result.output.includes(`${role}: ${modelId} at ${effort} effort ->`), result.output);
+    assert.match(result.output, /-> not set \(Codex chooses\)/);
+    assert.match(result.output, /Machine-wide/);
+    delete profiles[role];
+    assert.deepEqual(savedModels(configPath), profiles);
+  }
+});
+
+test('offline config validation accepts future effort words and rejects malformed effort forms', () => {
+  for (const effort of ['ultra', 'none', randomUUID()]) {
+    const config = { models: { build: { effort } } };
+    assert.deepEqual(validateRunConfig('fixture.json', config).models, config.models);
+  }
+  for (const effort of ['', ' ', 'two words', 'line\nbreak', 1, null]) {
+    assert.throws(() => validateRunConfig('fixture.json', { models: { build: { effort } } }),
+      /models.build.effort.*(?:empty|single word|string)/);
+  }
+  assert.equal(validateRunConfig('fixture.json', { models: { build: { effort: ' future-depth ' } } })
+    .models.build.effort, 'future-depth', 'existing config trimming remains intact');
+});
+
+test('set preserves edits made while the live catalogue request is pending', async (t) => {
+  const { configPath } = fixture(t, configuredProfiles());
+  const current = configuredProfiles();
+  const modelId = randomUUID();
+  const fetchCatalogue = async () => {
+    fs.writeFileSync(configPath, JSON.stringify({ models: current }));
+    return catalogue(catalogueEntry(modelId, [current.build.effort]))();
+  };
+  const result = await model(['set', 'build', modelId], { configPath, fetchCatalogue });
+  assert.equal(result.exitCode, 0, result.output);
+  assert.deepEqual(savedModels(configPath), { ...current, build: { ...current.build, model: modelId } });
 });
