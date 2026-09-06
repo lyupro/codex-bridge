@@ -112,9 +112,9 @@ export function findFakeDone(repo) {
 }
 
 /** What exactly is under review, resolved from git rather than from wording. */
-export function reviewScope(repo, mode) {
-  if (mode.startsWith('base:')) {
-    const base = mode.slice(5);
+export function reviewScope(repo, changeset) {
+  if (changeset.startsWith('base:')) {
+    const base = changeset.slice(5);
     return {
       label: `branch changes against base ${base}`,
       diffCommand: `git diff ${base}...HEAD`,
@@ -123,8 +123,8 @@ export function reviewScope(repo, mode) {
         .filter(Boolean),
     };
   }
-  if (mode.startsWith('commit:')) {
-    const sha = mode.slice(7);
+  if (changeset.startsWith('commit:')) {
+    const sha = changeset.slice(7);
     return {
       label: `commit ${sha}`,
       diffCommand: `git show ${sha}`,

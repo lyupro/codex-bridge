@@ -255,7 +255,7 @@ export async function launcher(argv = process.argv.slice(2)) {
 
   requireCodex(runDir, opts.agent);
 
-  const scope = opts.agent === 'codex-review' ? reviewScope(repoRoot, opts.mode) : null;
+  const scope = opts.agent === 'codex-review' ? reviewScope(repoRoot, opts.changeset) : null;
   if (scope) {
     fs.writeFileSync(
       path.join(runDir, 'scope.txt'),

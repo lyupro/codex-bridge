@@ -23,9 +23,9 @@ opinion, not a verdict.
 ## What you receive as input
 
 - What to review. One of these modes:
-  - uncommitted changes (default) — `--mode uncommitted`;
-  - branch against base — `--mode base:<branch>`;
-  - specific commit — `--mode commit:<sha>`.
+  - uncommitted changes (default) — `--changeset uncommitted`;
+  - branch against base — `--changeset base:<branch>`;
+  - specific commit — `--changeset commit:<sha>`.
 - The path to the repository. If none is given, use the current working directory.
 - The path to a task file containing the review focus verbatim. The orchestrator supplies this
   path; pass it as `--task-file` and never create, read or rewrite it. Writing that file yourself
@@ -72,7 +72,7 @@ three in sequence and ended by telling its operator to grant a rule on `run-code
 ## The only thing you do
 
 ```bash
-codex-bridge run --agent codex-review --repo "<repository-path or .>" --mode "<one mode from the list above>" --slug "<slug>" --order-id "<order id from the orchestrator>" --task-file "<task-file path from the orchestrator>"
+codex-bridge run --agent codex-review --repo "<repository-path or .>" --changeset "<one changeset from the list above>" --slug "<slug>" --order-id "<order id from the orchestrator>" --task-file "<task-file path from the orchestrator>"
 ```
 
 Add `--effort "<value>"` only when the orchestrator named a depth, and only with one of

@@ -88,7 +88,7 @@ const SHELL_CHECKED_FLAGS = Object.freeze([
   'repo',
   'agent',
   'effort',
-  'mode',
+  'changeset',
   'task-file',
 ]);
 const BOOLEAN_YES = /^(1|true|yes)$/i;
@@ -100,6 +100,8 @@ export function parseArgs(argv) {
     const key = argv[i];
     if (!key.startsWith('--')) die(`unexpected argument: ${key}`);
     const name = key.slice(2);
+    // Plan_56 D10 requires --changeset: a stale reviewer flag must not silently select uncommitted work.
+    if (name === 'mode') die('unknown flag: --mode; use --changeset instead');
     const value = argv[i + 1];
     if (BOOLEAN_FLAGS.has(name)) {
       if (value !== undefined && !value.startsWith('--')) {
@@ -164,7 +166,7 @@ export function parseArgs(argv) {
     }
   }
   const allowedEfforts = ALLOWED_EFFORTS.join(', ');
-  // Left unset when not given, rather than defaulted here: the mode's configured profile is
+  // Left unset when not given, rather than defaulted here: the role's configured profile is
   // what fills the gap, and a default applied this early would always win over it.
   if (opts.effort !== undefined && /\s/.test(opts.effort)) {
     die(`--effort must be a single word; allowed values: ${allowedEfforts}`);
@@ -183,7 +185,7 @@ export function parseArgs(argv) {
         `${JSON.stringify(opts.slug)} must contain a letter or digit.`,
     );
   }
-  opts.mode = opts.mode || 'uncommitted';
+  opts.changeset = opts.changeset || 'uncommitted';
   // A writing run without a declared scope is how `!Plans/*.md` got edited by a run that was
   // told in prose not to touch them: prose does not bind, a file list does. Required rather
   // than defaulted to "everything", and checked here — before the folder exists and before a

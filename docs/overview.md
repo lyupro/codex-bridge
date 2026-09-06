@@ -28,7 +28,7 @@ place: no run means no result. `SubagentStop` additionally blocks a response wit
 directory, so this rule is enforced both in text and by an external guard.
 
 `codex-review` supports the `uncommitted`, `base:<branch>`, and `commit:<sha>` scopes through
-`--mode`. By default, it reviews uncommitted changes.
+`--changeset`. By default, it reviews uncommitted changes.
 
 ## Running
 
@@ -59,11 +59,11 @@ operator's real check command contained `&&`, which is exactly what unmatches th
 Reviewing uncommitted changes:
 
 ```bash
-codex-bridge run --agent codex-review --repo . --slug auth-flow-review --order-id order-42-review --mode uncommitted --task-file /abs/path/to/review-task.md
+codex-bridge run --agent codex-review --repo . --slug auth-flow-review --order-id order-42-review --changeset uncommitted --task-file /abs/path/to/review-task.md
 ```
 
 `--agent` and `--order-id` are required. `--repo` defaults to the current directory, `--slug` is
-optional and defaults to the `order id`, `--effort` defaults to `medium`, and `--mode` defaults to `uncommitted`.
+optional and defaults to the `order id`, `--effort` defaults to `medium`, and `--changeset` defaults to `uncommitted`.
 The `--effort` value is passed to Codex as is; the runner checks only that it is a single word.
 `--no-wait` checks an existing run immediately: it returns its ready reply normally, or exit code `4`
 when the run is still in progress or no run exists. It never starts a new run and cannot be combined

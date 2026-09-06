@@ -11,7 +11,7 @@
  *   --effort    reasoning effort, passed to Codex as given (default: medium)
  *   --verify    verification command, codex-build only (e.g. "npm test")
  *   --scope     comma-separated globs the run may edit, codex-build only (required there)
- *   --mode      uncommitted | base:<branch> | commit:<sha>, codex-review only
+ *   --changeset uncommitted | base:<branch> | commit:<sha>, codex-review only
  *   --continue  acknowledge that this repo+slug already has runs (required if it does)
  *
  * The operator's task text arrives verbatim through stdin or --task-file.
