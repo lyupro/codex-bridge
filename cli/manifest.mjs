@@ -51,7 +51,7 @@ const RULES_SOURCE = `src/rules/${RULES_NAME}`;
 /**
  * Files the operator owns once they exist. Seeded on first install so the defaults are
  * visible and editable, then never written, never compared, never removed: config.json
- * is where a host states which model each mode runs on, conventions.md is the rule set it hands
+ * is where a host states which model each role runs on, conventions.md is the rule set it hands
  * every run, and an installer that overwrites either would erase host decisions on the next
  * update — the same way overwriting a .env would.
  */

@@ -16,7 +16,7 @@ import {
 } from './manifest.mjs';
 import { copyPlannedFile, targetMatches } from './copy.mjs';
 import { hookTargets } from './hook-targets.mjs';
-import { fingerprintFor } from './install-record.mjs';
+import { fingerprintFor, INSTALL_METHOD_COPY, INSTALL_METHOD_KEY } from './install-record.mjs';
 import {
   commandFor,
   hookRegistration,
@@ -255,7 +255,7 @@ async function installInRun({
   await writeInstallRecord(host, {
     ...currentPackage,
     installedAt: new Date().toISOString(),
-    mode: 'copy',
+    [INSTALL_METHOD_KEY]: INSTALL_METHOD_COPY,
     files: plan.map((item) => ({ root: item.root, path: item.relativeToRoot })),
     fingerprints,
     rules: { path: rule.target, fingerprint: await fileFingerprint(rule.target) },

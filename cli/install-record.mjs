@@ -4,6 +4,17 @@ import path from 'node:path';
 import { readJsonFile } from '../src/home/lib/json-file.mjs';
 import { HOOK_DEFINITIONS } from '../src/home/lib/hook-definitions.mjs';
 
+/**
+ * The record's own spelling of the field saying how the package was installed, and its one value.
+ *
+ * Plan_56 D11 keeps that field spelled `mode` on disk: install records already sit on three hosts,
+ * and renaming a field nobody reads by eye would cost compatibility for tidiness. D20 keeps the
+ * word out of the code regardless — one constant knows the spelling, reader and writer go through
+ * it, and the guard forbidding `mode` as a name needs no exclusion list to stay quiet here.
+ */
+export const INSTALL_METHOD_KEY = 'mode';
+export const INSTALL_METHOD_COPY = 'copy';
+
 export const INSTALL_RECORD_NAME = '.installed.json';
 export const LEGACY_INSTALL_RECORD_NAME = '.codex-bridge-install.json';
 export const RULES_NAME = 'codex-bridge.rules';
@@ -145,10 +156,12 @@ export function validateInstallRecord(record) {
   if (!record || typeof record !== 'object' || Array.isArray(record)) {
     throw new Error('installation record must be an object');
   }
-  for (const key of ['name', 'version', 'installedAt', 'mode']) {
+  for (const key of ['name', 'version', 'installedAt', INSTALL_METHOD_KEY]) {
     if (typeof record[key] !== 'string' || !record[key]) throw new Error(`installation record has invalid ${key}`);
   }
-  if (record.mode !== 'copy') throw new Error('installation record mode must be copy');
+  if (record[INSTALL_METHOD_KEY] !== INSTALL_METHOD_COPY) {
+    throw new Error(`installation record ${INSTALL_METHOD_KEY} must be ${INSTALL_METHOD_COPY}`);
+  }
   if (Number.isNaN(Date.parse(record.installedAt))) throw new Error('installation record installedAt is invalid');
   const files = normalizedFiles(record);
   if (record.fingerprints !== undefined) fingerprintPairs(files, record.fingerprints);
