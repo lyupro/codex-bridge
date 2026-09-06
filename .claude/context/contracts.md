@@ -25,6 +25,12 @@ here. Nothing was reworded on the way out.
   reached no run at all, and `doctor` confirmed the setting because the CLI resolved the path
   correctly. `tests/run-config-reaches-the-run.test.mjs` is the end-to-end gate; a unit test that
   injects the profile cannot catch this class and did not.
+- **`src/home/lib/config-edit.mjs` is the only writer of the host config.** It edits the raw file
+  and leaves every other key byte for byte; nothing else in `src/` or `cli/` may know the config
+  path and call a writing API, and `tests/one-config-writer.test.mjs` fails when one does. The
+  reader merges defaults, so a writer that persisted the reader's object would freeze them into the
+  operator's file — worst of all `environmentPaths`, the list the package extends as it finds new
+  paths, which decides whether a change is charged to the run or to the environment.
 - **`codex-runs/` is user data.** Uninstall never touches it; the install record is forbidden from
   naming it.
 - **Model ids live only in `config.json`.** No model literal belongs in `.mjs` code.

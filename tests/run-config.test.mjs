@@ -12,7 +12,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { readRunConfig, writeRunConfig, disableFlags, DEFAULTS } from '../src/home/lib/run-config.mjs';
+import { readRunConfig, disableFlags, DEFAULTS } from '../src/home/lib/run-config.mjs';
+import { editRunConfig } from '../src/home/lib/config-edit.mjs';
 import { agentRole } from '../src/home/lib/agents.mjs';
 import { makeTempTree } from './temp-tree.mjs';
 
@@ -202,10 +203,16 @@ test('a non-boolean value is an error', () => {
   assert.throws(() => readRunConfig(file), /true or false/);
 });
 
-test('a written config reads back unchanged', () => {
+test('a written config reads back unchanged', async () => {
   const file = tempFile();
-  writeRunConfig({ hooks: true, plugins: false }, file);
+  await editRunConfig({ key: 'hooks', value: true }, file);
+  await editRunConfig({ key: 'plugins', value: false }, file);
   assert.deepEqual(readRunConfig(file), { ...DEFAULTS, hooks: true });
+});
+
+test('run-config no longer exports a whole-object writer', async () => {
+  const exports = await import('../src/home/lib/run-config.mjs');
+  assert.equal(Object.hasOwn(exports, 'writeRunConfig'), false);
 });
 
 test('the shipped config keeps both switches off', () => {
