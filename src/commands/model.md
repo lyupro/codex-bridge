@@ -1,7 +1,7 @@
 ---
 description: Show, list or change the model and reasoning depth each delegated Codex role runs on
 allowed-tools: Bash
-argument-hint: "[list | set <role> <model> [effort] | unset <role>]"
+argument-hint: "[list | set <role> <model> [effort] | unset <role> | speed <role> <tier> [confirm] | speed <role> unset]"
 ---
 
 <!-- Part of the agents/codex-bridge/ package. The file lives here out of necessity: the slash
@@ -25,15 +25,22 @@ the installed files can no longer break the call.
 
 Call forms:
 
-- no arguments — the model, reasoning depth and provenance of each role, plus the path of the
+- no arguments — the model, reasoning depth, pinned speed tier and provenance of each role, plus the path of the
   config file;
 - `list` — the live catalogue from Codex: every model, the reasoning levels it accepts, its default
-  level and whether it offers an accelerated tier;
+  level and its accelerated service tier identifiers (parallel speed labels are not extra tiers);
 - `set <role> <model> [effort]` — pin one role, with `--model` and `--effort` accepted instead of
   the positions. The pair is checked against that model's own catalogue entry before anything is
   written, so an unsupported depth is refused with the depths that model does accept, and a role
-  whose existing depth the new model cannot do is refused rather than quietly moved;
-- `unset <role>` — remove that role's profile, returning it to whatever Codex chooses.
+  whose existing depth or pinned speed tier the new model cannot keep is refused with its supported values;
+- `unset <role>` — remove that role's profile, returning it to whatever Codex chooses;
+- `speed <role> <tier>` — preview an accelerated tier from the pinned model's live catalogue entry.
+  Pin a model with `set` first. The preview quotes the tier description verbatim and separately links
+  to https://learn.chatgpt.com/docs/agent-configuration/speed for credit multipliers; it writes nothing;
+- `speed <role> <tier> confirm` — fetch and validate again, then pin that exact tier and report the
+  previous and new profile. Unknown tiers or an unavailable catalogue are refused without a write;
+- `speed <role> unset` — remove only the speed pin immediately, preserving model and effort.
+  This needs no confirmation or catalogue; with no pin the package does not interfere with speed.
 
 Two things the output says that are worth repeating to the operator if they ask:
 
@@ -43,6 +50,6 @@ Two things the output says that are worth repeating to the operator if they ask:
   inside the Codex binary lists models the server no longer has — an operator who picked one from a
   stale list would lose the quota before the run started.
 
-A write takes effect immediately and there is no confirming second call: changing a model back is
-one command. Never edit the config file directly to do what `set` and `unset` do — the command is
-what checks the pair against the catalogue, and a hand-written pair can die on quota already spent.
+`set` and `unset` apply immediately; pinning a paid speed tier requires the second call ending in
+`confirm`. Never edit the config file directly to do what these commands do — model, effort and
+tier pins are checked against the live catalogue before writing.

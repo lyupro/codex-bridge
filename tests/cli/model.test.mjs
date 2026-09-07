@@ -31,7 +31,7 @@ function configuredProfiles() {
 
 function profileRows(output) {
   const [table] = output.split('\n\n');
-  assert.match(table, /^role\s+model\s+effort\s+source\n/);
+  assert.match(table, /^role\s+model\s+effort\s+speed\s+source\n/);
   const rows = table.split('\n').slice(1);
   assert.equal(rows.length, 3);
   return rows;
@@ -39,6 +39,7 @@ function profileRows(output) {
 
 test('model shows all three configured roles as a table without writing or printing', async (t) => {
   const profiles = configuredProfiles();
+  profiles.scout.speed = randomUUID();
   const { configPath, source } = fixture(t, profiles);
   const log = t.mock.method(console, 'log', () => {});
   const error = t.mock.method(console, 'error', () => {});
@@ -52,7 +53,7 @@ test('model shows all three configured roles as a table without writing or print
   const rows = profileRows(result.output);
   roles.forEach((role, index) => {
     assert.equal(rows[index].trim().replace(/\s+/g, ' '),
-      `${role} ${profiles[role].model} ${profiles[role].effort} config file`);
+      `${role} ${profiles[role].model} ${profiles[role].effort} ${profiles[role].speed || 'not pinned'} config file`);
   });
   assert.ok(result.output.includes(`Config file: ${path.resolve(configPath)}`));
   assert.match(result.output, /Machine-wide: shared by every project on this machine, not per-project\./);
@@ -69,7 +70,7 @@ test('an unset role shows the runner default with honest default provenance', as
 
   assert.equal(result.exitCode, 0);
   const rows = profileRows(result.output);
-  assert.match(rows[2], /^review\s+Codex default \(not pinned\)\s+medium\s+model: not set \(Codex chooses\); effort: package default$/);
+  assert.match(rows[2], /^review\s+Codex default \(not pinned\)\s+medium\s+not pinned\s+model: not set \(Codex chooses\); effort: package default$/);
   assert.match(rows[0], /config file$/);
   assert.match(rows[1], /config file$/);
 });
@@ -84,9 +85,9 @@ test('partial profiles report model and effort provenance separately', async (t)
   assert.equal(result.exitCode, 0);
   const rows = profileRows(result.output);
   assert.ok(rows[0].includes(configuredId));
-  assert.match(rows[0], /medium\s+model: config file; effort: package default$/);
-  assert.match(rows[1], /Codex default \(not pinned\)\s+max\s+model: not set \(Codex chooses\); effort: config file$/);
-  assert.match(rows[2], /medium\s+model: not set \(Codex chooses\); effort: package default$/);
+  assert.match(rows[0], /medium\s+not pinned\s+model: config file; effort: package default$/);
+  assert.match(rows[1], /Codex default \(not pinned\)\s+max\s+not pinned\s+model: not set \(Codex chooses\); effort: config file$/);
+  assert.match(rows[2], /medium\s+not pinned\s+model: not set \(Codex chooses\); effort: package default$/);
 });
 
 test('a missing config is shown as defaults without creating it', async (t) => {
@@ -95,7 +96,7 @@ test('a missing config is shown as defaults without creating it', async (t) => {
   const result = await model([], { configPath: path.relative(process.cwd(), configPath) });
 
   assert.equal(result.exitCode, 0);
-  for (const row of profileRows(result.output)) assert.match(row, /medium\s+model: not set \(Codex chooses\); effort: package default$/);
+  for (const row of profileRows(result.output)) assert.match(row, /medium\s+not pinned\s+model: not set \(Codex chooses\); effort: package default$/);
   assert.ok(result.output.includes(`Config file: ${configPath}`));
   assert.equal(fs.existsSync(configPath), false);
 });
@@ -120,7 +121,7 @@ test('each profile display reads the current config through the existing validat
 
 test('model refuses unsupported actions and arguments before reading or fetching', async (t) => {
   const { configPath, source } = fixture(t, configuredProfiles());
-  const cases = [['set'], ['speed'], ['unknown'], ['--json'], ['list', '--bundled'], ['list', 'extra']];
+  const cases = [['set'], ['unknown'], ['--json'], ['list', '--bundled'], ['list', 'extra']];
   for (const argv of cases) {
     const result = await model(argv, {
       configPath,
@@ -160,9 +161,29 @@ test('dispatcher forwards model arguments and returns the command exit code', as
   assert.match(HELP, /^  model\s+Show machine-wide model profiles or list the live catalogue$/m);
 });
 
+test('speed is a registered action and the dispatcher returns its missing-role refusal', async () => {
+  const messages = [];
+  const result = await main(['model', 'speed'], { log: (message) => messages.push(message) });
+  assert.equal(result, 2);
+  assert.deepEqual(messages, [`codex-bridge model: role is required. Allowed roles: ${roles.join(', ')}.`]);
+});
+
+test('dispatcher forwards speed unset to the machine-wide profile without removing model or effort', (t) => {
+  const profiles = configuredProfiles();
+  profiles.build.speed = randomUUID();
+  const { root, configPath } = fixture(t, profiles);
+  const result = spawnSync(process.execPath, [path.join(ROOT, 'bin', 'codex-bridge.mjs'), 'model', 'speed', 'build', 'unset'], {
+    cwd: root, encoding: 'utf8', windowsHide: true, env: { ...process.env, CODEX_BRIDGE_HOME: root },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(result.stdout.includes(`on ${profiles.build.speed} tier ->`));
+  delete profiles.build.speed;
+  assert.deepEqual(savedModels(configPath), profiles);
+});
+
 test('Plan_56 additions stay below 400 lines and use role terminology', () => {
   const files = ['cli/model.mjs', 'cli/model-set.mjs', 'cli/model-catalogue.mjs', 'bin/codex-bridge.mjs',
-    'tests/cli/model.test.mjs', 'tests/cli/model-catalogue.test.mjs'];
+    'cli/model-speed.mjs', 'tests/cli/model-speed.test.mjs', 'tests/cli/model.test.mjs', 'tests/cli/model-catalogue.test.mjs'];
   for (const file of files) {
     const source = fs.readFileSync(path.join(ROOT, file), 'utf8');
     assert.ok(source.trimEnd().split('\n').length <= 400, file);

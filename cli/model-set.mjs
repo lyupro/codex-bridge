@@ -35,7 +35,7 @@ function parseChanges(args) {
   return changes;
 }
 
-function readProfiles(configPath) {
+export function readProfiles(configPath) {
   let config;
   try {
     config = readJsonFileSync(configPath);
@@ -50,10 +50,11 @@ function readProfiles(configPath) {
 
 // The same sentence the config module already prints for a profile. A serialized object here
 // would be the second spelling of one idea, and the operator reading it is a person, not a parser.
-function describe(profile) {
+export function describe(profile) {
   if (!profile || !Object.keys(profile).length) return 'not set (Codex chooses)';
   const model = profile.model || 'default model';
-  return profile.effort ? `${model} at ${profile.effort} effort` : model;
+  return `${model}${profile.effort ? ` at ${profile.effort} effort` : ''}`
+    + (profile.speed ? ` on ${profile.speed} tier` : '');
 }
 
 export async function editModelProfile(action, argv, options) {
@@ -97,6 +98,16 @@ export async function editModelProfile(action, argv, options) {
         return failure(2, `${origin} "${after.effort}" is not supported by model "${after.model}". `
           + `Supported depths: ${entry.supportedReasoningLevels.join(', ') || '(no depths advertised)'}. `
           + 'Supply a supported effort explicitly. Nothing written.');
+      }
+      if (after.speed !== undefined && !entry.serviceTiers.some(({ id }) => id === after.speed.trim())) {
+        // Two sentences rather than a list that reads "tiers: (no tier)": a model offering none at
+        // all is a different answer from one offering others, and the operator acts on it differently.
+        const offered = entry.serviceTiers.length
+          ? `Accelerated tiers it does offer: ${entry.serviceTiers.map(({ id }) => id).join(', ')}.`
+          : 'That model offers no accelerated tier at all.';
+        return failure(2, `existing speed "${after.speed}" is not supported by model "${after.model}". `
+          + `${offered} `
+          + `Remove the pin with model speed ${role} unset first. Nothing written.`);
       }
       if (entry.hidden) hiddenNotice = `Model "${entry.slug}" is hidden in the Codex catalogue.\n`;
       profiles[role] = after;

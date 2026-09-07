@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { editRunConfig } from '../src/home/lib/config-edit.mjs';
@@ -59,6 +60,19 @@ test('structured edits preserve nested values belonging to other top-level keys'
   assert.deepEqual(readRunConfig(file).models, { build: { effort: 'high' } });
 });
 
+test('the shared editor persists and removes speed without adding defaults or changing unrelated bytes', async () => {
+  const speed = randomUUID();
+  const raw = '{"models":{"build":{"model":"m","effort":"high"}},"environmentPaths":["keep", ""]}\n';
+  const { directory, file } = fixture(raw);
+  const profile = { model: 'm', effort: 'high' };
+  await editRunConfig({ key: 'models', value: { build: { ...profile, speed } } }, file);
+  assert.deepEqual(readRunConfig(file).models.build, { ...profile, speed });
+  assert.ok(fs.readFileSync(file, 'utf8').endsWith(',"environmentPaths":["keep", ""]}\n'));
+  await editRunConfig({ key: 'models', value: { build: profile } }, file);
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { models: { build: profile }, environmentPaths: ['keep', ''] });
+  assert.deepEqual(fs.readdirSync(directory), ['config.json']);
+});
+
 test('escaped and repeated spellings of the requested key are all edited', async () => {
   const raw = '{"hooks":false,"h\\u006foks":false,"plugins":false}';
   const { file } = fixture(raw);
@@ -76,6 +90,7 @@ test('every invalid edit is refused by the reader and leaves the original bytes 
     // Plan_56 D24: the value of a depth is no longer judged here, only its form — the live
     // catalogue judges the pair on write, and Codex judges it at run start.
     { key: 'models', value: { build: { effort: 'two words' } } },
+    ...['', ' ', 'two words', 'line\nbreak', 1, null].map((speed) => ({ key: 'models', value: { build: { speed } } })),
     { key: 'budgets', value: { build: 0 } },
     { key: 'retention', value: { enabled: true, days: -1 } },
     { key: 'answerLanguage', value: '' },

@@ -12,6 +12,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { readRunConfig, disableFlags, DEFAULTS } from '../src/home/lib/run-config.mjs';
 import { editRunConfig } from '../src/home/lib/config-edit.mjs';
 import { agentRole } from '../src/home/lib/agents.mjs';
@@ -76,6 +79,31 @@ test('a role is configured as a model and a reasoning depth, both trimmed', () =
     scout: { model: 'model-s', effort: 'high' },
     build: { model: 'model-b' },
   });
+});
+
+test('speed is checked only for form offline, trims like effort and never supplies an unpinned tier', () => {
+  const speed = randomUUID();
+  const file = tempFile(JSON.stringify({ models: { build: { model: 'model-b', effort: 'high', speed: ` ${speed} ` } } }));
+  assert.deepEqual(readRunConfig(file).models.build, { model: 'model-b', effort: 'high', speed });
+  assert.deepEqual(readRunConfig(tempFile(JSON.stringify({ models: { scout: { speed } } }))).models, { scout: { speed } });
+  assert.equal(Object.hasOwn(readRunConfig(tempFile('{"models":{"build":{"model":"model-b"}}}')).models.build, 'speed'), false);
+  for (const invalid of ['', ' ', 'two words', 'line\nbreak', 'tab\tword', 1, null, false, [], {}]) {
+    assert.throws(() => readRunConfig(tempFile(JSON.stringify({ models: { build: { speed: invalid } } }))),
+      /models.build.speed.*(?:empty|single word|string)/);
+  }
+});
+
+test('run-config state appends a pinned tier in the profile sentence and leaves unpinned profiles alone', () => {
+  const speed = randomUUID();
+  const file = tempFile();
+  fs.writeFileSync(path.join(path.dirname(file), 'config.json'), JSON.stringify({ models: {
+    build: { model: 'model-b', effort: 'max', speed }, scout: { model: 'model-s' }, review: { speed },
+  } }));
+  const result = spawnSync(process.execPath, [fileURLToPath(new URL('../src/home/lib/run-config.mjs', import.meta.url))], {
+    encoding: 'utf8', windowsHide: true, env: { ...process.env, CODEX_BRIDGE_HOME: path.dirname(file) },
+  });
+  assert.equal(result.status, 0, result.stderr || result.error?.message);
+  assert.ok(result.stdout.includes(`models: scout: model-s; build: model-b at max effort on ${speed} tier; review: default model on ${speed} tier`));
 });
 
 test('budgets default per role and merge when only one role is written', () => {

@@ -5,9 +5,10 @@ import { CONFIG_PATH, readRunConfig } from '../src/home/lib/run-config.mjs';
 import { runProfile } from '../src/home/lib/runner/codex-args.mjs';
 import { fetchCatalogue, parseCatalogue } from './model-catalogue.mjs';
 import { editModelProfile } from './model-set.mjs';
+import { editModelSpeed } from './model-speed.mjs';
 import { renderTable } from './table.mjs';
 
-const PROFILE_COLUMNS = ['role', 'model', 'effort', 'source']
+const PROFILE_COLUMNS = ['role', 'model', 'effort', 'speed', 'source']
   .map((key) => ({ key, header: key, fixed: true }));
 const CATALOGUE_COLUMNS = ['slug', 'reasoning levels', 'default level', 'fast tier', 'visibility']
   .map((key) => ({ key, header: key, fixed: true }));
@@ -24,7 +25,7 @@ function profileSource(profile) {
   return model === effort ? model : `model: ${model}; effort: ${effort}`;
 }
 
-/** Returns output for the dispatcher; only explicit set/unset actions write configuration. */
+/** Returns output for the dispatcher; explicit edit actions use the shared config writer. */
 export async function model(argv = [], options = {}) {
   let action;
   let optionArgs = argv;
@@ -35,8 +36,9 @@ export async function model(argv = [], options = {}) {
   if (action === 'set' || action === 'unset') {
     return editModelProfile(action, optionArgs, options);
   }
+  if (action === 'speed') return editModelSpeed(optionArgs, options);
   if (action && action !== 'list') {
-    return { exitCode: 2, output: `codex-bridge model: unknown action "${action}". Use model, model list, model set or model unset.` };
+    return { exitCode: 2, output: `codex-bridge model: unknown action "${action}". Use model, model list, model set, model unset or model speed.` };
   }
   if (optionArgs.length) {
     return { exitCode: 2, output: `codex-bridge model: unexpected argument "${optionArgs[0]}".` };
@@ -60,6 +62,7 @@ export async function model(argv = [], options = {}) {
         role,
         model: profile.model || 'Codex default (not pinned)',
         effort: profile.effort,
+        speed: config.models[role]?.speed || 'not pinned',
         source: profileSource(profile),
       };
     });

@@ -74,9 +74,10 @@ const state = (config) => [
     'treated as environment work, not run work',
   `models: ${ROLES.map((key) => {
     const profile = config.models?.[key];
-    if (!profile?.model && !profile?.effort) return `${key}: default — chosen by Codex`;
+    if (!profile?.model && !profile?.effort && !profile?.speed) return `${key}: default — chosen by Codex`;
     const model = profile.model || 'default model';
-    return `${key}: ${model}${profile.effort ? ` at ${profile.effort} effort` : ''}`;
+    return `${key}: ${model}${profile.effort ? ` at ${profile.effort} effort` : ''}`
+      + (profile.speed ? ` on ${profile.speed} tier` : '');
   }).join('; ')}`,
   `budgets: ${ROLES.map((role) => `${role}: ${config.budgets?.[role] ?? DEFAULTS.budgets[role]} minutes`).join('; ')}`,
   `retention: ${config.retention?.enabled ? `on — transport older than ${config.retention.days} days` : 'off — automatic cleanup disabled'}`,

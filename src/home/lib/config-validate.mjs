@@ -47,9 +47,9 @@ export const OBJECT_KEYS = ['models'];
  * model at "max", and pinning only the name would have silently kept every run at the
  * fallback depth the dispatcher happens to pass.
  */
-const PROFILE_KEYS = ['model', 'effort'];
-// Plan_56 step 3: model set validates pairs live; delegated runs check form offline and let
-// Codex judge support, because a flat list both admitted unsupported depths and rejected new ones.
+const PROFILE_KEYS = ['model', 'effort', 'speed'];
+// Plan_56 D24: delegated runs check form offline; model and speed commands check catalogue
+// support on write, keeping network access out of the config reader used at every run start.
 /**
  * The language a run answers in. Left to the model it followed the task, the surrounding docs or
  * its own default: an English order came back in Russian, and artifacts of one project ended up in
@@ -206,10 +206,12 @@ export function validateRunConfig(file, parsed) {
           }
           resolved[field] = trimmed;
         }
-        if (resolved.effort && /\s/.test(resolved.effort)) {
-          throw new Error(
-            `${file}: key “${key}.${role}.effort” must be a non-empty single word with no whitespace`,
-          );
+        for (const field of ['effort', 'speed']) {
+          if (resolved[field] && /\s/.test(resolved[field])) {
+            throw new Error(
+              `${file}: key “${key}.${role}.${field}” must be a non-empty single word with no whitespace`,
+            );
+          }
         }
         if (Object.keys(resolved).length) models[role] = resolved;
       }

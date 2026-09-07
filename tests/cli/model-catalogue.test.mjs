@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { model } from '../../cli/model.mjs';
-import { fetchCatalogue } from '../../cli/model-catalogue.mjs';
+import { fetchCatalogue, parseCatalogue } from '../../cli/model-catalogue.mjs';
 
 function entry(overrides = {}) {
   return {
@@ -11,6 +11,7 @@ function entry(overrides = {}) {
     supported_reasoning_levels: [{ effort: 'low' }, { effort: 'high' }],
     default_reasoning_level: 'high',
     additional_speed_tiers: [],
+    service_tiers: [],
     visibility: 'list',
     ...overrides,
   };
@@ -21,7 +22,8 @@ const list = (fetch, options = {}) => model(['list'], { ...options, fetchCatalog
 
 test('model list includes hidden models and reports levels, defaults and faster tiers', async (t) => {
   const visible = entry();
-  const hidden = entry({ visibility: 'hide', additional_speed_tiers: ['fast'], supported_in_api: false });
+  const hidden = entry({ visibility: 'hide', additional_speed_tiers: ['fast'], supported_in_api: false,
+    service_tiers: [{ id: 'priority', name: 'Fast', description: '2x speed, increased usage' }] });
   const unlisted = entry({ visibility: 'none' });
   const log = t.mock.method(console, 'log', () => {});
   const result = await list(async () => json(visible, hidden, unlisted), { terminalWidth: 40 });
@@ -33,7 +35,7 @@ test('model list includes hidden models and reports levels, defaults and faster 
   assert.ok(rows[1].startsWith(visible.slug));
   assert.match(rows[1], /low, high\s+high\s+no\s+listed$/);
   assert.ok(rows[2].startsWith(hidden.slug));
-  assert.match(rows[2], /low, high\s+high\s+yes \(fast\)\s+hidden \(hide\)$/);
+  assert.match(rows[2], /low, high\s+high\s+yes \(priority\)\s+hidden \(hide\)$/);
   assert.ok(rows[3].startsWith(unlisted.slug));
   assert.match(rows[3], /hidden \(none\)$/);
   assert.equal(log.mock.callCount(), 0);
@@ -43,11 +45,29 @@ test('model list reflects catalogue-defined reasoning levels and service tiers',
   const custom = entry({
     supported_reasoning_levels: [{ effort: 'future-depth' }],
     default_reasoning_level: 'future-depth',
-    service_tiers: [{ id: 'default' }, { id: 'priority' }],
+    additional_speed_tiers: ['fast'],
+    service_tiers: [
+      { id: 'priority', name: 'Fast', description: '2x speed, increased usage' },
+      { id: 'ultrafast', name: 'Faster', description: 'Catalogue cost description' },
+    ],
   });
   const result = await list(() => json(custom));
   assert.equal(result.exitCode, 0);
-  assert.match(result.output, /future-depth\s+future-depth\s+yes \(priority\)/);
+  assert.match(result.output, /future-depth\s+future-depth\s+yes \(priority, ultrafast\)/);
+  assert.doesNotMatch(result.output, /yes \(fast,/);
+});
+
+test('parsed rows expose service identifiers and verbatim descriptions without parallel labels', () => {
+  const offered = { id: randomUUID(), name: 'Display label', description: '  Usage "notice"\nfrom the catalogue.  ' };
+  const available = entry({ additional_speed_tiers: ['fast', 'another-label'], service_tiers: [offered] });
+  const [row] = parseCatalogue(json(available));
+  assert.deepEqual(row.serviceTiers, [{ id: offered.id, description: offered.description }]);
+  assert.equal(row['fast tier'], `yes (${offered.id})`);
+  for (const service_tiers of [[], undefined]) {
+    const [empty] = parseCatalogue(json(entry({ additional_speed_tiers: ['fast'], service_tiers })));
+    assert.deepEqual(empty.serviceTiers, []);
+    assert.equal(empty['fast tier'], 'no');
+  }
 });
 
 test('a catalogue failure refuses with its cause and no invented list', async () => {
@@ -90,6 +110,11 @@ test('invalid JSON and invalid metadata refuse the entire catalogue', async () =
     [json(entry({ visibility: 'unexpected' })), /visibility is unknown/],
     [json(entry({ additional_speed_tiers: null })), /additional_speed_tiers must be an array/],
     [json(entry({ service_tiers: [null] })), /service_tiers\[0\]\.id/],
+    [json(entry({ service_tiers: null })), /service_tiers must be an array/],
+    [json(entry({ service_tiers: [{ id: '' }] })), /service_tiers\[0\]\.id/],
+    ...[undefined, '', ' ', null, 1].map((description) => [
+      json(entry({ service_tiers: [{ id: randomUUID(), description }] })), /service_tiers\[0\]\.description/,
+    ]),
   ];
   for (const [payload, cause] of cases) {
     const result = await list(() => payload);

@@ -47,25 +47,22 @@ function catalogueRow(entry, index) {
   if (!['list', 'hide', 'none'].includes(visibility)) {
     throw new Error(`codex debug models: ${field}.visibility is unknown: ${visibility}`);
   }
-  const speedTiers = entry.additional_speed_tiers === undefined ? []
-    : listField(entry.additional_speed_tiers, `${field}.additional_speed_tiers`)
-      .map((tier, position) => textField(tier, `${field}.additional_speed_tiers[${position}]`));
+  if (entry.additional_speed_tiers !== undefined) {
+    listField(entry.additional_speed_tiers, `${field}.additional_speed_tiers`)
+      .forEach((tier, position) => textField(tier, `${field}.additional_speed_tiers[${position}]`));
+  }
   const serviceTiers = entry.service_tiers === undefined ? []
     : listField(entry.service_tiers, `${field}.service_tiers`)
-      .map((tier, position) => textField(tier?.id, `${field}.service_tiers[${position}].id`));
-  // Anything the catalogue offers beyond the ordinary tier is acceleration, named or not. Listing
-  // the accepted spellings was already wrong about one: the documentation calls the switch `fast`
-  // while the catalogue calls the tier `priority`, so the next tier to appear would read as "no"
-  // on a model that has it. Only `default` is excluded, because it is the ordinary speed rather
-  // than an offer — and a model with nothing else, as gpt-5.4-mini and gpt-5.3-codex-spark have,
-  // is exactly how the catalogue says acceleration is unavailable.
-  const fastTiers = [...new Set([
-    ...speedTiers,
-    ...serviceTiers.filter((tier) => tier !== 'default'),
-  ])];
+      .map((tier, position) => ({
+        id: textField(tier?.id, `${field}.service_tiers[${position}].id`),
+        description: textField(tier?.description, `${field}.service_tiers[${position}].description`),
+      }));
+  // Plan_56 step 4: parallel speed labels describe the same tiers; only service IDs are pins.
+  const fastTiers = [...new Set(serviceTiers.map(({ id }) => id))];
   return {
     slug,
     supportedReasoningLevels: levels,
+    serviceTiers,
     hidden: visibility !== 'list',
     'reasoning levels': levels.length ? levels.join(', ') : 'not specified',
     'default level': defaultLevel,
