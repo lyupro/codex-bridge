@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-09-07
+
+### Fixed
+
+- `update` names the package it acted from. Standing in a clone while an older copy answers from
+  PATH, the command compared the home against its own files and said `codex-bridge is up to date` —
+  true about the package that ran, silent about the one on screen, and the cause had to be found by
+  hand. Every outcome now carries the name, version and path of the copy that answered, and when
+  that copy is not the checkout the operator is standing in, a second line names both versions and
+  the command that changes which one answers.
+- `permissions add` reports the state of the rule set instead of the size of its own change. A
+  complete set answered `Added 0 permission rule strings.`, where zero reads as a refusal rather
+  than as "all of them are already there".
+
 ## [0.6.0] - 2026-09-07
 
 ### Added
