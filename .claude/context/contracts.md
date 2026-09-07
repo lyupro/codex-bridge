@@ -54,6 +54,17 @@ here. Nothing was reworded on the way out.
   read by all three layers that police this: the order gate, the runner and
   `tests/shell-unsafe-arguments.test.mjs`, which also checks the examples in `docs/overview.md` and
   `README.md` for continuations and relative task-file paths. Never restate the list anywhere.
+- **No child process in `src` or `cli` is started through a shell.** The `shell` option may only be
+  the literal `false` (omitting it is the same thing and how most calls are written), and
+  `exec`/`execSync` may not be imported at all, since they always use one. `tests/no-shell-child-process.test.mjs`
+  fails on either. The `.cmd` shim npm writes on Windows is the standing temptation — it cannot be
+  executed without a shell, so `reachableCommandVersion` ran with one until Node 24 answered every
+  `install` and `update` with a DEP0190 security warning ahead of its output. The shim is now located
+  on PATH and handed to `cmd.exe` as `['/d','/s','/c', '""<path>" --version"']` with
+  `windowsVerbatimArguments`, the only spelling that survived a probe over five directory names; the
+  interpreter comes from `ComSpec`, never from the PATH handed in, because a caller's trimmed PATH
+  would otherwise turn the version check into a silent null and send installs back to writing full
+  paths into hooks.
 - **A refused dispatcher fails; it never routes around the refusal.** No `run-codex.mjs` by path, no
   interpreter, no retry in the other shell, and never advice to grant a rule on an internal file.
   The self-execution block names the command only — it once said "start a run through
