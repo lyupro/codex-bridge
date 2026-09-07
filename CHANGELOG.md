@@ -4,6 +4,66 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-09-07
+
+### Added
+
+- `codex-bridge model` answers which model and reasoning depth each of the three roles runs on, and
+  where each value comes from — the operator's config file or the package default. The config is one
+  file per machine, shared by every project on it, and the command says so: changing a model here
+  changes the executor for every repository this host delegates from.
+- `codex-bridge model list` prints the live catalogue, hidden models included and marked as hidden.
+  A model Codex does not advertise is still a model the operator may choose; omitting it would mean
+  deciding for them and then explaining why the system has a model the list denies.
+- `codex-bridge model set <role> <model> [effort]` and `model unset <role>` write that choice. The
+  pair is checked against the catalogue entry of that very model at the moment of writing, so
+  `ultra` — supported by the newest model and rejected by the package's own flat list until now —
+  became reachable, and a depth the chosen model does not offer is refused with its supported
+  depths named. Nothing is substituted silently: the command never changes what it was not asked to.
+- `codex-bridge model speed <role> <tier>` pins a paid acceleration tier, and `model speed <role>
+  unset` removes it. The tier is spelled with the identifier the catalogue reports for that model,
+  never a word held in the package, and the command writes nothing until a second call ends in
+  `confirm` — the first prints the catalogue's own description of the tier and a link to the page
+  carrying the credit multipliers. The installer now also places one `ask` rule of its own, so the
+  host asks the operator before an agent can run that command at all.
+- A pinned tier reaches the run: the launcher passes `-c service_tier=<id>` when, and only when, a
+  role has one pinned.
+
+### Changed
+
+- The depth of a run is no longer validated against a list held in the package. That list had
+  drifted from the server in both directions — it offered a depth no model accepts and refused one
+  the newest model supports — so the writing command asks the catalogue and the hot path checks only
+  the shape of the value. The arbiter at run time is Codex itself, whose refusal is more accurate
+  than a copy of its data.
+- One boundary now owns every write to the run config, and it persists only the edit it was given.
+  Reading merges the package defaults, and the previous writer saved that merged object, so a single
+  edit would have frozen every default into the operator's file — worst of all the list of
+  environment paths, which the package extends as it learns of new ones and which decides whether a
+  change belongs to the run or to the environment.
+- The word `mode` no longer names three different things in this package. The reviewer's flag is
+  `--changeset`, the prune says which strategy, the table which truncation, and one registry answers
+  who the three agents are.
+- The README states the suite size it actually has.
+
+### Fixed
+
+- Two edits of the config racing each other can no longer lose one of them. Both commands read the
+  role profiles, waited seconds for the catalogue, then wrote what they had read, and three
+  concurrent processes all reported success while one edit was missing from the file. The edit
+  boundary now reads the file itself, hands the fresh value to the caller's transformer, compares
+  the bytes immediately before publishing, and holds the lock this package already used for the
+  rules-ownership registry — one definition now serves both writers.
+- The worktree lock reads the shell rather than the prose someone wrote into a document. A plain
+  `cat > file << EOF` handed the whole command, heredoc body included, to the analysis, so the word
+  `touch` inside an English sentence made the next words look like files being written. The reverse
+  hole closed with it: the tail after a heredoc's closing marker was not parsed at all.
+- A dead run stays dead even when Windows hands its process id to someone else.
+- The reader of the Codex user configuration answers about configuration, not about prose inside it.
+  A multi-line TOML literal could contain a line indistinguishable from an assignment, and it was
+  read as the setting; an empty argument threw past the module's own error boundary, which exists so
+  the table renders whatever state the file is in.
+
 ## [0.5.5] - 2026-08-28
 
 ### Fixed
