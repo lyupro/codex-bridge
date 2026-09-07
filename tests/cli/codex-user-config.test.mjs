@@ -47,6 +47,31 @@ test('absent, commented, differently named and malformed tier keys are not set',
   }
 });
 
+// Found by an independent review of Plan_56 step 4: a multi-line literal is valid TOML and can
+// hold anything, so a line-at-a-time scan answered with someone's prose. Both halves matter — the
+// text inside must be ignored, and the real assignment after the literal must still be found.
+test('text inside a multi-line literal is not read as configuration', (t) => {
+  const { codexHome, userConfigPath } = fixture(t);
+  const real = randomUUID();
+  for (const delimiter of ['"""', "'''"]) {
+    fs.writeFileSync(userConfigPath,
+      `notes = ${delimiter}\nservice_tier = "from-inside-a-string"\n[fake.section]\n${delimiter}\n`
+      + `service_tier = "${real}"\n`);
+    assert.equal(readCodexUserTier({ codexHome }), real, delimiter);
+  }
+});
+
+test('a table header inside a multi-line literal does not end the root section', (t) => {
+  const { codexHome, userConfigPath } = fixture(t);
+  fs.writeFileSync(userConfigPath, 'notes = """\n[profile]\n"""\nservice_tier = "after"\n');
+  assert.equal(readCodexUserTier({ codexHome }), 'after');
+});
+
+test('a null argument returns not set rather than escaping the error boundary', () => {
+  assert.doesNotThrow(() => readCodexUserTier(null));
+  assert.equal(typeof readCodexUserTier(null), 'string');
+});
+
 test('a missing config or directory is not set and is never created', (t) => {
   const { root, codexHome, userConfigPath } = fixture(t);
   assert.equal(readCodexUserTier({ codexHome }), '');
