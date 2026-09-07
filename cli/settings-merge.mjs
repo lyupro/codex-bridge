@@ -18,24 +18,34 @@ export function shortCommandFor(name) {
   return `codex-bridge hook ${name}`;
 }
 
-function pathValue(env) {
-  const key = Object.keys(env).find((entry) => entry.toLowerCase() === 'path');
+function envValue(env, name) {
+  const key = Object.keys(env).find((entry) => entry.toLowerCase() === name);
   return key ? env[key] : '';
 }
 
-export function commandReachable(name = 'codex-bridge', env = process.env) {
+function pathValue(env) {
+  return envValue(env, 'path');
+}
+
+function resolveCommand(name, env) {
   const extensions = process.platform === 'win32'
     ? (env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';')
     : [''];
-  return pathValue(env).split(path.delimiter).filter(Boolean).some((directory) =>
-    extensions.some((extension) => {
-      const candidate = path.join(directory, `${name}${extension}`);
+  for (const directory of pathValue(env).split(path.delimiter).filter(Boolean)) {
+    for (const extension of extensions) {
+      const candidate = path.join(path.resolve(directory), `${name}${extension}`);
       try {
-        return existsSync(candidate) && statSync(candidate).isFile();
+        if (existsSync(candidate) && statSync(candidate).isFile()) return candidate;
       } catch {
-        return false;
+        continue;
       }
-    }));
+    }
+  }
+  return null;
+}
+
+export function commandReachable(name = 'codex-bridge', env = process.env) {
+  return Boolean(resolveCommand(name, env));
 }
 
 /**
@@ -47,14 +57,23 @@ export function commandReachable(name = 'codex-bridge', env = process.env) {
  * could decide anything, and the host refused Bash, PowerShell, file edits and agent launches.
  */
 export function reachableCommandVersion(name = 'codex-bridge', env = process.env) {
-  if (!commandReachable(name, env)) return null;
-  const result = spawnSync(name, ['--version'], {
-    encoding: 'utf8',
-    env,
-    // The launcher npm writes on Windows is a .cmd shim, which spawn cannot execute without a
-    // shell. The name is a constant of this module, never operator input.
-    shell: process.platform === 'win32',
-  });
+  const shimPath = resolveCommand(name, env);
+  if (!shimPath) return null;
+  // Node 24 warned with DEP0190 during update (2026-09-07): invoke cmd explicitly for npm shims.
+  // Live probes covered plain, bin with space, Program Files (x86), weird & name, and caret^dir.
+  // /d /s /c with path and --version as separate arguments only passed the plain directory:
+  // Node adds quotes, then cmd's /s strips the first and last quote of the whole command line.
+  // /d /c without /s failed on & and ^. This single, double-wrapped verbatim command passed all
+  // five. Keep native path separators: forward-slash Windows paths do not work through cmd.
+  // The interpreter is a property of the machine, not of the PATH handed in: resolving cmd.exe
+  // through the caller's PATH would return null on any env whose PATH omits System32, and a null
+  // version is exactly the silent failure this function exists to prevent.
+  const shell = envValue(env, 'comspec') || process.env.ComSpec || 'cmd.exe';
+  const result = process.platform === 'win32'
+    ? spawnSync(shell, ['/d', '/s', '/c', `""${shimPath}" --version"`], {
+      encoding: 'utf8', env, shell: false, windowsVerbatimArguments: true,
+    })
+    : spawnSync(shimPath, ['--version'], { encoding: 'utf8', env, shell: false });
   if (result.error || result.status !== 0) return null;
   return String(result.stdout || '').trim().split(/\r?\n/).pop()?.trim() || null;
 }
