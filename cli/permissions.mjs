@@ -150,8 +150,8 @@ export async function removePermissionRules(settingsPath, { dryRun = false } = {
   });
 }
 
-function statusOutput(status) {
-  const moved = status.askCount
+function statusOutput(status, action) {
+  const moved = status.askCount && action !== 'add'
     ? `; ${status.askCount} own string(s) in ask, which outranks allow`
     : '';
   return `Permissions: ${status.state} (${status.present}/${status.total} own strings in ${RULE_LIST_NAMES}${moved}).`;
@@ -161,7 +161,7 @@ async function permissionsInRun({ host, action } = {}) {
   if (!host?.settingsPath) throw new TypeError('permissions requires a resolved host');
   if (!action) {
     const status = await inspectPermissions(host.settingsPath);
-    return { exitCode: 0, output: statusOutput(status), ...status };
+    return { exitCode: 0, output: statusOutput(status, action), ...status };
   }
   if (action === 'add') {
     const result = await addPermissionRules(host.settingsPath);
@@ -172,9 +172,13 @@ async function permissionsInRun({ host, action } = {}) {
     const conflict = status.askCount
       ? ` ${status.askCount} own string(s) also sit in ask, which outranks allow; they were left there.`
       : '';
+    // The 2026-09-07, 0.6.0 install incident mistook a zero delta for failure; report the set too.
+    const added = result.added > 0
+      ? `Added ${result.added} permission rule string${result.added === 1 ? '' : 's'}. `
+      : '';
     return {
       exitCode: 0,
-      output: `Added ${result.added} permission rule string${result.added === 1 ? '' : 's'}.${conflict}`,
+      output: `${added}${statusOutput(status, action)}${conflict}`,
       ...result,
       askCount: status.askCount,
     };

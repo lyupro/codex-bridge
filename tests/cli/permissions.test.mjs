@@ -68,6 +68,7 @@ test('permissions add builds the complete matrix and preserves foreign settings'
       [`${tool}(${command} model speed)`, `${tool}(${command} model speed:*)`]));
   assert.deepEqual(new Set(PERMISSION_RULES.ask), new Set(expectedAsk));
   assert.equal(result.askCount, 0);
+  assert.equal(result.output, `Added 36 permission rule strings. ${(await permissions({ host })).output}`);
   assert.doesNotMatch(result.output, /outranks allow/);
 
   const settings = await readSettings(host);
@@ -95,6 +96,10 @@ test('repeated permissions add is idempotent and does not create another backup'
   assert.equal(first.present, ALL_PERMISSION_RULES.length);
   assert.equal(second.present, ALL_PERMISSION_RULES.length);
   assert.equal(second.total, ALL_PERMISSION_RULES.length);
+  // The 2026-09-07, 0.6.0 install incident made an already complete set sound like a failed add.
+  assert.equal(second.output, (await permissions({ host })).output);
+  assert.match(second.output, /Permissions: installed \(36\/36 own strings in allow\/deny\/ask\)/);
+  assert.doesNotMatch(second.output, /Added 0/);
   assert.deepEqual(await backups(host), before);
   for (const [name, rules] of Object.entries(PERMISSION_RULES)) {
     for (const rule of rules) {
@@ -170,6 +175,8 @@ test('permissions add names its own strings left sitting in ask', async (t) => {
 
   assert.equal(result.added, 1);
   assert.equal(result.askCount, 1);
+  assert.equal(result.output, 'Added 1 permission rule string. Permissions: shadowed by ask (36/36 own strings in allow/deny/ask).'
+    + ' 1 own string(s) also sit in ask, which outranks allow; they were left there.');
   assert.match(result.output, /1 own string\(s\) also sit in ask, which outranks allow/);
   assert.deepEqual((await readSettings(host)).permissions.ask, settings.permissions.ask);
 });

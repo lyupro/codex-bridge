@@ -1,6 +1,7 @@
 /** Updates a recorded installation without overwriting unapproved host changes. */
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { packageSource, sourceAt, checkoutAt } from './package-source.mjs';
 import { install } from './install.mjs';
 import {
   buildInstallPlan,
@@ -197,6 +198,18 @@ async function updateInRun({ host, dryRun = false, force = false, packageRoot, e
   }
 
   const currentPackage = await packageInfo(packageRoot);
+  // The 2026-09-07, 0.6.0 install incident hid which package's files update actually compared.
+  const resolved = packageRoot ? sourceAt(packageRoot) : packageSource();
+  const source = `${currentPackage.name}@${currentPackage.version} from ${resolved.root}`
+    + ` (${resolved.kind === 'installed copy' ? 'installed package' : resolved.kind})`;
+  // Standing in one checkout while another copy answers is how that install went wrong: the reply
+  // was true about the package that ran and silent about the one the operator had on screen.
+  const elsewhere = checkoutAt(env.CODEX_BRIDGE_CWD ?? process.cwd(), resolved);
+  const mismatch = elsewhere && elsewhere.version !== currentPackage.version
+    ? `\nRun from ${currentPackage.version}; the checkout at ${elsewhere.root} is ${elsewhere.version}.`
+      + ' The home was updated from the copy that answered, not from that checkout'
+      + ` (npm i -g ${currentPackage.name}@${elsewhere.version} changes which one that is).`
+    : '';
   const targets = hookTargets(host, env, currentPackage.version);
   const inspectedHooks = await Promise.all(targets.map(async (target) => ({
     target,
@@ -217,10 +230,10 @@ async function updateInRun({ host, dryRun = false, force = false, packageRoot, e
       // it on this path costs nothing when there is nothing left to retire.
       await retireLegacyLayout(host);
     }
-    return { exitCode: 0, output: 'codex-bridge is up to date' };
+    return { exitCode: 0, output: `codex-bridge is up to date with ${source}${mismatch}` };
   }
   if (dryRun) {
-    return { exitCode: 0, output: dryRunOutput(states, inspectedHooks, legacy, oldHooks) };
+    return { exitCode: 0, output: `Would update codex-bridge with ${source}.${mismatch}\n${dryRunOutput(states, inspectedHooks, legacy, oldHooks)}` };
   }
 
   for (const state of orphanStates) {
@@ -236,7 +249,7 @@ async function updateInRun({ host, dryRun = false, force = false, packageRoot, e
   const installed = await install({ host, force: true, packageRoot, env });
   if (installed.exitCode !== 0) return installed;
   await retireLegacyLayout(host);
-  return { exitCode: 0, output: appliedOutput(states) };
+  return { exitCode: 0, output: `${appliedOutput(states)}\nSource: ${source}${mismatch}` };
 }
 
 export async function update(options = {}) {

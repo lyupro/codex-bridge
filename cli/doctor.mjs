@@ -2,6 +2,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { packageSource } from './package-source.mjs';
 import { readInstallRecord, packageInfo } from './manifest.mjs';
 import { recordTarget } from './install-record.mjs';
 import { runsRoot } from '../src/home/lib/runner/runs-root.mjs';
@@ -24,22 +25,6 @@ function bridgeCommandCheck(result) {
   return result.available
     ? check('command', 'ok', `codex-bridge resolves on PATH (${result.value})`)
     : check('command', 'warn', `codex-bridge does not resolve on PATH (${result.value}); run npm i -g @lyupro/codex-bridge`);
-}
-
-/**
- * Which copy of the package is answering. Plan_19 gives the CLI a second name, and a global install
- * puts a second copy of the package on the machine beside any clone. `update` copies host files
- * from whichever copy launched it, so `codexb update` from PATH silently reverts a host that
- * `npm run dev:install` from the clone had just refreshed — and every line below this one describes
- * the host as seen by THIS copy. An operator comparing two diagnoses has no other way to tell them
- * apart.
- */
-function packageSource() {
-  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-  return {
-    root,
-    kind: root.split(/[\\/]/).includes('node_modules') ? 'installed copy' : 'clone',
-  };
 }
 
 function sourceCheck() {

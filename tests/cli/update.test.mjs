@@ -23,6 +23,8 @@ import { update } from '../../cli/update.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..', '..');
+const PACKAGE = await packageInfo();
+const SOURCE = `${PACKAGE.name}@${PACKAGE.version} from ${ROOT} (clone)`;
 
 async function fixture(t) {
   const root = makeTempTree('bridge-update-');
@@ -68,89 +70,41 @@ test('update without an installation record refuses and recommends install', asy
   assert.match(result.output, /install/i);
 });
 
-test('a fresh installation is up to date without rewriting any file', async (t) => {
-  const { host } = await fixture(t);
-  await install({ host });
-  const record = await readInstallRecord(host);
-  const watched = [
-    ...record.files.map((file) => recordTarget(host, file)),
-    record.rules.path,
-    installRecordPath(host),
-    host.settingsPath,
-  ];
-  const fixed = new Date('2020-01-02T03:04:05.000Z');
-  await Promise.all(watched.map((target) => fs.utimes(target, fixed, fixed)));
-  const before = await Promise.all(watched.map(async (target) => (await fs.stat(target)).mtimeMs));
-  const result = await update({ host });
-  assert.deepEqual(result, { exitCode: 0, output: 'codex-bridge is up to date' });
-  assert.deepEqual(
-    await Promise.all(watched.map(async (target) => (await fs.stat(target)).mtimeMs)),
-    before,
-  );
-});
+for (const version of [null, '0.5.4']) {
+  test(`a fresh installation is up to date without rewriting any file${version ? ' (old installed package)' : ''}`, async (t) => {
+    const { root, host } = await fixture(t);
+    const packageRoot = version ? await packageFixture(root, path.join('node_modules', PACKAGE.name), { version }) : ROOT;
+    const source = version ? `${PACKAGE.name}@${version} from ${packageRoot} (installed package)` : SOURCE;
+    await install({ host, packageRoot });
+    const record = await readInstallRecord(host);
+    const watched = [
+      ...record.files.map((file) => recordTarget(host, file)),
+      record.rules.path,
+      installRecordPath(host),
+      host.settingsPath,
+    ];
+    const fixed = new Date('2020-01-02T03:04:05.000Z');
+    await Promise.all(watched.map((target) => fs.utimes(target, fixed, fixed)));
+    const before = await Promise.all(watched.map(async (target) => (await fs.stat(target)).mtimeMs));
+    // The working directory is named explicitly: the suite itself runs inside a checkout, and the
+    // mismatch warning below is exactly what that combination is supposed to produce.
+    const env = { ...process.env, CODEX_BRIDGE_CWD: packageRoot };
+    const result = await update({ host, packageRoot, force: Boolean(version), env });
+    assert.deepEqual(result, { exitCode: 0, output: `codex-bridge is up to date with ${source}` });
+    assert.deepEqual(
+      await Promise.all(watched.map(async (target) => (await fs.stat(target)).mtimeMs)),
+      before,
+    );
+  });
+}
 
 test('an outdated recorded file updates silently', async (t) => {
   const { host, changed } = await installOutdated(t);
   const result = await update({ host });
   assert.equal(result.exitCode, 0);
+  assert.ok(result.output.endsWith(`Source: ${SOURCE}`));
   assert.doesNotMatch(result.output, new RegExp(`${changed.root}/${changed.relativeToRoot}`));
   assert.equal(await targetMatches(changed, host.brandRoot), true);
-});
-
-test('outdated recorded rules are updated from the current package', async (t) => {
-  const { root, host } = await fixture(t);
-  const oldPackage = await packageFixture(root, 'old-rules-package');
-  const oldRule = rulesPlan(host, oldPackage);
-  await fs.writeFile(oldRule.source, 'old package rules\n');
-  await install({ host, packageRoot: oldPackage });
-  const result = await update({ host });
-  assert.equal(result.exitCode, 0);
-  assert.equal(await targetMatches({ ...rulesPlan(host), processing: 'copy' }, host.brandRoot), true);
-});
-
-test('missing rules stop update then --force restores them by full path', async (t) => {
-  const { host } = await fixture(t);
-  await install({ host });
-  const rule = rulesPlan(host);
-  await fs.rm(rule.target);
-  const refused = await update({ host });
-  assert.equal(refused.exitCode, 1);
-  assert.match(refused.output, new RegExp(rule.target.replaceAll('\\', '\\\\')));
-  const forced = await update({ host, force: true });
-  assert.equal(forced.exitCode, 0);
-  assert.equal(await targetMatches({ ...rule, processing: 'copy' }, host.brandRoot), true);
-});
-
-test('manually modified rules stop update and --force overwrites them', async (t) => {
-  const { host } = await fixture(t);
-  await install({ host });
-  const rule = rulesPlan(host);
-  await fs.writeFile(rule.target, 'manual operator rules\n');
-  const refused = await update({ host });
-  assert.equal(refused.exitCode, 1);
-  assert.match(refused.output, new RegExp(rule.target.replaceAll('\\', '\\\\')));
-  assert.match(refused.output, /--force/);
-  assert.equal(await fs.readFile(rule.target, 'utf8'), 'manual operator rules\n');
-  const forced = await update({ host, force: true });
-  assert.equal(forced.exitCode, 0);
-  assert.equal(await targetMatches({ ...rule, processing: 'copy' }, host.brandRoot), true);
-});
-
-test('a legacy record without rules adds and records the current rules', async (t) => {
-  const { host } = await fixture(t);
-  await install({ host });
-  const rule = rulesPlan(host);
-  const recordPath = installRecordPath(host);
-  const legacy = JSON.parse(await fs.readFile(recordPath, 'utf8'));
-  delete legacy.rules;
-  await fs.writeFile(recordPath, `${JSON.stringify(legacy, null, 2)}\n`);
-  await fs.writeFile(rule.target, 'unrecorded legacy rules\n');
-  const result = await update({ host });
-  assert.equal(result.exitCode, 0);
-  assert.equal(await targetMatches({ ...rule, processing: 'copy' }, host.brandRoot), true);
-  const current = await readInstallRecord(host);
-  assert.equal(current.rules.path, rule.target);
-  assert.equal(current.rules.fingerprint, await fileFingerprint(rule.target));
 });
 
 test('update migrates a legacy single-root layout and removes it once', async (t) => {
@@ -210,7 +164,7 @@ test('update migrates a legacy single-root layout and removes it once', async (t
   assert.equal(JSON.stringify(settings).includes(path.join(host.root, oldFiles[1])), false);
 
   const repeat = await update({ host });
-  assert.deepEqual(repeat, { exitCode: 0, output: 'codex-bridge is up to date' });
+  assert.deepEqual(repeat, { exitCode: 0, output: `codex-bridge is up to date with ${SOURCE}` });
   await assert.rejects(() => fs.access(legacyPath), { code: 'ENOENT' });
 });
 
@@ -354,6 +308,7 @@ test('--dry-run reports future actions without changing files, record, or settin
   const result = await update({ host, dryRun: true });
   assert.equal(result.exitCode, 0);
   assert.match(result.output, /Would update/);
+  assert.ok(result.output.startsWith(`Would update codex-bridge with ${SOURCE}.\n`));
   for (const [file, content] of before.files) {
     assert.deepEqual(await fs.readFile(recordTarget(host, file)), content);
   }
@@ -388,4 +343,19 @@ test('a record that claims a run artifact is refused, not obeyed', async (t) => 
   await fs.writeFile(recordPath, `${JSON.stringify(record, null, 2)}\n`);
   await assert.rejects(update({ host, force: true }), /must not name run artifacts/);
   assert.equal(await fs.readFile(artifact, 'utf8'), 'keep\n');
+});
+
+test('update names the checkout the operator is standing in when it is not the copy that ran', async (t) => {
+  // 2026-09-07: the operator stood in a 0.6.0 clone while PATH held the previous release. Update
+  // compared the home against its own files, answered "up to date" and named no package at all.
+  const { root, host } = await fixture(t);
+  const packageRoot = await packageFixture(root, path.join('node_modules', PACKAGE.name), { version: '0.5.4' });
+  const checkout = await packageFixture(root, 'checkout', { version: '9.9.9' });
+  await install({ host, packageRoot });
+  const env = { ...process.env, CODEX_BRIDGE_CWD: checkout };
+  const result = await update({ host, packageRoot, force: true, env });
+  assert.equal(result.exitCode, 0);
+  assert.match(result.output, /up to date with @lyupro\/codex-bridge@0\.5\.4 /);
+  assert.match(result.output, /Run from 0\.5\.4; the checkout at .* is 9\.9\.9\./);
+  assert.match(result.output, /npm i -g @lyupro\/codex-bridge@9\.9\.9/);
 });

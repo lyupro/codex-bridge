@@ -26,6 +26,9 @@ const exclusions = new Map([
   // The files this one removes were written by a real install(), not by a fixture: the test deletes
   // an installed file to prove update refuses and --force restores it. Not a tree removal.
   ['cli/update.test.mjs', installerOwnedReason],
+  // The rules cases moved here when update.test.mjs outgrew the size gate; they delete the same
+  // installed file to prove update refuses and --force restores it.
+  ['cli/update-rules.test.mjs', installerOwnedReason],
   ['hooks/worktree-witness.test.mjs', singleArtifactReason],
 ]);
 

@@ -37,7 +37,9 @@ test('an up-to-date install still retires a leftover previous layout', async (t)
   await installedWithLeftoverLegacy(host);
   const result = await update({ host });
   assert.equal(result.exitCode, 0);
-  assert.equal(result.output, 'codex-bridge is up to date');
+  // The answer names the package it compared against (2026-09-07): a silent "up to date"
+  // from an older copy on PATH is what sent the operator looking for the cause by hand.
+  assert.match(result.output, /^codex-bridge is up to date with @lyupro\/codex-bridge@/);
   await assert.rejects(() => fs.access(legacyInstallRecordPath(host)), { code: 'ENOENT' });
   await assert.rejects(() => fs.access(host.legacyAgentsDir), { code: 'ENOENT' });
   await assert.rejects(() => fs.access(host.legacyCommandsDir), { code: 'ENOENT' });
