@@ -358,8 +358,11 @@ The package's own files—hooks, runner, `config.json`, `conventions.md`, and th
 record—live in the branded `~/.lyupro/.codex-bridge/` directory. Its location is overridden by
 `CODEX_BRIDGE_HOME`, just as the Codex directory location is overridden by `CODEX_HOME`. The
 variable exists primarily for tests and installation on an isolated host: the operator's home path
-must not enter tests or configuration. Exactly what Claude Code reads only from its own directories
-remains in `~/.claude`: agent files, slash commands, and hook registration in `settings.json`.
+must not enter tests or configuration. `CODEX_BRIDGE_CWD` exists for the same reason and names the
+directory `update` treats as the operator's own, so a test can place a checkout somewhere other
+than the process it runs in; unset, the working directory is used. Exactly what Claude Code reads
+only from its own directories remains in `~/.claude`: agent files, slash commands, and hook
+registration in `settings.json`.
 
 A delegated run does not create subagents: the runner passes `-c agents.enabled=false`, so
 multi-agent tools are unavailable to the executor. Otherwise their edits would enter the tree
