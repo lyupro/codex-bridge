@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2] - 2026-09-07
+
+### Fixed
+
+- No command greets the operator with a deprecation warning of its own. On Node 24 every `install`,
+  `update` and `doctor` printed `[DEP0190] DeprecationWarning: Passing args to a child process with
+  shell option true` ahead of its useful output, because the check that asks the command on PATH
+  for its version ran through a shell — the only way to execute the `.cmd` shim npm writes on
+  Windows. The shim is now located on PATH and executed directly, and the interpreter comes from
+  `ComSpec` instead of the PATH handed in, so a trimmed PATH cannot turn the check into a silent
+  "no version".
+
+### Changed
+
+- A guard fails the suite if a child process in `src` or `cli` is started through a shell again:
+  the `shell` option may only be the literal `false`, and `exec`/`execSync` may not be imported at
+  all. What this release fixes was not spelled `shell: true` but `shell: process.platform ===
+  'win32'`, so a guard bound to the literal would have missed the line it exists for.
+- The hook-registration test that claimed to cover a command of another version handed a directory
+  holding no `codex-bridge` and exercised the unreachable branch instead. It now runs a fixture
+  shim in a directory named with a space, brackets and an ampersand, covering both branches and,
+  for the first time, that a version is read at all.
+
 ## [0.6.1] - 2026-09-07
 
 ### Fixed
