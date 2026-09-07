@@ -40,11 +40,12 @@ function profileRows(output) {
 test('model shows all three configured roles as a table without writing or printing', async (t) => {
   const profiles = configuredProfiles();
   profiles.scout.speed = randomUUID();
-  const { configPath, source } = fixture(t, profiles);
+  const { root, configPath, source } = fixture(t, profiles);
   const log = t.mock.method(console, 'log', () => {});
   const error = t.mock.method(console, 'error', () => {});
   const result = await model([], {
     configPath,
+    codexHome: root,
     terminalWidth: 40,
     fetchCatalogue: () => assert.fail('showing profiles must not contact Codex'),
   });
@@ -52,8 +53,10 @@ test('model shows all three configured roles as a table without writing or print
   assert.equal(result.exitCode, 0);
   const rows = profileRows(result.output);
   roles.forEach((role, index) => {
+    const speedSource = profiles[role].speed ? 'config file' : 'not pinned';
+    const ignored = role === 'build' ? '' : ' (operator Codex config not read)';
     assert.equal(rows[index].trim().replace(/\s+/g, ' '),
-      `${role} ${profiles[role].model} ${profiles[role].effort} ${profiles[role].speed || 'not pinned'} config file`);
+      `${role} ${profiles[role].model} ${profiles[role].effort} ${profiles[role].speed || 'not pinned'} config file; speed: ${speedSource}${ignored}`);
   });
   assert.ok(result.output.includes(`Config file: ${path.resolve(configPath)}`));
   assert.match(result.output, /Machine-wide: shared by every project on this machine, not per-project\./);
@@ -65,38 +68,38 @@ test('model shows all three configured roles as a table without writing or print
 test('an unset role shows the runner default with honest default provenance', async (t) => {
   const profiles = configuredProfiles();
   delete profiles.review;
-  const { configPath } = fixture(t, profiles);
-  const result = await model([], { configPath });
+  const { root, configPath } = fixture(t, profiles);
+  const result = await model([], { configPath, codexHome: root });
 
   assert.equal(result.exitCode, 0);
   const rows = profileRows(result.output);
-  assert.match(rows[2], /^review\s+Codex default \(not pinned\)\s+medium\s+not pinned\s+model: not set \(Codex chooses\); effort: package default$/);
-  assert.match(rows[0], /config file$/);
-  assert.match(rows[1], /config file$/);
+  assert.match(rows[2], /^review\s+Codex default \(not pinned\)\s+medium\s+not pinned\s+model: not set \(Codex chooses\); effort: package default; speed: not pinned \(operator Codex config not read\)$/);
+  assert.match(rows[0], /config file; speed: not pinned \(operator Codex config not read\)$/);
+  assert.match(rows[1], /config file; speed: not pinned$/);
 });
 
 test('partial profiles report model and effort provenance separately', async (t) => {
   const configuredId = randomUUID();
-  const { configPath } = fixture(t, {
+  const { root, configPath } = fixture(t, {
     scout: { model: configuredId }, build: { effort: 'max' }, review: {},
   });
-  const result = await model([], { configPath });
+  const result = await model([], { configPath, codexHome: root });
 
   assert.equal(result.exitCode, 0);
   const rows = profileRows(result.output);
   assert.ok(rows[0].includes(configuredId));
-  assert.match(rows[0], /medium\s+not pinned\s+model: config file; effort: package default$/);
-  assert.match(rows[1], /Codex default \(not pinned\)\s+max\s+not pinned\s+model: not set \(Codex chooses\); effort: config file$/);
-  assert.match(rows[2], /medium\s+not pinned\s+model: not set \(Codex chooses\); effort: package default$/);
+  assert.match(rows[0], /medium\s+not pinned\s+model: config file; effort: package default; speed: not pinned \(operator Codex config not read\)$/);
+  assert.match(rows[1], /Codex default \(not pinned\)\s+max\s+not pinned\s+model: not set \(Codex chooses\); effort: config file; speed: not pinned$/);
+  assert.match(rows[2], /medium\s+not pinned\s+model: not set \(Codex chooses\); effort: package default; speed: not pinned \(operator Codex config not read\)$/);
 });
 
 test('a missing config is shown as defaults without creating it', async (t) => {
   const { root } = fixture(t, {});
   const configPath = path.join(root, 'absent.json');
-  const result = await model([], { configPath: path.relative(process.cwd(), configPath) });
+  const result = await model([], { configPath: path.relative(process.cwd(), configPath), codexHome: root });
 
   assert.equal(result.exitCode, 0);
-  for (const row of profileRows(result.output)) assert.match(row, /medium\s+not pinned\s+model: not set \(Codex chooses\); effort: package default$/);
+  for (const row of profileRows(result.output)) assert.match(row, /medium\s+not pinned\s+model: not set \(Codex chooses\); effort: package default; speed: not pinned(?: \(operator Codex config not read\))?$/);
   assert.ok(result.output.includes(`Config file: ${configPath}`));
   assert.equal(fs.existsSync(configPath), false);
 });

@@ -22,20 +22,31 @@ function buildRules(commandTransform) {
  * source list answer two different questions and let a future alias bypass one of them.
  *
  * The deny half subtracts `prune` from the allow half rather than guarding it: `Bash(codex-bridge:*)`
- * would otherwise hand out the deletion this package refuses to give an agent. Its refusal is never
- * seen in a live session — a PreToolUse hook answers before permissions are consulted, and
- * prune-guard is installed always while these rules are optional. The 2026-08-09 run held that
- * observation open as a checklist item until it turned out to be the answer, not the obstacle.
+ * would otherwise hand out the deletion this package refuses to give an agent. Plan_56's
+ * 2026-09-07 reconnaissance established deny, ask, allow ordering before PreToolUse hooks:
+ * the narrow speed ask therefore wins over the broad allow, and no hook can waive it.
  */
 export const PERMISSION_RULES = Object.freeze({
   allow: buildRules((command) => command),
   deny: buildRules((command) => `${command} prune`),
+  ask: buildRules((command) => `${command} model speed`),
 });
 
-const allRules = new Set([...PERMISSION_RULES.allow, ...PERMISSION_RULES.deny]);
+const allRules = new Set(Object.values(PERMISSION_RULES).flat());
 const ruleLists = Object.freeze(['allow', 'deny', 'ask']);
-const activeLists = Object.freeze(['allow', 'deny']);
-const totalRules = PERMISSION_RULES.allow.length + PERMISSION_RULES.deny.length;
+const activeLists = ruleLists;
+const totalRules = allRules.size;
+
+/**
+ * Which lists a count covers, spelled once.
+ *
+ * Two sentences report that count — this module's own line and doctor's — and both used to name
+ * the lists in prose. Adding `ask` in Plan_56 updated one and left the other saying `allow/deny`
+ * over a number that already included the third list: a true number under a false label, which is
+ * the same defect Plan_22-1 caught in this very line. Derived from the list of lists so a fourth
+ * one cannot introduce a third spelling.
+ */
+export const RULE_LIST_NAMES = ruleLists.join('/');
 
 function listValue(settings, name) {
   const list = settings?.permissions?.[name];
@@ -47,19 +58,20 @@ function matchingRules(list, rules) {
 }
 
 /**
- * A count of strings in allow and deny is not the state of the set, because `ask` outranks `allow`:
+ * A count of installed strings is not the state of the set, because `ask` outranks `allow`:
  * a copy sitting there keeps asking the question the rule was added to end. The live run of
  * Plan_22-1 caught doctor reporting `installed (24/24)` over exactly that arrangement — the number
  * was true and the conclusion drawn from it was false. Every consumer reads the state, so the
- * shadow has to live in the state rather than in one command's wording.
+ * shadow has to live in the state rather than in one command's wording. Plan_56's own speed ask
+ * rules are intentional; only allow strings copied into ask count as that shadow.
  */
 function permissionStatus(settings) {
   const counts = Object.fromEntries(activeLists.map((name) => [
     name,
     matchingRules(listValue(settings, name), PERMISSION_RULES[name]),
   ]));
-  const askCount = matchingRules(listValue(settings, 'ask'), [...allRules]);
-  const present = counts.allow + counts.deny;
+  const askCount = matchingRules(listValue(settings, 'ask'), PERMISSION_RULES.allow);
+  const present = counts.allow + counts.deny + counts.ask;
   const complete = present === totalRules;
   const state = askCount
     ? (complete ? 'shadowed by ask' : 'partially installed, shadowed by ask')
@@ -142,7 +154,7 @@ function statusOutput(status) {
   const moved = status.askCount
     ? `; ${status.askCount} own string(s) in ask, which outranks allow`
     : '';
-  return `Permissions: ${status.state} (${status.present}/${status.total} own strings in allow/deny${moved}).`;
+  return `Permissions: ${status.state} (${status.present}/${status.total} own strings in ${RULE_LIST_NAMES}${moved}).`;
 }
 
 async function permissionsInRun({ host, action } = {}) {
@@ -155,7 +167,7 @@ async function permissionsInRun({ host, action } = {}) {
     const result = await addPermissionRules(host.settingsPath);
     // A string the operator moved into `ask` outranks the copy `add` just put into `allow`, so the
     // command would report a complete set while the questions it was run to end keep appearing.
-    // `ask` stays untouched — it is a hand-made decision — but silence about it is a false success.
+    // That allow string stays in `ask` — it is a hand-made decision — alongside our speed rules.
     const status = await inspectPermissions(host.settingsPath);
     const conflict = status.askCount
       ? ` ${status.askCount} own string(s) also sit in ask, which outranks allow; they were left there.`

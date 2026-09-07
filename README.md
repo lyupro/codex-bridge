@@ -26,6 +26,8 @@ Shipped agents invoke delegated runs through `codex-bridge run`. This is a permi
 not a style choice: the stable package command lets host permission rules match the invocation
 without exposing an installation-specific absolute path and prompting on every delegation.
 
+Installing optional permission rules now adds `model speed` rules to `ask`, previously left to the operator, alongside `allow` and `deny`. These narrow prompts outrank the broad command allow rules and are checked before hooks, so an agent must ask the operator before switching tiers even when acting in good faith. Removing the rules takes back these exact strings while preserving other operator settings.
+
 Use `--scope project` to install the Claude Code-facing files under `<repo>/.claude`; the default user scope uses `~/.claude`.
 
 Installation has two roots:
@@ -60,7 +62,7 @@ If a global install and a clone coexist, you have two package copies. `codex-bri
 - **Every run leaves an audit folder.** The verbatim task, scope, before/after git state, events, report, verdict, and reason remain together.
 - **Zero runtime dependencies and zero build steps.** The package is plain `.mjs` on the Node.js standard library.
 
-The current suite contains **902 automated tests: 901 passing and 1 skipped**.
+The current suite contains **927 automated tests: 926 passing and 1 skipped**.
 
 ## Verify
 

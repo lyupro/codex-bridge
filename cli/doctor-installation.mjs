@@ -7,7 +7,7 @@ import {
   fileFingerprint,
 } from './manifest.mjs';
 import { plannedContent } from './copy.mjs';
-import { inspectPermissions } from './permissions.mjs';
+import { RULE_LIST_NAMES, inspectPermissions } from './permissions.mjs';
 import { readRulesRegistry } from './rules-owners.mjs';
 import { parseFrontmatter } from './frontmatter.mjs';
 import { check } from './doctor-format.mjs';
@@ -104,7 +104,7 @@ export async function permissionsCheck(host) {
     // is not: the live run of Plan_22-1 found this line saying `installed (24/24)` over it.
     const shadow = status.askCount ? `, ${status.askCount} shadowed by ask` : '';
     return check('permissions', status.state === 'installed' ? 'ok' : 'warn',
-      `${status.state} (${status.present}/${status.total} own strings in allow/deny${shadow})`);
+      `${status.state} (${status.present}/${status.total} own strings in ${RULE_LIST_NAMES}${shadow})`);
   } catch (err) {
     return check('permissions', 'warn', `cannot inspect permission rules: ${err.message}`);
   }

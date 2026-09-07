@@ -38,13 +38,13 @@ const FALLBACK_EFFORT = 'medium';
 const NO_SUBAGENTS = ['-c', 'agents.enabled=false'];
 
 /**
- * Which model and depth this run gets, and — as part of the same answer — where each came from.
+ * Which model, depth and tier this run requests, and where each came from.
  *
  * The provenance is not decoration. A configured profile failed to reach any run for three
  * releases (2026-08-26) and nothing said so: the reply named no model, meta.json recorded none,
  * and a depth silently served by the fallback is indistinguishable from one the operator chose.
- * `model_source` is `config` or `codex default`; `effort_source` is `request`, `config` or
- * `fallback`, in the order the values are consulted above.
+ * `model_source` and `speed_source` are `config` or `codex default`; `effort_source` is
+ * `request`, `config` or `fallback`, in the order the values are consulted above.
  */
 export function runProfile(opts) {
   const role = agentRole(opts.agent);
@@ -55,6 +55,8 @@ export function runProfile(opts) {
     model_source: configured.model ? 'config' : 'codex default',
     effort: opts.effort || configured.effort || FALLBACK_EFFORT,
     effort_source: opts.effort ? 'request' : configured.effort ? 'config' : 'fallback',
+    speed: configured.speed || '',
+    speed_source: configured.speed ? 'config' : 'codex default',
   };
 }
 
@@ -63,6 +65,8 @@ export function codexArgs(opts, runDir, isGitRepo) {
   const profile = runProfile(opts);
   const effort = `model_reasoning_effort=${profile.effort}`;
   const modelArgs = profile.model ? ['-m', profile.model] : [];
+  // Plan_56 D35: there is no identifier for ordinary speed; an unpinned tier adds no override.
+  const speedArgs = profile.speed ? ['-c', `service_tier=${profile.speed}`] : [];
   if (opts.agent === 'codex-scout') {
     return [
       'exec',
@@ -71,6 +75,7 @@ export function codexArgs(opts, runDir, isGitRepo) {
       '--ignore-user-config',
       '-c',
       effort,
+      ...speedArgs,
       ...NO_SUBAGENTS,
       ...platformSandboxArgs(),
       ...modelArgs,
@@ -95,6 +100,7 @@ export function codexArgs(opts, runDir, isGitRepo) {
       ...CLEAN_ENV,
       '-c',
       effort,
+      ...speedArgs,
       ...NO_SUBAGENTS,
       ...platformSandboxArgs(),
       ...modelArgs,
@@ -128,6 +134,7 @@ export function codexArgs(opts, runDir, isGitRepo) {
     '--ignore-user-config',
     '-c',
     effort,
+    ...speedArgs,
     ...NO_SUBAGENTS,
     ...platformSandboxArgs(),
     ...modelArgs,
