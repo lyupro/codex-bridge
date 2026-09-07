@@ -264,7 +264,9 @@ test('speed validates and preserves the current profile after waiting for the ca
 test('invalid configs and shared-writer failures are reported and leave no partial speed edit', async (t) => {
   const available = entry();
   const data = fixture(t, { build: { model: available.slug } });
-  t.mock.method(fsp, 'rename', async () => { throw new Error('rename refused'); });
+  // Publishing became synchronous with D44: an await between comparison and rename let a
+  // sibling edit slip in, proven by a live probe of three concurrent processes.
+  t.mock.method(fs, 'renameSync', () => { throw new Error('rename refused'); });
   const args = ['speed', 'build', available.service_tiers[0].id, 'confirm'];
   const result = await model(args, { ...data, fetchCatalogue: catalogue(available) });
   assert.equal(result.exitCode, 1);
@@ -280,10 +282,23 @@ test('invalid configs and shared-writer failures are reported and leave no parti
 test('speed writes only through the shared editor and runtime tier spellings come from metadata', () => {
   const source = fs.readFileSync(new URL('../../cli/model-speed.mjs', import.meta.url), 'utf8');
   assert.match(source, /import \{ editRunConfig \} from/);
-  assert.match(source, /await editRunConfig\(/);
+  assert.match(source, /await editRunConfig\('models', transform, configPath\)/);
   assert.doesNotMatch(source, /\b(?:writeFile(?:Sync)?|rename(?:Sync)?|copyFile(?:Sync)?)\s*\(/);
   for (const file of ['model-speed.mjs', 'model-set.mjs', 'model-catalogue.mjs']) {
     const code = fs.readFileSync(new URL(`../../cli/${file}`, import.meta.url), 'utf8');
     assert.doesNotMatch(code, /['"](?:fast|priority|ultrafast|zzz_bogus|standard|default)['"]/);
   }
+});
+
+test('speed unset answers on a config file that does not exist yet', async (t) => {
+  // The transformer sees an absent key there, and validating it as a malformed one turned this
+  // answer into the validator's refusal — the same slip the missing-config case in model.test.mjs
+  // caught for set. Both commands read the absent key, so both are covered.
+  const root = makeTempTree('model-speed-missing-');
+  t.after(() => removeTempTree(root));
+  const configPath = path.join(root, 'absent', 'config.json');
+  const result = await model(['speed', 'build', 'unset'], { configPath, fetchCatalogue: noFetch });
+  assert.equal(result.exitCode, 0, result.output);
+  assert.match(result.output, /build: not set \(Codex chooses\) -> not set \(Codex chooses\)/);
+  assert.deepEqual(saved(configPath), { models: {} });
 });

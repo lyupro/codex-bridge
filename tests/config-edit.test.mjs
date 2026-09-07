@@ -24,7 +24,7 @@ for (const key of ['hooks', 'plugins']) {
       + '\t"environment\\u0050aths" : [ "  cache/**  ", "", "emoji-😀", "quote\\\"}:[" ],\r\n'
       + '\t"models" : {"build" : { "model": " custom ", "effort": " high " }}\r\n}\r\n';
     const { directory, file } = fixture(raw);
-    const effective = await editRunConfig({ key, value: true }, file);
+    const effective = await editRunConfig(key, () => true, file);
     assert.equal(fs.readFileSync(file, 'utf8'), raw.replace(': false', ': true'));
     assert.equal(effective[key], true);
     assert.equal(Object.keys(JSON.parse(fs.readFileSync(file, 'utf8').slice(1))).length, 3);
@@ -37,7 +37,7 @@ test('adding a switch leaves partial budgets and disabled retention exactly as w
   const raw = '{ "budgets" : {"build": 7.50e0}, "retention": {"enabled": false, "days": "ignored"},'
     + ' "answerLanguage": " Spanish " }\n';
   const { file } = fixture(raw);
-  await editRunConfig({ key: 'hooks', value: true }, file);
+  await editRunConfig('hooks', () => true, file);
   const written = fs.readFileSync(file, 'utf8');
   assert.equal(written.replace(',\n  "hooks": true\n', ''), raw);
   assert.deepEqual(JSON.parse(written), { ...JSON.parse(raw), hooks: true });
@@ -47,7 +47,7 @@ test('adding a switch leaves partial budgets and disabled retention exactly as w
 test('a missing file and parent are created holding only the requested key', async () => {
   const { directory } = fixture();
   const file = path.join(directory, 'new-home', 'config.json');
-  await editRunConfig({ key: 'plugins', value: true }, file);
+  await editRunConfig('plugins', () => true, file);
   assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { plugins: true });
   assert.deepEqual(readRunConfig(file), { ...DEFAULTS, plugins: true });
 });
@@ -55,7 +55,7 @@ test('a missing file and parent are created holding only the requested key', asy
 test('structured edits preserve nested values belonging to other top-level keys', async () => {
   const raw = '{"models":{"build":{"model":" old "}},"environmentPaths":["keep", ""]}\n';
   const { file } = fixture(raw);
-  await editRunConfig({ key: 'models', value: { build: { effort: 'high' } } }, file);
+  await editRunConfig('models', () => ({ build: { effort: 'high' } }), file);
   assert.ok(fs.readFileSync(file, 'utf8').endsWith(',"environmentPaths":["keep", ""]}\n'));
   assert.deepEqual(readRunConfig(file).models, { build: { effort: 'high' } });
 });
@@ -65,10 +65,10 @@ test('the shared editor persists and removes speed without adding defaults or ch
   const raw = '{"models":{"build":{"model":"m","effort":"high"}},"environmentPaths":["keep", ""]}\n';
   const { directory, file } = fixture(raw);
   const profile = { model: 'm', effort: 'high' };
-  await editRunConfig({ key: 'models', value: { build: { ...profile, speed } } }, file);
+  await editRunConfig('models', () => ({ build: { ...profile, speed } }), file);
   assert.deepEqual(readRunConfig(file).models.build, { ...profile, speed });
   assert.ok(fs.readFileSync(file, 'utf8').endsWith(',"environmentPaths":["keep", ""]}\n'));
-  await editRunConfig({ key: 'models', value: { build: profile } }, file);
+  await editRunConfig('models', () => ({ build: profile }), file);
   assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { models: { build: profile }, environmentPaths: ['keep', ''] });
   assert.deepEqual(fs.readdirSync(directory), ['config.json']);
 });
@@ -76,7 +76,7 @@ test('the shared editor persists and removes speed without adding defaults or ch
 test('escaped and repeated spellings of the requested key are all edited', async () => {
   const raw = '{"hooks":false,"h\\u006foks":false,"plugins":false}';
   const { file } = fixture(raw);
-  await editRunConfig({ key: 'hooks', value: true }, file);
+  await editRunConfig('hooks', () => true, file);
   assert.equal(fs.readFileSync(file, 'utf8'), '{"hooks":true,"h\\u006foks":true,"plugins":false}');
   assert.equal(readRunConfig(file).hooks, true);
 });
@@ -104,7 +104,7 @@ test('every invalid edit is refused by the reader and leaves the original bytes 
       readerError = error.message.replace(rejected.file, file);
       return true;
     });
-    await assert.rejects(editRunConfig(change, file), { message: readerError });
+    await assert.rejects(editRunConfig(change.key, () => change.value, file), { message: readerError });
     assert.equal(fs.readFileSync(file, 'utf8'), raw);
     assert.deepEqual(fs.readdirSync(directory), ['config.json']);
   }
@@ -112,14 +112,14 @@ test('every invalid edit is refused by the reader and leaves the original bytes 
 
 test('rejection on a missing file creates neither a target nor temporary files', async () => {
   const { directory } = fixture();
-  await assert.rejects(editRunConfig({ key: 'hooks', value: 1 }, path.join(directory, 'new', 'config.json')));
+  await assert.rejects(editRunConfig('hooks', () => 1, path.join(directory, 'new', 'config.json')));
   assert.deepEqual(fs.readdirSync(directory), []);
 });
 
 test('malformed, non-object, and unrelated invalid input cannot be silently overwritten', async () => {
   for (const raw of ['{"hooks":', 'null', '[]', '{"manualTypo":true}']) {
     const { directory, file } = fixture(raw);
-    await assert.rejects(editRunConfig({ key: 'hooks', value: true }, file));
+    await assert.rejects(editRunConfig('hooks', () => true, file));
     assert.equal(fs.readFileSync(file, 'utf8'), raw);
     assert.deepEqual(fs.readdirSync(directory), ['config.json']);
   }
@@ -127,7 +127,7 @@ test('malformed, non-object, and unrelated invalid input cannot be silently over
 
 test('an invalid value can be repaired by editing that key', async () => {
   const { file } = fixture('{"hooks":"on","plugins":false}');
-  await editRunConfig({ key: 'hooks', value: true }, file);
+  await editRunConfig('hooks', () => true, file);
   assert.deepEqual(readRunConfig(file), { ...DEFAULTS, hooks: true });
 });
 
@@ -136,22 +136,25 @@ test('a read error other than a missing file is propagated without writing', asy
   t.mock.method(fsp, 'readFile', async () => {
     throw Object.assign(new Error('read denied'), { code: 'EACCES' });
   });
-  await assert.rejects(editRunConfig({ key: 'hooks', value: true }, file), { code: 'EACCES' });
+  await assert.rejects(editRunConfig('hooks', () => true, file), { code: 'EACCES' });
   assert.deepEqual(fs.readdirSync(directory), []);
 });
 
 test('the editor requires an explicit edit, not a replacement config', async () => {
   const { directory, file } = fixture();
   for (const change of [undefined, null, {}, { hooks: true }, { key: 'hooks' }, { reset: false },
-    { reset: true, key: 'hooks', value: true }]) {
-    await assert.rejects(editRunConfig(change, file), /requires/);
+    { reset: true, key: 'hooks', value: true }, { key: 'models', value: {} }, '', 1, []]) {
+    await assert.rejects(editRunConfig(change, () => true, file), /requires/);
+  }
+  for (const transform of [undefined, null, true, {}, 'value']) {
+    await assert.rejects(editRunConfig('hooks', transform, file), /requires/);
   }
   assert.deepEqual(fs.readdirSync(directory), []);
 });
 
 test('a reset persists an empty object while the runtime still sees the defaults', async () => {
   const { file } = fixture('{"hooks":true,"plugins":true,"environmentPaths":[]}');
-  assert.deepEqual(await editRunConfig({ reset: true }, file), DEFAULTS);
+  assert.deepEqual(await editRunConfig({ reset: true }, undefined, file), DEFAULTS);
   assert.equal(fs.readFileSync(file, 'utf8'), '{}\n');
   assert.deepEqual(readRunConfig(file), DEFAULTS);
 });
@@ -160,7 +163,9 @@ test('rename publishes a complete sibling file and failure preserves the origina
   const raw = '{"hooks":false}\n';
   const { directory, file } = fixture(raw);
   let attempts = 0;
-  t.mock.method(fsp, 'rename', async (temporary, target) => {
+  // Publishing is synchronous on purpose (D44): an await between the comparison and the rename
+  // handed the event loop to a sibling edit, and a live probe lost one of three concurrent writes.
+  t.mock.method(fs, 'renameSync', (temporary, target) => {
     attempts += 1;
     assert.equal(target, file);
     assert.equal(path.dirname(temporary), directory);
@@ -169,7 +174,7 @@ test('rename publishes a complete sibling file and failure preserves the origina
     assert.equal(fs.readFileSync(temporary, 'utf8'), '{"hooks":true}\n');
     throw new Error('rename refused');
   });
-  await assert.rejects(editRunConfig({ key: 'hooks', value: true }, file), /rename refused/);
+  await assert.rejects(editRunConfig('hooks', () => true, file), /rename refused/);
   assert.equal(attempts, 1);
   assert.equal(fs.readFileSync(file, 'utf8'), raw);
   assert.deepEqual(fs.readdirSync(directory), ['config.json']);
@@ -188,7 +193,7 @@ test('a partial temporary write is cleaned up without touching the target', asyn
     };
     return handle;
   });
-  await assert.rejects(editRunConfig({ key: 'plugins', value: true }, file), /write interrupted/);
+  await assert.rejects(editRunConfig('plugins', () => true, file), /write interrupted/);
   assert.equal(fs.readFileSync(file, 'utf8'), raw);
   assert.deepEqual(fs.readdirSync(directory), ['config.json']);
 });
@@ -221,7 +226,7 @@ test('a nested value is pasted at the depth of the key it replaces', async () =>
   // spaces while its first role sat at none, leaving valid JSON that no longer read as a file a
   // person edits by hand — which is the only reason this path writes over raw text at all.
   const { file } = fixture('{\n  "hooks": false,\n  "models": {\n    "review": { "model": "m" }\n  }\n}\n');
-  await editRunConfig({ key: 'models', value: { build: { model: 'n', effort: 'high' } } }, file);
+  await editRunConfig('models', () => ({ build: { model: 'n', effort: 'high' } }), file);
   const written = fs.readFileSync(file, 'utf8');
   assert.match(written, /\n {2}"models": \{\n {4}"build": \{\n {6}"model": "n",\n {6}"effort": "high"\n {4}\}\n {2}\}/);
   assert.deepEqual(readRunConfig(file).models, { build: { model: 'n', effort: 'high' } });
@@ -229,9 +234,48 @@ test('a nested value is pasted at the depth of the key it replaces', async () =>
 
 test('a nested value added to a file that lacks the key keeps the two-space margin', async () => {
   const { file } = fixture('{\n  "hooks": false\n}\n');
-  await editRunConfig({ key: 'models', value: { scout: { effort: 'low' } } }, file);
+  await editRunConfig('models', () => ({ scout: { effort: 'low' } }), file);
   assert.match(
     fs.readFileSync(file, 'utf8'),
     /\n {2}"models": \{\n {4}"scout": \{\n {6}"effort": "low"\n {4}\}\n {2}\}\n\}/,
   );
+});
+
+test('an async transformer receives the raw key value without normalized fields or defaults', async () => {
+  const models = { build: { model: ' custom ', effort: ' high ' }, scout: {} };
+  const { file } = fixture(JSON.stringify({ models }));
+  await editRunConfig('models', async (current) => {
+    assert.deepEqual(current, models);
+    await Promise.resolve();
+    return { ...current, review: { effort: 'low' } };
+  }, file);
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), {
+    models: { ...models, review: { effort: 'low' } },
+  });
+});
+
+test('an absent key is undefined even when its effective config value has a default', async () => {
+  for (const raw of [undefined, '{}\n', '{"plugins":false}']) {
+    const { file } = fixture(raw);
+    let calls = 0;
+    await editRunConfig('hooks', (current) => {
+      calls += 1;
+      assert.equal(current, undefined);
+      return true;
+    }, file);
+    assert.equal(calls, 1);
+    assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { ...JSON.parse(raw ?? '{}'), hooks: true });
+  }
+});
+
+test('throwing or rejecting in a transformer aborts before creating any files', async () => {
+  const error = new Error('transform refused');
+  for (const transform of [() => { throw error; }, async () => { throw error; }]) {
+    for (const raw of [undefined, '{"hooks":false}\n']) {
+      const { directory, file } = fixture(raw);
+      await assert.rejects(editRunConfig('hooks', transform, file), (actual) => actual === error);
+      assert.deepEqual(fs.readdirSync(directory), raw === undefined ? [] : ['config.json']);
+      if (raw !== undefined) assert.equal(fs.readFileSync(file, 'utf8'), raw);
+    }
+  }
 });

@@ -236,8 +236,8 @@ test('a non-boolean value is an error', () => {
 
 test('a written config reads back unchanged', async () => {
   const file = tempFile();
-  await editRunConfig({ key: 'hooks', value: true }, file);
-  await editRunConfig({ key: 'plugins', value: false }, file);
+  await editRunConfig('hooks', () => true, file);
+  await editRunConfig('plugins', () => false, file);
   assert.deepEqual(readRunConfig(file), { ...DEFAULTS, hooks: true });
 });
 

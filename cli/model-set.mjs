@@ -7,6 +7,7 @@ import { editRunConfig } from '../src/home/lib/config-edit.mjs';
 import { fetchCatalogue, parseCatalogue } from './model-catalogue.mjs';
 
 const failure = (exitCode, message) => ({ exitCode, output: `codex-bridge model: ${message}` });
+const refusal = (message) => Object.assign(new Error(message), { exitCode: 2 });
 
 function parseChanges(args) {
   const changes = {};
@@ -80,47 +81,61 @@ export async function editModelProfile(action, argv, options) {
         return failure(1, `live catalogue unavailable; refusing to set ${role}: ${error?.message ?? String(error)}`);
       }
     }
-    // Fetching can take seconds; use the current profiles so edits made during that wait survive.
-    const profiles = readProfiles(configPath);
-    const before = profiles[role];
+    let profiles;
+    let before;
     let hiddenNotice = '';
-    if (action === 'set') {
-      const after = { ...before, ...changes };
-      const modelId = after.model?.trim();
-      const effort = after.effort?.trim();
-      if (!modelId) return failure(2, `${role} has no configured model; supply a model or --model.`);
-      const entry = catalogue.find(({ slug }) => slug === modelId);
-      if (!entry) {
-        return failure(2, `unknown model "${after.model}". Available models: ${catalogue.map(({ slug }) => slug).join(', ') || '(empty catalogue)'}. Nothing written.`);
+    let catalogueModel;
+    await editRunConfig('models', (current) => {
+      // An absent key is a config that has no profiles yet, not a malformed one: validating
+      // {models: undefined} turned "no configured model" into the validator's own refusal.
+      if (current !== undefined) validateRunConfig(configPath, { models: current });
+      profiles = { ...current };
+      before = profiles[role];
+      hiddenNotice = '';
+      if (action === 'set') {
+        const after = { ...before, ...changes };
+        const modelId = after.model?.trim();
+        const effort = after.effort?.trim();
+        // D40/D41: a retry cannot apply a catalogue decision to a different role model.
+        if (catalogueModel !== undefined && modelId !== catalogueModel) {
+          throw new Error('The profile changed while the catalogue was being read; nothing was written. Run the command again.');
+        }
+        if (!modelId) throw refusal(`${role} has no configured model; supply a model or --model.`);
+        const entry = catalogue.find(({ slug }) => slug === modelId);
+        if (!entry) {
+          throw refusal(`unknown model "${after.model}". Available models: ${catalogue.map(({ slug }) => slug).join(', ') || '(empty catalogue)'}. Nothing written.`);
+        }
+        if (effort !== undefined && !entry.supportedReasoningLevels.includes(effort)) {
+          const origin = changes.effort === undefined ? 'existing effort' : 'effort';
+          throw refusal(`${origin} "${after.effort}" is not supported by model "${after.model}". `
+            + `Supported depths: ${entry.supportedReasoningLevels.join(', ') || '(no depths advertised)'}. `
+            + 'Supply a supported effort explicitly. Nothing written.');
+        }
+        if (after.speed !== undefined && !entry.serviceTiers.some(({ id }) => id === after.speed.trim())) {
+          // Two sentences rather than a list that reads "tiers: (no tier)": a model offering none at
+          // all is a different answer from one offering others, and the operator acts on it differently.
+          const offered = entry.serviceTiers.length
+            ? `Accelerated tiers it does offer: ${entry.serviceTiers.map(({ id }) => id).join(', ')}.`
+            : 'That model offers no accelerated tier at all.';
+          throw refusal(`existing speed "${after.speed}" is not supported by model "${after.model}". `
+            + `${offered} `
+            + `Remove the pin with model speed ${role} unset first. Nothing written.`);
+        }
+        catalogueModel = entry.slug;
+        if (entry.hidden) hiddenNotice = `Model "${entry.slug}" is hidden in the Codex catalogue.\n`;
+        profiles[role] = after;
+      } else {
+        delete profiles[role];
       }
-      if (effort !== undefined && !entry.supportedReasoningLevels.includes(effort)) {
-        const origin = changes.effort === undefined ? 'existing effort' : 'effort';
-        return failure(2, `${origin} "${after.effort}" is not supported by model "${after.model}". `
-          + `Supported depths: ${entry.supportedReasoningLevels.join(', ') || '(no depths advertised)'}. `
-          + 'Supply a supported effort explicitly. Nothing written.');
-      }
-      if (after.speed !== undefined && !entry.serviceTiers.some(({ id }) => id === after.speed.trim())) {
-        // Two sentences rather than a list that reads "tiers: (no tier)": a model offering none at
-        // all is a different answer from one offering others, and the operator acts on it differently.
-        const offered = entry.serviceTiers.length
-          ? `Accelerated tiers it does offer: ${entry.serviceTiers.map(({ id }) => id).join(', ')}.`
-          : 'That model offers no accelerated tier at all.';
-        return failure(2, `existing speed "${after.speed}" is not supported by model "${after.model}". `
-          + `${offered} `
-          + `Remove the pin with model speed ${role} unset first. Nothing written.`);
-      }
-      if (entry.hidden) hiddenNotice = `Model "${entry.slug}" is hidden in the Codex catalogue.\n`;
-      profiles[role] = after;
-    } else {
-      delete profiles[role];
-    }
-    await editRunConfig({ key: 'models', value: profiles }, configPath);
+      return profiles;
+    }, configPath);
     return {
       exitCode: 0,
       output: `${hiddenNotice}${role}: ${describe(before)} -> ${describe(profiles[role])}\nConfig file: ${configPath}\n`
         + 'Machine-wide: shared by every project on this machine, not per-project.',
     };
   } catch (error) {
+    if (error.exitCode === 2) return failure(2, error.message);
     return failure(1, `cannot ${action} profile: ${error?.message ?? String(error)}`);
   }
 }

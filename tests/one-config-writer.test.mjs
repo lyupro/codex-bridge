@@ -49,7 +49,9 @@ function callsFileWriter(source) {
 function offenders(files) {
   return files.filter(({ file, source }) => {
     const code = withoutComments(source);
-    return file !== WRITER && knowsConfigPath(code) && callsFileWriter(code);
+    // D40: a prepared value can overwrite edits made during the caller's catalogue wait.
+    const staleEdit = /\beditRunConfig\s*\(\s*\{[^}]*\b(?:key|value)\s*[:,}]/.test(code);
+    return staleEdit || (file !== WRITER && knowsConfigPath(code) && callsFileWriter(code));
   }).map(({ file }) => file).sort();
 }
 
@@ -82,6 +84,9 @@ test('the guard fails on planted config writers in either scanned directory', ()
     "fs.openSync(CONFIG_PATH, 'r+');",
     "fs.copyFileSync(seed, CONFIG_PATH);",
     "fs.writeFileSync('config.json', '{}');",
+    "editRunConfig({ key: 'models', value: profiles });",
+    "await editRunConfig({ key, value: profiles }, configPath);",
+    "editRunConfig({ value: profiles, key: 'models' });",
   ];
   for (const directory of ['src/home/lib', 'cli']) {
     for (const source of violations) {
@@ -102,6 +107,9 @@ test('the guard permits readers, generic writers, and the designated editor', ()
     "const seed = 'src/home/config.json'; fs.copyFileSync(seed, target);",
     "const legacy = path.join(agentsDir, 'run-config.json'); fs.copyFileSync(legacy, seed.target);",
     "readRunConfig(host.brandConfigPath); fs.copyFile(legacy, seed.target);",
+    "await editRunConfig('models', (profiles) => ({ ...profiles, build: {} }), configPath);",
+    "await editRunConfig('models', transform, configPath);",
+    "await editRunConfig({ reset: true }, undefined, configPath);",
   ]) {
     assert.deepEqual(offenders([{ file: 'cli/example.mjs', source }]), [], source);
   }

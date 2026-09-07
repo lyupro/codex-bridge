@@ -93,7 +93,7 @@ async function main(argv) {
   }
 
   if (key === 'reset') {
-    await editRunConfig({ reset: true });
+    await editRunConfig({ reset: true }, undefined);
     console.log([...state(DEFAULTS), `Reset to defaults · ${CONFIG_PATH} (${ORIGIN})`].join('\n'));
     return 0;
   }
@@ -113,7 +113,7 @@ async function main(argv) {
     return 2;
   }
 
-  const config = await editRunConfig({ key, value: value === 'on' });
+  const config = await editRunConfig(key, () => value === 'on');
   console.log([...state(config), `File: ${CONFIG_PATH} (${ORIGIN})`].join('\n'));
   return 0;
 }
