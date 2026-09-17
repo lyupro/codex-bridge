@@ -13,6 +13,19 @@ import { makeTempTree } from '../temp-tree.mjs';
 /** Diagnostic text retained as an input for archived-run compatibility cases. */
 export const OK_LOG = 'model: gpt-5.6-sol\nsandbox: workspace-write\ntokens used\n104 098\n';
 
+/** Real codex-cli 0.154.0 shape: the 2026-09-16 sandbox incident requires proof of execution. */
+export const COMPLETED_COMMAND = {
+  type: 'item.completed',
+  item: {
+    id: 'item_3',
+    type: 'command_execution',
+    command: 'Get-Content src/example.mjs',
+    aggregated_output: 'export const value = 1;',
+    exit_code: 0,
+    status: 'completed',
+  },
+};
+
 /** A build result that satisfies the schema, so a test can vary only what it is about. */
 export const buildResult = (changes, extra = {}) => ({
   // Declared, because the schema requires it of every run from 0.1.3 on. Runs whose fixture

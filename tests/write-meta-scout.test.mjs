@@ -13,7 +13,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { collect } from '../src/home/lib/write-meta.mjs';
 import { questionsFromFlags } from '../src/home/lib/runner/launcher.mjs';
-import { makeRun } from './meta/test-fixtures.mjs';
+import { COMPLETED_COMMAND, makeRun } from './meta/test-fixtures.mjs';
 
 const RUN_CODEX = new URL('../src/home/lib/run-codex.mjs', import.meta.url).href;
 
@@ -89,6 +89,7 @@ test('a fully covered order is OK and reports 6/6 in the reply', () => {
     evidence: [`agents/codex-bridge/write-meta.mjs:${300 + Number(q.id.slice(1))}`],
   }));
   const dir = makeRun({
+    events: [COMPLETED_COMMAND],
     result: { answer: 'Final summary of all sub-questions.', answers, findings: [], unknowns: [], report_markdown: '# report' },
     questions,
   });
@@ -100,6 +101,7 @@ test('a fully covered order is OK and reports 6/6 in the reply', () => {
 test('a single explicit question is graded and reports 1/1 in the reply', () => {
   const questions = [{ id: 'Q1', text: 'Describe the mechanism.' }];
   const dir = makeRun({
+    events: [COMPLETED_COMMAND],
     result: {
       answer: 'Summary of the mechanism.',
       answers: [{ question_id: 'Q1', answer: PROSE_ANSWER, evidence: ['src/mechanism.mjs:1'] }],
@@ -125,6 +127,7 @@ test('coverage counts only the explicit questions', () => {
     { question_id: 'Q99', answer: PROSE_ANSWER, evidence: ['src/extra.mjs:1'] },
   ];
   const dir = makeRun({
+    events: [COMPLETED_COMMAND],
     result: { answer: 'Summary', answers, findings: [], unknowns: [], report_markdown: '# report' },
     questions,
   });
@@ -137,6 +140,7 @@ test('skipping two sub-questions fails and names them', () => {
   const questions = Array.from({ length: 6 }, (_, i) => ({ id: `Q${i + 1}`, text: `Question ${i + 1}?` }));
   const answers = questions.slice(0, 4).map((q) => ({ question_id: q.id, answer: PROSE_ANSWER, evidence: ['x.ts:1'] }));
   const dir = makeRun({
+    events: [COMPLETED_COMMAND],
     result: { answer: 'Summary', answers, findings: [], unknowns: [], report_markdown: '# report' },
     questions,
   });
@@ -157,6 +161,7 @@ test('a table of coordinates instead of a breakdown fails per question', () => {
     { question_id: 'Q2', answer: 'registry.ts:14', evidence: ['registry.ts:14'] },
   ];
   const dir = makeRun({
+    events: [COMPLETED_COMMAND],
     result: { answer: 'Summary', answers, findings: [], unknowns: [], report_markdown: '# report' },
     questions,
   });
@@ -167,6 +172,7 @@ test('a table of coordinates instead of a breakdown fails per question', () => {
 
 test('a single coordinate-only answer still fails the analysis check', () => {
   const dir = makeRun({
+    events: [COMPLETED_COMMAND],
     result: {
       answer: 'Summary',
       answers: [{ question_id: 'Q1', answer: COORDINATES_ONLY, evidence: ['src/source.mjs:60'] }],
@@ -191,6 +197,7 @@ test('an answer with no evidence at all fails, even with real prose', () => {
     { question_id: 'Q2', answer: PROSE_ANSWER, evidence: ['   '] },
   ];
   const dir = makeRun({
+    events: [COMPLETED_COMMAND],
     result: { answer: 'Summary', answers, findings: [], unknowns: [], report_markdown: '# report' },
     questions,
   });
@@ -201,6 +208,7 @@ test('an answer with no evidence at all fails, even with real prose', () => {
 
 test('an unanswered explicit question fails the run', () => {
   const dir = makeRun({
+    events: [COMPLETED_COMMAND],
     result: {
       answer: 'Summary',
       answers: [],
@@ -218,6 +226,7 @@ test('an unanswered explicit question fails the run', () => {
 
 test('single-question mode fails a short answer', () => {
   const dir = makeRun({
+    events: [COMPLETED_COMMAND],
     result: { answer: THIN_ANSWER, findings: [], unknowns: [], report_markdown: '# report' },
   });
   const { meta } = collect(dir, 'codex-scout', 0);
@@ -227,6 +236,7 @@ test('single-question mode fails a short answer', () => {
 
 test('single-question mode passes a substantial answer, with no coverage line', () => {
   const dir = makeRun({
+    events: [COMPLETED_COMMAND],
     result: { answer: LONG_PROSE_ANSWER, findings: [], unknowns: [], report_markdown: '# report' },
   });
   const { meta, reply } = collect(dir, 'codex-scout', 0);

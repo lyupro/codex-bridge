@@ -46,7 +46,7 @@ import {
   expandDeclared,
   reportVersusWork,
 } from '../src/home/lib/write-meta.mjs';
-import { buildResult as build, makeChainRoot, makeRun } from './meta/test-fixtures.mjs';
+import { buildResult as build, COMPLETED_COMMAND, makeChainRoot, makeRun } from './meta/test-fixtures.mjs';
 
 // substanceLength ≈ 227 — clears MIN_SINGLE_SUBSTANCE_CHARS (200), so a scout run below
 // clears the bar collect() judges it by, independent of the build mismatch check.
@@ -208,6 +208,7 @@ test('scout is not subject to the build mismatch check', () => {
   // substance bar on its own merits, so a scout run is judged as a scout run, not as a build
   // with a missing report.
   const dir = makeRun({
+    events: [COMPLETED_COMMAND],
     result: { answer: LONG_PROSE_ANSWER, findings: [], unknowns: [], report_markdown: '# report' },
     before: '',
     after: 'U\t10\tsrc/a.ts\n',

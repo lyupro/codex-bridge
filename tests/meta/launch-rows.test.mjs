@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { AGENTS, collect, writeFailure } from '../../src/home/lib/write-meta.mjs';
 import { launchRows, withLaunchRows } from '../../src/home/lib/meta/launch-rows.mjs';
-import { buildResult, makeRun } from './test-fixtures.mjs';
+import { buildResult, COMPLETED_COMMAND, makeRun } from './test-fixtures.mjs';
 
 const retention = { bytes_freed: 41.2 * 1024 * 1024, runs: 12, days: 30 };
 const retentionRow = 'Retention: freed 41.2 MB from 12 runs older than 30 days';
@@ -30,7 +30,8 @@ for (const [agent, result] of agents) {
     test(`${agent} ${status} replies keep Retention, Sandbox probe, Model and Log consecutive`, () => {
       const dir = makeRun({
         args: ['exec', '--json'],
-        events: status === 'LIMIT' ? [{ type: 'error', message: 'rate limit exceeded for this account' }] : started,
+        events: status === 'LIMIT' ? [{ type: 'error', message: 'rate limit exceeded for this account' }]
+          : agent === 'codex-scout' && status === 'OK' ? [...started, COMPLETED_COMMAND] : started,
         result: status === 'OK' ? result : undefined,
         file: AGENTS[agent].result,
         profile,

@@ -315,6 +315,17 @@ export function resolveStatus({ resultOk, exit, agent, result, runDir, events })
   // Answers that never arrived, or arrived as coordinates. Scout-only, and per-question
   // only when questions.json is absent — see scoutCoverageGap().
   if (agent === 'codex-scout') {
+    // The 2026-09-16 dead sandbox produced nonempty evidence without reading code. Require an
+    // execution fact first: checking whether evidence paths existed falsely rejected 64/151 runs.
+    // Only a run that left a stream can prove it: an archived run from before `--json` has none and
+    // is judged by the contract of its day; a `--json` run missing its stream already failed above.
+    if (eventData.hasStream && eventData.commands_executed === 0) {
+      return {
+        status: 'FAIL',
+        reason: 'scout executed no command, so no answer rests on reading the code; '
+          + 'check stderr.log for sandbox refusals before changing the order',
+      };
+    }
     const gap = scoutCoverageGap(runDir, result);
     if (gap) return { status: 'FAIL', reason: gap };
   }

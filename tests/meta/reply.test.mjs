@@ -5,17 +5,23 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { collect } from '../../src/home/lib/write-meta.mjs';
-import { buildResult, makeRun } from './test-fixtures.mjs';
+import { buildResult, COMPLETED_COMMAND, makeRun } from './test-fixtures.mjs';
 
 test('successful replies use the read command instead of a raw file path', () => {
   const dir = makeRun({
     args: ['exec', '--json'],
-    events: [{ type: 'thread.started', thread_id: 'reply-1' }],
-    result: { answer: 'done', findings: [], unknowns: [], report_markdown: '# report' },
+    events: [{ type: 'thread.started', thread_id: 'reply-1' }, COMPLETED_COMMAND],
+    result: {
+      answer: 'The reply points the operator at the structured read command so the run can be inspected '
+        + 'without guessing artifact paths. The command reads the retained events and diagnostic output, '
+        + 'and the same link remains available after a successful scout has explained the requested code.',
+      findings: [], unknowns: [], report_markdown: '# report',
+    },
   });
 
-  const { reply } = collect(dir, 'codex-scout', 0);
+  const { meta, reply } = collect(dir, 'codex-scout', 0);
 
+  assert.equal(meta.status, 'OK');
   assert.ok(reply.includes(`Log: codex-bridge read ${dir}`));
   assert.doesNotMatch(reply, /raw\.log/);
 });

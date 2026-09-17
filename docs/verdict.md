@@ -50,9 +50,16 @@ the first matching branch determines the status. The order is therefore part of 
     after verification and before scope: unfinished work matters more than where it was left, while a
     failed mandatory command remains the louder failure. Only runs whose own `schema.json` required the
     field are judged by it — see “Run age” below.
-11. **Scout coverage.** Multiple extracted questions require separate answers, enough substantive text,
-    and at least one evidence link for each question. For a single question, the overall `answer` is
-    checked for substance.
+11. **Scout coverage.** First, a run that left an events stream must show at least one executed command:
+    an `item.completed` event whose item is a `command_execution`, with any status and exit code (a grep
+    that finds nothing still read the code). Without one the run is `FAIL` — no answer can rest on
+    reading code nobody read. On 2026-09-16 a dead Codex sandbox refused every tool call, those refusals
+    never reach the stream, and a scout whose `evidence` explained that the files were unreadable was
+    graded `OK`. Across 99 earlier successful scout runs this fact was missing exactly twice, both on
+    that dead sandbox; requiring evidence to name an existing file instead would have failed 64 of 151.
+    An archived run without a stream is not judged by it. Then multiple extracted questions require
+    separate answers, enough substantive text, and at least one evidence link for each question. For a
+    single question, the overall `answer` is checked for substance.
 12. **Build edits outside scope.** `environmentPaths` are subtracted from the tree delta first, then the
     remaining paths are compared with `scope.txt`. This check ranks above report matching: a report can
     name one allowed file while concealing several extra ones.

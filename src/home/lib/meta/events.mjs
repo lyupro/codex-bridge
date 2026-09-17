@@ -157,6 +157,10 @@ export function readEvents(runDir) {
     // not an archived run.
     hasStream: exists,
     hasEvents: events.length > 0,
+    // The 2026-09-16 dead sandbox rejected every command; refused calls never enter the
+    // stream. Only completed items prove execution, including commands with nonzero exits.
+    commands_executed: events.filter((event) =>
+      event.type === 'item.completed' && event.item?.type === 'command_execution').length,
     tokens: accounting.tokens,
     usage: accounting.usage,
     session_id: started ? String(started.thread_id) : null,
