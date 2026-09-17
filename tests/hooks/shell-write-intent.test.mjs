@@ -345,3 +345,51 @@ test('distinguishes background boundaries from ampersands belonging to operators
     assert.deepEqual(shellWriteIntent(command), { writes: true, paths }, command);
   }
 });
+
+test('does not mistake arguments or literal parentheses for command positions', () => {
+  // Plan_57 D11 reproductions: git log and grep were refused for naming rm/touch as arguments.
+  for (const command of [
+    'git log --grep rm -- README.md', 'grep -rn touch src/', 'echo remember to touch base',
+    'npm test -- tests/rm.test.mjs', String.raw`find . -exec grep -l rm {} \;`,
+    'echo "(rm a.txt)"', String.raw`echo \(rm a.txt\)`, '< rm grep touch src/',
+    // D11: option values are not recognised; this lock gap is caught afterwards by the witness.
+    'sudo -u someone rm a.txt', 'unknown-launcher rm a.txt',
+  ]) assert.deepEqual(shellWriteIntent(command), { writes: false, paths: [] }, command);
+});
+
+test('recognises command positions after prefixes, parentheses and launchers', () => {
+  const cases = [
+    ['X=1 rm a.txt', ['a.txt']], ['_X2=1 Y=2 rm a.txt', ['a.txt']],
+    ['2>/dev/null rm a.txt', ['/dev/null', 'a.txt']], ['>out.txt rm a.txt', ['out.txt', 'a.txt']],
+    ['> out.txt rm a.txt', ['out.txt', 'a.txt']], ['>> log.txt rm a.txt', ['log.txt', 'a.txt']],
+    ['2> err.txt rm a.txt', ['err.txt', 'a.txt']], ['< in.txt rm a.txt', ['a.txt']],
+    ['if true; then rm a.txt; fi', ['a.txt']], ['for f in x; do touch b.txt; done', ['b.txt']],
+    ['! rm a.txt', ['a.txt']], ['{ rm a.txt; }', ['a.txt']], ['time rm a.txt', ['a.txt']],
+    ['"rm" a.txt', ['a.txt']], ["'/usr/bin/rm' a.txt", ['a.txt']],
+    ['else rm a.txt', ['a.txt']], ['elif rm a.txt; then true; fi', ['a.txt']],
+    ['while rm a.txt; do true; done', ['a.txt']], ['until rm a.txt; do true; done', ['a.txt']],
+    ['(rm a.txt)', ['a.txt']], ['( cd x && rm a.txt )', ['a.txt']], ['echo $(rm a.txt)', ['a.txt']],
+    ["touch 'a(b).txt'", ['a(b).txt']], ['xargs rm a.txt', ['a.txt']], ['xargs -0 rm', []],
+    ['env X=1 cp a.txt b.txt', ['b.txt']], ['timeout 5 tee log.txt', ['log.txt']],
+    ['nice -n 10 cp a.txt b.txt', ['b.txt']], ['nohup tee log.txt', ['log.txt']],
+    ['command rm a.txt', ['a.txt']], ['exec rm a.txt', ['a.txt']], ['sudo rm a.txt', ['a.txt']],
+    ['env timeout 5s nice -n 10 command rm a.txt', ['a.txt']], ['timeout 2m tee log.txt', ['log.txt']],
+  ];
+  for (const [command, paths] of cases) {
+    assert.deepEqual(shellWriteIntent(command), { writes: true, paths }, command);
+  }
+});
+
+test('bounds each find action at its terminator and resumes looking for later actions', () => {
+  const cases = [
+    [String.raw`find . -name '*.tmp' -exec rm {} \;`, ['{}']],
+    ['find . -exec rm {} + -print', ['{}']],
+    [String.raw`find . -exec grep -l x {} \; -exec touch done.txt \;`, ['done.txt']],
+    [String.raw`find . -execdir rm {} \; -ok touch done.txt \; -okdir rm old.txt + -print`, ['{}', 'done.txt', 'old.txt']],
+    ['find . -exec env cp a.txt b.txt', ['b.txt']],
+    [String.raw`find . -exec sed -i 's/a/b/' a.txt \; -print`, ['a.txt']],
+  ];
+  for (const [command, paths] of cases) {
+    assert.deepEqual(shellWriteIntent(command), { writes: true, paths }, command);
+  }
+});

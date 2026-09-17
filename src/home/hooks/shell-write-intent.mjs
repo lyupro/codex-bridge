@@ -72,7 +72,7 @@ function lexShell(command) {
         || command[index + 1] === '>');
     current.previousLiteral = isLiteral;
     if (!isLiteral && pipeAmpersand) return false;
-    if (!isLiteral && (';|\r\n'.includes(character)
+    if (!isLiteral && (';|()\r\n'.includes(character)
       || (character === '&' && !operatorAmpersand))) finish(current, true);
     else if (!isLiteral && /\s/.test(character)) finish(current, false);
     else current.word += character;
@@ -116,6 +116,43 @@ function positional(args) {
  */
 function commandName(token) {
   return token.replace(/^.*[\\/]/, '').replace(/\.exe$/i, '').toLowerCase();
+}
+
+const COMMAND_PREFIXES = new Set(['if', 'then', 'else', 'elif', 'while', 'until', 'do', '!', '{', 'time']);
+const LAUNCHERS = new Set(['xargs', 'env', 'nohup', 'timeout', 'nice', 'command', 'exec', 'sudo']);
+
+// Plan_57 D11: `git log --grep rm` and `grep -rn touch` were refused because arguments became
+// commands. These launchers only move command position; unknown launchers leave a lock gap
+// covered after execution by worktree-witness.mjs, without falsely refusing a read.
+function* writingCommands(parts) {
+  let launched = false;
+  for (let index = 0; index < parts.length; index += 1) {
+    const part = parts[index];
+    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(part) || COMMAND_PREFIXES.has(part)) continue;
+    if (/^\d*[<>]/.test(part)) {
+      if (/^\d*[<>]+$/.test(part)) index += 1;
+      continue;
+    }
+    if (launched && (part.startsWith('-') || /^\d+[smhd]?$/.test(part))) continue;
+    const name = commandName(unquote(part));
+    if (LAUNCHERS.has(name)) {
+      launched = true;
+      continue;
+    }
+    if (COMMANDS.has(name)) yield parts.slice(index);
+    else if (name === 'find') {
+      for (index += 1; index < parts.length; index += 1) {
+        if (!['-exec', '-execdir', '-ok', '-okdir'].includes(parts[index])) continue;
+        const start = index + 1;
+        index = start;
+        while (index < parts.length && ![';', '+'].includes(parts[index])) index += 1;
+        // D11: find actions introduce commands, but their terminators and later predicates
+        // are not write targets; a later action gets its own command position.
+        yield* writingCommands(parts.slice(start, index));
+      }
+    }
+    return;
+  }
 }
 
 /**
@@ -173,19 +210,23 @@ export function shellWriteIntent(command) {
   }
 
   for (const parts of commands) {
-    const index = parts.findIndex((part) => COMMANDS.has(commandName(part)));
-    if (index < 0) continue;
-    const name = commandName(parts[index]);
-    const args = parts.slice(index + 1);
-    if (name === 'sed' && !args.some((arg) => /^-.*i/.test(arg))) continue;
-    writes = true;
-    const values = positional(args);
-    if (name === 'cp' || name === 'mv') {
-      if (values.length > 1) addPath(paths, values.at(-1));
-    } else if (name === 'sed') {
-      for (const value of values.slice(1)) addPath(paths, value);
-    } else {
-      for (const value of values) addPath(paths, value);
+    // D11 keeps the pre-position fallback: an unfinished quote makes word positions untrusted.
+    const candidates = literal ? writingCommands(parts) : [parts];
+    for (const candidate of candidates) {
+      const index = literal ? 0 : candidate.findIndex((part) => COMMANDS.has(commandName(part)));
+      if (index < 0) continue;
+      const name = commandName(literal ? unquote(candidate[index]) : candidate[index]);
+      const args = candidate.slice(index + 1);
+      if (name === 'sed' && !args.some((arg) => /^-.*i/.test(arg))) continue;
+      writes = true;
+      const values = positional(args);
+      if (name === 'cp' || name === 'mv') {
+        if (values.length > 1) addPath(paths, values.at(-1));
+      } else if (name === 'sed') {
+        for (const value of values.slice(1)) addPath(paths, value);
+      } else {
+        for (const value of values) addPath(paths, value);
+      }
     }
   }
 
