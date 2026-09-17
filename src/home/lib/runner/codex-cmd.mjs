@@ -20,6 +20,8 @@ import { MAX_LOG } from './git-state.mjs';
 // left no event". The grace exists to bound a grandchild holding stdio open forever (2026-08-06,
 // run 2026-08-06_204007_build waited 25 minutes), and thirty seconds bounds that just as well.
 const STDIO_DRAIN_GRACE_MS = 30_000;
+// Plan_57 D28: a stalled taskkill must not block probe or paid-run deadline settlement forever.
+const TASKKILL_TIMEOUT_MS = 10_000;
 
 /**
  * An argument cmd.exe cannot be handed safely, or undefined. `%` is fatal because cmd
@@ -55,12 +57,13 @@ export function stopCodex(child, onWindows = process.platform === 'win32') {
   const killed = spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], {
     stdio: 'ignore',
     windowsHide: true,
+    timeout: TASKKILL_TIMEOUT_MS,
   });
   if (killed.error || killed.status !== 0) child.kill();
 }
 
-// Keep stdout's head for the first marker, but stderr's tail for the latest failure evidence.
-const CAPTURE_LIMIT_BYTES = 64 * 1024;
+// Plan_57 D28: keep spawnSync's 1 MiB default (stdout head, stderr tail); overflow is inconclusive, never dead.
+const CAPTURE_LIMIT_BYTES = 1024 * 1024;
 const CAPTURE_CLOSE_GRACE_MS = 2_000;
 const CAPTURE_STOP_GRACE_MS = 5_000;
 
@@ -78,8 +81,9 @@ export function spawnCaptured(command, args, options) {
     const child = spawn(command, args, { ...rest, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = Buffer.alloc(0);
     let stderr = Buffer.alloc(0);
-    let timeoutError = null;
+    let captureError = null;
     let settled = false;
+    let stopped = false;
     let deadlineTimer;
     let closeTimer;
     let stopTimer;
@@ -92,30 +96,47 @@ export function spawnCaptured(command, args, options) {
       if (destroyStreams) {
         child.stdout.destroy();
         child.stderr.destroy();
+        child.unref();
       }
       resolve({ status, signal, error, stdout: stdout.toString('utf8'), stderr: stderr.toString('utf8') });
     };
+    const stop = () => {
+      if (stopped) return;
+      stopped = true;
+      stopCodex(child);
+    };
+    const onPipeError = (error) => {
+      if (settled) return;
+      stop();
+      finish(null, null, error, true);
+    };
+    child.stdout.on('error', onPipeError);
+    child.stderr.on('error', onPipeError);
     child.stdout.on('data', (chunk) => {
+      const incoming = Buffer.from(chunk);
       const room = CAPTURE_LIMIT_BYTES - stdout.length;
-      if (room > 0) stdout = Buffer.concat([stdout, Buffer.from(chunk).subarray(0, room)]);
+      if (incoming.length > room && !captureError) {
+        captureError = Object.assign(new Error(`stdout exceeded ${CAPTURE_LIMIT_BYTES} bytes`), { code: 'ENOBUFS' });
+      }
+      if (room > 0) stdout = Buffer.concat([stdout, incoming.subarray(0, room)]);
     });
     child.stderr.on('data', (chunk) => {
       stderr = Buffer.concat([stderr, Buffer.from(chunk)]);
       if (stderr.length > CAPTURE_LIMIT_BYTES) stderr = stderr.subarray(-CAPTURE_LIMIT_BYTES);
     });
     child.on('error', (error) => finish(null, null, error, true));
-    child.on('close', (code, signal) => finish(code, signal, timeoutError));
+    child.on('close', (code, signal) => finish(code, signal, captureError));
     child.on('exit', (code, signal) => {
       if (settled) return;
       clearTimeout(deadlineTimer);
       clearTimeout(stopTimer);
-      closeTimer = setTimeout(() => finish(code, signal, timeoutError, true), CAPTURE_CLOSE_GRACE_MS);
+      closeTimer = setTimeout(() => finish(code, signal, captureError, true), CAPTURE_CLOSE_GRACE_MS);
     });
     deadlineTimer = setTimeout(() => {
-      timeoutError = Object.assign(new Error(`timed out after ${timeout} ms`), { code: 'ETIMEDOUT' });
-      stopCodex(child);
+      captureError = Object.assign(new Error(`timed out after ${timeout} ms`), { code: 'ETIMEDOUT' });
+      stop();
       if (!settled) {
-        stopTimer = setTimeout(() => finish(null, null, timeoutError, true), CAPTURE_STOP_GRACE_MS);
+        stopTimer = setTimeout(() => finish(null, null, captureError, true), CAPTURE_STOP_GRACE_MS);
       }
     }, timeout);
   });

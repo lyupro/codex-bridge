@@ -12,7 +12,7 @@ import { syncBuiltinESMExports } from 'node:module';
 import { performance } from 'node:perf_hooks';
 import { PassThrough } from 'node:stream';
 import { setTimeout as delay } from 'node:timers/promises';
-import { spawnCaptured } from '../../src/home/lib/runner/codex-cmd.mjs';
+import { spawnCaptured, stopCodex } from '../../src/home/lib/runner/codex-cmd.mjs';
 import { probeSandbox } from '../../src/home/lib/runner/sandbox-probe.mjs';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 
@@ -21,6 +21,15 @@ test('spawnCaptured returns the exit code and separate UTF-8 output streams', as
     "process.stdout.write('out'); process.stderr.write('err'); process.exitCode = 3",
   ], { timeout: 5_000 });
   assert.deepEqual(result, { status: 3, signal: null, error: null, stdout: 'out', stderr: 'err' });
+});
+
+test('spawnCaptured captures a real process marker after 70000 bytes', async () => {
+  const result = await spawnCaptured(process.execPath, ['-e',
+    "process.stdout.write('x'.repeat(70000) + 'codex-bridge-sandbox-ok')",
+  ], { timeout: 10_000 });
+  assert.equal(result.status, 0);
+  assert.ok(result.stdout.endsWith('codex-bridge-sandbox-ok'));
+  assert.equal(result.error, null);
 });
 
 test('spawnCaptured reports ENOENT for an absolute missing executable', async (t) => {
@@ -66,6 +75,7 @@ async function withCapturedChild(t, work) {
   child.stdout = new PassThrough();
   child.stderr = new PassThrough();
   child.kill = t.mock.fn(() => true);
+  child.unref = t.mock.fn();
   const spawn = t.mock.method(childProcess, 'spawn', () => child);
   const stop = t.mock.method(childProcess, 'spawnSync', () => ({ status: 0 }));
   t.mock.timers.enable({ apis: ['setTimeout'] });
@@ -99,18 +109,73 @@ test('spawnCaptured forwards process options but omits shell, timeout and encodi
   });
 });
 
-test('spawnCaptured keeps the first 64 KiB of stdout and last 64 KiB of stderr', async (t) => {
+test('spawnCaptured preserves a marker after 65 KiB of stdout', async (t) => {
   await withCapturedChild(t, async ({ child }) => {
     const pending = spawnCaptured('fixture', [], { timeout: 500 });
-    const limit = 64 * 1024;
-    const output = 'codex-bridge-sandbox-ok\n' + 'x'.repeat(limit * 2) + 'stdout tail';
-    const error = 'stderr head' + 'y'.repeat(limit * 2) + 'latest error';
-    for (let index = 0; index < output.length; index += 997) child.stdout.write(output.slice(index, index + 997));
-    for (let index = 0; index < error.length; index += 991) child.stderr.write(error.slice(index, index + 991));
-    child.emit('close', 1, null);
+    child.stdout.write('x'.repeat(65 * 1024));
+    child.stdout.write('codex-bridge-sandbox-ok');
+    child.emit('close', 0, null);
     const result = await pending;
+    assert.equal(result.status, 0);
+    assert.ok(result.stdout.includes('codex-bridge-sandbox-ok'));
+    assert.equal(result.error, null);
+  });
+});
+
+test('spawnCaptured keeps the first 1 MiB of stdout and reports overflow without stopping', async (t) => {
+  await withCapturedChild(t, async ({ child, stop }) => {
+    let settled = false;
+    const pending = spawnCaptured('fixture', [], { timeout: 500 }).then((result) => { settled = true; return result; });
+    const limit = 1024 * 1024;
+    const output = 'stdout head' + 'x'.repeat(limit) + 'discarded tail';
+    for (let index = 0; index < output.length; index += 65537) child.stdout.write(output.slice(index, index + 65537));
+    await Promise.resolve();
+    assert.equal(settled, false);
+    assert.equal(stop.mock.callCount(), 0);
+    assert.equal(child.kill.mock.callCount(), 0);
+    child.emit('close', 7, null);
+    const result = await pending;
+    assert.equal(result.status, 7);
+    assert.equal(result.error.code, 'ENOBUFS');
+    assert.equal(result.error.message, 'stdout exceeded 1048576 bytes');
+    assert.equal(Buffer.byteLength(result.stdout), limit);
     assert.equal(result.stdout, output.slice(0, limit));
+  });
+});
+
+test('spawnCaptured keeps the last 1 MiB of stderr without an overflow error', async (t) => {
+  await withCapturedChild(t, async ({ child }) => {
+    const pending = spawnCaptured('fixture', [], { timeout: 500 });
+    const limit = 1024 * 1024;
+    const error = 'stderr head' + 'y'.repeat(limit) + 'latest error';
+    for (let index = 0; index < error.length; index += 65537) child.stderr.write(error.slice(index, index + 65537));
+    child.emit('close', 0, null);
+    const result = await pending;
     assert.equal(result.stderr, error.slice(-limit));
+    assert.equal(result.error, null);
+  });
+});
+
+test('spawnCaptured keeps ETIMEDOUT when stdout overflows before or after the deadline', async (t) => {
+  for (const overflowFirst of [false, true]) await withCapturedChild(t, async ({ child }) => {
+    const pending = spawnCaptured('fixture', [], { timeout: 500 });
+    if (overflowFirst) child.stdout.write('x'.repeat(1024 * 1024 + 1));
+    t.mock.timers.tick(500);
+    child.stdout.write('y'.repeat(1024 * 1024 + 1));
+    child.emit('close', null, 'SIGKILL');
+    assert.equal((await pending).error.code, 'ETIMEDOUT');
+  });
+});
+
+test('stopCodex falls back to child.kill when taskkill times out', async (t) => {
+  await withCapturedChild(t, async ({ child, stop }) => {
+    stop.mock.mockImplementation(() => ({ error: Object.assign(new Error('taskkill timed out'), { code: 'ETIMEDOUT' }) }));
+    stopCodex(child, true);
+    assert.deepEqual(stop.mock.calls[0].arguments, ['taskkill', ['/pid', '424242', '/T', '/F'], {
+      stdio: 'ignore', windowsHide: true, timeout: 10_000,
+    }]);
+    assert.equal(child.kill.mock.callCount(), 1);
+    assert.deepEqual(child.kill.mock.calls[0].arguments, []);
   });
 });
 
@@ -130,6 +195,7 @@ test('spawnCaptured gives inherited pipes two seconds after exit then preserves 
     });
     assert.equal(child.stdout.destroyed, true);
     assert.equal(child.stderr.destroyed, true);
+    assert.equal(child.unref.mock.callCount(), 1);
     assert.equal(stop.mock.callCount(), 0);
     assert.equal(child.kill.mock.callCount(), 0);
   });
@@ -146,6 +212,7 @@ test('spawnCaptured clears the deadline and exit grace when close arrives', asyn
     t.mock.timers.tick(60_000);
     assert.equal(child.stdout.destroyed, false);
     assert.equal(child.stderr.destroyed, false);
+    assert.equal(child.unref.mock.callCount(), 0);
     assert.equal(stop.mock.callCount(), 0);
     assert.equal(child.kill.mock.callCount(), 0);
   });
@@ -160,8 +227,33 @@ test('spawnCaptured settles once on spawn error and ignores later close and exit
     child.emit('exit', -2, null);
     t.mock.timers.tick(60_000);
     assert.deepEqual(await pending, { status: null, signal: null, error, stdout: '', stderr: '' });
+    assert.equal(child.unref.mock.callCount(), 1);
     assert.equal(stop.mock.callCount(), 0);
     assert.equal(child.kill.mock.callCount(), 0);
+  });
+});
+
+test('spawnCaptured stops once on pipe error and ignores a second pipe error and later events', async (t) => {
+  await withCapturedChild(t, async ({ child, stop }) => {
+    let settlements = 0;
+    const pending = spawnCaptured('fixture', [], { timeout: 500 }).then((result) => { settlements += 1; return result; });
+    child.stdout.write('out');
+    child.stderr.write('err');
+    const error = Object.assign(new Error('pipe read failed'), { code: 'EIO' });
+    child.stdout.emit('error', error);
+    child.stderr.emit('error', new Error('second pipe error'));
+    child.emit('close', 0, null);
+    child.emit('exit', 0, null);
+    t.mock.timers.tick(60_000);
+    assert.deepEqual(await pending, { status: null, signal: null, error, stdout: 'out', stderr: 'err' });
+    assert.equal(settlements, 1);
+    assert.equal(child.stdout.destroyed, true);
+    assert.equal(child.stderr.destroyed, true);
+    assert.equal(child.unref.mock.callCount(), 1);
+    assert.equal(stop.mock.callCount(), process.platform === 'win32' ? 1 : 0);
+    assert.equal(child.kill.mock.callCount(), process.platform === 'win32' ? 0 : 1);
+    if (process.platform === 'win32') assert.equal(stop.mock.calls[0].arguments[0], 'taskkill');
+    else assert.deepEqual(child.kill.mock.calls[0].arguments, ['SIGKILL']);
   });
 });
 
@@ -181,6 +273,7 @@ for (const closes of [false, true]) {
       t.mock.timers.tick(60_000);
       assert.equal(child.stdout.destroyed, !closes);
       assert.equal(child.stderr.destroyed, !closes);
+      assert.equal(child.unref.mock.callCount(), closes ? 0 : 1);
     });
   });
 }
@@ -192,7 +285,7 @@ test('spawnCaptured settles five seconds after stopping even without exit or clo
     t.mock.timers.tick(500);
     if (process.platform === 'win32') {
       assert.deepEqual(stop.mock.calls[0].arguments, ['taskkill', ['/pid', '424242', '/T', '/F'], {
-        stdio: 'ignore', windowsHide: true,
+        stdio: 'ignore', windowsHide: true, timeout: 10_000,
       }]);
     } else {
       assert.deepEqual(child.kill.mock.calls[0].arguments, ['SIGKILL']);
@@ -213,6 +306,7 @@ test('spawnCaptured settles five seconds after stopping even without exit or clo
     t.mock.timers.tick(60_000);
     await Promise.resolve();
     assert.equal(settlements, 1);
+    assert.equal(child.unref.mock.callCount(), 1);
   });
 });
 
