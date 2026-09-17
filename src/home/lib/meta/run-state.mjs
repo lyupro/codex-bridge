@@ -10,6 +10,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { changedPaths, line, normalizePath, readJson, readText, size } from './paths.mjs';
+import { withLaunchRows } from './launch-rows.mjs';
 import {
   IDENTITY_ALIVE,
   IDENTITY_UNVERIFIED,
@@ -230,6 +231,9 @@ export function writeFailure(runDir, agent, reason, extraLines = [], preStart = 
     status: 'FAIL',
     finished_at: meta.finished_at,
   });
-  const reply = [`FAIL — ${meta.reason}`, ...extraLines, `Run: ${runDir}`].join('\n');
+  const reply = withLaunchRows(
+    [`FAIL — ${meta.reason}`, ...extraLines, `Run: ${runDir}`],
+    runDir,
+  ).join('\n');
   return { meta, reply };
 }

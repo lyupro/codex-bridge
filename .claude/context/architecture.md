@@ -44,7 +44,10 @@ hand-edited files stop the run unless `--force`.
   (artifact reads and path matching), `chain` (earlier passes of the same task), `run-state`
   (`status.json` honesty, abandoned runs), `events` (the JSONL stream — the only module that knows
   it is JSONL), `startup` (a run that never began), `transport`/`deadline`/`outcome` (damaged
-  evidence, killed runs, the declared outcome), `verdict` (OK/FAIL/LIMIT), `reply` (printed lines).
+  evidence, killed runs, the declared outcome), `verdict` (OK/FAIL/LIMIT), `reply` (printed lines),
+  `launch-rows` (rows from what the launcher recorded in `status.json` — retention, an inconclusive
+  sandbox probe — applied once in `collect()` and once in `writeFailure()`, because the retention row
+  once lived in five reply functions and was missing from the sixth path).
 - `hooks/` holds the four guards, all fail-open on anything they do not recognise:
   `reply-guard.mjs` (SubagentStop) rejects a dispatcher reply that `meta.json` does not support or
   that stays silent about a live `codex-build` run of the same project; `order-gate.mjs`

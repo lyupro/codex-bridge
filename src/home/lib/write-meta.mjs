@@ -29,6 +29,7 @@ import { readEvents } from './meta/events.mjs';
 import { writeStatus } from './meta/run-state.mjs';
 import { resolveStatus } from './meta/verdict.mjs';
 import { AGENTS, failReply, limitReply, withProfileRow } from './meta/reply.mjs';
+import { withLaunchRows } from './meta/launch-rows.mjs';
 
 function readRunnerVersion() {
   try {
@@ -149,7 +150,10 @@ export function collect(runDir, agent, exitCode) {
   };
   const reply =
     withProfileRow(
-      status === 'OK' ? cfg.reply(ctx) : status === 'LIMIT' ? limitReply(ctx, meta) : failReply(ctx, meta),
+      withLaunchRows(
+        status === 'OK' ? cfg.reply(ctx) : status === 'LIMIT' ? limitReply(ctx, meta) : failReply(ctx, meta),
+        runDir,
+      ),
       meta,
     );
 

@@ -279,7 +279,8 @@ process is even created. Your own terminal does not pass through the hook—`pru
 there. The guard does not affect `git prune` or `npm prune`.
 
 When triggered, automatic cleanup adds a line like
-`Retention: freed 41.2 MB from 12 runs older than 30 days` to the dispatcher's short response. The
+`Retention: freed 41.2 MB from 12 runs older than 30 days` to the dispatcher's short response —
+every response of that run, whatever the verdict, including a runner failure. The
 event is rare, and silence about it would cost more than the line: someone who does not understand
 where the files went starts looking for a failure. Both `install` and `doctor` also warn about
 enabled cleanup—an installer that silently introduces deleting behavior is a surprise, not a
