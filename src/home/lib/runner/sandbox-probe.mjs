@@ -1,8 +1,7 @@
 /** Checks whether this host's Codex sandbox can start a process before a run spends quota. */
-import { spawnSync } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
 import { sandboxModeFor } from './codex-args.mjs';
-import { codexSpawnSpec } from './codex-cmd.mjs';
+import { codexSpawnSpec, spawnCaptured } from './codex-cmd.mjs';
 import { platformSandboxArgs } from './sandbox-flags.mjs';
 
 export const SANDBOX_PROBE_MARKER = 'codex-bridge-sandbox-ok';
@@ -36,8 +35,8 @@ function inconclusiveReason(result, form) {
   return null;
 }
 
-export function probeSandbox({
-  agent, repo, platform = process.platform, run = spawnSync, timeoutMs = 30_000,
+export async function probeSandbox({
+  agent, repo, platform = process.platform, run = spawnCaptured, timeoutMs = 30_000,
 }) {
   if (!PROBED_PLATFORMS.has(platform)) return { outcome: 'skipped' };
   const sandbox = sandboxModeFor(agent);
@@ -45,10 +44,10 @@ export function probeSandbox({
   const echo = echoArgs(platform);
   const attempts = [];
   const finish = (outcome, reason) => ({ outcome, reason, attempts });
-  const attempt = (form, args) => {
+  const attempt = async (form, args) => {
     const spec = codexSpawnSpec(args, platform);
     const started = performance.now();
-    const result = run(spec.command, spec.args, {
+    const result = await run(spec.command, spec.args, {
       ...spec.options, cwd: repo, encoding: 'utf8', timeout: timeoutMs,
     });
     const marker = String(result.stdout ?? '').includes(SANDBOX_PROBE_MARKER);
@@ -64,7 +63,7 @@ export function probeSandbox({
   // On 2026-09-16 a corrupt deny_read_acl_state.json made every paid run unable to start tools.
   // On 2026-09-17, -C required --permission-profile instead: cwd must be a process option.
   // D16: no single failure exit code proves a dead sandbox; both forms and a live CLI must agree.
-  const flagged = attempt('flagged', [
+  const flagged = await attempt('flagged', [
     'sandbox', ...platformSandboxArgs(platform), '-c', `sandbox_mode=${sandbox}`, '--', ...echo,
   ]);
   const flaggedReason = inconclusiveReason(flagged, 'flagged');
@@ -77,14 +76,14 @@ export function probeSandbox({
     return finish('inconclusive', `The flagged sandbox probe printed the marker but exited ${flagged.status}.`);
   }
 
-  const control = attempt('control', ['sandbox', '--', ...echo]);
+  const control = await attempt('control', ['sandbox', '--', ...echo]);
   const controlReason = inconclusiveReason(control, 'control');
   if (controlReason) return finish('inconclusive', controlReason);
   if (control.marker) {
     return finish('inconclusive', 'This version of Codex no longer accepts the package sandbox flags.');
   }
 
-  const version = attempt('version', ['--version']);
+  const version = await attempt('version', ['--version']);
   if (version.error || version.signal || version.status !== 0) {
     // requireCodex() owns the later, recorded failure for an unavailable CLI.
     return finish('inconclusive', 'Codex CLI is unavailable.');

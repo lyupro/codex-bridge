@@ -25,9 +25,9 @@ function fixture(replies) {
   return { run, calls };
 }
 
-function probe(replies, options = {}) {
+async function probe(replies, options = {}) {
   const { run, calls } = fixture(replies);
-  const result = probeSandbox({ agent: 'codex-scout', repo, platform: 'win32', ...options, run });
+  const result = await probeSandbox({ agent: 'codex-scout', repo, platform: 'win32', ...options, run });
   return { result, calls };
 }
 
@@ -51,9 +51,9 @@ test('the marker and platform gate are the agreed constants', () => {
 for (const [agent, mode] of [
   ['codex-build', 'workspace-write'], ['codex-scout', 'read-only'], ['codex-review', 'read-only'],
 ]) {
-  test(`${agent} is alive after one flagged Windows attempt using its role sandbox`, () => {
+  test(`${agent} is alive after one flagged Windows attempt using its role sandbox`, async () => {
     assert.equal(sandboxModeFor(agent), mode);
-    const { result, calls } = probe({ flagged: success }, { agent });
+    const { result, calls } = await probe({ flagged: success }, { agent });
     assert.equal(result.outcome, 'alive');
     assertAttempts(result, calls, ['flagged']);
     assert.equal(result.attempts[0].status, 0);
@@ -70,23 +70,23 @@ for (const [agent, mode] of [
   });
 }
 
-test('unknown and missing roles fail before any process is started', () => {
+test('unknown and missing roles fail before any process is started', async () => {
   for (const agent of ['codex-unknown', undefined]) {
     assert.throws(() => sandboxModeFor(agent), /unknown agent/);
     const { run, calls } = fixture({});
-    assert.throws(() => probeSandbox({ agent, repo, platform: 'win32', run }), /unknown agent/);
+    await assert.rejects(() => probeSandbox({ agent, repo, platform: 'win32', run }), /unknown agent/);
     assert.equal(calls.length, 0);
   }
 });
 
-test('a required repository is never silently replaced with the caller directory', () => {
+test('a required repository is never silently replaced with the caller directory', async () => {
   for (const missingRepo of [undefined, '']) {
-    assert.throws(() => probe({}, { repo: missingRepo }), /requires a repository path/);
+    await assert.rejects(() => probe({}, { repo: missingRepo }), /requires a repository path/);
   }
 });
 
-test('two failed sandbox forms and a live CLI prove dead, with the supplied timeout on all calls', () => {
-  const { result, calls } = probe({ flagged: failure, control: failure, version }, { timeoutMs: 1234 });
+test('two failed sandbox forms and a live CLI prove dead, with the supplied timeout on all calls', async () => {
+  const { result, calls } = await probe({ flagged: failure, control: failure, version }, { timeoutMs: 1234 });
   assert.equal(result.outcome, 'dead');
   assert.match(result.reason, /cannot start a process/);
   assertAttempts(result, calls, ['flagged', 'control', 'version']);
@@ -112,9 +112,9 @@ for (const [name, response, reason] of [
   ['missing exit status', { status: null }, /no exit status/],
 ]) {
   for (const form of ['flagged', 'control']) {
-    test(`${form} ${name} is inconclusive and stops before the next attempt`, () => {
+    test(`${form} ${name} is inconclusive and stops before the next attempt`, async () => {
       const replies = form === 'flagged' ? { flagged: response } : { flagged: failure, control: response };
-      const { result, calls } = probe(replies);
+      const { result, calls } = await probe(replies);
       assert.equal(result.outcome, 'inconclusive');
       assert.match(result.reason, reason);
       assertAttempts(result, calls, form === 'flagged' ? ['flagged'] : ['flagged', 'control']);
@@ -122,16 +122,16 @@ for (const [name, response, reason] of [
   }
 }
 
-test('a control marker reports incompatible package flags and never starts version', () => {
-  const { result, calls } = probe({ flagged: failure, control: success });
+test('a control marker reports incompatible package flags and never starts version', async () => {
+  const { result, calls } = await probe({ flagged: failure, control: success });
   assert.equal(result.outcome, 'inconclusive');
   assert.match(result.reason, /no longer accepts the package sandbox flags/);
   assertAttempts(result, calls, ['flagged', 'control']);
   assert.equal(result.attempts[1].marker, true);
 });
 
-test('a control marker remains inconclusive even with a nonzero exit', () => {
-  const { result, calls } = probe({ flagged: failure, control: { ...success, status: 1 } });
+test('a control marker remains inconclusive even with a nonzero exit', async () => {
+  const { result, calls } = await probe({ flagged: failure, control: { ...success, status: 1 } });
   assert.equal(result.outcome, 'inconclusive');
   assertAttempts(result, calls, ['flagged', 'control']);
 });
@@ -143,43 +143,43 @@ for (const [name, response] of [
   ['timeout', { status: null, error: { code: 'ETIMEDOUT' } }],
   ['signal', { status: null, signal: 'SIGTERM' }],
 ]) {
-  test(`version ${name} leaves CLI availability to requireCodex`, () => {
-    const { result, calls } = probe({ flagged: failure, control: failure, version: response });
+  test(`version ${name} leaves CLI availability to requireCodex`, async () => {
+    const { result, calls } = await probe({ flagged: failure, control: failure, version: response });
     assert.equal(result.outcome, 'inconclusive');
     assert.equal(result.reason, 'Codex CLI is unavailable.');
     assertAttempts(result, calls, ['flagged', 'control', 'version']);
   });
 }
 
-test('dead is not pinned to exit 1, and a zero exit without stdout marker is insufficient', () => {
+test('dead is not pinned to exit 1, and a zero exit without stdout marker is insufficient', async () => {
   for (const status of [0, 3, 127]) {
-    const { result, calls } = probe({ flagged: { status }, control: { status }, version });
+    const { result, calls } = await probe({ flagged: { status }, control: { status }, version });
     assert.equal(result.outcome, 'dead');
     assertAttempts(result, calls, ['flagged', 'control', 'version']);
   }
 });
 
-test('a flagged marker needs exit zero and cannot override an interrupted attempt', () => {
-  const { result, calls } = probe({ flagged: { ...success, status: 1 } });
+test('a flagged marker needs exit zero and cannot override an interrupted attempt', async () => {
+  const { result, calls } = await probe({ flagged: { ...success, status: 1 } });
   assert.equal(result.outcome, 'inconclusive');
   assert.equal(result.reason, 'The flagged sandbox probe printed the marker but exited 1.');
   assertAttempts(result, calls, ['flagged']);
   for (const interruption of [{ error: { code: 'ETIMEDOUT' } }, { signal: 'SIGTERM' }]) {
-    const { result: interrupted, calls } = probe({ flagged: { ...success, ...interruption } });
+    const { result: interrupted, calls } = await probe({ flagged: { ...success, ...interruption } });
     assert.equal(interrupted.outcome, 'inconclusive');
     assertAttempts(interrupted, calls, ['flagged']);
   }
 });
 
-test('darwin is skipped immediately without running or validating an unused role', () => {
-  const { result, calls } = probe({}, { platform: 'darwin', agent: 'codex-unknown', repo: undefined });
+test('darwin is skipped immediately without running or validating an unused role', async () => {
+  const { result, calls } = await probe({}, { platform: 'darwin', agent: 'codex-unknown', repo: undefined });
   assert.deepEqual(result, { outcome: 'skipped' });
   assert.equal(calls.length, 0);
 });
 
 // The two outcomes seen live on an Ubuntu 24.04 VPS on 2026-09-17, before and after the AppArmor repair.
-test('Linux is judged with direct POSIX commands for every form', () => {
-  const { result, calls } = probe({ flagged: failure, control: failure, version },
+test('Linux is judged with direct POSIX commands for every form', async () => {
+  const { result, calls } = await probe({ flagged: failure, control: failure, version },
     { platform: 'linux', repo: '/repository with spaces' });
   assert.equal(result.outcome, 'dead');
   assertAttempts(result, calls, ['flagged', 'control', 'version']);
@@ -191,28 +191,28 @@ test('Linux is judged with direct POSIX commands for every form', () => {
     assert.equal(call.command, 'codex');
     assert.deepEqual(call.options, { cwd: '/repository with spaces', encoding: 'utf8', timeout: 30_000 });
   }
-  const alive = probe({ flagged: success }, { platform: 'linux', agent: 'codex-build', repo: '/repo' });
+  const alive = await probe({ flagged: success }, { platform: 'linux', agent: 'codex-build', repo: '/repo' });
   assert.equal(alive.result.outcome, 'alive');
   assert.deepEqual(alive.calls.map(({ args }) => args), [
     ['sandbox', '-c', 'sandbox_mode=workspace-write', '--', 'echo', MARKER],
   ]);
 });
 
-test('policy-looking stderr and a stderr-only marker never decide the outcome', () => {
-  const { result } = probe({
+test('policy-looking stderr and a stderr-only marker never decide the outcome', async () => {
+  const { result } = await probe({
     flagged: { status: 1, stderr: `blocked by policy\n${MARKER}` },
     control: { status: 1, stderr: 'is not recognized' }, version,
   });
   assert.equal(result.outcome, 'dead');
   assert.equal(result.attempts[0].marker, false);
   assert.equal(result.attempts[0].stderrTail, `blocked by policy\n${MARKER}`);
-  assert.equal(probe({ flagged: { ...success, stderr: 'blocked by policy; error; timeout' } }).result.outcome,
+  assert.equal((await probe({ flagged: { ...success, stderr: 'blocked by policy; error; timeout' } })).result.outcome,
     'alive');
 });
 
-test('stderr tails keep only the last 300 characters and absent streams are accepted', () => {
+test('stderr tails keep only the last 300 characters and absent streams are accepted', async () => {
   const stderr = 'discarded prefix\n' + 'x'.repeat(299) + '!';
-  const { result } = probe({
+  const { result } = await probe({
     flagged: { status: 1, stdout: null, stderr }, control: { status: 1, stderr: null }, version,
   });
   assert.equal(result.outcome, 'dead');
@@ -221,8 +221,8 @@ test('stderr tails keep only the last 300 characters and absent streams are acce
 });
 
 for (const platform of ['win32', 'linux']) {
-  test(`${platform} refusal supplies the manual control, both quoted tails, and quota assurance`, () => {
-    const { result } = probe({
+  test(`${platform} refusal supplies the manual control, both quoted tails, and quota assurance`, async () => {
+    const { result } = await probe({
       flagged: { status: 1, stderr: 'flagged problem\r\nsecond line' },
       control: { status: 1, stderr: 'control problem' },
       version: { status: 0, stderr: 'version text is not a sandbox diagnosis' },
@@ -270,4 +270,14 @@ test('codexSpawnSpec uses ComSpec when set and cmd.exe when absent', () => {
     if (original === undefined) delete process.env.ComSpec;
     else process.env.ComSpec = original;
   }
+});
+
+test('a promise-returning injected run still proves the sandbox alive', async () => {
+  const { run, calls } = fixture({ flagged: success });
+  const result = await probeSandbox({
+    agent: 'codex-scout', repo, platform: 'win32',
+    run: (...args) => Promise.resolve(run(...args)),
+  });
+  assert.equal(result.outcome, 'alive');
+  assertAttempts(result, calls, ['flagged']);
 });

@@ -80,6 +80,12 @@ complete job before detaching from the launcher.
    is written to `status.json#sandbox_probe` in step 10. Why this exists: on 2026-09-16 an unclean
    Windows shutdown corrupted the sandbox helper's state file, and every run started on a dead sandbox,
    spent quota and executed no command.
+   Each attempt has a 30-second deadline and runs through `spawnCaptured()` (`runner/codex-cmd.mjs`), not
+   `spawnSync`: on Windows the spawned process is `cmd.exe`, and a synchronous timeout killed only that
+   shell while Codex kept running as its orphan — the 2026-07-31 class `stopCodex()` exists for. On the
+   deadline the whole tree is stopped, a grandchild still holding the pipes gets two seconds after exit,
+   and a process that never reports its exit gets five seconds after the stop, so the probe always
+   settles.
    Only then, for build, is a live writing run in the same repository checked. The order matters: the
    probe takes seconds, and between the busy check and this run registering itself in step 10 nothing
    slow may run, or a second writer can enter the same tree unseen (review of 2026-09-17). A busy build

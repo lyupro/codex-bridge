@@ -59,6 +59,68 @@ export function stopCodex(child, onWindows = process.platform === 'win32') {
   if (killed.error || killed.status !== 0) child.kill();
 }
 
+// Keep stdout's head for the first marker, but stderr's tail for the latest failure evidence.
+const CAPTURE_LIMIT_BYTES = 64 * 1024;
+const CAPTURE_CLOSE_GRACE_MS = 2_000;
+const CAPTURE_STOP_GRACE_MS = 5_000;
+
+/**
+ * Plan_57 D24: async capture lets the deadline stop the whole Windows process tree,
+ * preventing the 2026-07-31 orphan that spawnSync's shell-only timeout leaves behind.
+ * Bounded pipe draining also prevents the inherited-stdio hang of 2026-08-06.
+ */
+export function spawnCaptured(command, args, options) {
+  const { timeout, encoding, shell, ...rest } = options ?? {};
+  if (typeof timeout !== 'number' || !Number.isFinite(timeout) || timeout <= 0) {
+    throw new TypeError('spawnCaptured requires a finite timeout greater than zero');
+  }
+  return new Promise((resolve) => {
+    const child = spawn(command, args, { ...rest, stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = Buffer.alloc(0);
+    let stderr = Buffer.alloc(0);
+    let timeoutError = null;
+    let settled = false;
+    let deadlineTimer;
+    let closeTimer;
+    let stopTimer;
+    const finish = (status, signal, error, destroyStreams = false) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(deadlineTimer);
+      clearTimeout(closeTimer);
+      clearTimeout(stopTimer);
+      if (destroyStreams) {
+        child.stdout.destroy();
+        child.stderr.destroy();
+      }
+      resolve({ status, signal, error, stdout: stdout.toString('utf8'), stderr: stderr.toString('utf8') });
+    };
+    child.stdout.on('data', (chunk) => {
+      const room = CAPTURE_LIMIT_BYTES - stdout.length;
+      if (room > 0) stdout = Buffer.concat([stdout, Buffer.from(chunk).subarray(0, room)]);
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr = Buffer.concat([stderr, Buffer.from(chunk)]);
+      if (stderr.length > CAPTURE_LIMIT_BYTES) stderr = stderr.subarray(-CAPTURE_LIMIT_BYTES);
+    });
+    child.on('error', (error) => finish(null, null, error, true));
+    child.on('close', (code, signal) => finish(code, signal, timeoutError));
+    child.on('exit', (code, signal) => {
+      if (settled) return;
+      clearTimeout(deadlineTimer);
+      clearTimeout(stopTimer);
+      closeTimer = setTimeout(() => finish(code, signal, timeoutError, true), CAPTURE_CLOSE_GRACE_MS);
+    });
+    deadlineTimer = setTimeout(() => {
+      timeoutError = Object.assign(new Error(`timed out after ${timeout} ms`), { code: 'ETIMEDOUT' });
+      stopCodex(child);
+      if (!settled) {
+        stopTimer = setTimeout(() => finish(null, null, timeoutError, true), CAPTURE_STOP_GRACE_MS);
+      }
+    }, timeout);
+  });
+}
+
 /**
  * Windows npm ships `codex` as codex.cmd, and Node refuses to spawn .cmd without a
  * shell. One command line through cmd.exe keeps a single code path; every argument is

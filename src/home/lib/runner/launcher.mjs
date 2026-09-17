@@ -191,7 +191,7 @@ export async function launcher(argv = process.argv.slice(2)) {
   // Review 2026-09-17: the slow probe widened the window between the busy check and registration.
   // Probe first so the busy check sees writers that registered while it waited.
   // Keep dead refusal before retention to preserve old run artifacts.
-  const sandboxProbe = probeSandbox({ agent: opts.agent, repo: repoRoot });
+  const sandboxProbe = await probeSandbox({ agent: opts.agent, repo: repoRoot });
   if (sandboxProbe.outcome === 'dead') die(sandboxRefusal(sandboxProbe));
 
   // Asked before this run registers itself, so it cannot find itself. Two writing runs share
