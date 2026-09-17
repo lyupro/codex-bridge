@@ -11,38 +11,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { changedPaths, line, normalizePath, readJson, readText, size } from './paths.mjs';
 import { withLaunchRows } from './launch-rows.mjs';
-import {
-  IDENTITY_ALIVE,
-  IDENTITY_UNVERIFIED,
-  processIdentity,
-} from '../process-identity.mjs';
-
-/**
- * Is this pid still running for this run? Unknown identity remains live here: treating an
- * unverified process as dead would mark a live run abandoned, and readers must fail open.
- */
-const isAliveIdentity = (identity) => identity === IDENTITY_ALIVE || identity === IDENTITY_UNVERIFIED;
-
-const pidAlive = (pid, runDir, status = {}) => {
-  const identity = processIdentity({ runDir, status: { ...status, pid } });
-  return isAliveIdentity(identity);
-};
-
-/**
- * This module deliberately judges by the run's pid identity alone, while hooks/live-runs.mjs also
- * requires a fresh progress heartbeat. The two answer different questions, and merging them broke both:
- *
- * - a hook asks "may the operator edit this tree", and a stalled run must stop holding that
- *   lock — the operator is editing knowingly, and a stale run should not cost them 25 minutes;
- * - this module asks "may a second paid run write into this tree" and "is this folder finished".
- *   Closing a run whose pid still lives makes markAbandoned the second writer of its meta.json:
- *   the live worker reaches collect() afterwards and overwrites the verdict, so the documented
- *   artifact order stops being a contract. Letting activeRun() past a live pid starts a second
- *   writing run in one worktree, which is the 2026-08-05 incident this whole lock exists for.
- *
- * A stalled-but-live run is closed by `stop`, which kills the process first and only then
- * records the verdict — one writer, in the right order.
- */
+import { runLiveness } from './run-liveness.mjs';
 
 /**
  * Run state on disk, merged over whatever is already there. A killed runner leaves no
@@ -60,6 +29,22 @@ export function writeStatus(runDir, patch) {
   fs.writeFileSync(path.join(runDir, 'status.json'), `${JSON.stringify(next, null, 2)}\n`);
   return next;
 }
+
+/**
+ * This module deliberately judges by the run's pid identity alone, while hooks/live-runs.mjs also
+ * requires a fresh progress heartbeat. The two answer different questions, and merging them broke both:
+ *
+ * - a hook asks "may the operator edit this tree", and a stalled run must stop holding that
+ *   lock — the operator is editing knowingly, and a stale run should not cost them 25 minutes;
+ * - this module asks "may a second paid run write into this tree" and "is this folder finished".
+ *   Closing a run whose pid still lives makes markAbandoned the second writer of its meta.json:
+ *   the live worker reaches collect() afterwards and overwrites the verdict, so the documented
+ *   artifact order stops being a contract. Letting activeRun() past a live pid starts a second
+ *   writing run in one worktree, which is the 2026-08-05 incident this whole lock exists for.
+ *
+ * A stalled-but-live run is closed by `stop`, which kills the process first and only then
+ * records the verdict — one writer, in the right order.
+ */
 
 /**
  * Closes out runs whose runner died without writing a verdict. Called at the start of every
@@ -84,10 +69,10 @@ export function markAbandoned(runsRoot, currentTree) {
     const runDir = path.join(runsRoot, entry.name);
     const status = readJson(path.join(runDir, 'status.json'));
     if (!status || status.state !== 'running') continue;
-    if (pidAlive(status.pid, runDir, status)) continue;
+    const liveness = runLiveness({ runDir, status });
+    if (liveness.state !== 'abandoned' && liveness.state !== 'finished') continue;
     const metaPath = path.join(runDir, 'meta.json');
     const meta = readJson(metaPath);
-    if (!meta && fs.existsSync(metaPath)) continue;
     let patch = meta
       ? { state: 'finished', status: meta.status, finished_at: meta.finished_at }
       : {
@@ -160,8 +145,8 @@ export function activeRunDetails(runsRoot, repo, agent = 'codex-build') {
     const status = readJson(path.join(runDir, 'status.json'));
     if (!status || status.state !== 'running' || status.agent !== agent) continue;
     if (normalizePath(status.repo) !== wanted) continue;
-    const identity = processIdentity({ runDir, status });
-    if (isAliveIdentity(identity)) return { run: entry.name, identity };
+    const { identity, processMayBeAlive } = runLiveness({ runDir, status });
+    if (processMayBeAlive) return { run: entry.name, identity };
   }
   return null;
 }
