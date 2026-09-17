@@ -66,7 +66,19 @@ complete job before detaching from the launcher.
    a directory with `state=aborted_pre_start` (and its old-contract equivalent) is excluded — it spent
    no quota and contains nothing to continue. The chain itself remains complete: it is the audit view,
    and the rejected run remains visible in it.
-8. For build, a live writing run in the same repository is checked.
+8. For build, a live writing run in the same repository is checked. When none holds the tree — and
+   always for scout and review — `probeSandbox()` (`runner/sandbox-probe.mjs`) asks the host's Codex
+   sandbox to run `echo` with the role's own sandbox flags. Only Windows is judged; on other platforms
+   the result is `skipped`. The sandbox counts as dead only on double evidence: no marker with the role's
+   flags, no marker in the flag-free control form, neither attempt exited with code 2 (an argument
+   error), and `codex --version` still answers. A dead sandbox refuses the run right here with the
+   probe's stderr and the operator's check command: no directory is created, retention does not run, no
+   quota is spent. Every other outcome lets the run start, including `inconclusive` — a timeout, a
+   spawn error, rejected arguments, or flags this Codex version no longer accepts — and the whole result
+   is written to `status.json#sandbox_probe` in step 10. A busy build is not probed: it is refused for
+   free anyway and should not wait two seconds for it. Why this exists: on 2026-09-16 an unclean Windows
+   shutdown corrupted the sandbox helper's state file, and every run started on a dead sandbox, spent
+   quota and executed no command.
 9. A unique `<date_time>_<slug>` directory is created; on a name collision, `-2`, `-3`, and so on is
    appended.
 10. The first artifact written is `status.json` with `state=running` and the launcher pid. Stdout then

@@ -110,7 +110,7 @@ test('the unsafe-for-cmd refusal records aborted_pre_start', (t) => {
   const source = `
 const realSpawnSync = childProcess.spawnSync;
 childProcess.spawnSync = (command, args, options) =>
-  command === 'git' ? realSpawnSync(command, args, options) : { status: 0, error: null, stderr: '', stdout: '' };
+  command === 'git' ? realSpawnSync(command, args, options) : { status: 0, error: null, stderr: '', stdout: 'codex-bridge-sandbox-ok' };
 `;
 
   const output = mockedLauncher(source, baseArgs('codex-review', repo, 'unsafe-order'), 'unsafe refusal', {
@@ -130,7 +130,7 @@ test('a worker spawn error records aborted_pre_start', (t) => {
 import { EventEmitter } from 'node:events';
 const realSpawnSync = childProcess.spawnSync;
 childProcess.spawnSync = (command, args, options) =>
-  command === 'git' ? realSpawnSync(command, args, options) : { status: 0, error: null, stderr: '', stdout: '' };
+  command === 'git' ? realSpawnSync(command, args, options) : { status: 0, error: null, stderr: '', stdout: 'codex-bridge-sandbox-ok' };
 childProcess.spawn = () => {
   const worker = new EventEmitter();
   worker.pid = 999999;
@@ -188,7 +188,7 @@ test('a pre-start folder does not make the same order ask for a continuation', (
 import { EventEmitter } from 'node:events';
 const realSpawnSync = childProcess.spawnSync;
 childProcess.spawnSync = (command, args, options) =>
-  command === 'git' ? realSpawnSync(command, args, options) : { status: 0, error: null, stderr: '', stdout: '' };
+  command === 'git' ? realSpawnSync(command, args, options) : { status: 0, error: null, stderr: '', stdout: 'codex-bridge-sandbox-ok' };
 childProcess.spawn = () => {
   const worker = new EventEmitter();
   worker.pid = 999999;

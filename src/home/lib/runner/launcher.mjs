@@ -40,6 +40,7 @@ import { resolveProjectRunsDir } from './project-dir.mjs';
 import { cleanupRetention } from '../retention.mjs';
 import { renderConventions } from './conventions.mjs';
 import { validateScope } from './scope-check.mjs';
+import { probeSandbox, sandboxRefusal } from './sandbox-probe.mjs';
 
 /**
  * The worker is this same program re-invoked as `--worker <runDir>`, so the path spawned
@@ -86,7 +87,7 @@ export const runDirPath = (root, slug, runStamp = stamp()) => {
 /**
  * Everything a run needs before a single token of someone else's quota is spent, and every
  * refusal that costs nothing: bad arguments, an open chain without --continue, a busy
- * worktree, a missing Codex CLI. All of it happens here, in the process the caller is free
+ * worktree, a dead Codex sandbox, a missing Codex CLI. All in the process the caller is free
  * to kill — so a killed caller can only ever interrupt a run that was already paid for.
  */
 export async function launcher(argv = process.argv.slice(2)) {
@@ -191,6 +192,10 @@ export async function launcher(argv = process.argv.slice(2)) {
   // one worktree with no isolation: the second one's before/after snapshot picks up the
   // first one's edits, and an honest run gets failed for work it never did.
   const busy = opts.agent === 'codex-build' ? activeRunDetails(projectRunsRoot, repoRoot) : null;
+  // On 2026-09-16, corrupt deny_read_acl_state.json spent quota on runs executing no commands.
+  // After busy to avoid probing a refused writer; before retention to preserve old run artifacts on refusal.
+  const sandboxProbe = busy ? null : probeSandbox({ agent: opts.agent, repo: repoRoot });
+  if (sandboxProbe?.outcome === 'dead') die(sandboxRefusal(sandboxProbe));
 
   let retention = null;
   try {
@@ -231,6 +236,7 @@ export async function launcher(argv = process.argv.slice(2)) {
     // `continued_from` is the exact run the orchestrator named; `continues` above remains the chain base.
     ...(continuationGrant ? { continued_from: continuationGrant.run } : {}),
     ...(retention ? { retention } : {}),
+    ...(sandboxProbe ? { sandbox_probe: sandboxProbe } : {}),
   });
 
   // Printed before anything can go wrong: even a dispatcher that dies mid-run leaves the

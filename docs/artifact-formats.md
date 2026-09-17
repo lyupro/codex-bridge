@@ -22,6 +22,7 @@ before the final update to `status.json`.
 | `repo` | Repository root. |
 | `started_at` | Run creation time in ISO 8601. |
 | `continues` | Optional name of the first directory in the chain if the run was started with continuation. |
+| `sandbox_probe` | The launcher's check of the host Codex sandbox, written whole: `outcome` (`alive`, `inconclusive` or `skipped`), `reason`, and `attempts` — one entry per probe form with `form` (`flagged`, `control`, `version`), `status`, `marker`, `ms` and `stderrTail` (at most 300 characters, evidence only, never judged). `dead` never appears here: a dead sandbox refuses before the folder exists. An absent field means the probe was not called — a busy build tree, or a run from before 0.6.3. |
 | `continued_from` | Optional name of the run named by the `continue:` authorization in the task text. Unlike `continues`, this is not the start of the chain, but the run after which the orchestrator instructed execution to continue. An investigation trace; enforcement is handled by the “named run is the last in the chain” rule. |
 
 ### Completion fields
