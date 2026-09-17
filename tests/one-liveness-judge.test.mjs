@@ -40,17 +40,22 @@ const identityModule = (token) => /(?:^|\/)process-identity\.mjs(?:[?#].*)?$/.te
 function forbiddenImport(file, tokens) {
   if (file === DEFINITION) return false;
   for (let index = 0; index < tokens.length; index += 1) {
-    if (tokens[index] !== 'import') continue;
+    const exporting = tokens[index] === 'export';
+    if (tokens[index] !== 'import' && !exporting) continue;
+    // Review 2026-09-17 (D28): `export { processIdentity as judge } from` builds a facade that every
+    // consumer could import instead of the judge, so a re-export is checked like an import — and is
+    // forbidden in every file, the judge included, since re-exporting is exactly the bypass.
+    if (exporting && !['{', '*'].includes(tokens[index + 1])) continue;
     // Whole-module imports expose both identity probes and signal-0 polling, bypassing either
     // the single judge or the poller allowlist. Keep those boundaries explicit with named imports.
-    if (tokens[index + 1] === '(') {
+    if (!exporting && tokens[index + 1] === '(') {
       if (identityModule(tokens[index + 2])) return true;
       continue;
     }
     let end = index + 1;
-    while (end < tokens.length && !['from', ';'].includes(tokens[end])) end += 1;
+    while (end < tokens.length && !['from', ';', 'import', 'export'].includes(tokens[end])) end += 1;
     if (tokens[end] !== 'from') continue;
-    if (identityModule(tokens[end + 1]) && tokens.slice(index + 1, end).includes('*')) return true;
+    if (identityModule(tokens[end + 1]) && (exporting || tokens.slice(index + 1, end).includes('*'))) return true;
     for (let at = index + 1; at < end; at += 1) {
       // Inspect imported names, not their local aliases, including multiline import lists.
       if (at !== index + 1 && !['{', ','].includes(tokens[at - 1])) continue;
@@ -136,6 +141,28 @@ test('the guard restricts processAlive imports to the two documented pollers', (
       assert.deepEqual(offenders([{ file, source }]), [file], source);
       assert.throws(() => assertOneJudge([{ file, source }]), { code: 'ERR_ASSERTION' }, source);
     }
+  }
+});
+
+// Review 2026-09-17 (D28): a facade re-export was invisible to an import-only scan.
+test('re-exports of the identity module are rejected everywhere, the judge included', () => {
+  for (const file of ['cli/new-reader.mjs', 'src/home/lib/identity-facade.mjs', JUDGE, ...PID_POLLERS.keys()]) {
+    for (const source of [
+      "export { processIdentity as judge } from './process-identity.mjs';",
+      "export { processAlive } from '../src/home/lib/process-identity.mjs';",
+      "export * from '../process-identity.mjs';",
+      "export * as identity from './process-identity.mjs';",
+      "export {\n  IDENTITY_ALIVE,\n  probeProcessStart,\n} from './process-identity.mjs';",
+    ]) {
+      assert.deepEqual(offenders([{ file, source }]), [file], `${file}: ${source}`);
+    }
+  }
+  for (const source of [
+    "export { runLiveness } from './run-liveness.mjs';",
+    "const processIdentity = 1;\nexport { processIdentity };\nimport fs from 'node:fs';",
+    "export function f() { return 1; }\nimport { heartbeatAge } from './heartbeat.mjs';",
+  ]) {
+    assert.deepEqual(offenders([{ file: 'cli/example.mjs', source }]), [], source);
   }
 });
 

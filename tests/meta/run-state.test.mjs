@@ -101,6 +101,35 @@ test('markAbandoned writes a FAIL verdict with the later worktree file list', ()
   assert.equal(fs.existsSync(path.join(runDir, 'state-after.txt')), false);
 });
 
+// Review 2026-09-17 (Plan_57 D28): the liveness judge reads meta.json before markAbandoned reads it
+// again. A second read that fails must leave the verdict alone, not overwrite OK with an abandoned FAIL.
+test('markAbandoned leaves a verdict alone when its second meta.json read fails', (t) => {
+  const runsRoot = makeTempTree('codex-runs-');
+  const runDir = path.join(runsRoot, 'run-flaky');
+  fs.mkdirSync(runDir);
+  writeStatus(runDir, { state: 'running', pid: DEAD_PID, repo: '/repo', agent: 'codex-build' });
+  const metaPath = path.join(runDir, 'meta.json');
+  const metaText = JSON.stringify({ status: 'OK', finished_at: 'X' });
+  fs.writeFileSync(metaPath, metaText);
+  const realRead = fs.readFileSync;
+  let metaReads = 0;
+  t.mock.method(fs, 'readFileSync', function readFileSync(file, ...rest) {
+    if (path.resolve(String(file)) === path.resolve(metaPath)) {
+      metaReads += 1;
+      if (metaReads === 2) throw Object.assign(new Error('EACCES: transient'), { code: 'EACCES' });
+    }
+    return realRead.call(this, file, ...rest);
+  });
+
+  const changed = markAbandoned(runsRoot);
+  t.mock.restoreAll();
+
+  assert.equal(metaReads, 2, 'the fixture must reach the second read it is written for');
+  assert.deepEqual(changed, []);
+  assert.equal(fs.readFileSync(metaPath, 'utf8'), metaText);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(runDir, 'status.json'), 'utf8')).state, 'running');
+});
+
 test('markAbandoned repairs a dead running run that already has a meta.json to finished', () => {
   const runsRoot = makeTempTree('codex-runs-');
   const runDir = path.join(runsRoot, 'run2');

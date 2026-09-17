@@ -73,6 +73,9 @@ export function markAbandoned(runsRoot, currentTree) {
     if (liveness.state !== 'abandoned' && liveness.state !== 'finished') continue;
     const metaPath = path.join(runDir, 'meta.json');
     const meta = readJson(metaPath);
+    // The judge read meta.json already; this is a second read, and a failure here must still never
+    // turn an existing verdict into an abandoned FAIL (review 2026-09-17, Plan_57 D28).
+    if (!meta && fs.existsSync(metaPath)) continue;
     let patch = meta
       ? { state: 'finished', status: meta.status, finished_at: meta.finished_at }
       : {
