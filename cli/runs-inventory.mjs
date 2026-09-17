@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { liveRuns } from '../src/home/hooks/live-runs.mjs';
 import { readJsonFileSync } from '../src/home/lib/json-file.mjs';
+import { runLiveness } from '../src/home/lib/meta/run-liveness.mjs';
 import { runsRoot } from '../src/home/lib/runner/runs-root.mjs';
 
 const record = (value) => value && typeof value === 'object' && !Array.isArray(value);
@@ -108,7 +109,7 @@ function readRun(runDir, livePaths) {
   return {
     run: path.basename(runDir),
     agent: text(facts?.agent),
-    verdict: live ? 'running' : text(meta ? meta.status : status?.state),
+    verdict: live ? 'running' : text(meta ? meta.status : runLiveness({ runDir, status }).state),
     tokens: meta ? number(meta.tokens) : null,
     size: recursiveSize(runDir),
     timestamp: runTimestamp(path.basename(runDir), meta, status),
@@ -131,8 +132,9 @@ function publicRun(run) {
 
 function buildProject(projectDir) {
   const runDirs = directoryEntries(projectDir).map((entry) => path.join(projectDir, entry.name));
-  // live-runs owns PID and status interpretation after the 2026-08-05 live probe incident;
-  // this module only maps its result back to the corresponding inventory row.
+  // live-runs owns the `live` column (a fresh heartbeat) after the 2026-08-05 live probe incident.
+  // A row without a verdict shows what closing it would write — the judge's `abandoned` rather than
+  // the raw `running` a dead run keeps in status.json forever (Plan_57 D27).
   const livePaths = new Set(liveRuns(projectDir).map(({ dir }) => pathKey(dir)));
   const details = runDirs.map((runDir) => readRun(runDir, livePaths));
   // Sum what is known instead of blanking the column. One archived run without accounting used to

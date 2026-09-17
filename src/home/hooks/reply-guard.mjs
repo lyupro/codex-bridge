@@ -33,9 +33,10 @@ import { AGENTS } from '../lib/agents.mjs';
 import { runOrderMismatch, transcriptOrderId } from '../lib/dispatcher-order.mjs';
 import { recognizeHostRefusal } from '../lib/host-refusal.mjs';
 import { readJsonFileSync } from '../lib/json-file.mjs';
+import { runLiveness } from '../lib/meta/run-liveness.mjs';
 import { resolveProjectRunsDir } from '../lib/runner/project-dir.mjs';
 import { runsRoot } from '../lib/runner/runs-root.mjs';
-import { isPidAlive, liveRuns, normalizePath, recentRuns } from './live-runs.mjs';
+import { liveRuns, normalizePath, recentRuns } from './live-runs.mjs';
 import { FORM, MAX_STATE_BLOCKS, STATE, takeTry } from './guard-tries.mjs';
 import { parseReply } from './reply-parser.mjs';
 import {
@@ -233,7 +234,9 @@ if (fs.existsSync(statusPath)) {
   }
 
   if (runStatus?.state === 'running') {
-    if (isPidAlive(runStatus.pid)) {
+    // Plan_57 D5/D27: a bare pid mistook a reused foreign process for this run's worker.
+    // The shared judge uses run identity and keeps unverified processes live (fail open).
+    if (runLiveness({ runDir, status: runStatus }).processMayBeAlive) {
       blockState(
         liveRunReason,
         liveRunStop(MAX_STATE_BLOCKS, runStatus, runDir),

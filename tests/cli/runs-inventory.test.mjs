@@ -120,3 +120,55 @@ test('returns null for an unknown project without throwing', (t) => {
 
   assert.equal(listProjectRuns(root, 'missing'), null);
 });
+
+test('reports a dead running record without meta as abandoned without counting it live', (t) => {
+  const root = fixture(t);
+  makeRun(root, 'project', '2026-09-16_232216_abandoned', {
+    'status.json': JSON.stringify({
+      state: 'running',
+      pid: Number.MAX_SAFE_INTEGER,
+      agent: 'codex-build',
+      slug: 'abandoned',
+      repo: root,
+    }),
+  });
+
+  const [row] = listProjectRuns(root, 'project');
+
+  assert.equal(row.verdict, 'abandoned');
+  assert.equal(row.live, false);
+  assert.equal(listProjects(root)[0].liveNow, 0);
+});
+
+test('keeps meta verdict ahead of a dead running record', (t) => {
+  const root = fixture(t);
+  makeRun(root, 'project', '2026-09-16_232216_abandoned', {
+    'status.json': JSON.stringify({
+      state: 'running',
+      pid: Number.MAX_SAFE_INTEGER,
+      agent: 'codex-build',
+      slug: 'abandoned',
+      repo: root,
+    }),
+    'meta.json': JSON.stringify({ status: 'FAIL' }),
+  });
+
+  const [row] = listProjectRuns(root, 'project');
+
+  assert.equal(row.verdict, 'FAIL');
+  assert.equal(row.live, false);
+  assert.equal(listProjects(root)[0].liveNow, 0);
+});
+
+test('keeps missing and non-object status verdicts unknown', (t) => {
+  const root = fixture(t);
+  makeRun(root, 'project', 'missing');
+  for (const [index, status] of [null, false, 42, 'running', []].entries()) {
+    makeRun(root, 'project', `status-${index}`, {
+      'status.json': JSON.stringify(status),
+    });
+  }
+
+  assert.deepEqual(listProjectRuns(root, 'project').map((row) => row.verdict), Array(6).fill(null));
+  assert.equal(listProjects(root)[0].liveNow, 0);
+});
