@@ -24,8 +24,8 @@ function unquote(value) {
 // nothing. Narrowing here costs nothing the witness does not already cover.
 const IMPOSSIBLE_IN_A_NAME = /[?*<>|"]/;
 
-function addPath(paths, value) {
-  const candidate = unquote(value);
+function addPath(paths, candidate) {
+  // D4c: word values are already unquoted; raw redirects keep their separate unquote() call.
   if (candidate
     && !['&', '$', '%', '`'].includes(candidate[0])
     && !IMPOSSIBLE_IN_A_NAME.test(candidate)
@@ -36,16 +36,19 @@ function addPath(paths, value) {
 // repeated the 2026-08-23 node, 2026-08-28 sed and 2026-09-06 heredoc text-as-shell incidents.
 function lexShell(command) {
   const literal = new Uint8Array(command.length);
-  const state = () => ({ commands: [], words: [], word: '', escaped: false, previousLiteral: false });
-  const parsed = state();
+  const state = () => ({ commands: [], words: [], word: '', started: false, escaped: false, previousLiteral: false });
+  let parsed = state();
   const plain = state();
+  const stack = [];
   let quote = null;
   let doubleEscape = false;
+  let comment = false;
 
   function finish(current, endCommand) {
-    if (current.word) {
+    if (current.word || (current !== plain && current.started)) {
       current.words.push(current.word);
       current.word = '';
+      current.started = false;
     }
     if (endCommand && current.words.length) {
       current.commands.push(current.words);
@@ -59,11 +62,13 @@ function lexShell(command) {
       current.escaped = false;
       isLiteral = true;
     } else if (!isLiteral && character === '\\'
-      && /[;|&<>() \t'"\\]/.test(command[index + 1] ?? '')) {
+      && (/[;|&<>() \t'"\\]/.test(command[index + 1] ?? '')
+        || (current !== plain && /[#$]/.test(command[index + 1] ?? '')))) {
       // Windows paths use backslashes too: Git Bash escapes shell metacharacters here,
       // but consuming every backslash would corrupt C:\tools\sed.exe and its targets.
       current.escaped = true;
       current.previousLiteral = true;
+      current.started = true;
       return true;
     }
     const pipeAmpersand = character === '&' && !current.previousLiteral && command[index - 1] === '|';
@@ -75,30 +80,81 @@ function lexShell(command) {
     if (!isLiteral && (';|()\r\n'.includes(character)
       || (character === '&' && !operatorAmpersand))) finish(current, true);
     else if (!isLiteral && /\s/.test(character)) finish(current, false);
-    else current.word += character;
+    else {
+      current.word += character;
+      current.started = true;
+    }
     return isLiteral;
   }
 
   for (let index = 0; index < command.length; index += 1) {
     const character = command[index];
+    // Keep the original quote-blind fallback for malformed input (D4c review).
+    append(plain, index, false);
+    if (comment) {
+      if (!'\r\n'.includes(character)) {
+        literal[index] = 1;
+        continue;
+      }
+      comment = false;
+    }
     let isLiteral = quote !== null || parsed.escaped || doubleEscape;
+    let quoteBoundary = false;
     if (doubleEscape) doubleEscape = false;
     else if (!parsed.escaped) {
       if (quote === '"' && character === '\\' && index + 1 < command.length) {
         doubleEscape = true;
       } else if (quote) {
-        if (character === quote) quote = null;
+        if (character === quote) {
+          quote = null;
+          quoteBoundary = true;
+        }
       } else if (character === "'" || character === '"') {
         quote = character;
         isLiteral = true;
+        quoteBoundary = true;
       }
     }
+    // D4c: quote fragments belong to one word; their delimiters are not its value.
+    if (quoteBoundary) {
+      parsed.started = true;
+      parsed.previousLiteral = true;
+      literal[index] = 1;
+      continue;
+    }
+    if (!isLiteral && character === '#' && !parsed.started) {
+      comment = true;
+      literal[index] = 1;
+      continue;
+    }
+    if (!isLiteral && character === '(') {
+      const substitution = command[index - 1] === '$' && !parsed.previousLiteral;
+      if (!parsed.started || substitution) {
+        // D4c: suspend the outer command, retaining an unresolved $() in its word.
+        // Flattening parentheses made a substitution suffix look like a new command.
+        if (substitution) parsed.word += '()';
+        stack.push(parsed);
+        parsed = { ...state(), commands: parsed.commands };
+        continue;
+      }
+      isLiteral = true;
+    }
+    if (!isLiteral && character === ')') {
+      if (stack.length) {
+        finish(parsed, true);
+        parsed = stack.pop();
+        parsed.previousLiteral = false;
+        continue;
+      }
+      isLiteral = true;
+    }
     literal[index] = append(parsed, index, isLiteral);
-    // Keep a quote-blind result in the same pass: malformed input must fail conservatively
-    // for words and separators too, without asking a second parser to reinterpret quotes.
-    append(plain, index, false);
   }
   finish(parsed, true);
+  while (stack.length) {
+    parsed = stack.pop();
+    finish(parsed, true);
+  }
   finish(plain, true);
   return { literal: quote ? null : literal, commands: quote ? plain.commands : parsed.commands };
 }
@@ -125,33 +181,56 @@ const LAUNCHERS = new Set(['xargs', 'env', 'nohup', 'timeout', 'nice', 'command'
 // commands. These launchers only move command position; unknown launchers leave a lock gap
 // covered after execution by worktree-witness.mjs, without falsely refusing a read.
 function* writingCommands(parts) {
-  let launched = false;
-  for (let index = 0; index < parts.length; index += 1) {
-    const part = parts[index];
-    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(part) || COMMAND_PREFIXES.has(part)) continue;
-    if (/^\d*[<>]/.test(part)) {
-      if (/^\d*[<>]+$/.test(part)) index += 1;
-      continue;
-    }
-    if (launched && (part.startsWith('-') || /^\d+[smhd]?$/.test(part))) continue;
-    const name = commandName(unquote(part));
-    if (LAUNCHERS.has(name)) {
-      launched = true;
-      continue;
-    }
-    if (COMMANDS.has(name)) yield parts.slice(index);
-    else if (name === 'find') {
-      for (index += 1; index < parts.length; index += 1) {
-        if (!['-exec', '-execdir', '-ok', '-okdir'].includes(parts[index])) continue;
-        const start = index + 1;
-        index = start;
-        while (index < parts.length && ![';', '+'].includes(parts[index])) index += 1;
-        // D11: find actions introduce commands, but their terminators and later predicates
-        // are not write targets; a later action gets its own command position.
-        yield* writingCommands(parts.slice(start, index));
+  // D4c review: 6000 nested find actions overflowed recursive yield*. Index ranges and
+  // precomputed terminators keep traversal iterative without repeatedly copying/scanning tails.
+  const terminators = new Array(parts.length);
+  let next = parts.length;
+  for (let index = parts.length - 1; index >= 0; index -= 1) {
+    if ([';', '+'].includes(parts[index])) next = index;
+    terminators[index] = next;
+  }
+  const pending = [{ start: 0, end: parts.length }];
+  while (pending.length) {
+    const { start, end } = pending.pop();
+    let launched = false;
+    for (let index = start; index < end; index += 1) {
+      const part = parts[index];
+      if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(part) || COMMAND_PREFIXES.has(part)) continue;
+      // A case pattern (`a)`, `*)`) precedes a command position the way `then` does. The lexer keeps
+      // an unmatched `)` literal because `echo ) rm x` runs nothing, which alone hid
+      // `case x in a) rm b.txt;; esac` — a write the scanner caught before D4c.
+      if (part === 'case') {
+        while (index + 1 < end && !parts[index].endsWith(')')) index += 1;
+        continue;
       }
+      if (part.endsWith(')')) continue;
+      if (/^(?:\d*[<>]|&>)/.test(part)) {
+        if (/^(?:\d*[<>]+&?|&>>?)$/.test(part)) index += 1;
+        continue;
+      }
+      if (launched && (part.startsWith('-') || /^\d+[smhd]?$/.test(part))) {
+        if (launched === 'command' && /^-[^-]*[vV]/.test(part)) break;
+        continue;
+      }
+      const name = commandName(part);
+      if (LAUNCHERS.has(name)) {
+        launched = name;
+        continue;
+      }
+      if (COMMANDS.has(name)) yield parts.slice(index, end);
+      else if (name === 'find') {
+        const actions = [];
+        for (index += 1; index < end; index += 1) {
+          if (!['-exec', '-execdir', '-ok', '-okdir'].includes(parts[index])) continue;
+          const actionStart = index + 1;
+          index = Math.min(terminators[actionStart] ?? end, end);
+          // D11: terminators and later predicates are not action arguments.
+          actions.push({ start: actionStart, end: index });
+        }
+        for (let action = actions.length - 1; action >= 0; action -= 1) pending.push(actions[action]);
+      }
+      break;
     }
-    return;
   }
 }
 
@@ -178,7 +257,7 @@ function heredoc(command) {
     const value = match[2];
     if (/^(?:[A-Za-z]:[\\/]|[\\/]|\.\.?[\\/])/.test(value)
       || /[\\/]/.test(value)
-      || /(?:^|[\\/])[^\\/]+\.[A-Za-z0-9_-]+$/.test(value)) addPath(paths, value);
+      || /(?:^|[\\/])[^\\/]+\.[A-Za-z0-9_-]+$/.test(value)) addPath(paths, unquote(value));
   }
   return { shell, paths, writes: true };
 }
@@ -197,16 +276,23 @@ export function shellWriteIntent(command) {
   let writes = document?.writes ?? false;
   const { literal, commands } = lexShell(shell);
 
-  for (const match of shell.matchAll(/(?<![<>=])(?:\d*)>>?(?![=>&])\s*("(?:\\.|[^"])*"|'[^']*'|[^\s;|&]+)/g)) {
-    if (literal && literal[match.index]) continue;
+  const redirects = /(?<![<=])(?:\d*)>>?(?![=>&])\s*("(?:\\.|[^"])*"|'[^']*'|[^\s;|&]+)/g;
+  let match;
+  while ((match = redirects.exec(shell))) {
+    if (literal?.[match.index]
+      || (shell[match.index - 1] === '>' && !literal?.[match.index - 1])) {
+      // D4c: a literal > must not consume the real redirect immediately after it.
+      redirects.lastIndex = match.index + 1;
+      continue;
+    }
     writes = true;
-    addPath(paths, match[1]);
+    addPath(paths, unquote(match[1]));
   }
 
   // A real output redirect identifies the writer's destination. Body text is only evidence when
   // the interpreter itself is the writer, as in the 2026-08-16 python heredoc incident.
   if (!paths.length && document?.writes) {
-    for (const candidate of document.paths) addPath(paths, candidate);
+    for (const candidate of document.paths) addPath(paths, unquote(candidate));
   }
 
   for (const parts of commands) {
@@ -215,11 +301,11 @@ export function shellWriteIntent(command) {
     for (const candidate of candidates) {
       const index = literal ? 0 : candidate.findIndex((part) => COMMANDS.has(commandName(part)));
       if (index < 0) continue;
-      const name = commandName(literal ? unquote(candidate[index]) : candidate[index]);
+      const name = commandName(candidate[index]);
       const args = candidate.slice(index + 1);
       if (name === 'sed' && !args.some((arg) => /^-.*i/.test(arg))) continue;
       writes = true;
-      const values = positional(args);
+      const values = positional(args).map((value) => literal ? value : unquote(value));
       if (name === 'cp' || name === 'mv') {
         if (values.length > 1) addPath(paths, values.at(-1));
       } else if (name === 'sed') {

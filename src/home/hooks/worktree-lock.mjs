@@ -40,7 +40,14 @@ if (WRITE_TOOL_NAMES.has(input.tool_name)) {
   if (typeof rawPath !== 'string' || !rawPath.trim()) pass();
   rawPaths = [rawPath];
 } else {
-  const intent = shellWriteIntent(toolInput.command);
+  let intent;
+  try {
+    intent = shellWriteIntent(toolInput.command);
+  } catch {
+    // D4c review (2026-09-17_131740_plan-57-d4-review): deep find actions overflowed
+    // the scanner. Unrecognised input must fail open; the witness checks writes afterwards.
+    pass();
+  }
   if (!intent.writes || !intent.paths.length) pass();
   rawPaths = intent.paths;
 }
