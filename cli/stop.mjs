@@ -2,12 +2,12 @@
 import path from 'node:path';
 import { stopCodex } from '../src/home/lib/runner/codex-cmd.mjs';
 import { git, worktreeSnapshot } from '../src/home/lib/runner/git-state.mjs';
+import { runLiveness } from '../src/home/lib/meta/run-liveness.mjs';
 import {
   IDENTITY_ALIVE,
   IDENTITY_FOREIGN,
   IDENTITY_UNVERIFIED,
   processAlive,
-  processIdentity,
 } from '../src/home/lib/process-identity.mjs';
 import { markAbandoned, readJson } from '../src/home/lib/write-meta.mjs';
 import { runsRoot } from '../src/home/lib/runner/runs-root.mjs';
@@ -72,7 +72,7 @@ export async function stop({
     return result(1, `Run ${runDir} has no valid recorded pid; it was not changed.`);
   }
 
-  const identity = processIdentity({ runDir, status, commandRunner });
+  const { identity } = runLiveness({ runDir, status, commandRunner });
   if (identity === IDENTITY_UNVERIFIED || identity === IDENTITY_FOREIGN) {
     return result(
       1,

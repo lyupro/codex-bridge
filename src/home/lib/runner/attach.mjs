@@ -2,7 +2,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { readJsonFileSync } from '../json-file.mjs';
-import { IDENTITY_DEAD, IDENTITY_FOREIGN, processAlive, processIdentity } from '../process-identity.mjs';
+import { runLiveness } from '../meta/run-liveness.mjs';
+import { processAlive } from '../process-identity.mjs';
 import { exitCodeFor, writeFailure, chainRuns } from '../write-meta.mjs';
 import { conflictingOrderOwner, runsForOrder } from './order-owner.mjs';
 
@@ -53,15 +54,6 @@ export const readJsonFile = (file) => {
 };
 
 /**
- * Is this pid still running for this run? Unknown identity remains live so an attach does not
- * declare a worker dead merely because the identity probe was unavailable.
- */
-export const alive = (pid, runDir, status = {}) => {
-  const identity = processIdentity({ runDir, status: { ...status, pid } });
-  return identity !== IDENTITY_DEAD && identity !== IDENTITY_FOREIGN;
-};
-
-/**
  * Blocks until the worker's reply exists, or until the worker is provably gone without one.
  *
  * Identity is settled once, before the loop: a recycled pid would otherwise keep this call waiting
@@ -69,9 +61,9 @@ export const alive = (pid, runDir, status = {}) => {
  * probe for the whole length of a 20-minute run. Inside the loop the question is only whether the
  * number is still busy, which signal 0 answers for free.
  */
-export async function waitForReply(runDir, workerPid, status = {}) {
+export async function waitForReply(runDir, workerPid, status) {
   const replyPath = path.join(runDir, 'reply.txt');
-  if (!alive(workerPid, runDir, status)) {
+  if (!runLiveness({ runDir, status }).processMayBeAlive) {
     return fs.existsSync(replyPath) ? fs.readFileSync(replyPath, 'utf8').replace(/\s+$/, '') : null;
   }
   let pollsSinceDeath = 0;
@@ -136,7 +128,7 @@ export async function attach({ runsRoot, repo, slug, taskHash, orderId, chain, i
       console.log(fs.readFileSync(path.join(dir, 'reply.txt'), 'utf8').replace(/\s+$/, ''));
       return exitCodeFor(readJsonFile(path.join(dir, 'meta.json'))?.status);
     }
-    if (alive(entry.status.pid, dir, entry.status)) {
+    if (runLiveness({ runDir: dir, status: entry.status }).processMayBeAlive) {
       candidate = entry;
       break;
     }

@@ -9,33 +9,16 @@
  *
  * The heartbeat is required here and deliberately NOT in meta/run-state.mjs: releasing a lock
  * early costs an operator one knowing edit, while closing a record early makes a second writer
- * of its meta.json. See the comment above pidAlive() there.
+ * of its meta.json. See the comment above markAbandoned() in meta/run-state.mjs.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { heartbeatAge, isHeartbeatFresh } from '../lib/heartbeat.mjs';
 import { readJsonFileSync } from '../lib/json-file.mjs';
-import {
-  IDENTITY_ALIVE,
-  IDENTITY_DEAD,
-  IDENTITY_FOREIGN,
-  processIdentity,
-} from '../lib/process-identity.mjs';
+import { runLiveness } from '../lib/meta/run-liveness.mjs';
+import { IDENTITY_ALIVE } from '../lib/process-identity.mjs';
 
 export const RECENT_RUN_MAX_AGE_MS = 24 * 60 * 60 * 1_000;
-
-/**
- * The hook requires pid judgment plus a fresh heartbeat. Identity uncertainty stays live here
- * (fail-open), while the identity module deliberately treats a missing heartbeat as unverified;
- * isHeartbeatFresh() keeps its pre-Plan_20 missing-file compatibility for this separate question.
- */
-// Plan_31 needs confirmed process identity before warning about paid work that TaskStop leaves
-// behind; existing lock/reply guards retain the fail-open default for uncertain identities.
-export const isPidAlive = (pid, runDir, status = {}, options = {}) => {
-  const identity = processIdentity({ runDir, status: { ...status, pid } });
-  if (options.requireConfirmedIdentity === true) return identity === IDENTITY_ALIVE;
-  return identity !== IDENTITY_DEAD && identity !== IDENTITY_FOREIGN;
-};
 
 /**
  * Match the package's repository comparison without resolving symlinks: Windows realpath adds
@@ -58,9 +41,24 @@ function isNonEmptyString(value) {
   return typeof value === 'string' && Boolean(value.trim());
 }
 
+/**
+ * The hook requires pid judgment plus a fresh heartbeat. Identity uncertainty stays live here
+ * (fail-open), while the identity module deliberately treats a missing heartbeat as unverified;
+ * isHeartbeatFresh() keeps its pre-Plan_20 missing-file compatibility for this separate question.
+ */
 function recognizedStatus(runDir, status, options) {
   const heartbeatFresh = isHeartbeatFresh(runDir)
     && (options.requireConfirmedIdentity !== true || heartbeatAge(runDir) !== null);
+  // Judged last: an identity probe can spawn PowerShell, and every hook call scans every project,
+  // so a record already ruled out by its fields or a stale heartbeat must never pay for one.
+  const judged = () => {
+    const liveness = runLiveness({ runDir, status });
+    // Plan_31 needs confirmed process identity before warning about paid work that TaskStop leaves
+    // behind; existing lock/reply guards retain the fail-open default for uncertain identities.
+    return options.requireConfirmedIdentity === true
+      ? liveness.identity === IDENTITY_ALIVE
+      : liveness.processMayBeAlive === true;
+  };
   return Boolean(status)
     && typeof status === 'object'
     && !Array.isArray(status)
@@ -70,7 +68,7 @@ function recognizedStatus(runDir, status, options) {
     && isNonEmptyString(status.slug)
     && isNonEmptyString(status.repo)
     && heartbeatFresh
-    && isPidAlive(status.pid, runDir, status, options);
+    && judged();
 }
 
 function readStatus(runDir) {

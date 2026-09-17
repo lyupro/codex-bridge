@@ -3,11 +3,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { formatSilence, heartbeatAge, HEARTBEAT_STALE_MS } from '../src/home/lib/heartbeat.mjs';
+import { runLiveness } from '../src/home/lib/meta/run-liveness.mjs';
 import { markAbandoned } from '../src/home/lib/meta/run-state.mjs';
 import {
   IDENTITY_ALIVE,
   IDENTITY_UNVERIFIED,
-  processIdentity,
 } from '../src/home/lib/process-identity.mjs';
 import { git } from '../src/home/lib/runner/git-state.mjs';
 import { resolveProjectRunsDir } from '../src/home/lib/runner/project-dir.mjs';
@@ -144,7 +144,7 @@ function inspectRuns(project, options) {
       age: runAge(status.started_at, now),
       silence: formatSilence(silenceAge),
       silenceAge,
-      identity: processIdentity(identityOptions(dir, status, options, now)),
+      identity: runLiveness(identityOptions(dir, status, options, now)).identity,
       state: status.state,
     });
   }
