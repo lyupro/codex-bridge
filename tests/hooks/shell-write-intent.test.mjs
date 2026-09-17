@@ -220,3 +220,128 @@ test('an interpreter heredoc still exposes commands after its closing marker', (
   ].join('\n');
   assert.deepEqual(shellWriteIntent(command), { writes: true, paths: ['README.md'] });
 });
+
+test('does not split quoted text into apparent writing commands', () => {
+  // The 2026-09-16 awk refusal repeated the 2026-08-23 node -e, 2026-08-28 sed and
+  // 2026-09-06 heredoc incidents: literal text was mistaken for shell syntax.
+  const commands = [
+    `awk '/^## Scope/{f=1} f; /Do not touch any file outside/{f=0}' "docs/task.md"`,
+    "grep -E 'rm old|touch new' notes.md",
+    "echo 'step one; touch nothing'",
+    'echo "a && rm b"',
+    String.raw`printf '%s\n' "x | tee y"`,
+  ];
+  for (const command of commands) {
+    assert.deepEqual(shellWriteIntent(command), { writes: false, paths: [] }, command);
+  }
+});
+
+test('keeps escaped shell characters literal and removes only their escape', () => {
+  // Git Bash accepts shell escapes on Windows, whose ordinary path backslashes must survive.
+  const found = shellWriteIntent(String.raw`find . -name '*.tmp' -exec rm {} \;`);
+  assert.equal(found.writes, true);
+  assert.ok(!found.paths.includes('\\'));
+  assert.ok(!found.paths.includes(';'));
+  assert.deepEqual(shellWriteIntent(String.raw`touch my\ file.txt`), {
+    writes: true,
+    paths: ['my file.txt'],
+  });
+});
+
+test('treats inline interpreter code as text at the scanner boundary', () => {
+  // Plan_57 D11: -c/-e strings are text here; worktree-witness.mjs catches writes afterwards.
+  // bash -c "cd x; rm a.txt" used to match only by splitting inside quotes, while
+  // bash -c "rm a.txt" never matched. That accidental coverage is not a parsing contract.
+  for (const command of [
+    'bash -c "rm a.txt"',
+    'bash -c "cd x; rm a.txt"',
+    "sh -c 'touch b.txt'",
+    `node -e "require('fs').writeFileSync('x.txt','1')"`,
+    `python -c "open('x.txt','w')"`,
+  ]) {
+    assert.deepEqual(shellWriteIntent(command), { writes: false, paths: [] }, command);
+  }
+});
+
+test('keeps real command boundaries, redirects and Windows destination paths', () => {
+  const cases = [
+    ['sleep 1 & rm a.txt', ['a.txt']],
+    ['cd d && rm a.txt', ['a.txt']],
+    ['git status; touch b.txt', ['b.txt']],
+    ['foo"bar baz" > out.txt', ['out.txt']],
+    [String.raw`cp a.txt C:\work\b.txt`, ['C:\\work\\b.txt']],
+    ['make 2>&1 | tee build.log', ['build.log']],
+  ];
+  for (const [command, paths] of cases) {
+    assert.deepEqual(shellWriteIntent(command), { writes: true, paths }, command);
+  }
+});
+
+test('keeps command boundaries conservative when a quote is unfinished', () => {
+  // The malformed-input fallback must cover splitting and words as well as redirects.
+  assert.equal(shellWriteIntent("echo 'step one; touch nothing").writes, true);
+  assert.deepEqual(shellWriteIntent("echo 'step touch nothing"), { writes: true, paths: ['nothing'] });
+});
+
+test('keeps escaped separators, redirects and quotes out of shell syntax', () => {
+  // A literal metacharacter must have the same meaning to all three consumers of the lexer.
+  for (const command of [
+    String.raw`echo a\;touch\ b.txt`,
+    String.raw`echo a\|tee\ b.txt`,
+    String.raw`echo a\&rm\ b.txt`,
+    String.raw`echo a\>b.txt`,
+    String.raw`echo \"a\>b.txt\"`,
+    String.raw`echo \'a\>b.txt\'`,
+    String.raw`echo "a\"; touch b.txt"`,
+  ]) {
+    assert.deepEqual(shellWriteIntent(command), { writes: false, paths: [] }, command);
+  }
+});
+
+test('preserves escaped metacharacters in word values and ordinary Windows backslashes', () => {
+  const cases = [
+    [String.raw`touch a\;b.txt`, 'a;b.txt'],
+    [String.raw`touch a\&b.txt`, 'a&b.txt'],
+    [String.raw`touch a\(b\).txt`, 'a(b).txt'],
+    [String.raw`touch it\'s.txt`, "it's.txt"],
+    [String.raw`touch a\\b.txt`, 'a\\b.txt'],
+    ['touch my\\\tfile.txt', 'my\tfile.txt'],
+    [String.raw`touch C:\work\b.txt`, 'C:\\work\\b.txt'],
+    [String.raw`touch 'my\ file.txt'`, 'my\\ file.txt'],
+  ];
+  for (const [command, path] of cases) {
+    assert.deepEqual(shellWriteIntent(command), { writes: true, paths: [path] }, command);
+  }
+});
+
+test('keeps adjacent quoted and unquoted fragments in a single word', () => {
+  // D4a must not turn a word fragment into a command; command-position changes belong to D4b.
+  for (const command of [
+    'echo foo" touch "bar target.txt',
+    'echo "prefix"touch target.txt',
+    'echo "touch" target.txt',
+    "echo 'rm' target.txt",
+    'echo "line one\r\nrm a.txt & touch b.txt"',
+  ]) {
+    assert.deepEqual(shellWriteIntent(command), { writes: false, paths: [] }, command);
+  }
+  assert.deepEqual(shellWriteIntent('env touch target.txt'), { writes: true, paths: ['target.txt'] });
+});
+
+test('distinguishes background boundaries from ampersands belonging to operators', () => {
+  const cases = [
+    ['sleep 1&rm a.txt', ['a.txt']],
+    ['false || touch b.txt', ['b.txt']],
+    ['git status\r\ntouch b.txt', ['b.txt']],
+    ['cp a.txt 2>&1 b.txt', ['b.txt']],
+    ['cp a.txt >&2 b.txt', ['b.txt']],
+    ['cp a.txt <&0 b.txt', ['b.txt']],
+    ['cp a.txt &>log.txt b.txt', ['log.txt', 'b.txt']],
+    ['make |&tee build.log', ['build.log']],
+    [String.raw`echo \>&touch b.txt`, ['b.txt']],
+    [String.raw`echo \|&touch b.txt`, ['b.txt']],
+  ];
+  for (const [command, paths] of cases) {
+    assert.deepEqual(shellWriteIntent(command), { writes: true, paths }, command);
+  }
+});

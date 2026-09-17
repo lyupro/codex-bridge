@@ -32,35 +32,75 @@ function addPath(paths, value) {
     && !paths.includes(candidate)) paths.push(candidate);
 }
 
-function tokens(segment) {
-  return segment.match(/"(?:\\.|[^"])*"|'[^']*'|[^\s]+/g) ?? [];
-}
-
-// A `>` inside a quoted argument is text, not a redirect. The 2026-08-28 worktree-lock refusal
-// named `#'` from `sed -E 's#(A ).*#\1<redacted>#'` because this scan previously read raw text.
-function quotedCharacters(command) {
-  const quoted = new Uint8Array(command.length);
+// One quote reader owns redirects, command boundaries and words: the 2026-09-16 awk refusal
+// repeated the 2026-08-23 node, 2026-08-28 sed and 2026-09-06 heredoc text-as-shell incidents.
+function lexShell(command) {
+  const literal = new Uint8Array(command.length);
+  const state = () => ({ commands: [], words: [], word: '', escaped: false, previousLiteral: false });
+  const parsed = state();
+  const plain = state();
   let quote = null;
-  for (let index = 0; index < command.length; index += 1) {
-    const character = command[index];
-    if (quote === "'") {
-      if (character === "'") quote = null;
-      else quoted[index] = 1;
-    } else if (quote === '"') {
-      if (character === '\\' && index + 1 < command.length) {
-        quoted[index] = 1;
-        quoted[index + 1] = 1;
-        index += 1;
-      } else if (character === '"') quote = null;
-      else quoted[index] = 1;
-    } else if (character === '\\' && index + 1 < command.length) {
-      index += 1;
-    } else if (character === "'" || character === '"') {
-      quote = character;
-      quoted[index] = 1;
+  let doubleEscape = false;
+
+  function finish(current, endCommand) {
+    if (current.word) {
+      current.words.push(current.word);
+      current.word = '';
+    }
+    if (endCommand && current.words.length) {
+      current.commands.push(current.words);
+      current.words = [];
     }
   }
-  return quote ? null : quoted;
+
+  function append(current, index, isLiteral) {
+    const character = command[index];
+    if (current.escaped) {
+      current.escaped = false;
+      isLiteral = true;
+    } else if (!isLiteral && character === '\\'
+      && /[;|&<>() \t'"\\]/.test(command[index + 1] ?? '')) {
+      // Windows paths use backslashes too: Git Bash escapes shell metacharacters here,
+      // but consuming every backslash would corrupt C:\tools\sed.exe and its targets.
+      current.escaped = true;
+      current.previousLiteral = true;
+      return true;
+    }
+    const pipeAmpersand = character === '&' && !current.previousLiteral && command[index - 1] === '|';
+    const operatorAmpersand = character === '&'
+      && ((!current.previousLiteral && /[<>|]/.test(command[index - 1] ?? ''))
+        || command[index + 1] === '>');
+    current.previousLiteral = isLiteral;
+    if (!isLiteral && pipeAmpersand) return false;
+    if (!isLiteral && (';|\r\n'.includes(character)
+      || (character === '&' && !operatorAmpersand))) finish(current, true);
+    else if (!isLiteral && /\s/.test(character)) finish(current, false);
+    else current.word += character;
+    return isLiteral;
+  }
+
+  for (let index = 0; index < command.length; index += 1) {
+    const character = command[index];
+    let isLiteral = quote !== null || parsed.escaped || doubleEscape;
+    if (doubleEscape) doubleEscape = false;
+    else if (!parsed.escaped) {
+      if (quote === '"' && character === '\\' && index + 1 < command.length) {
+        doubleEscape = true;
+      } else if (quote) {
+        if (character === quote) quote = null;
+      } else if (character === "'" || character === '"') {
+        quote = character;
+        isLiteral = true;
+      }
+    }
+    literal[index] = append(parsed, index, isLiteral);
+    // Keep a quote-blind result in the same pass: malformed input must fail conservatively
+    // for words and separators too, without asking a second parser to reinterpret quotes.
+    append(plain, index, false);
+  }
+  finish(parsed, true);
+  finish(plain, true);
+  return { literal: quote ? null : literal, commands: quote ? plain.commands : parsed.commands };
 }
 
 function positional(args) {
@@ -118,10 +158,10 @@ export function shellWriteIntent(command) {
   // `touch` is in COMMANDS, so every following word became a write target under the repository.
   const shell = document?.shell ?? command;
   let writes = document?.writes ?? false;
-  const quoted = quotedCharacters(shell);
+  const { literal, commands } = lexShell(shell);
 
   for (const match of shell.matchAll(/(?<![<>=])(?:\d*)>>?(?![=>&])\s*("(?:\\.|[^"])*"|'[^']*'|[^\s;|&]+)/g)) {
-    if (quoted && quoted[match.index]) continue;
+    if (literal && literal[match.index]) continue;
     writes = true;
     addPath(paths, match[1]);
   }
@@ -132,8 +172,7 @@ export function shellWriteIntent(command) {
     for (const candidate of document.paths) addPath(paths, candidate);
   }
 
-  for (const segment of shell.split(/(?:&&|\|\||[;|\r\n])/)) {
-    const parts = tokens(segment);
+  for (const parts of commands) {
     const index = parts.findIndex((part) => COMMANDS.has(commandName(part)));
     if (index < 0) continue;
     const name = commandName(parts[index]);
