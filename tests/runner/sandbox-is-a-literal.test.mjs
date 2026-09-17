@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
-import { codexArgs } from '../../src/home/lib/runner/codex-args.mjs';
+import { codexArgs, sandboxModeFor } from '../../src/home/lib/runner/codex-args.mjs';
 import { loadRunEnv } from '../../src/home/lib/runner/run-env.mjs';
 
 const SANDBOX_BY_AGENT = new Map([
@@ -29,12 +29,21 @@ test('every runner command has exactly its one literal contract sandbox', () => 
     assert.equal(args.includes('--dangerously-bypass-approvals-and-sandbox'), false, agent);
   }
 
-  const literalSandboxes = [...codexArgs.toString().matchAll(
-    /['"]--sandbox['"]\s*,\s*['"](read-only|workspace-write)['"]/g,
+  // Plan_57 moved the literals into sandboxModeFor(), because the pre-run sandbox probe has to ask
+  // for exactly the permissions the run will. The guard's point (Plan_34) is unchanged: the value
+  // is a literal chosen by agent name, never read from configuration or options.
+  const literalSandboxes = [...sandboxModeFor.toString().matchAll(
+    /return\s+['"](read-only|workspace-write)['"]/g,
   )].map((match) => match[1]);
   assert.deepEqual(
     literalSandboxes,
-    ['read-only', 'workspace-write', 'read-only'],
-    'sandbox values must remain literals in codexArgs; configuration would weaken this guard',
+    ['workspace-write', 'read-only'],
+    'sandbox values must remain literals in sandboxModeFor; configuration would weaken this guard',
   );
+  assert.doesNotMatch(sandboxModeFor.toString(), /\b(?:opts|env|config|process)\b/);
+  const source = codexArgs.toString();
+  assert.match(source, /const sandboxMode = sandboxModeFor\(opts\.agent\);/);
+  const sandboxValues = [...source.matchAll(/['"]--sandbox['"]\s*,\s*([^,\s]+)/g)].map((match) => match[1]);
+  assert.deepEqual(sandboxValues, ['sandboxMode', 'sandboxMode', 'sandboxMode']);
+  assert.throws(() => sandboxModeFor('codex-unknown'));
 });

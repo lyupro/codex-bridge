@@ -60,7 +60,15 @@ export function runProfile(opts) {
   };
 }
 
+// Plan_57: the preflight must probe the same permissions that the role will request.
+export function sandboxModeFor(agent) {
+  if (agent === 'codex-build') return 'workspace-write';
+  if (agent === 'codex-scout' || agent === 'codex-review') return 'read-only';
+  throw new Error(`unknown agent for sandbox mode: ${agent}`);
+}
+
 export function codexArgs(opts, runDir, isGitRepo) {
+  const sandboxMode = sandboxModeFor(opts.agent);
   const schema = path.join(runDir, 'schema.json');
   const profile = runProfile(opts);
   const effort = `model_reasoning_effort=${profile.effort}`;
@@ -80,7 +88,7 @@ export function codexArgs(opts, runDir, isGitRepo) {
       ...platformSandboxArgs(),
       ...modelArgs,
       '--sandbox',
-      'read-only',
+      sandboxMode,
       '--skip-git-repo-check',
       '-C',
       opts.repo,
@@ -105,7 +113,7 @@ export function codexArgs(opts, runDir, isGitRepo) {
       ...platformSandboxArgs(),
       ...modelArgs,
       '--sandbox',
-      'workspace-write',
+      sandboxMode,
       '-C',
       opts.repo,
       ...(isGitRepo ? [] : ['--skip-git-repo-check']),
@@ -139,7 +147,7 @@ export function codexArgs(opts, runDir, isGitRepo) {
     ...platformSandboxArgs(),
     ...modelArgs,
     '--sandbox',
-    'read-only',
+    sandboxMode,
     '-C',
     opts.repo,
     '--output-schema',

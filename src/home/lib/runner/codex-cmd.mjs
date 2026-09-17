@@ -30,6 +30,17 @@ const STDIO_DRAIN_GRACE_MS = 30_000;
 export const unsafeForCmd = (args) =>
   ['codex', ...args].find((a) => a.includes('%') || a.includes('"'));
 
+// Plan_57: preflight and paid runs must use the same Windows quoting and npm shim path.
+export function codexSpawnSpec(args, platform = process.platform) {
+  if (platform !== 'win32') return { command: 'codex', args, options: {} };
+  const cmdline = ['codex', ...args].map((a) => (/[\s&|<>^]/.test(a) ? `"${a}"` : a)).join(' ');
+  return {
+    command: process.env.ComSpec || 'cmd.exe',
+    args: ['/d', '/s', '/c', `"${cmdline}"`],
+    options: { windowsVerbatimArguments: true, windowsHide: true },
+  };
+}
+
 /**
  * Stop the process that owns the Codex invocation. On Windows that process is cmd.exe, so
  * child.kill() would reap only the shell and leave Codex spending quota as its grandchild —
@@ -129,21 +140,17 @@ export function runCodex(args, taskText, eventsPath, budgetMinutes, graceMs = ST
     return { append, finish };
   })();
 
-  let child;
   if (onWindows) {
     // Thrown rather than died: in the worker a bare exit would leave the run open, while a
     // throw goes through the crash handler and closes it with meta.json like any failure.
     const bad = unsafeForCmd(args);
     if (bad) throw new Error(`argument unsafe for cmd.exe (contains % or "): ${bad}`);
-    const cmdline = ['codex', ...args].map((a) => (/[\s&|<>^]/.test(a) ? `"${a}"` : a)).join(' ');
-    child = spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', `"${cmdline}"`], {
-      windowsVerbatimArguments: true,
-      windowsHide: true,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-  } else {
-    child = spawn('codex', args, { stdio: ['pipe', 'pipe', 'pipe'] });
   }
+  const spec = codexSpawnSpec(args);
+  const child = spawn(spec.command, spec.args, {
+    ...spec.options,
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
 
   return new Promise((resolve) => {
     let failed = false;
