@@ -229,7 +229,10 @@ codex-bridge read <run>             # progress of one run from its events
 The “live now” column is computed by the same module used by the response guard and worktree lock—
 the package's single answer to whether a run is currently active. A directory with unreadable
 artifacts still gets a row: an inventory that hides broken data is useless precisely when it is
-needed. A run without usage accounting does not zero the project total—known values are counted.
+needed. A row without a verdict shows what closing the run would write—the judge's `abandoned` for a
+dead or foreign process, `unverified` when its end cannot be proven—rather than the raw `running` a
+dead run keeps in its `status.json` forever. A run without usage accounting does not zero the
+project total—known values are counted.
 
 ### Cleaning the store
 

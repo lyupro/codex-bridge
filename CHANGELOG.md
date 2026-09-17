@@ -4,6 +4,69 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.3] - 2026-09-17
+
+### Added
+
+- A dead Codex sandbox refuses the run before it spends quota. On 2026-09-16 an unclean Windows
+  shutdown left the sandbox helper's state file as 22 zero bytes, and every delegated run after it
+  paid for a session in which not one command ran — one scout even came back `OK`. The launcher now
+  asks the sandbox to echo a marker before the run folder exists, and calls it dead only on double
+  evidence: the role's own flags and a flagless control both produce no marker, neither reports an
+  argument error, and the CLI still answers `--version`. Codex had already changed the shape of its
+  own sandbox command once, so anything the probe cannot judge lets the run start and is named in
+  the reply — a release that stops accepting the package's sandbox flags cannot turn the check off
+  silently. `stderr` is quoted for the operator and never parsed. The probe is bounded on every
+  path: a hung attempt stops the whole Codex tree rather than the `cmd.exe` in front of it, and a
+  capture that overflows is inconclusive, never dead. Windows and Linux are judged, each after both
+  outcomes were seen live on it; on Linux, where a dead sandbox is the ordinary state of a fresh
+  Ubuntu 23.10+ server, the refusal names the AppArmor profile that repairs it and warns against
+  lifting the restriction through `sysctl`. macOS is skipped — no outcome has been observed there.
+
+### Fixed
+
+- A scout that executed no command can no longer come back `OK`. On the dead sandbox of 2026-09-16
+  a scout was graded `OK` without reading a single file: its evidence explained that the files were
+  unreadable, and the coverage gate only checked that the evidence was a non-empty string. The
+  verdict now requires a fact before it judges coverage — at least one completed
+  `command_execution` in `events.jsonl`, with any status or exit code. Refused calls never enter the
+  stream, which is what makes the fact reliable; across 99 earlier successful scout runs it was
+  missing exactly twice, both on that sandbox.
+- Quoted text no longer reads as shell commands to the worktree lock. The write-intent scanner read
+  quotes three different ways, and its raw split on `;` and `|` cut inside them: an `awk` script
+  containing "Do not touch any file outside" was refused on 2026-09-16 as a write to `any`, `file`
+  and `outside` — the fourth refusal on one root after `node -e`, `sed` and a heredoc body. One
+  lexer now owns quotes, escapes and command boundaries for all three consumers, drops comments, and
+  opens subshells and `$(…)` only where the shell does.
+- An argument that happens to be a command name is not a write. `git log --grep rm -- README.md` and
+  `grep -rn touch src/` were refused while a build held the repository, because the scanner looked
+  for `rm` and `touch` in any word. A command name now counts only in command position — after
+  assignments, reserved words, leading redirections, a short list of launchers, and a `find -exec`
+  action up to its terminator.
+- A stop at the deadline cannot block the launcher forever. `stopCodex()` gave `taskkill` no timeout,
+  so a stalled `taskkill` held the event loop and every settlement timer with it. It now has ten
+  seconds, after which the direct child is killed.
+- The response guard judges a run by its own process, not by a bare pid. Without the run folder or
+  the recorded start time, a pid reused by another process after a reboot read as "the run is still
+  working", and the guard held the dispatcher on a dead run until the session's retry budget stopped
+  the session.
+- The project list no longer prints the raw `running` of a run whose worker died before writing
+  `meta.json`. A row without a verdict shows what closing the run would write: `abandoned` for a
+  dead or foreign process, `unverified` when the end cannot be proven. The "live now" column keeps
+  its fresh-heartbeat policy.
+
+### Changed
+
+- One module decides whether a recorded run is still live. Seven places answered that question on
+  their own through pid-first wrappers whose other inputs were optional — which is how the response
+  guard came to ask with a bare pid and the project list never to ask at all, although
+  `markAbandoned()` already held the exact rule. `src/home/lib/meta/run-liveness.mjs` now owns it,
+  and `tests/one-liveness-judge.test.mjs` fails the suite when another module asks a process
+  identity, re-exports one under a new name, or declares a pid-first wrapper again.
+- The rows a reply carries are rendered by one function. The Retention row had been copied into five
+  reply functions and was still missing from the runner's failure path, so a runner failure lost it;
+  a sixth copy for the sandbox row would have repeated that defect.
+
 ## [0.6.2] - 2026-09-07
 
 ### Fixed

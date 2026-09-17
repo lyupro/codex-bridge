@@ -49,7 +49,7 @@ memory:**
 
 | Trigger | Why |
 | --- | --- |
-| `meta/` — verdict, status, events, `LIMIT` | check order is the contract; a run once quoted "rate limit" from a source file and threw away finished work |
+| `meta/` — verdict, status, events, `LIMIT`, run liveness | check order is the contract; a run once quoted "rate limit" from a source file and threw away finished work |
 | `runner/`, `launcher.mjs`, `worker.mjs`, `worker.json` | write order and the worker's single source of orders |
 | `src/home/config.json`, any model id, any env or config key | seeded, never overwritten; no model literal belongs in `.mjs` |
 | `cli/install.mjs`, `cli/uninstall.mjs`, `cli/manifest.mjs`, permission rules | install grants the rules in the scope it installed into |

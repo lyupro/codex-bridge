@@ -75,3 +75,25 @@ here. Nothing was reworded on the way out.
 - **Agent and command markdown is placeholder-processed** on install: `{{CODEX_BRIDGE_DIR}}` becomes
   the installed runner directory, `~/.lyupro/.codex-bridge/lib/` — not the directory the markdown
   itself lands in. Keep the placeholder, never a real path.
+- **The sandbox is probed before the run exists, and the probe can never hang the launcher.**
+  `probeSandbox()` runs once the tree is free and before retention or the run folder, asks the
+  sandbox to echo a marker with exactly the flags the role will get, and calls it dead only on
+  double evidence (role flags and a flagless control, no argument error, `--version` still
+  answering). Every other outcome starts the run and travels into `status.json#sandbox_probe` and
+  the reply, because a Codex release that stops accepting the flags must not turn the check off
+  silently. `stderr` is quoted for the operator and never parsed. The only capture is
+  `spawnCaptured()` in `src/home/lib/runner/codex-cmd.mjs`: asynchronous, a required timeout rather
+  than a default, and on the deadline it stops the whole tree through `stopCodex()` — a `spawnSync`
+  timeout killed only the `cmd.exe` shim and left Codex as its orphan, the 2026-07-31 class. Its
+  limit is `spawnSync`'s 1 MiB and an overflow settles with `ENOBUFS`, which the probe reads as
+  inconclusive: a marker lost to a small buffer once refused a live sandbox.
+- **Whether a recorded run is still live is decided in one module**,
+  `src/home/lib/meta/run-liveness.mjs`. `runLiveness({ runDir, status })` requires the run folder and
+  the record and returns the identity, the heartbeat age, the fail-open `processMayBeAlive` and the
+  state closing the run would write (`running`, `unverified`, `abandoned`, `finished`);
+  `workerMayBeAlive()` answers about the worker process whatever the record says, for the window in
+  which the worker has closed `status.json` but not yet written `reply.txt`. Nothing else asks a
+  process identity, re-exports one under another name, or declares a pid-first wrapper, and
+  `tests/one-liveness-judge.test.mjs` fails the suite on all three: the wrappers' optional inputs
+  are how the response guard came to judge by a bare pid and read a number reused after a reboot as
+  a working run, while the project list never asked and printed `running` for a dead one.
