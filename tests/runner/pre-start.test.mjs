@@ -13,6 +13,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { resolveProjectRunsDir } from '../../src/home/lib/runner/project-dir.mjs';
+import { launcherProcessMocks } from './launcher-mocks.mjs';
 
 const RUN_CODEX = fileURLToPath(new URL('../../src/home/lib/run-codex.mjs', import.meta.url));
 const LAUNCHER = new URL('../../src/home/lib/runner/launcher.mjs', import.meta.url).href;
@@ -137,11 +138,7 @@ test('the unsafe-for-cmd refusal records aborted_pre_start', (t) => {
   const repo = path.join(root, 'repo%unsafe');
   const runsRoot = path.join(root, 'runs');
   fs.mkdirSync(repo);
-  const source = `
-const realSpawnSync = childProcess.spawnSync;
-childProcess.spawnSync = (command, args, options) =>
-  command === 'git' ? realSpawnSync(command, args, options) : { status: 0, error: null, stderr: '', stdout: 'codex-bridge-sandbox-ok' };
-`;
+  const source = launcherProcessMocks({ worker: 'forbidden', probe: 'marker' });
 
   const output = mockedLauncher(source, baseArgs('codex-review', repo, 'unsafe-order'), 'unsafe refusal', {
     CODEX_RUNS_ROOT: runsRoot,
@@ -157,17 +154,7 @@ test('a worker spawn error records aborted_pre_start', (t) => {
   const runsRoot = path.join(root, 'runs');
   fs.mkdirSync(repo);
   const source = `
-import { EventEmitter } from 'node:events';
-const realSpawnSync = childProcess.spawnSync;
-childProcess.spawnSync = (command, args, options) =>
-  command === 'git' ? realSpawnSync(command, args, options) : { status: 0, error: null, stderr: '', stdout: 'codex-bridge-sandbox-ok' };
-childProcess.spawn = () => {
-  const worker = new EventEmitter();
-  worker.pid = 999999;
-  worker.unref = () => {};
-  queueMicrotask(() => worker.emit('error', new Error('fixture worker spawn failure')));
-  return worker;
-};
+${launcherProcessMocks({ worker: 'error', probe: 'marker' })}
 const realExit = process.exit;
 process.exit = (code = 0) => { process.exitCode = code; };
 `;
@@ -215,17 +202,7 @@ test('a pre-start folder does not make the same order ask for a continuation', (
     reason: 'run 2026-08-07_115000_other is already active for this repository',
   });
   const source = `
-import { EventEmitter } from 'node:events';
-const realSpawnSync = childProcess.spawnSync;
-childProcess.spawnSync = (command, args, options) =>
-  command === 'git' ? realSpawnSync(command, args, options) : { status: 0, error: null, stderr: '', stdout: 'codex-bridge-sandbox-ok' };
-childProcess.spawn = () => {
-  const worker = new EventEmitter();
-  worker.pid = 999999;
-  worker.unref = () => {};
-  queueMicrotask(() => worker.emit('spawn'));
-  return worker;
-};
+${launcherProcessMocks({ worker: 'spawn', probe: 'marker' })}
 process.exit = (code = 0) => { process.exitCode = code; };
 `;
 
@@ -235,6 +212,10 @@ process.exit = (code = 0) => { process.exitCode = code; };
 
   assert.doesNotMatch(output.stderr, /--continue is required/);
   assert.match(output.stdout, /^RUN=/m, `${output.stdout}\n${output.stderr}`);
+  const probe = runStatus(output).sandbox_probe;
+  assert.equal(probe.outcome, 'alive');
+  assert.equal(probe.attempts.length, 1);
+  assert.equal(probe.attempts[0].marker, true);
 });
 
 // The other half of the same contract: a folder that did have a Codex session still costs a

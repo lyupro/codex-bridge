@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { validateScope } from '../../src/home/lib/runner/scope-check.mjs';
+import { launcherProcessMocks } from './launcher-mocks.mjs';
 
 const RUN_CODEX = new URL('../../src/home/lib/run-codex.mjs', import.meta.url).href;
 const LAUNCHER = new URL('../../src/home/lib/runner/launcher.mjs', import.meta.url).href;
@@ -49,19 +50,7 @@ try {
   });
 }
 
-const SUCCESS_SOURCE = `
-import { EventEmitter } from 'node:events';
-const realSpawnSync = childProcess.spawnSync;
-childProcess.spawnSync = (command, args, options) =>
-  command === 'git' ? realSpawnSync(command, args, options) : { status: 0, error: null, stderr: '', stdout: 'codex-bridge-sandbox-ok' };
-childProcess.spawn = () => {
-  const worker = new EventEmitter();
-  worker.pid = 999999;
-  worker.unref = () => {};
-  queueMicrotask(() => worker.emit('spawn'));
-  return worker;
-};
-`;
+const SUCCESS_SOURCE = launcherProcessMocks({ worker: 'spawn', probe: 'marker' });
 
 function buildArgs(repo, orderId, scope = 'src/existing.mjs', extra = []) {
   return [
@@ -193,6 +182,10 @@ test('an honest scope starts and scope-new is persisted in worker.json', (t) => 
   assert.equal(output.status, 0, `${output.stdout}\n${output.stderr}`);
   assert.match(output.stdout, /^RUN=.* order-id=new-order$/m);
   const runDir = runPath(output);
+  const probe = JSON.parse(fs.readFileSync(path.join(runDir, 'status.json'), 'utf8')).sandbox_probe;
+  assert.equal(probe.outcome, 'alive');
+  assert.equal(probe.attempts.length, 1);
+  assert.equal(probe.attempts[0].marker, true);
   const worker = JSON.parse(fs.readFileSync(path.join(runDir, 'worker.json'), 'utf8'));
   assert.deepEqual(worker.scope_new, ['src/new-file.mjs', 'src/another-new-file.mjs']);
   assert.deepEqual(fs.readFileSync(path.join(runDir, 'scope.txt'), 'utf8').trim().split(/\r?\n/), [

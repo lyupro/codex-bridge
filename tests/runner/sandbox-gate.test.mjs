@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { resolveProjectRunsDir } from '../../src/home/lib/runner/project-dir.mjs';
 import { SANDBOX_PROBE_MARKER } from '../../src/home/lib/runner/sandbox-probe.mjs';
+import { launcherProcessMocks } from './launcher-mocks.mjs';
 
 const RUN_CODEX = fileURLToPath(new URL('../../src/home/lib/run-codex.mjs', import.meta.url));
 const LAUNCHER = new URL('../../src/home/lib/runner/launcher.mjs', import.meta.url).href;
@@ -81,16 +82,7 @@ function runner(args, env, cwd) {
   });
 }
 
-const WORKER_SOURCE = `
-import { EventEmitter } from 'node:events';
-childProcess.spawn = () => {
-  const worker = new EventEmitter();
-  worker.pid = 999999;
-  worker.unref = () => {};
-  queueMicrotask(() => worker.emit('spawn'));
-  return worker;
-};
-`;
+const WORKER_SOURCE = launcherProcessMocks({ worker: 'spawn', probe: 'real' });
 
 function mockedLauncher(source, args, env, cwd) {
   const script = `
@@ -269,12 +261,7 @@ test('an unsupported platform records the entire skipped result', (t) => {
   const tree = fixture(t, 'skipped');
   const source = `
 Object.defineProperty(process, 'platform', { value: 'darwin' });
-const realSpawnSync = childProcess.spawnSync;
-childProcess.spawnSync = (command, args, options) => {
-  if (args.includes('sandbox')) throw new Error('A skipped probe must not spawn Codex');
-  return command === 'git' ? realSpawnSync(command, args, options) : { status: 0, stdout: '', stderr: '', error: null };
-};
-${WORKER_SOURCE}
+${launcherProcessMocks({ worker: 'spawn', probe: 'forbidden' })}
 `;
   const output = mockedLauncher(source, baseArgs('codex-review', tree.repo), {
     ...process.env, CODEX_RUNS_ROOT: tree.runsRoot,
