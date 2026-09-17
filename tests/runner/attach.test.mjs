@@ -255,6 +255,23 @@ test('a verdict written before the reply still answers the repeat', async (t) =>
   assert.match(lines[2], /OK — closed late/);
 });
 
+test('a finished status written before the reply still waits for the live worker', async (t) => {
+  const runsRoot = fixture(t);
+  const repo = path.join(runsRoot, 'repo');
+  // The worker writes the finished status before the reply (write-meta.mjs:141), review 2026-09-17.
+  const dir = run(runsRoot, '2026-08-04_090000_async-start', running(repo, { state: 'finished', pid: process.pid }), {
+    'meta.json': JSON.stringify({ status: 'OK' }),
+  });
+  const closing = setTimeout(() => fs.writeFileSync(path.join(dir, 'reply.txt'), 'OK — closed after finished\n'), 50);
+  t.after(() => clearTimeout(closing));
+
+  const { code, lines } = await attaching(order(runsRoot, repo));
+
+  assert.equal(code, 0);
+  assert.match(lines[1], /run already in progress since 2026-08-04T09:00:00.000Z; no new work was started/);
+  assert.equal(lines[2], 'OK — closed after finished');
+});
+
 test('a live attach never presents a pending verdict as a previous answer', async (t) => {
   const runsRoot = fixture(t);
   const repo = path.join(runsRoot, 'repo');

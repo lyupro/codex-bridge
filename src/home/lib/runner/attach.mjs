@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { readJsonFileSync } from '../json-file.mjs';
-import { runLiveness } from '../meta/run-liveness.mjs';
+import { workerMayBeAlive } from '../meta/run-liveness.mjs';
 import { processAlive } from '../process-identity.mjs';
 import { exitCodeFor, writeFailure, chainRuns } from '../write-meta.mjs';
 import { conflictingOrderOwner, runsForOrder } from './order-owner.mjs';
@@ -63,7 +63,7 @@ export const readJsonFile = (file) => {
  */
 export async function waitForReply(runDir, workerPid, status) {
   const replyPath = path.join(runDir, 'reply.txt');
-  if (!runLiveness({ runDir, status }).processMayBeAlive) {
+  if (!workerMayBeAlive({ runDir, status })) {
     return fs.existsSync(replyPath) ? fs.readFileSync(replyPath, 'utf8').replace(/\s+$/, '') : null;
   }
   let pollsSinceDeath = 0;
@@ -128,7 +128,7 @@ export async function attach({ runsRoot, repo, slug, taskHash, orderId, chain, i
       console.log(fs.readFileSync(path.join(dir, 'reply.txt'), 'utf8').replace(/\s+$/, ''));
       return exitCodeFor(readJsonFile(path.join(dir, 'meta.json'))?.status);
     }
-    if (runLiveness({ runDir: dir, status: entry.status }).processMayBeAlive) {
+    if (workerMayBeAlive({ runDir: dir, status: entry.status })) {
       candidate = entry;
       break;
     }

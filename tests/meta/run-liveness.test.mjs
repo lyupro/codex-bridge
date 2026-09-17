@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { runLiveness } from '../../src/home/lib/meta/run-liveness.mjs';
+import { runLiveness, workerMayBeAlive } from '../../src/home/lib/meta/run-liveness.mjs';
 import { activeRunDetails, markAbandoned } from '../../src/home/lib/meta/run-state.mjs';
 import { HEARTBEAT_FILE, HEARTBEAT_STALE_MS } from '../../src/home/lib/heartbeat.mjs';
 import {
@@ -115,6 +115,76 @@ for (const state of ['finished', 'abandoned', 'aborted_pre_start', 'failed', '']
     assert.equal(kill.mock.callCount(), 0);
   });
 }
+
+// D28 separates waiting for a closing worker from judging the recorded run state.
+for (const [state, identity, kill, startedAt, expected] of [
+  ['finished', IDENTITY_ALIVE, () => {}, recordedStart, true],
+  ['finished', IDENTITY_UNVERIFIED, permissionDenied, null, true],
+  ['finished', IDENTITY_DEAD, noProcess, recordedStart, false],
+  ['running', IDENTITY_FOREIGN, permissionDenied, recordedStart + 60_000, false],
+]) {
+  test(`a recorded ${state} worker with ${identity} identity may be alive: ${expected}`, (t) => {
+    const runDir = fixture(t);
+    assert.equal(workerMayBeAlive({
+      runDir, status: { ...running, state }, now, kill, probe: () => startedAt,
+    }), expected);
+  });
+}
+
+test('a worker liveness question requires a non-empty run folder', () => {
+  assert.throws(() => workerMayBeAlive(), TypeError);
+  assert.throws(() => workerMayBeAlive(null), TypeError);
+  assert.throws(() => workerMayBeAlive({}), TypeError);
+  for (const runDir of [undefined, null, '', '   ', 42, false, {}, []]) {
+    assert.throws(() => workerMayBeAlive({ runDir }), TypeError);
+  }
+});
+
+test('a worker with no status file cannot be alive', (t) => {
+  const runDir = fixture(t);
+  const kill = t.mock.fn(() => assert.fail('missing status must not probe identity'));
+  assert.equal(workerMayBeAlive({ runDir, now, kill }), false);
+  assert.equal(kill.mock.callCount(), 0);
+});
+
+test('non-object worker status is false without reading the status file or probing', (t) => {
+  const runDir = fixture(t);
+  writeJson(runDir, 'status.json', running);
+  const kill = t.mock.fn(() => assert.fail('non-object status must not probe identity'));
+  const read = t.mock.method(fs, 'readFileSync');
+  for (const status of [null, 0, 1, false, true, '', 'running']) {
+    assert.equal(workerMayBeAlive({ runDir, status, now, kill }), false);
+  }
+  assert.equal(kill.mock.callCount(), 0);
+  assert.equal(read.mock.callCount(), 0);
+});
+
+test('undefined worker status reads the finished record and forwards identity options', (t) => {
+  const runDir = fixture(t);
+  const status = { ...running, state: 'finished' };
+  writeJson(runDir, 'status.json', status);
+  const kill = t.mock.fn(() => {});
+  const probe = t.mock.fn(() => recordedStart);
+  assert.equal(workerMayBeAlive({ runDir, status: undefined, now, kill, probe }), true);
+  assert.deepEqual(kill.mock.calls[0].arguments, [running.pid, 0]);
+  assert.equal(probe.mock.callCount(), 1);
+  const [pid, options] = probe.mock.calls[0].arguments;
+  assert.equal(pid, running.pid);
+  assert.deepEqual(options.status, status);
+  assert.equal(options.runDir, runDir);
+  assert.equal(options.now, now);
+});
+
+test('explicit worker status is passed unchanged without reading status.json', (t) => {
+  const runDir = fixture(t);
+  writeJson(runDir, 'status.json', { ...running, pid: 0 });
+  const status = { ...running, state: 'finished' };
+  const read = t.mock.method(fs, 'readFileSync');
+  const probe = t.mock.fn(() => recordedStart);
+  assert.equal(workerMayBeAlive({ runDir, status, now, kill: () => {}, probe }), true);
+  assert.strictEqual(probe.mock.calls[0].arguments[1].status, status);
+  assert.equal(read.mock.calls.some(({ arguments: args }) => args[0] === path.join(runDir, 'status.json')), false);
+});
 
 test('a matching live process remains running even with a stale heartbeat and readable meta', (t) => {
   const runDir = fixture(t);
