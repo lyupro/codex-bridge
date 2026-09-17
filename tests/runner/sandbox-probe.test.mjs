@@ -45,7 +45,7 @@ function assertAttempts(result, calls, forms) {
 
 test('the marker and platform gate are the agreed constants', () => {
   assert.equal(MARKER, 'codex-bridge-sandbox-ok');
-  assert.deepEqual(PROBED_PLATFORMS, new Set(['win32']));
+  assert.deepEqual(PROBED_PLATFORMS, new Set(['win32', 'linux']));
 });
 
 for (const [agent, mode] of [
@@ -169,32 +169,31 @@ test('a flagged marker needs exit zero and cannot override an interrupted attemp
   }
 });
 
-for (const platform of ['darwin', 'linux']) {
-  test(`${platform} is skipped immediately without running or validating an unused role`, () => {
-    const { result, calls } = probe({}, { platform, agent: 'codex-unknown', repo: undefined });
-    assert.deepEqual(result, { outcome: 'skipped' });
-    assert.equal(calls.length, 0);
-  });
-}
+test('darwin is skipped immediately without running or validating an unused role', () => {
+  const { result, calls } = probe({}, { platform: 'darwin', agent: 'codex-unknown', repo: undefined });
+  assert.deepEqual(result, { outcome: 'skipped' });
+  assert.equal(calls.length, 0);
+});
 
-test('enabling Linux only in the platform set supplies direct POSIX commands for every form', () => {
-  PROBED_PLATFORMS.add('linux');
-  try {
-    const { result, calls } = probe({ flagged: failure, control: failure, version },
-      { platform: 'linux', repo: '/repository with spaces' });
-    assert.equal(result.outcome, 'dead');
-    assertAttempts(result, calls, ['flagged', 'control', 'version']);
-    assert.deepEqual(calls.map(({ args }) => args), [
-      ['sandbox', '-c', 'sandbox_mode=read-only', '--', 'echo', MARKER],
-      ['sandbox', '--', 'echo', MARKER], ['--version'],
-    ]);
-    for (const call of calls) {
-      assert.equal(call.command, 'codex');
-      assert.deepEqual(call.options, { cwd: '/repository with spaces', encoding: 'utf8', timeout: 30_000 });
-    }
-  } finally {
-    PROBED_PLATFORMS.delete('linux');
+// The two outcomes seen live on an Ubuntu 24.04 VPS on 2026-09-17, before and after the AppArmor repair.
+test('Linux is judged with direct POSIX commands for every form', () => {
+  const { result, calls } = probe({ flagged: failure, control: failure, version },
+    { platform: 'linux', repo: '/repository with spaces' });
+  assert.equal(result.outcome, 'dead');
+  assertAttempts(result, calls, ['flagged', 'control', 'version']);
+  assert.deepEqual(calls.map(({ args }) => args), [
+    ['sandbox', '-c', 'sandbox_mode=read-only', '--', 'echo', MARKER],
+    ['sandbox', '--', 'echo', MARKER], ['--version'],
+  ]);
+  for (const call of calls) {
+    assert.equal(call.command, 'codex');
+    assert.deepEqual(call.options, { cwd: '/repository with spaces', encoding: 'utf8', timeout: 30_000 });
   }
+  const alive = probe({ flagged: success }, { platform: 'linux', agent: 'codex-build', repo: '/repo' });
+  assert.equal(alive.result.outcome, 'alive');
+  assert.deepEqual(alive.calls.map(({ args }) => args), [
+    ['sandbox', '-c', 'sandbox_mode=workspace-write', '--', 'echo', MARKER],
+  ]);
 });
 
 test('policy-looking stderr and a stderr-only marker never decide the outcome', () => {
@@ -235,6 +234,9 @@ for (const platform of ['win32', 'linux']) {
     assert.ok(refusal.includes(control));
     assert.ok(refusal.includes('flagged stderr:\n> flagged problem\n> second line'));
     assert.ok(refusal.includes('control stderr:\n> control problem'));
+    // Only Linux gets the AppArmor repair: on Windows the known cause is a corrupted state file.
+    assert.equal(refusal.includes('https://learn.chatgpt.com/docs/sandboxing'), platform === 'linux');
+    assert.equal(refusal.includes('apparmor_restrict_unprivileged_userns=0'), platform === 'linux');
     assert.equal(refusal.includes('version text'), false);
     assert.ok(refusal.endsWith('The run folder was not created; quota was not spent.'));
   });

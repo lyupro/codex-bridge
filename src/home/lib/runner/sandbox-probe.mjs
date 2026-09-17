@@ -6,8 +6,19 @@ import { codexSpawnSpec } from './codex-cmd.mjs';
 import { platformSandboxArgs } from './sandbox-flags.mjs';
 
 export const SANDBOX_PROBE_MARKER = 'codex-bridge-sandbox-ok';
-// Plan_57 D12: the command is ready for Linux, but enabling judgment there is an operator decision.
-export const PROBED_PLATFORMS = new Set(['win32']);
+// Plan_57 D12/D19: a platform is judged only after both outcomes were seen live. Linux joined on
+// 2026-09-17: dead on an Ubuntu 24.04 VPS (bwrap without a user namespace, exit 1, no marker), alive
+// on the same host after the AppArmor repair. macOS has never been observed.
+export const PROBED_PLATFORMS = new Set(['win32', 'linux']);
+
+// Ubuntu 23.10+ forbids unprivileged user namespaces unless an AppArmor profile allows bwrap; that
+// is the ordinary state of a fresh server, not an accident like the corrupted Windows state file.
+const LINUX_REPAIR = [
+  'On Ubuntu 23.10 and later this usually means AppArmor does not let bubblewrap create a user namespace.',
+  'Official repair: https://learn.chatgpt.com/docs/sandboxing — the bwrap-userns-restrict AppArmor profile',
+  '(Ubuntu 24.04) or the bubblewrap package (25.04 and later). Do not set',
+  'kernel.apparmor_restrict_unprivileged_userns=0: it lifts the restriction for every program on the host.',
+].join(' ');
 
 const echoArgs = (platform) => platform === 'win32'
   ? ['cmd', '/d', '/c', 'echo', SANDBOX_PROBE_MARKER]
@@ -83,10 +94,11 @@ export function sandboxRefusal(result, platform = process.platform) {
     .filter(({ form }) => form === 'flagged' || form === 'control')
     .map(({ form, stderrTail }) =>
       `${form} stderr:\n> ${(stderrTail || '(empty)').replace(/\r\n?/g, '\n').replace(/\n/g, '\n> ')}`);
+  // Only a dead result is refused, and its reason already is the headline; printing both said it twice.
   return [
-    'The Codex sandbox on this host cannot start a process.',
-    `Reason: ${result.reason}`,
+    result.reason,
     'Repair the host sandbox; do not rewrite or retry the order.',
+    ...(platform === 'linux' ? [LINUX_REPAIR] : []),
     `Operator check (run from the repository directory): ${control}`,
     ...stderr,
     'The run folder was not created; quota was not spent.',

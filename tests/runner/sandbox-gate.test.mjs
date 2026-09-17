@@ -13,7 +13,7 @@ import { SANDBOX_PROBE_MARKER } from '../../src/home/lib/runner/sandbox-probe.mj
 const RUN_CODEX = fileURLToPath(new URL('../../src/home/lib/run-codex.mjs', import.meta.url));
 const LAUNCHER = new URL('../../src/home/lib/runner/launcher.mjs', import.meta.url).href;
 const SANDBOX_FAILURE = 'windows sandbox failed: helper_unknown_error: apply deny-read ACLs';
-const WINDOWS_ONLY = 'The sandbox probe only judges win32 hosts (Plan_57 D12).';
+const WINDOWS_ONLY = 'The fake codex.cmd reaches the probe through cmd.exe; the Linux form is covered in sandbox-probe.test.mjs.';
 
 function fixture(t, scenario) {
   const root = makeTempTree(`sandbox-gate-${scenario}-`);
@@ -229,7 +229,7 @@ test('a busy writing tree refuses without probing or recording sandbox_probe', a
 test('an unsupported platform records the entire skipped result', (t) => {
   const tree = fixture(t, 'skipped');
   const source = `
-Object.defineProperty(process, 'platform', { value: 'linux' });
+Object.defineProperty(process, 'platform', { value: 'darwin' });
 const realSpawnSync = childProcess.spawnSync;
 childProcess.spawnSync = (command, args, options) => {
   if (args.includes('sandbox')) throw new Error('A skipped probe must not spawn Codex');

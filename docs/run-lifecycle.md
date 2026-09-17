@@ -68,8 +68,10 @@ complete job before detaching from the launcher.
    and the rejected run remains visible in it.
 8. For build, a live writing run in the same repository is checked. When none holds the tree — and
    always for scout and review — `probeSandbox()` (`runner/sandbox-probe.mjs`) asks the host's Codex
-   sandbox to run `echo` with the role's own sandbox flags. Only Windows is judged; on other platforms
-   the result is `skipped`. The sandbox counts as dead only on double evidence: no marker with the role's
+   sandbox to run `echo` with the role's own sandbox flags. Windows and Linux are judged — each only
+   after both a dead and a live sandbox were observed on it; on macOS the result is `skipped`. On Linux
+   the refusal also names the official AppArmor repair, because there a dead sandbox is the ordinary
+   state of a fresh Ubuntu 23.10+ server rather than an accident. The sandbox counts as dead only on double evidence: no marker with the role's
    flags, no marker in the flag-free control form, neither attempt exited with code 2 (an argument
    error), and `codex --version` still answers. A dead sandbox refuses the run right here with the
    probe's stderr and the operator's check command: no directory is created, retention does not run, no
