@@ -72,6 +72,10 @@ export function probeSandbox({
   if (flagged.status === 0 && flagged.marker) {
     return finish('alive', 'The Codex sandbox started a process.');
   }
+  // D16: the marker proves a process started, so a nonzero exit cannot prove a dead sandbox.
+  if (flagged.marker) {
+    return finish('inconclusive', `The flagged sandbox probe printed the marker but exited ${flagged.status}.`);
+  }
 
   const control = attempt('control', ['sandbox', '--', ...echo]);
   const controlReason = inconclusiveReason(control, 'control');

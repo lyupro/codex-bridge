@@ -188,14 +188,16 @@ export async function launcher(argv = process.argv.slice(2)) {
     );
   }
 
+  // Review 2026-09-17: the slow probe widened the window between the busy check and registration.
+  // Probe first so the busy check sees writers that registered while it waited.
+  // Keep dead refusal before retention to preserve old run artifacts.
+  const sandboxProbe = probeSandbox({ agent: opts.agent, repo: repoRoot });
+  if (sandboxProbe.outcome === 'dead') die(sandboxRefusal(sandboxProbe));
+
   // Asked before this run registers itself, so it cannot find itself. Two writing runs share
   // one worktree with no isolation: the second one's before/after snapshot picks up the
   // first one's edits, and an honest run gets failed for work it never did.
   const busy = opts.agent === 'codex-build' ? activeRunDetails(projectRunsRoot, repoRoot) : null;
-  // On 2026-09-16, corrupt deny_read_acl_state.json spent quota on runs executing no commands.
-  // After busy to avoid probing a refused writer; before retention to preserve old run artifacts on refusal.
-  const sandboxProbe = busy ? null : probeSandbox({ agent: opts.agent, repo: repoRoot });
-  if (sandboxProbe?.outcome === 'dead') die(sandboxRefusal(sandboxProbe));
 
   let retention = null;
   try {
@@ -236,7 +238,7 @@ export async function launcher(argv = process.argv.slice(2)) {
     // `continued_from` is the exact run the orchestrator named; `continues` above remains the chain base.
     ...(continuationGrant ? { continued_from: continuationGrant.run } : {}),
     ...(retention ? { retention } : {}),
-    ...(sandboxProbe ? { sandbox_probe: sandboxProbe } : {}),
+    sandbox_probe: sandboxProbe,
   });
 
   // Printed before anything can go wrong: even a dispatcher that dies mid-run leaves the

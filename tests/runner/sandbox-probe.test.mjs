@@ -160,8 +160,10 @@ test('dead is not pinned to exit 1, and a zero exit without stdout marker is ins
 });
 
 test('a flagged marker needs exit zero and cannot override an interrupted attempt', () => {
-  const { result } = probe({ flagged: { ...success, status: 1 }, control: failure, version });
-  assert.equal(result.outcome, 'dead');
+  const { result, calls } = probe({ flagged: { ...success, status: 1 } });
+  assert.equal(result.outcome, 'inconclusive');
+  assert.equal(result.reason, 'The flagged sandbox probe printed the marker but exited 1.');
+  assertAttempts(result, calls, ['flagged']);
   for (const interruption of [{ error: { code: 'ETIMEDOUT' } }, { signal: 'SIGTERM' }]) {
     const { result: interrupted, calls } = probe({ flagged: { ...success, ...interruption } });
     assert.equal(interrupted.outcome, 'inconclusive');

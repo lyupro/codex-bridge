@@ -66,21 +66,24 @@ complete job before detaching from the launcher.
    a directory with `state=aborted_pre_start` (and its old-contract equivalent) is excluded — it spent
    no quota and contains nothing to continue. The chain itself remains complete: it is the audit view,
    and the rejected run remains visible in it.
-8. For build, a live writing run in the same repository is checked. When none holds the tree — and
-   always for scout and review — `probeSandbox()` (`runner/sandbox-probe.mjs`) asks the host's Codex
-   sandbox to run `echo` with the role's own sandbox flags. Windows and Linux are judged — each only
-   after both a dead and a live sandbox were observed on it; on macOS the result is `skipped`. On Linux
-   the refusal also names the official AppArmor repair, because there a dead sandbox is the ordinary
-   state of a fresh Ubuntu 23.10+ server rather than an accident. The sandbox counts as dead only on double evidence: no marker with the role's
-   flags, no marker in the flag-free control form, neither attempt exited with code 2 (an argument
-   error), and `codex --version` still answers. A dead sandbox refuses the run right here with the
-   probe's stderr and the operator's check command: no directory is created, retention does not run, no
-   quota is spent. Every other outcome lets the run start, including `inconclusive` — a timeout, a
+8. `probeSandbox()` (`runner/sandbox-probe.mjs`) asks the host's Codex sandbox to run `echo` with the
+   role's own sandbox flags, for every agent. Windows and Linux are judged — each only after both a dead
+   and a live sandbox were observed on it; on macOS the result is `skipped`. The sandbox counts as dead
+   only on double evidence: no marker with the role's flags, no marker in the flag-free control form,
+   neither attempt exited with code 2 (an argument error), and `codex --version` still answers; a marker
+   printed with a nonzero exit is `inconclusive`, since the marker proves a process started. A dead
+   sandbox refuses the run right here with the probe's stderr and the operator's check command — on
+   Linux also the official AppArmor repair, because there a dead sandbox is the ordinary state of a fresh
+   Ubuntu 23.10+ server rather than an accident: no directory is created, retention does not run, no
+   quota is spent. Every other outcome lets the run continue, including `inconclusive` — a timeout, a
    spawn error, rejected arguments, or flags this Codex version no longer accepts — and the whole result
-   is written to `status.json#sandbox_probe` in step 10. A busy build is not probed: it is refused for
-   free anyway and should not wait two seconds for it. Why this exists: on 2026-09-16 an unclean Windows
-   shutdown corrupted the sandbox helper's state file, and every run started on a dead sandbox, spent
-   quota and executed no command.
+   is written to `status.json#sandbox_probe` in step 10. Why this exists: on 2026-09-16 an unclean
+   Windows shutdown corrupted the sandbox helper's state file, and every run started on a dead sandbox,
+   spent quota and executed no command.
+   Only then, for build, is a live writing run in the same repository checked. The order matters: the
+   probe takes seconds, and between the busy check and this run registering itself in step 10 nothing
+   slow may run, or a second writer can enter the same tree unseen (review of 2026-09-17). A busy build
+   therefore waits for the probe before it is refused.
 9. A unique `<date_time>_<slug>` directory is created; on a name collision, `-2`, `-3`, and so on is
    appended.
 10. The first artifact written is `status.json` with `state=running` and the launcher pid. Stdout then

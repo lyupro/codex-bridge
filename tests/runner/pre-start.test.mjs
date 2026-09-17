@@ -16,11 +16,30 @@ import { resolveProjectRunsDir } from '../../src/home/lib/runner/project-dir.mjs
 
 const RUN_CODEX = fileURLToPath(new URL('../../src/home/lib/run-codex.mjs', import.meta.url));
 const LAUNCHER = new URL('../../src/home/lib/runner/launcher.mjs', import.meta.url).href;
+const shellQuote = (value) => `'${String(value).replaceAll("'", "'\\''")}'`;
 
 function fixture(t, suffix) {
   const root = makeTempTree(`pre-start-${suffix}-`);
   t.after(() => removeTempTree(root));
   return root;
+}
+
+function installFakeCodex(root, source) {
+  const bin = path.join(root, 'bin');
+  const script = path.join(root, 'fake-codex.mjs');
+  fs.mkdirSync(bin);
+  fs.writeFileSync(script, source);
+  if (process.platform === 'win32') {
+    fs.writeFileSync(
+      path.join(bin, 'codex.cmd'),
+      `@echo off\r\n"${process.execPath}" "${script}" %*\r\n`,
+    );
+  } else {
+    const wrapper = path.join(bin, 'codex');
+    fs.writeFileSync(wrapper, `#!/bin/sh\nexec ${shellQuote(process.execPath)} ${shellQuote(script)} "$@"\n`);
+    fs.chmodSync(wrapper, 0o755);
+  }
+  return bin;
 }
 
 function runner(args, input, env, cwd) {
@@ -93,7 +112,18 @@ test('the busy refusal records aborted_pre_start', (t) => {
     }),
   );
 
-  const output = runner(baseArgs('codex-build', repo, 'busy-order'), 'busy refusal', { CODEX_RUNS_ROOT: runsRoot }, repo);
+  // Review 2026-09-17: even a busy writer now probes, so PATH must never reach the real Codex CLI.
+  const bin = installFakeCodex(root, `
+const command = process.argv[2];
+if (command === 'sandbox') console.log('codex-bridge-sandbox-ok');
+else if (command === '--version') console.log('codex-cli fixture');
+else process.exitCode = 90;
+`);
+  const pathKey = Object.keys(process.env).find((key) => key.toUpperCase() === 'PATH') || 'PATH';
+  const output = runner(baseArgs('codex-build', repo, 'busy-order'), 'busy refusal', {
+    CODEX_RUNS_ROOT: runsRoot,
+    [pathKey]: [bin, process.env[pathKey]].filter(Boolean).join(path.delimiter),
+  }, repo);
 
   assert.equal(output.status, 1, output.stderr);
   assert.equal(runStatus(output).state, 'aborted_pre_start');

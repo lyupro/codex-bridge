@@ -198,9 +198,45 @@ for (const [agent, sandbox] of [['codex-build', 'workspace-write'], ['codex-scou
   });
 }
 
-test('a busy writing tree refuses without probing or recording sandbox_probe', async (t) => {
+test('a writing tree that becomes busy during an alive probe records it before refusing', async (t) => {
   if (process.platform !== 'win32') return t.skip(WINDOWS_ONLY);
   const tree = fixture(t, 'busy');
+  const env = fakeEnv(tree, 'alive');
+  const project = resolveProjectRunsDir(tree.runsRoot, tree.repo).dir;
+  const holder = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore', windowsHide: true });
+  const holderExited = once(holder, 'exit');
+  try {
+    await once(holder, 'spawn');
+    const holderRun = path.join(project, 'other-live-run');
+    const holderStatus = JSON.stringify({
+      state: 'running', pid: holder.pid, agent: 'codex-build', repo: tree.repo,
+      slug: 'other-task', task_hash: 'other-hash', order_id: 'other-order', started_at: new Date().toISOString(),
+    });
+    // Review 2026-09-17: register during the probe to catch a busy check taken before it.
+    fs.appendFileSync(path.join(tree.root, 'fake-codex.mjs'), `
+if (args[0] === 'sandbox') {
+  fs.mkdirSync(${JSON.stringify(holderRun)});
+  fs.writeFileSync(${JSON.stringify(path.join(holderRun, 'status.json'))}, ${JSON.stringify(holderStatus)});
+}
+`);
+    const output = runner(baseArgs('codex-build', tree.repo), env, tree.repo);
+
+    assert.equal(output.status, 1, `${output.stdout}\n${output.stderr}`);
+    const status = runStatus(output);
+    assert.equal(status.state, 'aborted_pre_start');
+    assert.equal(status.sandbox_probe.outcome, 'alive');
+    assert.deepEqual(status.sandbox_probe.attempts.map(({ form }) => form), ['flagged']);
+    assert.match(output.stdout, /already active for this repository/);
+    assert.deepEqual(calls(tree.root).map((args) => args[0]), ['sandbox']);
+  } finally {
+    holder.kill();
+    await holderExited;
+  }
+});
+
+test('a dead sandbox refuses a busy writing tree before creating a run', async (t) => {
+  if (process.platform !== 'win32') return t.skip(WINDOWS_ONLY);
+  const tree = fixture(t, 'busy-dead');
   const env = fakeEnv(tree, 'dead');
   const project = resolveProjectRunsDir(tree.runsRoot, tree.repo).dir;
   const holder = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore', windowsHide: true });
@@ -214,12 +250,15 @@ test('a busy writing tree refuses without probing or recording sandbox_probe', a
     }));
     const output = runner(baseArgs('codex-build', tree.repo), env, tree.repo);
 
-    assert.equal(output.status, 1, `${output.stdout}\n${output.stderr}`);
-    const status = runStatus(output);
-    assert.equal(status.state, 'aborted_pre_start');
-    assert.equal(Object.hasOwn(status, 'sandbox_probe'), false);
-    assert.match(output.stdout, /already active for this repository/);
-    assert.deepEqual(calls(tree.root), []);
+    assert.equal(output.status, 2, `${output.stdout}\n${output.stderr}`);
+    assert.match(output.stderr, /The Codex sandbox on this host cannot start a process/);
+    assert.match(output.stderr, /The run folder was not created; quota was not spent\./);
+    assert.equal(output.stdout, '');
+    assert.deepEqual(fs.readdirSync(project, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory()).map((entry) => entry.name), ['other-live-run']);
+    const invocations = calls(tree.root);
+    assert.equal(invocations.some((args) => args.includes('exec')), false);
+    assert.deepEqual(invocations.map((args) => args[0]), ['sandbox', 'sandbox', '--version']);
   } finally {
     holder.kill();
     await holderExited;
