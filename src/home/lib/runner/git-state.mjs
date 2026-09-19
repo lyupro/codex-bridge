@@ -40,7 +40,12 @@ export function worktreeSnapshot(repo) {
   const skip = runsPrefixInside(repo);
   // The path is the third tab-separated field in both git outputs used here.
   const mine = (line) => Boolean(skip) && (line.split('\t')[2] || '').startsWith(skip);
-  const tracked = (git(repo, ['diff', 'HEAD', '--numstat']).stdout || '')
+  // `--no-renames` because every reader of this snapshot compares paths against a scope: with
+  // rename detection on, numstat prints one row spelled `old => new` (or `dir/{a => b}/file`),
+  // which is not a path and matches no pattern — an in-scope rename would be judged a stray, and
+  // the witness named that token at the orchestrator on 2026-09-20. Without it a rename is a
+  // deletion plus an addition: two rows, both real paths, both judged on their own merits.
+  const tracked = (git(repo, ['diff', 'HEAD', '--numstat', '--no-renames']).stdout || '')
     .split(/\r?\n/)
     .filter((line) => line.trim() && !mine(line))
     .join('\n')

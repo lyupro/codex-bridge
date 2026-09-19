@@ -9,6 +9,7 @@ import {
   HOOK_DEFINITIONS,
   SHELL_TOOL_MATCHER,
 } from '../../src/home/lib/hook-definitions.mjs';
+import { worktreeSnapshot } from '../../src/home/lib/runner/git-state.mjs';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
@@ -21,6 +22,13 @@ async function fixture(t) {
   await fs.mkdir(repo, { recursive: true });
   await fs.mkdir(runsRoot, { recursive: true });
   assert.equal(spawnSync('git', ['init', '-q', repo]).status, 0);
+  // The verdict's snapshot diffs against HEAD; an unborn fixture hides tracked scope changes.
+  assert.equal(spawnSync('git', [
+    '-C', repo,
+    '-c', 'user.name=Worktree Witness',
+    '-c', 'user.email=witness@example.test',
+    'commit', '--allow-empty', '-qm', 'fixture baseline',
+  ]).status, 0);
   t.after(() => removeTempTree(root));
   return { root, repo, runsRoot };
 }
@@ -34,6 +42,7 @@ async function liveRun(runsRoot, repo, statusOverrides = {}) {
   if ('pid' in statusOverrides && !('process_started_at' in statusOverrides)) {
     throw new Error('liveRun: overriding pid requires process_started_at of that same process');
   }
+  const before = worktreeSnapshot(repo);
   const dir = path.join(runsRoot, 'project', '2026-08-16_split-guard');
   await fs.mkdir(dir, { recursive: true });
   await fs.writeFile(path.join(dir, 'status.json'), `${JSON.stringify({
@@ -46,7 +55,7 @@ async function liveRun(runsRoot, repo, statusOverrides = {}) {
     process_started_at: performance.timeOrigin,
     ...statusOverrides,
   })}\n`);
-  await fs.writeFile(path.join(dir, 'git-before.txt'), '');
+  await fs.writeFile(path.join(dir, 'state-before.txt'), `${before}\n`);
   await fs.writeFile(path.join(dir, 'scope.txt'), 'src/**\n');
   return dir;
 }
@@ -146,6 +155,7 @@ test('runs that are not live do not own repository changes', async (t) => {
   }
 });
 
+// The 2026-09-19 exclusions must still leave real orchestrator edits visible and actionable.
 test('a change outside scope is reported with the path and release command', async (t) => {
   const { root, repo, runsRoot } = await fixture(t);
   const runDir = await liveRun(runsRoot, repo);
@@ -155,16 +165,98 @@ test('a change outside scope is reported with the path and release command', asy
   assert.equal(result.status, 0);
   const output = JSON.parse(result.stdout).hookSpecificOutput;
   assert.equal(output.hookEventName, 'PostToolUse');
+  assert.match(output.additionalContext, /^WORKTREE WITNESS/);
+  assert.match(output.additionalContext, /run's own folder, environment paths and gitignored files are already excluded/);
+  assert.match(output.additionalContext, /orchestrator's own edits inside the repository/);
   assert.match(output.additionalContext, /act now/i);
   assert.match(output.additionalContext, /CHANGELOG\.md/);
   assert.match(output.additionalContext, new RegExp(runDir.replaceAll('\\', '\\\\')));
   assert.match(output.additionalContext, /agent codex-build/);
   assert.match(output.additionalContext, /slug split-guard-20260816/);
   assert.match(output.additionalContext, /codex-bridge stop 2026-08-16_split-guard/);
+  assert.ok(output.additionalContext.indexOf("orchestrator's own edits") < output.additionalContext.indexOf('Act now'));
 });
 
-// Porcelain rename parsing must attribute ownership to the destination, not the obsolete source.
-test('a renamed file is judged by its new path', async (t) => {
+// On 2026-09-19 a run under ~/.claude was falsely accused of creating its own run folder.
+test('artifacts inside the live run folder are not reported', async (t) => {
+  const { root, repo } = await fixture(t);
+  const runsRoot = path.join(repo, 'runs');
+  const runDir = await liveRun(runsRoot, repo);
+  await fs.writeFile(path.join(runDir, 'raw.log'), 'run artifact\n');
+  assertPass(runWitness(root, runsRoot, repo));
+});
+
+// Environment ownership comes from the live run's env.json, as it does for the verdict.
+test('paths listed in environmentPaths are not reported', async (t) => {
+  const { root, repo, runsRoot } = await fixture(t);
+  const runDir = await liveRun(runsRoot, repo);
+  const environmentPaths = ['.omc/project-memory.json', '.claude/settings.local.json', 'tooling/**'];
+  await fs.writeFile(path.join(runDir, 'env.json'), JSON.stringify({ environmentPaths }));
+  for (const file of ['.omc/project-memory.json', '.claude/settings.local.json', 'tooling/session.json']) {
+    await fs.mkdir(path.dirname(path.join(repo, file)), { recursive: true });
+    await fs.writeFile(path.join(repo, file), '{}\n');
+  }
+  assertPass(runWitness(root, runsRoot, repo));
+  await fs.writeFile(path.join(repo, 'outside.txt'), 'orchestrator edit\n');
+  const result = runWitness(root, runsRoot, repo);
+  assert.equal(result.status, 0);
+  const context = JSON.parse(result.stdout).hookSpecificOutput.additionalContext;
+  assert.match(context, /outside\.txt/);
+  assert.doesNotMatch(context, /project-memory\.json|settings\.local\.json|session\.json/);
+});
+
+// Gitignored working notes are absent from the verdict's instrument and must stay absent here.
+test('gitignored working notes are not reported', async (t) => {
+  const { root, repo, runsRoot } = await fixture(t);
+  await fs.writeFile(path.join(repo, '.gitignore'), 'notes/\n');
+  await liveRun(runsRoot, repo);
+  await fs.mkdir(path.join(repo, 'notes'));
+  await fs.writeFile(path.join(repo, 'notes', 'scratch.md'), 'working notes\n');
+  assertPass(runWitness(root, runsRoot, repo));
+});
+
+// Porcelain stays ?? for an existing untracked file; the recorded byte count catches its edit.
+test('an edit to an already untracked path is reported', async (t) => {
+  const { root, repo, runsRoot } = await fixture(t);
+  await fs.writeFile(path.join(repo, 'outside.txt'), 'before\n');
+  await liveRun(runsRoot, repo);
+  assertPass(runWitness(root, runsRoot, repo));
+  await fs.writeFile(path.join(repo, 'outside.txt'), 'orchestrator changed the file\n');
+  const result = runWitness(root, runsRoot, repo);
+  assert.equal(result.status, 0);
+  assert.match(JSON.parse(result.stdout).hookSpecificOutput.additionalContext, /outside\.txt/);
+});
+
+// Line counts catch further tracked edits that leave the same porcelain status letter behind.
+test('an edit to an already modified tracked path is reported', async (t) => {
+  const { root, repo, runsRoot } = await fixture(t);
+  await fs.writeFile(path.join(repo, 'outside.txt'), 'before\n');
+  assert.equal(spawnSync('git', ['-C', repo, 'add', '-N', 'outside.txt']).status, 0);
+  await liveRun(runsRoot, repo);
+  assertPass(runWitness(root, runsRoot, repo));
+  await fs.appendFile(path.join(repo, 'outside.txt'), 'orchestrator edit\n');
+  const result = runWitness(root, runsRoot, repo);
+  assert.equal(result.status, 0);
+  assert.match(JSON.parse(result.stdout).hookSpecificOutput.additionalContext, /outside\.txt/);
+});
+
+// Plan_58 keeps the launcher artifact for diagnostics, but it no longer measures witness changes.
+test('git-before is ignored and preserved as an artifact', async (t) => {
+  const { root, repo, runsRoot } = await fixture(t);
+  const runDir = await liveRun(runsRoot, repo);
+  const legacy = path.join(runDir, 'git-before.txt');
+  await fs.writeFile(legacy, 'not porcelain\n');
+  await fs.writeFile(path.join(repo, 'outside.txt'), 'orchestrator edit\n');
+  const result = runWitness(root, runsRoot, repo);
+  assert.equal(result.status, 0);
+  assert.match(JSON.parse(result.stdout).hookSpecificOutput.additionalContext, /outside\.txt/);
+  assert.equal(await fs.readFile(legacy, 'utf8'), 'not porcelain\n');
+});
+
+// A rename is two facts, and the snapshot is read with `--no-renames` so both are real paths. The
+// porcelain witness named only the destination; the shared instrument once named the token
+// `old => new`, which is no path at all and matches no scope pattern (Plan_58 acceptance).
+test('a renamed file is judged by both of its paths', async (t) => {
   const { root, repo, runsRoot } = await fixture(t);
   await liveRun(runsRoot, repo);
   await fs.writeFile(path.join(repo, 'old-name.txt'), 'tracked\n');
@@ -181,14 +273,36 @@ test('a renamed file is judged by its new path', async (t) => {
   assert.equal(result.status, 0);
   const context = JSON.parse(result.stdout).hookSpecificOutput.additionalContext;
   assert.match(context, /new-name\.txt/);
-  assert.doesNotMatch(context, /old-name\.txt/);
+  assert.match(context, /old-name\.txt/);
+  assert.doesNotMatch(context, /=>/, 'a rename token is not a path and must never reach the reply');
 });
 
-// The before-only comparison protects the revert case where current porcelain becomes clean.
-test('a path present only in git-before is reported as changed', async (t) => {
+// The verdict judges strays with this same snapshot, so the rename token would have failed an
+// honest build for moving a file it was told to own. Silence here is what proves it cannot.
+test('a rename that stays inside the scope is not reported', async (t) => {
+  const { root, repo, runsRoot } = await fixture(t);
+  await fs.mkdir(path.join(repo, 'src'), { recursive: true });
+  await fs.writeFile(path.join(repo, 'src', 'old-name.txt'), 'tracked\n');
+  assert.equal(spawnSync('git', ['-C', repo, 'add', 'src/old-name.txt']).status, 0);
+  assert.equal(spawnSync('git', [
+    '-C', repo,
+    '-c', 'user.name=Worktree Witness',
+    '-c', 'user.email=witness@example.test',
+    'commit', '-qm', 'fixture',
+  ]).status, 0);
+  await liveRun(runsRoot, repo);
+  assert.equal(spawnSync('git', ['-C', repo, 'mv', 'src/old-name.txt', 'src/new-name.txt']).status, 0);
+
+  const result = runWitness(root, runsRoot, repo);
+  assert.equal(result.status, 0);
+  assert.equal(result.stdout, '', result.stdout);
+});
+
+// The before-only comparison protects the revert case where the current snapshot becomes clean.
+test('a path present only in state-before is reported as changed', async (t) => {
   const { root, repo, runsRoot } = await fixture(t);
   const runDir = await liveRun(runsRoot, repo);
-  await fs.writeFile(path.join(runDir, 'git-before.txt'), ' M restored.txt\n');
+  await fs.writeFile(path.join(runDir, 'state-before.txt'), '1\t0\trestored.txt\n');
 
   const result = runWitness(root, runsRoot, repo);
   assert.equal(result.status, 0);
@@ -238,10 +352,23 @@ test('malformed and missing inputs pass silently', async (t) => {
     env: { ...process.env, CODEX_RUNS_ROOT: runsRoot, HOME: root, USERPROFILE: root },
   });
   assertPass(malformedJson);
-  await fs.rm(path.join(runDir, 'git-before.txt'));
+  await fs.rm(path.join(runDir, 'state-before.txt'));
   assertPass(runWitness(root, runsRoot, repo));
-  await fs.writeFile(path.join(runDir, 'git-before.txt'), 'not porcelain\n');
+  await fs.writeFile(path.join(runDir, 'state-before.txt'), 'not a snapshot\n');
   assertPass(runWitness(root, runsRoot, repo));
+  await fs.writeFile(path.join(runDir, 'state-before.txt'), '');
   await fs.rm(path.join(runDir, 'scope.txt'));
   assertPass(runWitness(root, runsRoot, repo));
+});
+
+// An unreadable repository must not turn a nonempty baseline into a fabricated restoration.
+test('an unavailable repository passes silently', async (t) => {
+  const { root, repo, runsRoot } = await fixture(t);
+  const runDir = await liveRun(runsRoot, repo);
+  await fs.writeFile(path.join(runDir, 'state-before.txt'), '1\t0\trestored.txt\n');
+  const statusFile = path.join(runDir, 'status.json');
+  const status = JSON.parse(await fs.readFile(statusFile, 'utf8'));
+  const missing = path.join(root, 'missing-repository');
+  await fs.writeFile(statusFile, JSON.stringify({ ...status, repo: missing }));
+  assertPass(runWitness(root, runsRoot, missing));
 });

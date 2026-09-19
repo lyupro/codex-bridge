@@ -494,7 +494,11 @@ slash, case-insensitive, and without `realpath`.
 Known limitation: parsing a shell command line is unreliable, and blocking all of `Bash` is
 impossible—the run needs builds and tests. `shell-write-intent.mjs` refuses the obvious writing
 forms before they run, and `worktree-witness.mjs` compares the tree afterwards against the run's
-snapshot; between them a write that slips through is named rather than silently accepted.
+snapshot; between them a write that slips through is named rather than silently accepted. The witness
+judges with the verdict's own instrument — `state-before.txt`, `worktreeSnapshot()`, the environment
+split and `outOfScope()` — so the live warning and the final verdict cannot disagree: until Plan_58 it
+read `git status --porcelain` on its own and accused a run of editing its own artifacts, the
+orchestrator's tooling files and gitignored notes.
 
 ## Whether the host still applies a refusal
 

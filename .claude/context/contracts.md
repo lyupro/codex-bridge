@@ -87,6 +87,16 @@ here. Nothing was reworded on the way out.
   timeout killed only the `cmd.exe` shim and left Codex as its orphan, the 2026-07-31 class. Its
   limit is `spawnSync`'s 1 MiB and an overflow settles with `ENOBUFS`, which the probe reads as
   inconclusive: a marker lost to a small buffer once refused a live sandbox.
+- **One instrument answers "what changed in this worktree", and hooks never ask git directly.**
+  `worktreeSnapshot()` in `src/home/lib/runner/git-state.mjs` is it: the run-folder prefix removed,
+  gitignored paths absent by construction, `--no-renames` so every row is a real path rather than the
+  token `old => new` that matches no scope pattern. Readers compose it the same way — `changedPaths`,
+  `splitRunChanges`, `outOfScope` — so the live witness and the final verdict cannot reach different
+  answers about the same tree. `tests/hooks/tree-reader.test.mjs` fails any hook that spells
+  `status --porcelain`, `ls-files -o` or `--numstat` in an argument list. Why: the witness kept its own
+  porcelain reading and on 2026-09-19 ordered the orchestrator, on every tool call, to revert the run's
+  own folder; the same blindness covered environment writes and gitignored notes, and the rename token
+  would have failed an honest build for moving a file inside its scope.
 - **`makeRunDir()` is the single registration boundary, and a refusal decided before it leaves nothing
   in the worktree.** Everything that can refuse without spending quota — bad arguments, an impossible
   scope, a detached tree, a chain that needs `--continue`, a dead sandbox, a busy tree, a missing Codex

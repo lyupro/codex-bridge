@@ -97,7 +97,10 @@ test('every definition name reaches its existing top-level guard', async (t) => 
       assert.equal(spawnSync('git', ['init', '-q', repo]).status, 0, definition.name);
       const runsRoot = await liveRun(root, repo);
       const dir = path.join(runsRoot, 'project', 'active-run');
-      await fs.writeFile(path.join(dir, 'git-before.txt'), '');
+      // The baseline the witness reads is the verdict's snapshot, not porcelain: since Plan_58 both
+      // judge the tree with one instrument, and a fixture writing git-before.txt only proved that
+      // the hook fails open.
+      await fs.writeFile(path.join(dir, 'state-before.txt'), '');
       await fs.writeFile(path.join(dir, 'scope.txt'), 'src/**\n');
       await fs.writeFile(path.join(repo, 'CHANGELOG.md'), 'changed by another hand\n');
       const result = run(['hook', definition.name], JSON.stringify({
