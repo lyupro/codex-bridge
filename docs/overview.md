@@ -92,6 +92,14 @@ A file that does not exist yet is declared separately: `--scope-new "src/new-mod
 These paths enter scope alongside the others and are exempt only from the existence check; the
 flag is accepted by `codex-build`, the only agent that creates files.
 
+Every pattern, declared or new, has to be able to match a file: a scope is compared against file paths
+and never against directories. A pattern that can only name a directory — a trailing slash, a name that
+exists on disk as a directory, or a glob-free name whose last segment has no extension — is refused
+before the run with the spelling that works (`muse/scripts/**`). The exemption for new paths was the
+hole: `--scope-new muse/scripts` passed validation, then authorised one file that would never exist
+while every file created inside the folder counted as a stray, and the 2026-09-19 run was failed after
+ten minutes of finished work.
+
 Scope is more than an instruction in the prompt. Before and after the run, the runner snapshots
 the tree, computes the paths actually touched, and ends the run with `FAIL` if a path is not
 covered by any pattern. Service directories `.git/`, `.claude/`, `.codex/`, `.omx/`, `.omc/`,

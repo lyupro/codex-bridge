@@ -24,7 +24,7 @@ function absolutePattern(pattern) {
   );
 }
 
-function structuralRefusal(pattern) {
+function structuralRefusal(repoRoot, pattern) {
   if (absolutePattern(pattern)) {
     return {
       reason: 'is an absolute or drive-qualified path',
@@ -41,6 +41,26 @@ function structuralRefusal(pattern) {
     return {
       reason: 'contains a parent-directory (..) segment',
       action: 'remove the .. segment and keep the path relative to the repository root',
+    };
+  }
+  // Plan_58 D7: 2026-09-19_191402_ports-infra spent a run on a bare scope-new directory,
+  // which the verdict could only match as a file. Refuse that intent before spending a run.
+  if (!pattern || /[*?]/.test(pattern)) return null;
+  const reason = 'names a directory rather than a file';
+  const action = `write ${pattern.replace(/\/$/, '')}/** for everything inside it, or name the file itself`;
+  if (pattern.endsWith('/')) return { reason, action };
+
+  let entry;
+  try {
+    entry = fs.statSync(path.join(repoRoot, pattern));
+  } catch {
+    // An unreadable or vanished path is treated as missing, so only its spelling is checked.
+  }
+  if (entry?.isDirectory()) return { reason, action };
+  if (!entry && !pattern.split('/').at(-1).includes('.')) {
+    return {
+      reason,
+      action: `write ${pattern}/** if it is a directory, or declare the new file by its own name with an extension; a new extensionless file is declared through its directory`,
     };
   }
   return null;
@@ -133,7 +153,7 @@ export function validateScope(repoRoot, patterns, scopeNewPatterns = []) {
   const allPatterns = [...declared, ...newPaths];
 
   for (const pattern of allPatterns) {
-    const refusal = structuralRefusal(pattern);
+    const refusal = structuralRefusal(repoRoot, pattern);
     if (refusal) return { pattern, ...refusal };
     if (!pattern) return noMatchRefusal(pattern);
   }

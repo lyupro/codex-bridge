@@ -1,4 +1,4 @@
-/** Regression coverage for Plan_27 scope preflight and explicit new-file declarations. */
+/** Regression coverage for Plan_27 scope preflight and Plan_58 D7 directory intent. */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -69,23 +69,101 @@ function runPath(output) {
   return line.slice(4).split(' order-id=', 1)[0].trim();
 }
 
-test('scope preflight refuses every structurally impossible spelling', (t) => {
+test('scope preflight checks file and directory intent in both scope lists', (t) => {
   const { repo } = repository(t, 'structure');
+  const { repo: missingRepo } = repository(t, 'missing-file');
+  fs.mkdirSync(path.join(repo, 'muse', 'scripts'), { recursive: true });
+  fs.mkdirSync(path.join(repo, 'muse', 'scripts.mjs'));
+  fs.mkdirSync(path.join(repo, 'muse', 'skills'));
+  fs.writeFileSync(path.join(repo, 'muse', 'scripts', 'x.mjs'), 'export default 1;\n');
+  fs.writeFileSync(path.join(repo, 'muse', 'skills', 'README.md'), 'A skill.\n');
+  fs.writeFileSync(path.join(repo, 'muse', 'existing.json'), '{}\n');
+  fs.writeFileSync(path.join(repo, 'Makefile'), 'all:\n');
+  const directoryReason = /^names a directory rather than a file$/;
+  const directoryAction = 'write muse/scripts/** for everything inside it, or name the file itself';
+  const newFileAction = 'write Makefile/** if it is a directory, or declare the new file by its own name with an extension; a new extensionless file is declared through its directory';
   const cases = [
-    { pattern: String.raw`C:\repo\src\existing.mjs`, reason: /absolute|drive/i },
-    { pattern: '/absolute/src/existing.mjs', reason: /absolute/i },
-    { pattern: String.raw`\\?\C:\repo\src\existing.mjs`, reason: /absolute/i },
-    { pattern: String.raw`\\server\share\src\existing.mjs`, reason: /absolute/i },
-    { pattern: String.raw`src\existing.mjs`, reason: /backslash/i },
-    { pattern: 'src/../src/existing.mjs', reason: /parent|\.\./i },
+    { pattern: String.raw`C:\repo\src\existing.mjs`, refusal: /absolute|drive/i, reason: 'drive paths are not relative' },
+    { pattern: '/absolute/src/existing.mjs', refusal: /absolute/i, reason: 'absolute paths cannot match repository paths' },
+    { pattern: String.raw`\\?\C:\repo\src\existing.mjs`, refusal: /absolute/i, reason: 'extended paths are absolute' },
+    { pattern: String.raw`\\server\share\src\existing.mjs`, refusal: /absolute/i, reason: 'UNC paths are absolute' },
+    { pattern: String.raw`src\existing.mjs`, refusal: /backslash/i, reason: 'scope separators must be forward slashes' },
+    { pattern: 'src/../src/existing.mjs', refusal: /parent|\.\./i, reason: 'parent segments are forbidden' },
+    { pattern: 'muse/scripts', refusal: directoryReason, action: directoryAction, reason: 'an existing directory is not a file' },
+    { pattern: 'muse/scripts/', refusal: directoryReason, action: directoryAction, reason: 'a trailing slash names a directory' },
+    {
+      pattern: 'muse/scripts.mjs', refusal: directoryReason, reason: 'a dot does not make an existing directory a file',
+      action: 'write muse/scripts.mjs/** for everything inside it, or name the file itself',
+    },
+    {
+      pattern: 'absent.mjs/', refusal: directoryReason, reason: 'a trailing slash also refuses a missing dotted directory',
+      action: 'write absent.mjs/** for everything inside it, or name the file itself',
+    },
+    { pattern: 'muse/scripts/**', reason: 'a recursive glob includes files inside the directory' },
+    { pattern: 'muse/scripts/*.mjs', reason: 'a star glob includes matching files' },
+    { pattern: 'muse/scripts/?.mjs', reason: 'a question-mark glob includes matching files' },
+    { pattern: 'muse/skills/**', reason: 'existing recursive skill scope stays valid' },
+    { pattern: 'muse/*.json', reason: 'existing JSON globs stay valid' },
+    { pattern: 'muse/scripts/*/', newFile: true, reason: 'directory rules never judge a glob, even with a trailing slash' },
+    { pattern: 'muse/ports.json', newFile: true, reason: 'scope-new permits an absent file with an extension' },
+    { pattern: 'Makefile', reason: 'an existing extensionless file is valid' },
+    { pattern: 'Makefile', repo: missingRepo, refusal: directoryReason, action: newFileAction, reason: 'an absent extensionless name is ambiguous' },
+    { pattern: 'missing-parent/new-file.mjs', newFile: true, reason: 'new files may have a missing parent directory' },
   ];
 
-  for (const { pattern, reason } of cases) {
-    const refusal = validateScope(repo, [pattern], []);
-    assert.ok(refusal, `expected refusal for ${pattern}`);
-    assert.equal(refusal.pattern, pattern);
-    assert.match(refusal.reason, reason);
-    assert.match(refusal.action, /path|replace|remove|forward/i);
+  for (const { pattern, reason, refusal: expected, action, newFile, repo: caseRepo = repo } of cases) {
+    for (const scopeNew of [false, true]) {
+      const context = `${scopeNew ? '--scope-new' : '--scope'} ${pattern}: ${reason}`;
+      const refusal = validateScope(caseRepo, scopeNew ? [] : [pattern], scopeNew || newFile ? [pattern] : []);
+      if (!expected) {
+        assert.equal(refusal, null, context);
+      } else {
+        assert.ok(refusal, context);
+        assert.equal(refusal.pattern, pattern, context);
+        assert.match(refusal.reason, expected, context);
+        if (action) assert.equal(refusal.action, action, context);
+        else assert.match(refusal.action, /path|replace|remove|forward/i, context);
+      }
+    }
+    if (newFile) {
+      // D7 adds structural checks; it must not waive the declared-only existence requirement.
+      const refusal = validateScope(caseRepo, [pattern], []);
+      assert.ok(refusal, reason);
+      assert.equal(refusal.pattern, pattern);
+      assert.match(refusal.reason, /does not match any existing path/i);
+    }
+  }
+});
+
+test('structural refusals in either list precede the declared existence check', (t) => {
+  const { repo } = repository(t, 'refusal-order');
+  // Plan_58 D7 must explain the directory mistake even when an earlier declared file is missing.
+  for (const scopeNew of [false, true]) {
+    const refusal = validateScope(repo, ['missing.mjs', ...(scopeNew ? [] : ['src'])], scopeNew ? ['src'] : []);
+    assert.equal(refusal.pattern, 'src');
+    assert.equal(refusal.reason, 'names a directory rather than a file');
+  }
+  assert.equal(validateScope(repo, ['src'], ['/absolute/file.mjs']).pattern, 'src');
+});
+
+test('unreadable or vanished paths fall through to the missing-path spelling rule', (t) => {
+  const { repo } = repository(t, 'stat-errors');
+  const statSync = fs.statSync;
+  let code = 'EACCES';
+  t.mock.method(fs, 'statSync', (target, ...args) => {
+    if (target === path.join(repo, 'src', 'existing.mjs') || target === path.join(repo, 'src')) {
+      throw Object.assign(new Error('path cannot be read'), { code });
+    }
+    return statSync(target, ...args);
+  });
+  for (code of ['EACCES', 'ENOENT']) {
+    assert.equal(validateScope(repo, ['src/existing.mjs'], []), null, code);
+    assert.equal(validateScope(repo, [], ['src/existing.mjs']), null, code);
+    for (const scopeNew of [false, true]) {
+      const refusal = validateScope(repo, scopeNew ? [] : ['src'], scopeNew ? ['src'] : []);
+      assert.equal(refusal.reason, 'names a directory rather than a file', code);
+      assert.equal(refusal.action, 'write src/** if it is a directory, or declare the new file by its own name with an extension; a new extensionless file is declared through its directory', code);
+    }
   }
 });
 

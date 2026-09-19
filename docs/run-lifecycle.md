@@ -42,9 +42,12 @@ complete job before detaching from the launcher.
 3. The launcher reads stdin and rejects an empty task.
 4. The repository root is determined through git; `--repo` is used for a non-git directory.
    Immediately afterward, `validateScope()` checks scope patterns against repository contents and
-   rejects a pattern that cannot match: an absolute or drive path, backslashes, `..`, or a pattern that
-   found nothing. This check runs for all three agents and before creating the run directory; paths from
-   `--scope-new` (only for `codex-build`) are exempt from the requirement to exist. The repository root
+   rejects a pattern that cannot match: an absolute or drive path, backslashes, `..`, a pattern that can
+   only name a directory (trailing slash, a directory that exists on disk, or a glob-free last segment
+   without an extension), or a pattern that found nothing. This check runs for all three agents and
+   before creating the run directory; paths from `--scope-new` (only for `codex-build`) are exempt from
+   the requirement to exist — and only from that one, because the exemption is what let a bare directory
+   through on 2026-09-19 and failed a finished run for the files it created inside it. The repository root
    is needed before validation, which is why this check belongs here rather than in `parseArgs()`.
 5. `markAbandoned()` closes earlier directories with `state=running` if their pid is already dead. Such
    a directory receives not only a marker but also a verdict: `meta.json` with status `FAIL` and a reason
