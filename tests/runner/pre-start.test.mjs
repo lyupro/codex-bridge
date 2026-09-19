@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 /**
- * Guards the four launcher refusals that spend no Codex quota.
+ * Guards the launcher refusals that spend no Codex quota, on both sides of registration.
  *
- * Plan_23 showed that each refusal still needs a durable pre-start verdict, otherwise a
- * harmless folder is counted as paid work by the next order.
+ * Plan_58's 2026-09-19 incident requires the pre-flight refusals — a busy tree, a missing CLI — to
+ * leave no folder at all. Plan_23's durable pre-start verdict remains necessary for the two refusals
+ * after registration, otherwise their folders are counted as paid work by the next order. Which
+ * refusal belongs on which side is the table in refusal-table.test.mjs.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -60,8 +62,16 @@ ${source}
 syncBuiltinESMExports();
 process.argv = [process.execPath, ${JSON.stringify(LAUNCHER)}, ...${JSON.stringify(args)}];
 const { launcher } = await import(${JSON.stringify(LAUNCHER)});
-const exitCode = await launcher();
-if (exitCode !== undefined) process.exitCode = exitCode;
+// run-codex.mjs maps a runner refusal to its own exit code (its RunnerUsageError branch).
+// A harness that skips that mapping turns every die() into an uncaught crash, and the stack lands
+// in the assertion instead of the refusal — Plan_58 acceptance, 2026-09-20.
+try {
+  const exitCode = await launcher();
+  if (exitCode !== undefined) process.exitCode = exitCode;
+} catch (error) {
+  if (typeof error?.exitCode !== 'number') throw error;
+  process.exitCode = error.exitCode;
+}
 `;
   return spawnSync(process.execPath, ['--input-type=module', '-e', script], {
     cwd,
@@ -88,7 +98,7 @@ function baseArgs(agent, repo, orderId) {
   ];
 }
 
-test('the busy refusal records aborted_pre_start', (t) => {
+test('the busy refusal reports on stderr without creating a run folder', (t) => {
   const root = fixture(t, 'busy');
   const repo = path.join(root, 'repo');
   const runsRoot = path.join(root, 'runs');
@@ -127,7 +137,12 @@ else process.exitCode = 90;
   }, repo);
 
   assert.equal(output.status, 1, output.stderr);
-  assert.equal(runStatus(output).state, 'aborted_pre_start');
+  assert.match(output.stderr, /run other-live-run is already active for this repository; two writing runs in one tree are prohibited/);
+  assert.ok(output.stderr.includes(`Active run: ${path.join(project, 'other-live-run')}`));
+  assert.match(output.stderr, /The run folder was not created; quota was not spent\.\s*$/);
+  assert.equal(output.stdout, '');
+  assert.deepEqual(fs.readdirSync(project, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory()).map((entry) => entry.name), ['other-live-run']);
 });
 
 test('the unsafe-for-cmd refusal records aborted_pre_start', (t) => {
@@ -243,28 +258,27 @@ test('a folder with a Codex session still sends the same order to the continuati
   assert.doesNotMatch(output.stdout, /^RUN=/m);
 });
 
-test('an unavailable Codex CLI records aborted_pre_start', (t) => {
+test('an unavailable Codex CLI reports on stderr without creating a run folder', (t) => {
   const root = fixture(t, 'codex');
-  const runDir = path.join(root, 'run');
-  fs.mkdirSync(runDir);
+  const repo = path.join(root, 'repo');
+  const runsRoot = path.join(root, 'runs');
+  fs.mkdirSync(repo);
+  const project = resolveProjectRunsDir(runsRoot, repo).dir;
   const source = `
-import childProcess from 'node:child_process';
-const realSpawnSync = childProcess.spawnSync;
+${launcherProcessMocks({ worker: 'forbidden', probe: 'marker' })}
+const availableSpawnSync = childProcess.spawnSync;
 childProcess.spawnSync = (command, args, options) =>
-  command === 'git' ? realSpawnSync(command, args, options) : { status: 1, error: new Error('Codex missing'), stderr: '', stdout: '' };
-import { syncBuiltinESMExports } from 'node:module';
-syncBuiltinESMExports();
-process.exit = (code = 0) => { process.exitCode = code; };
-const { requireCodex } = await import(${JSON.stringify(new URL('../../src/home/lib/runner/codex-cmd.mjs', import.meta.url).href)});
-requireCodex(${JSON.stringify(runDir)}, 'codex-review');
+  command === 'git' ? availableSpawnSync(command, args, options) : { status: 1, error: new Error('Codex missing'), stderr: '', stdout: '' };
 `;
-  const output = spawnSync(process.execPath, ['--input-type=module', '-e', source], {
-    env: process.env,
-    encoding: 'utf8',
-  });
+  const output = mockedLauncher(source, baseArgs('codex-review', repo, 'codex-order'), 'codex refusal', {
+    CODEX_RUNS_ROOT: runsRoot,
+  }, repo);
 
   assert.equal(output.status, 1, output.stderr);
-  const statusPath = path.join(runDir, 'status.json');
-  assert.ok(fs.existsSync(statusPath), `${output.stdout}\n${output.stderr}`);
-  assert.equal(JSON.parse(fs.readFileSync(statusPath, 'utf8')).state, 'aborted_pre_start');
+  assert.match(output.stderr, /Codex CLI unavailable: Codex missing/);
+  assert.ok(output.stderr.includes('Operator check: codex --version (and codex login if authorization is rejected)'));
+  assert.match(output.stderr, /The run folder was not created; quota was not spent\.\s*$/);
+  assert.equal(output.stdout, '');
+  assert.deepEqual(fs.readdirSync(project, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory()), []);
 });

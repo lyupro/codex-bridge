@@ -87,6 +87,18 @@ here. Nothing was reworded on the way out.
   timeout killed only the `cmd.exe` shim and left Codex as its orphan, the 2026-07-31 class. Its
   limit is `spawnSync`'s 1 MiB and an overflow settles with `ENOBUFS`, which the probe reads as
   inconclusive: a marker lost to a small buffer once refused a live sandbox.
+- **`makeRunDir()` is the single registration boundary, and a refusal decided before it leaves nothing
+  in the worktree.** Everything that can refuse without spending quota — bad arguments, an impossible
+  scope, a detached tree, a chain that needs `--continue`, a dead sandbox, a busy tree, a missing Codex
+  CLI — goes through `die()` before the folder exists, and exits 1 rather than the usage code 2 when the
+  order was right and the host or the tree was not. Only two refusals stay after registration
+  (`unsafeForCmd`, a worker that fails to spawn): by then the tree snapshot and the worker order are in
+  the folder, so the folder explains itself. The busy and CLI checks live in
+  `src/home/lib/runner/preflight.mjs`, which is handed no run directory — a check added there cannot
+  create one. `tests/runner/refusal-table.test.mjs` holds the table of all of them and fails when a
+  refusal is added without a side and a reason. Why: on 2026-09-19 the busy refusal created its folder
+  first, and in `~/.claude`, where run folders sit inside the worktree, the live writer's witness spent
+  every tool call ordering the orchestrator to revert a directory the tool itself had made.
 - **Whether a recorded run is still live is decided in one module**,
   `src/home/lib/meta/run-liveness.mjs`. `runLiveness({ runDir, status })` requires the run folder and
   the record and returns the identity, the heartbeat age, the fail-open `processMayBeAlive` and the

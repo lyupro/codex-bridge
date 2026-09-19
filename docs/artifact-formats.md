@@ -42,8 +42,10 @@ A normal `collect()` completes a run as `state=finished` even when the verdict i
 the worker reached result computation normally. `state=failed` is used for an infrastructure-level
 `writeFailure()`, such as a runner crash. `state=abandoned` means that no verdict exists.
 
-`state=aborted_pre_start` is a refusal **before** Codex starts: a busy tree, unavailable CLI, an
-argument that cannot pass through `cmd.exe`, or failure to spawn the worker. No Codex session existed
+`state=aborted_pre_start` is a refusal **before** Codex starts and **after** the run is registered:
+an argument that cannot pass through `cmd.exe`, or failure to spawn the worker. A busy tree and an
+unavailable CLI used to be here too; since Plan_58 they refuse before the folder exists and produce no
+artifacts at all. No Codex session existed
 and no quota was spent, so such a directory does not count as a completed task pass: the chain sees it
 in the audit, but the `--continue` gate and baseline tree snapshot skip it. Before pre-start aborts had
 their own state, these refusals were recorded as `failed`, just like a run that had worked for twenty

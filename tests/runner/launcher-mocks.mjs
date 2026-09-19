@@ -21,7 +21,7 @@ const launcherMocksRealSpawn = childProcess.spawn;
 const launcherMocksRealSpawnSync = childProcess.spawnSync;
 const launcherMocksWorker = ${JSON.stringify(worker)};
 const launcherMocksProbe = ${JSON.stringify(probe)};
-// A probe is recognised by the word sandbox, not by "anything that is not git": requireCodex()
+// A probe is recognised by the word sandbox, not by "anything that is not git": codexUnavailableReason()
 // runs codex --version after a skipped probe, and forbidding that failed an honest test (A3b-1).
 // On Windows the whole Codex command line is one cmd.exe argument, hence the token search.
 const launcherMocksIsProbe = (args = []) => /(?:^|[\\s"])sandbox(?:[\\s"]|$)/.test(args.join(' '));

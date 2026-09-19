@@ -15,7 +15,6 @@ import {
   writeStatus,
   markAbandoned,
   abandonedBranchDrift,
-  activeRunDetails,
   chainRuns,
   startedRuns,
   taskFingerprint,
@@ -34,13 +33,14 @@ import { git, headSha, branchName, worktreeSnapshot, reviewScope } from './git-s
 import { agentRole } from '../agents.mjs';
 import { codexArgs, runProfile } from './codex-args.mjs';
 import { writeWorkerOrder } from './worker-order.mjs';
-import { requireCodex, unsafeForCmd } from './codex-cmd.mjs';
+import { unsafeForCmd } from './codex-cmd.mjs';
 import { runsRoot } from './runs-root.mjs';
 import { resolveProjectRunsDir } from './project-dir.mjs';
 import { cleanupRetention } from '../retention.mjs';
 import { renderConventions } from './conventions.mjs';
 import { validateScope } from './scope-check.mjs';
 import { probeSandbox, sandboxRefusal } from './sandbox-probe.mjs';
+import { preflightRefusal } from './preflight.mjs';
 
 /**
  * The worker is this same program re-invoked as `--worker <runDir>`, so the path spawned
@@ -194,10 +194,13 @@ export async function launcher(argv = process.argv.slice(2)) {
   const sandboxProbe = await probeSandbox({ agent: opts.agent, repo: repoRoot });
   if (sandboxProbe.outcome === 'dead') die(sandboxRefusal(sandboxProbe));
 
-  // Asked before this run registers itself, so it cannot find itself. Two writing runs share
-  // one worktree with no isolation: the second one's before/after snapshot picks up the
-  // first one's edits, and an honest run gets failed for work it never did.
-  const busy = opts.agent === 'codex-build' ? activeRunDetails(projectRunsRoot, repoRoot) : null;
+  // Everything that can refuse without touching the tree is asked here, after the probe so the
+  // busy check sees writers that registered while it waited, and before makeRunDir below: on
+  // 2026-09-19 a busy refusal left its folder inside ~/.claude and the live run's witness spent
+  // every tool call demanding the orchestrator revert a directory the tool itself had created.
+  // Exit 1, not the usage code 2: the order was correct, the host or the tree was not.
+  const preflightError = preflightRefusal({ agent: opts.agent, projectRunsRoot, repoRoot });
+  if (preflightError) die(preflightError, 1);
 
   let retention = null;
   try {
@@ -211,7 +214,7 @@ export async function launcher(argv = process.argv.slice(2)) {
   const runDir = makeRunDir(runDirPath(projectRunsRoot, opts.slug));
   setRun(runDir, opts.agent);
 
-  // Written before Codex is even probed. From here on a killed runner leaves a folder that
+  // Written before the worker can start. From here on a killed runner leaves a folder that
   // says what it was and whose pid to check, instead of a folder that says nothing — the run
   // itself takes 20-25 minutes, far longer than the caller's default timeout, so being killed
   // mid-run is the normal way for this to end, not the exotic one.
@@ -228,7 +231,7 @@ export async function launcher(argv = process.argv.slice(2)) {
     slug: opts.slug,
     order_id: opts.orderId,
     // Fingerprint of the order, so a later run of the same task finds this one whatever it
-    // calls itself. Written here, before Codex is probed, like everything the chain reads.
+    // calls itself. Written here, before Codex starts, like everything the chain reads.
     task_hash: taskHash,
     repo: repoRoot,
     started_at: new Date().toISOString(),
@@ -244,24 +247,6 @@ export async function launcher(argv = process.argv.slice(2)) {
   // Printed before anything can go wrong: even a dispatcher that dies mid-run leaves the
   // orchestrator with a folder to look into.
   console.log(`RUN=${runDir} order-id=${opts.orderId}`);
-
-  // Before requireCodex, so a blocked run costs nothing at all.
-  if (busy) {
-    const identityNote = busy.identity === 'unverified'
-      ? '; process identity could not be confirmed'
-      : '';
-    const { reply } = writeFailure(
-      runDir,
-      opts.agent,
-      `run ${busy.run} is already active for this repository; two writing runs in one tree are prohibited${identityNote}`,
-      [`Active run: ${path.join(projectRunsRoot, busy.run)}`, 'Codex was not started; quota was not spent'],
-      true,
-    );
-    console.log(reply);
-    return 1;
-  }
-
-  requireCodex(runDir, opts.agent);
 
   const scope = opts.agent === 'codex-review' ? reviewScope(repoRoot, opts.changeset) : null;
   if (scope) {

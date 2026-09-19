@@ -143,7 +143,7 @@ for (const [name, response] of [
   ['timeout', { status: null, error: { code: 'ETIMEDOUT' } }],
   ['signal', { status: null, signal: 'SIGTERM' }],
 ]) {
-  test(`version ${name} leaves CLI availability to requireCodex`, async () => {
+  test(`version ${name} leaves CLI availability to codexUnavailableReason`, async () => {
     const { result, calls } = await probe({ flagged: failure, control: failure, version: response });
     assert.equal(result.outcome, 'inconclusive');
     assert.equal(result.reason, 'Codex CLI is unavailable.');

@@ -91,8 +91,16 @@ import { syncBuiltinESMExports } from 'node:module';
 ${source}
 syncBuiltinESMExports();
 const { launcher } = await import(${JSON.stringify(LAUNCHER)});
-const exitCode = await launcher(${JSON.stringify(args)});
-if (exitCode !== undefined) process.exitCode = exitCode;
+// run-codex.mjs maps a runner refusal to its own exit code (its RunnerUsageError branch).
+// A harness that skips that mapping turns every die() into an uncaught crash, and the stack lands
+// in the assertion instead of the refusal — Plan_58 acceptance, 2026-09-20.
+try {
+  const exitCode = await launcher(${JSON.stringify(args)});
+  if (exitCode !== undefined) process.exitCode = exitCode;
+} catch (error) {
+  if (typeof error?.exitCode !== 'number') throw error;
+  process.exitCode = error.exitCode;
+}
 `;
   return spawnSync(process.execPath, ['--input-type=module', '-e', script], {
     cwd, env, input: 'sandbox gate fixture', encoding: 'utf8', timeout: 20_000, windowsHide: true,
@@ -190,7 +198,7 @@ for (const [agent, sandbox] of [['codex-build', 'workspace-write'], ['codex-scou
   });
 }
 
-test('a writing tree that becomes busy during an alive probe records it before refusing', async (t) => {
+test('a writer registered during an alive probe refuses on stderr without creating another run folder', async (t) => {
   if (process.platform !== 'win32') return t.skip(WINDOWS_ONLY);
   const tree = fixture(t, 'busy');
   const env = fakeEnv(tree, 'alive');
@@ -214,12 +222,14 @@ if (args[0] === 'sandbox') {
     const output = runner(baseArgs('codex-build', tree.repo), env, tree.repo);
 
     assert.equal(output.status, 1, `${output.stdout}\n${output.stderr}`);
-    const status = runStatus(output);
-    assert.equal(status.state, 'aborted_pre_start');
-    assert.equal(status.sandbox_probe.outcome, 'alive');
-    assert.deepEqual(status.sandbox_probe.attempts.map(({ form }) => form), ['flagged']);
-    assert.match(output.stdout, /already active for this repository/);
-    assert.deepEqual(calls(tree.root).map((args) => args[0]), ['sandbox']);
+    assert.match(output.stderr, /already active for this repository/);
+    assert.match(output.stderr, /The run folder was not created; quota was not spent\.\s*$/);
+    assert.equal(output.stdout, '');
+    assert.deepEqual(fs.readdirSync(project, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory()).map((entry) => entry.name), ['other-live-run']);
+    const invocations = calls(tree.root);
+    assert.deepEqual(invocations.map((args) => args[0]), ['sandbox']);
+    assert.ok(invocations[0].includes('-c'));
   } finally {
     holder.kill();
     await holderExited;

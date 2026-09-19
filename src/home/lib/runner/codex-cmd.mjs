@@ -11,7 +11,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { createHeartbeat, HEARTBEAT_INTERVAL_MS } from '../heartbeat.mjs';
-import { writeFailure } from '../write-meta.mjs';
 import { MAX_LOG } from './git-state.mjs';
 
 // Thirty seconds, not a fraction of one: after `exit` the pipe still holds whatever Codex wrote
@@ -339,20 +338,17 @@ export function runCodex(args, taskText, eventsPath, budgetMinutes, graceMs = ST
 
 /**
  * Codex missing or not authorised is a deterministic FAIL, never a reason to improvise.
- * Runs after the folder exists so this failure is recorded like any other.
+ * Plan_58, 2026-09-19: return a reason for refusal before registration, like the dead-sandbox
+ * probe. One no-quota question must not have two answers about whether it leaves a folder.
  */
-export function requireCodex(runDir, agent) {
+export function codexUnavailableReason() {
   const probe = spawnSync(
     process.platform === 'win32' ? process.env.ComSpec || 'cmd.exe' : 'codex',
     process.platform === 'win32' ? ['/d', '/s', '/c', 'codex --version'] : ['--version'],
     { encoding: 'utf8' },
   );
   if (probe.error || probe.status !== 0) {
-    const why = (probe.stderr || probe.error?.message || 'codex --version is not responding').trim();
-    const { reply } = writeFailure(runDir, agent, `Codex CLI unavailable: ${why}`, [
-      'Operator check: codex --version (and codex login if authorization is rejected)',
-    ], true);
-    console.log(reply);
-    process.exit(1);
+    return (probe.stderr || probe.error?.message || 'codex --version is not responding').trim();
   }
+  return null;
 }

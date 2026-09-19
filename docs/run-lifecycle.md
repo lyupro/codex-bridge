@@ -86,19 +86,26 @@ complete job before detaching from the launcher.
    deadline the whole tree is stopped, a grandchild still holding the pipes gets two seconds after exit,
    and a process that never reports its exit gets five seconds after the stop, so the probe always
    settles.
-   Only then, for build, is a live writing run in the same repository checked. The order matters: the
-   probe takes seconds, and between the busy check and this run registering itself in step 10 nothing
-   slow may run, or a second writer can enter the same tree unseen (review of 2026-09-17). A busy build
-   therefore waits for the probe before it is refused.
+   Only then comes the pre-flight pass (`runner/preflight.mjs`): for build, a live writing run in the
+   same repository, then the availability of `codex --version`. The order matters: the probe takes
+   seconds, and between the busy check and this run registering itself in step 10 nothing slow may run,
+   or a second writer can enter the same tree unseen (review of 2026-09-17). A busy build therefore
+   waits for the probe before it is refused. Both refusals leave the worktree untouched and exit 1 —
+   the order was correct, the host or the tree was not — because on 2026-09-19 a busy refusal created
+   its folder first, and inside `~/.claude`, where run folders live in the worktree, the live writer's
+   witness spent every tool call demanding the orchestrator revert a directory the tool itself had
+   created. The module is given no run directory at all, so a check added there cannot leave one.
 9. A unique `<date_time>_<slug>` directory is created; on a name collision, `-2`, `-3`, and so on is
    appended.
 10. The first artifact written is `status.json` with `state=running` and the launcher pid. Stdout then
     receives the line `RUN=<directory> order-id=<id>`. The id travels with the folder because a
     reply naming a run cannot otherwise be checked against the order that was placed.
-11. A conflicting writing run or unavailable Codex CLI is closed through `meta.json` and `status.json`
-    with status `FAIL` and state `aborted_pre_start`; no paid call has occurred. The separate state is
-    not cosmetic: it lets the next startup distinguish an empty directory from a run backed by spent
-    quota.
+11. An argument `cmd.exe` cannot carry, or a worker that fails to spawn, is closed through `meta.json`
+    and `status.json` with status `FAIL` and state `aborted_pre_start`; no paid call has occurred. These
+    two are the only refusals left after registration: by then the tree snapshot and the worker order
+    are already in the folder, so the folder can explain itself. The separate state is not cosmetic: it
+    lets the next startup distinguish an empty directory from a run backed by spent quota. A busy tree
+    and an unavailable CLI are refused earlier, in step 8, and leave nothing behind.
 12. For review, the diff area is computed and written to `scope.txt`. For scout, subquestions passed via
     `--question` are written to `questions.json` in the same order (`Q1..Qn`); the task text is not the
     source of this list. For build, `--scope` patterns are written to `scope.txt`.

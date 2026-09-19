@@ -13,15 +13,18 @@ import { firstShellUnsafeSequence } from '../shell-unsafe.mjs';
 import { parseTaskDocument } from './task-file.mjs';
 
 export class RunnerUsageError extends Error {
-  constructor(message) {
+  // 2 says the order itself is wrong and has to be rewritten. A refusal about the state of the
+  // host or the worktree passes 1: the order was fine, nothing about it needs changing, and
+  // Plan_58 moved two such refusals here from a code path that already answered 1.
+  constructor(message, exitCode = 2) {
     super(message);
-    this.exitCode = 2;
+    this.exitCode = exitCode;
   }
 }
 
-export function die(message) {
+export function die(message, exitCode = 2) {
   console.error(`run-codex: ${message}`);
-  throw new RunnerUsageError(message);
+  throw new RunnerUsageError(message, exitCode);
 }
 
 export function readTaskDocument(opts) {
