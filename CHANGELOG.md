@@ -4,6 +4,44 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.4] - 2026-09-21
+
+### Fixed
+
+- A refusal that spends no quota no longer leaves a run folder behind. A second writing run against a
+  busy tree was refused correctly, but its folder was created first — and in a repository that hosts
+  the run folders, the live writer's witness then spent every tool call ordering the orchestrator to
+  revert a directory the tool itself had made, or to stop an honest run. Neither is a safe action. The
+  misplaced check was the symptom: refusals sat on two sides of the registration boundary with no rule
+  about which side was which, and two gates of the same class already disagreed — a dead sandbox
+  refused without a folder, a busy tree with one. The quota-free host checks now live in a module that
+  is handed no run directory, so a check added there cannot register a run, and a table test holds
+  every refusal with its side and the reason for that side. A busy tree and an unavailable Codex CLI
+  therefore write nothing at all: they no longer produce an `aborted_pre_start` folder, and their
+  exit code stays 1, because the order was correct and the host or the tree was not.
+- The live witness and the final verdict judge one worktree by one definition. The witness read
+  `git status --porcelain` on its own while the verdict reads the recorded snapshot, so three kinds of
+  change were visible to one and invisible to the other: the run's own folder, the orchestrator's
+  environment writes, and gitignored working notes. The witness now composes the same chain as the
+  verdict, and its message says first that those three are already excluded — so what it lists is the
+  orchestrator's own edit — and only then offers the two actions. A structural test fails any hook that
+  spells a worktree query in an argument list; this drift went unnoticed for months and surfaced only
+  as a false accusation against a run that was doing its job.
+- A file moved inside its own scope is no longer a stray. The shared snapshot was read with git's
+  rename detection on, which prints one row spelled `old => new` — not a path, and matching no scope
+  pattern. The witness named that token at the orchestrator, and the verdict would have failed an
+  honest build for a `git mv` it was told to make. The snapshot is now read with `--no-renames`: a
+  rename is a deletion plus an addition, two real paths, each judged on its own merits.
+- A scope pattern that can only name a directory is refused before the run starts. A scope is compared
+  against file paths, never directories, so `muse/scripts` authorises one file that will never exist
+  while everything created inside the folder counts as a stray. Declared patterns escaped this by luck
+  — `git ls-files` prints no directories — but `--scope-new` is exempt from the existence check by
+  design, and a run ordered with `--scope-new muse/scripts` worked ten minutes, returned a filled
+  result, and was failed for the three files it created there. A trailing slash, a name that is a
+  directory on disk, and a glob-free name whose last segment has no extension are now refused before
+  the run folder exists, with the spelling that works named in the refusal. Patterns containing a glob
+  are never judged by these rules.
+
 ## [0.6.3] - 2026-09-17
 
 ### Added
