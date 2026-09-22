@@ -40,7 +40,7 @@ import { cleanupRetention } from '../retention.mjs';
 import { renderConventions } from './conventions.mjs';
 import { validateScope } from './scope-check.mjs';
 import { probeSandbox, sandboxRefusal } from './sandbox-probe.mjs';
-import { preflightRefusal } from './preflight.mjs';
+import { preflightRefusal, resolveRunPhase } from './preflight.mjs';
 
 /**
  * The worker is this same program re-invoked as `--worker <runDir>`, so the path spawned
@@ -93,6 +93,7 @@ export const runDirPath = (root, slug, runStamp = stamp()) => {
 export async function launcher(argv = process.argv.slice(2)) {
   loadRunEnv();
   const opts = parseArgs(argv);
+  opts.phase = resolveRunPhase(opts, RUN_ENV.budgets);
   const taskText = settleTaskInput(opts);
   const topLevel = git(opts.repo, ['rev-parse', '--show-toplevel']);
   const isGitRepo = topLevel.status === 0;
@@ -230,6 +231,7 @@ export async function launcher(argv = process.argv.slice(2)) {
     agent: opts.agent,
     slug: opts.slug,
     order_id: opts.orderId,
+    phase: opts.phase,
     // Fingerprint of the order, so a later run of the same task finds this one whatever it
     // calls itself. Written here, before Codex starts, like everything the chain reads.
     task_hash: taskHash,
@@ -341,7 +343,8 @@ export async function launcher(argv = process.argv.slice(2)) {
     repo: repoRoot,
     isGitRepo,
     launcherPid: process.pid,
-    budgetMinutes: RUN_ENV?.budgets?.[agentRole(opts.agent)],
+    phase: opts.phase,
+    budgetMinutes: RUN_ENV.budgets[agentRole(opts.agent)][opts.phase],
     scopeNew: opts.scopeNewPatterns,
     profile: runProfile({ ...opts, repo: repoRoot }),
     args: codexArgv,

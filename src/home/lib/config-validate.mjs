@@ -1,5 +1,6 @@
 /** Shared by reading and editing so Plan_56 D27 cannot persist an unreadable config. */
 import { AGENTS } from './agents.mjs';
+import { resolveBudgets } from './budgets.mjs';
 
 const BUDGET_KEY = 'budgets';
 export const ROLES = Object.values(AGENTS).map(({ role }) => role);
@@ -31,7 +32,7 @@ export const DEFAULTS = {
   hooks: false,
   plugins: false,
   models: {},
-  budgets: Object.fromEntries(Object.values(AGENTS).map(({ role, budget }) => [role, budget])),
+  budgets: resolveBudgets('agent registry'),
   retention: DEFAULT_RETENTION,
   environmentPaths: DEFAULT_ENVIRONMENT_PATHS,
   answerLanguage: 'English',
@@ -88,43 +89,6 @@ function readRetention(file, value) {
   return { enabled: true, days: value.days };
 }
 
-/**
- * A run gets a hard wall-clock budget, because the caller's timeout is not a run contract:
- * on 2026-08-03 one order restarted six times and spent 170,293 accounted tokens while four
- * killed callers left their Codex processes and token spend unrecorded.
- */
-function readBudgets(file, value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error(
-      `${file}: key “${BUDGET_KEY}” must be an object keyed by ${ROLES.join(', ')}, ` +
-        `each holding a positive number of minutes, not ${JSON.stringify(value)}`,
-    );
-  }
-  const budgets = { ...DEFAULTS.budgets };
-  for (const [role, minutes] of Object.entries(value)) {
-    if (!ROLES.includes(role)) {
-      throw new Error(
-        `${file}: key “${BUDGET_KEY}” has unknown role “${role}”. ` +
-          `Only ${ROLES.join(', ')} are allowed`,
-      );
-    }
-    if (typeof minutes === 'string' && !minutes.trim()) {
-      throw new Error(
-        `${file}: key “${BUDGET_KEY}.${role}” is empty; remove the field to use the default ` +
-          `(${DEFAULTS.budgets[role]} minutes), or give it a positive number of minutes`,
-      );
-    }
-    if (typeof minutes !== 'number' || !Number.isFinite(minutes) || minutes <= 0) {
-      throw new Error(
-        `${file}: key “${BUDGET_KEY}.${role}” must be a positive number of minutes, ` +
-          `not ${JSON.stringify(minutes)}`,
-      );
-    }
-    budgets[role] = minutes;
-  }
-  return budgets;
-}
-
 export function validateRunConfig(file, parsed) {
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     throw new Error(`${file} must contain an object like {"hooks": false, "plugins": false}`);
@@ -145,7 +109,7 @@ export function validateRunConfig(file, parsed) {
       continue;
     }
     if (key === BUDGET_KEY) {
-      config[key] = readBudgets(file, value);
+      config[key] = resolveBudgets(file, value);
       continue;
     }
     if (key === RETENTION_KEY) {

@@ -6,6 +6,19 @@
 import path from 'node:path';
 import { activeRunDetails } from '../write-meta.mjs';
 import { codexUnavailableReason } from './codex-cmd.mjs';
+import { agentRole } from '../agents.mjs';
+import { die } from './args.mjs';
+
+/** D2: phase mistakes must refuse before even the sandbox probe can spend quota. */
+export function resolveRunPhase({ agent, phase }, budgets) {
+  const phases = budgets[agentRole(agent)];
+  const names = Object.keys(phases);
+  if (phase === undefined && names.length === 1 && names[0] === 'default') return 'default';
+  if (phase !== undefined && Object.hasOwn(phases, phase)) return phase;
+  die(`${phase === undefined ? '--phase is required' : `undeclared --phase ${JSON.stringify(phase)}`} ` +
+    `for ${agent}. Action: pass --phase <name>; allowed phases: ${names.join(', ')}. ` +
+    'The run folder was not created; quota was not spent.');
+}
 
 export function preflightRefusal({ agent, projectRunsRoot, repoRoot }) {
   // Two writing runs share one tree: the second snapshot would include the first one's edits.

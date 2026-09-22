@@ -89,6 +89,7 @@ const SHELL_CHECKED_FLAGS = Object.freeze([
   'scope-new',
   'repo',
   'agent',
+  'phase',
   'effort',
   'changeset',
   'task-file',

@@ -41,7 +41,7 @@ test('adding a switch leaves partial budgets and disabled retention exactly as w
   const written = fs.readFileSync(file, 'utf8');
   assert.equal(written.replace(',\n  "hooks": true\n', ''), raw);
   assert.deepEqual(JSON.parse(written), { ...JSON.parse(raw), hooks: true });
-  assert.equal(readRunConfig(file).budgets.scout, DEFAULTS.budgets.scout);
+  assert.deepEqual(readRunConfig(file).budgets.scout, DEFAULTS.budgets.scout);
 });
 
 test('a missing file and parent are created holding only the requested key', async () => {

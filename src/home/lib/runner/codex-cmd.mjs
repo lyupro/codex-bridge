@@ -158,7 +158,7 @@ export function spawnCaptured(command, args, options) {
 export function runCodex(args, taskText, eventsPath, budgetMinutes, graceMs = STDIO_DRAIN_GRACE_MS) {
   const onWindows = process.platform === 'win32';
   const deadlineMs =
-    typeof budgetMinutes === 'number' && Number.isFinite(budgetMinutes) && budgetMinutes > 0
+    Number.isFinite(budgetMinutes) && budgetMinutes > 0
       ? budgetMinutes * 60 * 1000
       : null;
   let exited = false;

@@ -99,6 +99,8 @@ export function collect(runDir, agent, exitCode) {
 
   const meta = {
     agent,
+    // D2: old runs have no phase fact; do not invent one from today's registry.
+    phase: worker?.phase ?? readJson(path.join(runDir, 'status.json'))?.phase ?? null,
     runner_version: RUNNER_VERSION,
     project: path.basename(path.dirname(runDir)),
     run: path.basename(runDir),

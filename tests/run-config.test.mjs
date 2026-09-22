@@ -33,7 +33,7 @@ test('an absent file means defaults, not an error', () => {
 });
 
 /**
- * The launcher resolves a run's budget as budgets[agentRole(agent)] and writes it into
+ * The launcher resolves a run's budget as budgets[agentRole(agent)][phase] and writes it into
  * worker.json. A role present in one table and missing from the other makes that expression
  * undefined, which the deadline reads as "no budget" — the limit would then be silently absent
  * for exactly one agent, the failure mode this step exists to remove. Since Plan_56 both tables
@@ -43,8 +43,8 @@ test('every agent maps to a role that has a budget', () => {
   for (const agent of ['codex-scout', 'codex-build', 'codex-review']) {
     const role = agentRole(agent);
     assert.ok(role, `${agent} has no role`);
-    assert.equal(typeof DEFAULTS.budgets[role], 'number', `${role} has no default budget`);
-    assert.ok(DEFAULTS.budgets[role] > 0);
+    assert.equal(typeof DEFAULTS.budgets[role].default, 'number', `${role} has no default budget`);
+    assert.ok(DEFAULTS.budgets[role].default > 0);
   }
 });
 
@@ -107,11 +107,11 @@ test('run-config state appends a pinned tier in the profile sentence and leaves 
 });
 
 test('budgets default per role and merge when only one role is written', () => {
-  assert.deepEqual(DEFAULTS.budgets, { scout: 15, build: 25, review: 20 });
+  assert.deepEqual(DEFAULTS.budgets, { scout: { default: 15 }, build: { default: 25 }, review: { default: 20 } });
   assert.deepEqual(readRunConfig(tempFile('{"budgets": {"build": 7.5}}')).budgets, {
-    scout: 15,
-    build: 7.5,
-    review: 20,
+    scout: { default: 15 },
+    build: { default: 7.5 },
+    review: { default: 20 },
   });
 });
 

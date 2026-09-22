@@ -79,7 +79,11 @@ const state = (config) => [
     return `${key}: ${model}${profile.effort ? ` at ${profile.effort} effort` : ''}`
       + (profile.speed ? ` on ${profile.speed} tier` : '');
   }).join('; ')}`,
-  `budgets: ${ROLES.map((role) => `${role}: ${config.budgets?.[role] ?? DEFAULTS.budgets[role]} minutes`).join('; ')}`,
+  `budgets: ${ROLES.map((role) => {
+    const phases = Object.entries(config.budgets?.[role] ?? DEFAULTS.budgets[role]);
+    return `${role}: ` + (phases.length === 1 ? `${phases[0][1]} minutes`
+      : phases.map(([phase, minutes]) => `${phase}: ${minutes} minutes`).join(', '));
+  }).join('; ')}`,
   `retention: ${config.retention?.enabled ? `on — transport older than ${config.retention.days} days` : 'off — automatic cleanup disabled'}`,
 ];
 

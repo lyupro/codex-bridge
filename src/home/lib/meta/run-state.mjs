@@ -197,6 +197,8 @@ export function abandonedBranchDrift(runsRoot, repo, currentBranch) {
 export function writeFailure(runDir, agent, reason, extraLines = [], preStart = false) {
   const meta = {
     agent,
+    phase: readJson(path.join(runDir, 'worker.json'))?.phase
+      ?? readJson(path.join(runDir, 'status.json'))?.phase ?? null,
     project: path.basename(path.dirname(runDir)),
     run: path.basename(runDir),
     finished_at: new Date().toISOString(),

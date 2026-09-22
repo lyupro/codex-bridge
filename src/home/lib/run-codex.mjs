@@ -6,6 +6,7 @@
  *
  * Options:
  *   --agent     codex-scout | codex-build | codex-review   (required)
+ *   --phase     declared phase name (optional only for a role with just the default phase)
  *   --repo      repository path (default: current directory)
  *   --slug      short run name used in the run folder (default: agent suffix)
  *   --effort    reasoning effort, passed to Codex as given (default: medium)

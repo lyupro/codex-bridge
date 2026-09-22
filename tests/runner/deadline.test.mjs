@@ -10,6 +10,8 @@ import fs from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import path from 'node:path';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
+import { resolveBudgets } from '../../src/home/lib/budgets.mjs';
+import { workerOrder } from '../../src/home/lib/runner/worker-order.mjs';
 
 const realSpawnSync = childProcess.spawnSync;
 const taskkillCalls = [];
@@ -112,6 +114,31 @@ const processAlive = (pid) => {
     return err.code === 'EPERM';
   }
 };
+
+test('the deadline uses the selected phase minutes frozen in the worker order', async () => {
+  const budgets = resolveBudgets('fixture', {}, {
+    fixture: { role: 'fixture', budget: { scope: 0.01, advise: 0.02 } },
+  });
+  for (const phase of ['scope', 'advise']) {
+    await withFakeCodex(`
+import fs from 'node:fs';
+fs.writeFileSync(process.env.CODEX_DEADLINE_CODEX_PID, String(process.pid));
+setInterval(() => {}, 1000);
+`, async (root) => {
+      process.env.CODEX_DEADLINE_CODEX_PID = path.join(root, 'codex.pid');
+      try {
+        const order = workerOrder({ phase, budgetMinutes: budgets.fixture[phase] });
+        const run = await runCodex([], 'phase deadline', path.join(root, 'events.jsonl'), order.budget_minutes);
+        assert.equal(run.stoppedOnDeadline, true);
+        assert.equal(run.exit, 1);
+        const expected = phase === 'scope' ? 600 : 1200;
+        assert.ok(fs.readFileSync(path.join(root, 'stderr.log'), 'utf8').includes(`(budget ${expected} ms)`));
+      } finally {
+        delete process.env.CODEX_DEADLINE_CODEX_PID;
+      }
+    });
+  }
+});
 
 test('a deadline kills the invocation tree and records the elapsed stop', async () => {
   await withFakeCodex(

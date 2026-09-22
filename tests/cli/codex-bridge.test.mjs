@@ -47,6 +47,24 @@ test('run forwards runner arguments and returns the runner exit code unchanged',
   assert.doesNotMatch(result.stderr, /unknown run option/);
 });
 
+test('run forwards --phase and an undeclared phase leaves no run directory', async () => {
+  const root = makeTempTree('bridge-bin-phase-');
+  const runs = path.join(root, 'runs');
+  const task = path.join(root, 'task.md');
+  await fs.writeFile(task, 'check current state\n');
+  const args = ['run', '--agent', 'codex-review', '--repo', root, '--order-id', 'bin-phase',
+    '--task-file', task, '--no-wait', '--phase'];
+  const env = { CODEX_RUNS_ROOT: runs, CODEX_BRIDGE_HOME: path.join(root, 'home') };
+  const invalid = run([...args, 'undeclared'], env);
+  assert.equal(invalid.status, 2, invalid.stderr);
+  assert.match(invalid.stderr, /undeclared --phase "undeclared".*allowed phases: default/);
+  assert.match(invalid.stderr, /The run folder was not created; quota was not spent/);
+  assert.equal((await fs.readdir(root)).includes('runs'), false);
+  const valid = run([...args, 'default'], env);
+  assert.equal(valid.status, 4, valid.stderr);
+  assert.match(valid.stdout, /--no-wait never starts a new run/);
+});
+
 test('--version and -v print package.json version', async () => {
   const { version } = JSON.parse(await fs.readFile(path.join(ROOT, 'package.json'), 'utf8'));
   for (const flag of ['--version', '-v']) {
