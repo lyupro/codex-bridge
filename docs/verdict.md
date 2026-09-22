@@ -60,14 +60,31 @@ the first matching branch determines the status. The order is therefore part of 
     An archived run without a stream is not judged by it. Then multiple extracted questions require
     separate answers, enough substantive text, and at least one evidence link for each question. For a
     single question, the overall `answer` is checked for substance.
-12. **Build edits outside scope.** `environmentPaths` are subtracted from the tree delta first, then the
+12. **Advisor contract.** After scout checks and before the build-only scope check, the advisor judge
+    validates the result against `advisor-task.json` and the phase context. It returns `FAIL` if the run
+    executed no command; a scope result has an empty `taken_on_trust`, says `sufficient: false` without
+    any `missing_paths`, or says `sufficient: true` while still listing missing paths; a citation does
+    not resolve to a readable file and valid line range inside the repository or falls outside the task's
+    listed paths (plus the applicable scope `missing_paths`); or the recommendation is not a task option
+    id (except the supported `none-of-these` flow), or a rejection is not a task option id. The
+    `none-of-these` recommendation must describe an unlisted option and reject every listed option.
+    Backstop agreement phrases also fail, in the configured `answerLanguage` (every known language when
+    it is not one of them): “both options are good,” “it depends on preference,” “you know better,”
+    “either works,” “оба варианта хороши,” “зависит от предпочтений,” “вам виднее,” and
+    “подойдёт любой.” They are a backstop: the structure of the answer is the defence.
+    Missing `advisor-task.json`, invalid artifact shapes, missing phase/repository/command evidence, or a
+    missing/malformed prior scope result for `advise` also fail the contract. An insufficient scope is
+    still `OK` when its required explanation and evidence are valid: it asks the orchestrator to provide
+    the missing paths. `LIMIT` means the quota is exhausted and calls for the opposite reaction, so
+    insufficient scope must never be classified as `LIMIT`.
+13. **Build edits outside scope.** `environmentPaths` are subtracted from the tree delta first, then the
     remaining paths are compared with `scope.txt`. This check ranks above report matching: a report can
     name one allowed file while concealing several extra ones.
-13. **Build report matches actual work.** `changes[].file` entries are first compared with the current
+14. **Build report matches actual work.** `changes[].file` entries are first compared with the current
     run's delta. If there are no matches, service paths are rejected before examining the chain. The
     declared files are then searched in the accumulated diff from the chain's first `state-before.txt`
     through the current `state-after.txt`.
-14. **Success.** A match only with accumulated work returns `OK` and `carried: true`; normal completion
+15. **Success.** A match only with accumulated work returns `OK` and `carried: true`; normal completion
     returns `OK` without a reason.
 
 ## Transport and data

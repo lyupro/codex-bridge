@@ -16,6 +16,8 @@ before the final update to `status.json`.
 | `launcher_pid` | Launcher pid; not replaced after the worker detaches. |
 | `runner_pid` | Worker pid; added after a successful spawn. |
 | `agent` | Name of the selected dispatcher. |
+| `phase` | Resolved phase for this run. A single-phase role uses `default`; roles with named phases record the selected phase. |
+| `advice` | Build only: the single accepted `advice:` value from the task. Absent for other agents. |
 | `slug` | Normalized task slug. |
 | `task_hash` | Fingerprint of the normalized task text; the chain uses it to find a repeated run whose name was changed. |
 | `order_id` | Job label from the orchestrator; the chain uses it to find a repeated run whose name and text were both changed. |
@@ -23,7 +25,7 @@ before the final update to `status.json`.
 | `started_at` | Run creation time in ISO 8601. |
 | `continues` | Optional name of the first directory in the chain if the run was started with continuation. |
 | `sandbox_probe` | The launcher's check of the host Codex sandbox, written whole: `outcome` (`alive`, `inconclusive` or `skipped`), `reason`, and `attempts` — one entry per probe form with `form` (`flagged`, `control`, `version`), `status`, `marker`, `ms` and `stderrTail` (at most 300 characters, evidence only, never judged). `dead` never appears here: a dead sandbox refuses before the folder exists. Every launch that reaches the run folder carries it, a busy-tree refusal included; an absent field means a run from before 0.6.3. `inconclusive` adds the row `Sandbox probe: inconclusive — <reason> The run started without a sandbox check.` to the run's reply, whatever the verdict, including a runner failure closed by `writeFailure()`. |
-| `continued_from` | Optional name of the run named by the `continue:` authorization in the task text. Unlike `continues`, this is not the start of the chain, but the run after which the orchestrator instructed execution to continue. An investigation trace; enforcement is handled by the “named run is the last in the chain” rule. |
+| `continued_from` | Optional name of the run named by the `continue:` authorization in the task text. Unlike `continues`, this is not the start of the chain, but the run after which the orchestrator instructed execution to continue. An investigation trace; enforcement is handled by the “named run is the last in the chain” rule. For an advisor `advise` phase, the target must also be an `OK` advisor `scope` run. |
 
 ### Completion fields
 
@@ -75,6 +77,10 @@ a possibly hung process, but does not allow `unlock` to close the record: a conf
 | Field | Value |
 | --- | --- |
 | `agent` | Agent name. |
+| `phase` | Resolved phase copied from `worker.json` (or `status.json` if needed); `null` for runs made before phases existed. |
+| `sufficient` | Advisor only: the boolean from the advisor result, or `null` when the result did not say. An insufficient scope can still be a valid `OK` result. |
+| `missing_paths` | Advisor only: paths the result identified as needed, or `null` when the result did not say. |
+| `advice` | Build only: copied from `status.json#advice`, or `null` when absent. |
 | `runner_version` | Version of the runner package whose code wrote `meta.json`; taken directly from its `package.json`, not from launch arguments. An absent field means a historical run created before the runner: it does not violate the contract and is not evaluated under the runner sandbox rules. |
 | `project` | Repository directory name used as the run grouping level. |
 | `run` | Directory name of this run. |
@@ -106,6 +112,17 @@ A failure before normal `collect()` also creates `meta.json`, but its shape is n
 This branch has no `carried_from_earlier_run` or `environment_changes`: the required snapshots and
 result might not yet have existed. Consumers must distinguish an absent field from `false` or an
 empty list.
+
+## `advisor-task.json`
+
+The launcher writes the parsed advisor choices from the orchestrator's task file before assembling
+`task.md`. The verdict judges this saved input rather than parsing `task.md` again, because that file
+also contains runner-generated instructions and is the full prompt sent to Codex.
+
+| Field | Value |
+| --- | --- |
+| `options` | Parsed entries from `## Options`, each with an option `id` and its `description`. |
+| `paths` | Parsed list entries from `## Paths`; citations are judged against these paths and the applicable `missing_paths`. |
 
 ## File relationships
 

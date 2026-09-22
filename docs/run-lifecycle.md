@@ -38,8 +38,16 @@ complete job before detaching from the launcher.
    and subquestions; the runner does not invent them and will not start without them. A flag name in
    place of a value (`--question --continue`) counts as a missing value. `--effort` is checked against
    the Codex set (`none|low|medium|high|xhigh|max`) here as well — before invocation, not from
-   an API response.
-3. The launcher reads stdin and rejects an empty task.
+   an API response. The launcher then resolves `--phase` against the phases declared for that role;
+   an undeclared phase (or a missing required phase) is refused before the run folder exists. A role
+   with only the `default` phase may omit the flag. `codex-advisor --phase advise` without `--continue`
+   is also refused here, before a run folder exists or quota is spent.
+3. The launcher reads stdin and rejects an empty task. Before proceeding, it also rejects a biased or
+   malformed advisor task: `## Options` must contain at least two distinct `- option-id: description`
+   choices without preference markers, and `## Paths` must contain at least one list path. A build task
+   must contain exactly one valid `advice:` line: `mechanical`, `revert`, `docs-only`, `test-only`, or
+   an absolute path to an existing advisor run directory with `meta.json` naming `codex-advisor`.
+   These task-contract refusals happen before the run folder exists and spend no quota.
 4. The repository root is determined through git; `--repo` is used for a non-git directory.
    Immediately afterward, `validateScope()` checks scope patterns against repository contents and
    rejects a pattern that cannot match: an absolute or drive path, backslashes, `..`, a pattern that can
@@ -68,7 +76,9 @@ complete job before detaching from the launcher.
    not lost: the saved job label or fingerprint finds them. Only runs that had a Codex session count:
    a directory with `state=aborted_pre_start` (and its old-contract equivalent) is excluded — it spent
    no quota and contains nothing to continue. The chain itself remains complete: it is the audit view,
-   and the rejected run remains visible in it.
+   and the rejected run remains visible in it. An `advise` continuation is additionally refused before
+   folder creation unless the named run's `meta.json` records `agent: codex-advisor`, `phase: scope`,
+   and `status: OK`.
 8. `probeSandbox()` (`runner/sandbox-probe.mjs`) asks the host's Codex sandbox to run `echo` with the
    role's own sandbox flags, for every agent. Windows and Linux are judged — each only after both a dead
    and a live sandbox were observed on it; on macOS the result is `skipped`. The sandbox counts as dead

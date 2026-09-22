@@ -16,6 +16,7 @@ The file is created after all task/schema/snapshot artifacts and before the work
   "repo": "<repository root>",
   "is_git_repo": true,
   "launcher_pid": 12345,
+  "phase": "default",
   "budget_minutes": 25,
   "scope_new": ["src/runner/scope-check.mjs"],
   "profile": {
@@ -30,13 +31,14 @@ The file is created after all task/schema/snapshot artifacts and before the work
 
 | Field | Written by launcher | Purpose |
 | --- | --- | --- |
-| `agent` | always | One of `codex-scout`, `codex-build`, `codex-review`. |
+| `agent` | always | One of `codex-scout`, `codex-build`, `codex-review`, `codex-advisor`. |
 | `slug` | always | Task name used to read the directory and link runs into a chain. |
 | `order_id` | always | Job label issued by the orchestrator; the chain uses it to find a repeated run that renamed itself. |
 | `repo` | always | Normalized root where Codex works and git state is captured. |
 | `is_git_repo` | always | Whether build should capture HEAD; also affects `--skip-git-repo-check`. |
 | `launcher_pid` | always | Identifier of the first half for later auditing. |
-| `budget_minutes` | always | Run time limit in minutes, taken from the configuration's `budgets` for the mode (`scout` 15, `build` 25, `review` 20). When it expires, the worker kills Codex and writes the verdict itself. |
+| `phase` | always | The resolved run phase. It travels with the job so the recorded run and its verdict retain the phase the launcher selected. |
+| `budget_minutes` | always | Run time limit in minutes, resolved once from the configured budget map by `(role, phase)` and frozen into this order. `budgets.mjs` normalizes the role's phase map; the worker uses this value and never rereads the config. When it expires, the worker kills Codex and writes the verdict itself. |
 | `scope_new` | always (an empty list if the flag was absent) | Paths from `--scope-new`: files that do not exist at startup and that the run creates. Only for `codex-build`. They are recorded so that months later it remains clear which missing paths were declared intentionally rather than accepted by mistake. |
 | `profile` | always | The worker that was ordered: `model` (empty when nothing is pinned and Codex chooses), `model_source` (`config` or `codex default`), `effort`, and `effort_source` (`request`, `config`, or `fallback`). Recorded apart from `args` because an absent `-m` says nothing on its own — a run that was never given the operator's configured model looked exactly like a run for which none was configured, which is how a pinned profile went unnoticed for three releases (2026-08-26). `meta.json` and the dispatcher reply both read it from here. |
 | `args` | always | Full argv for the Codex command, including the sandbox, output schema, and result path. |
@@ -55,6 +57,9 @@ The current implementation reads five fields:
 - `budget_minutes` — the time limit after which Codex is killed together with its entire process
   tree (on Windows this is `taskkill /T /F`: the direct child there is `cmd.exe`, while Codex is
   its child, and `kill` would terminate only the shell).
+
+`phase` is carried in the saved order for phase-aware accounting and verdicts. The worker does not
+consult `config.json` to reinterpret the phase or recalculate its budget.
 
 The worker does not read `slug`, `order_id`, `launcher_pid`, `scope_new`, or `profile`. This is the actual
 asymmetric state of the contract, not a documentation error: these fields are retained to make the
