@@ -7,7 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { globToRegExp, normalizePath } from '../meta/paths.mjs';
+import { globToRegExp, normalizePath, SERVICE_RE } from '../meta/paths.mjs';
 
 // Directories a self-walk must never descend into. Only reached when the repository has no git:
 // with git present the file list comes from the repository itself, which already knows what is
@@ -41,6 +41,14 @@ function structuralRefusal(repoRoot, pattern) {
     return {
       reason: 'contains a parent-directory (..) segment',
       action: 'remove the .. segment and keep the path relative to the repository root',
+    };
+  }
+  // Plan_59 S1: 2026-09-22_235724_plan59-d1-advisor-docs-surface spent 22 minutes on a
+  // service-directory scope the verdict could never authorise. Refuse it before a run exists.
+  if (SERVICE_RE.test(normalizePath(pattern))) {
+    return {
+      reason: 'lies inside a service directory that no scope can authorise',
+      action: 'name the file outside the service directory, or make that edit yourself',
     };
   }
   // Plan_58 D7: 2026-09-19_191402_ports-infra spent a run on a bare scope-new directory,

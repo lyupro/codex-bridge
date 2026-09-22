@@ -146,6 +146,26 @@ test('structural refusals in either list precede the declared existence check', 
   assert.equal(validateScope(repo, ['src'], ['/absolute/file.mjs']).pattern, 'src');
 });
 
+test('scope patterns inside service directories are refused before glob matching', (t) => {
+  const { repo } = repository(t, 'service-pattern');
+  fs.mkdirSync(path.join(repo, 'docs'));
+  fs.writeFileSync(path.join(repo, 'docs', 'guide.md'), 'Guide.\n');
+  fs.writeFileSync(path.join(repo, 'docs', '.claude-notes.md'), 'Notes.\n');
+  const reason = 'lies inside a service directory that no scope can authorise';
+  const action = 'name the file outside the service directory, or make that edit yourself';
+  for (const pattern of [
+    '.claude/context/architecture.md', '.git/config', 'node_modules/x/index.js',
+    '.omx/state/a.json', '.claude/**', '.CLAUDE/x.md',
+  ]) {
+    assert.deepEqual(validateScope(repo, [pattern], []), { pattern, reason, action });
+  }
+  assert.deepEqual(validateScope(repo, [], ['.claude/context/architecture.md']), {
+    pattern: '.claude/context/architecture.md', reason, action,
+  });
+  assert.equal(validateScope(repo, ['**/*.md'], []), null);
+  assert.equal(validateScope(repo, ['docs/.claude-notes.md'], []), null);
+});
+
 test('unreadable or vanished paths fall through to the missing-path spelling rule', (t) => {
   const { repo } = repository(t, 'stat-errors');
   const statSync = fs.statSync;

@@ -50,9 +50,11 @@ complete job before detaching from the launcher.
    These task-contract refusals happen before the run folder exists and spend no quota.
 4. The repository root is determined through git; `--repo` is used for a non-git directory.
    Immediately afterward, `validateScope()` checks scope patterns against repository contents and
-   rejects a pattern that cannot match: an absolute or drive path, backslashes, `..`, a pattern that can
-   only name a directory (trailing slash, a directory that exists on disk, or a glob-free last segment
-   without an extension), or a pattern that found nothing. This check runs for all three agents and
+   rejects a pattern that cannot match: an absolute or drive path, backslashes, `..`, a pattern inside
+   a service directory (`.git/`, `.claude/`, `.codex/`, `.omx/`, `.omc/`, `node_modules/` — the verdict
+   fails every change there whatever the scope says, so such a run could only end in FAIL), a pattern
+   that can only name a directory (trailing slash, a directory that exists on disk, or a glob-free last
+   segment without an extension), or a pattern that found nothing. This check runs for all agents and
    before creating the run directory; paths from `--scope-new` (only for `codex-build`) are exempt from
    the requirement to exist — and only from that one, because the exemption is what let a bare directory
    through on 2026-09-19 and failed a finished run for the files it created inside it. The repository root
