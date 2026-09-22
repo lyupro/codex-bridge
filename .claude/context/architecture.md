@@ -51,7 +51,8 @@ hand-edited files stop the run unless `--force`.
   judge of a recorded run: identity, heartbeat age, the fail-open `processMayBeAlive`, and the state
   closing it would write — `running`/`unverified`/`abandoned`/`finished`; it requires the run folder,
   because the reply guard once asked with a bare pid and read a reused number as a live run, Plan_57
-  D27).
+  D27). The advisor path uses `meta/advisor-task.mjs` (task parser), `meta/advice-verdict.mjs`
+  (pure judge), and `meta/advice-status.mjs` (run-folder adapter).
 - `hooks/` holds the four guards, all fail-open on anything they do not recognise:
   `reply-guard.mjs` (SubagentStop) rejects a dispatcher reply that `meta.json` does not support or
   that stays silent about a live `codex-build` run of the same project; `order-gate.mjs`
@@ -65,7 +66,7 @@ hand-edited files stop the run unless `--force`.
 - `heartbeat.mjs` stamps that a run is *moving*, not that a process exists: a worker outliving its
   Codex kept a repository locked for seven minutes on 2026-08-06. Guards require it; the modules
   that close records or refuse a second writing run do not.
-- `no-self-execution.mjs` is the first block of all three agent prompts, rendered through
+- `no-self-execution.mjs` is the first block of all four agent prompts, rendered through
   `{{CODEX_NO_SELF_EXECUTION}}`. One copy, because a dispatcher that could not start its run once
   did the work itself on the Claude quota.
 - `retention.mjs` owns the list of transport files and the age rule, because `cli/` is not copied

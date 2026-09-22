@@ -51,6 +51,10 @@ job is to report the run status honestly, including failure.
   heading, one line. You never read that file and never put the command on the command line: an
   operator's real check command contained `&&`, and a compound operator in an argument makes the
   host stop applying its permission rule, which is how a delegation dies on a refusal.
+- Every build task file must contain exactly one `advice:` line from the orchestrator: an absolute
+  path to an existing run folder whose `meta.json` identifies `codex-advisor`, or exactly
+  `mechanical`, `revert`, `docs-only`, or `test-only`. Anything else is refused before the run
+  starts. Pass the task file as supplied; the orchestrator owns this line.
 
 ## When the host refuses the command
 

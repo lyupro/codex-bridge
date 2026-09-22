@@ -9,10 +9,11 @@ argument-hint: "[hooks|plugins on|off] | [reset]"
      symlinks nor pointer files (verified 2026-08-02). Edit it here; it travels as a copy when the
      package is installed. -->
 
-Environment switches for `codex-scout` / `codex-build` / `codex-review` runs. By default the hooks
-and plugins from `~/.codex` do not reach a delegated run: they are written for interactive work and
-do harm in an automated one — the failing `Stop` hook of `oh-my-codex` would not let Codex leave the
-session, and instead of doing the task it quarantined `.omx/state/session.json`. The operator's
+Environment switches for `codex-scout` / `codex-build` / `codex-review` / `codex-advisor` runs.
+By default the hooks and plugins from `~/.codex` do not reach a delegated run: they are written for
+interactive work and do harm in an automated one — the failing `Stop` hook of `oh-my-codex` would
+not let Codex leave the session, and instead of doing the task it quarantined
+`.omx/state/session.json`. The operator's
 interactive Codex is untouched: the flags are set on one specific runner invocation,
 `~/.codex/hooks.json` is not modified.
 

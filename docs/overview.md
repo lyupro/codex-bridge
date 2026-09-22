@@ -11,6 +11,7 @@ response, log, worktree snapshots, and the verdict computed from them remain in 
 | `codex-scout` | `read-only` | Analyze code, find the cause of a failure, gather facts, or answer several technical questions without edits. |
 | `codex-build` | `workspace-write` | Implement a change, fix a defect, add tests, or add documentation. Requires an explicit `--scope`. |
 | `codex-review` | `read-only` | Get an independent second opinion on a diff after implementation. Checks for defects, not style. |
+| `codex-advisor` | `read-only` | Assess whether the listed paths cover a design question, then recommend among unbiased options before implementation. |
 
 ### Hard dispatcher boundary
 
@@ -62,6 +63,27 @@ Reviewing uncommitted changes:
 codex-bridge run --agent codex-review --repo . --slug auth-flow-review --order-id order-42-review --changeset uncommitted --task-file /abs/path/to/review-task.md
 ```
 
+### Design advice before a build
+
+`codex-advisor` runs in two phases. The 5-minute `scope` phase checks whether the supplied paths
+cover the question and records missing paths and predicted risks. The 15-minute `advise` phase is
+available only with `--continue` after an `OK` scope run for the same order; it can continue an
+insufficient-but-valid scope result too. The task file has `## Question` for the design question,
+`## Options` with at least two unbiased `- id: description` lines with unique ids and no preference
+markers, and `## Paths` with repository-relative paths. Every `path:line` citation must point to
+an existing line, and its path must be listed under `## Paths` or in phase 1's `missing_paths`.
+
+The scope reply starts with `OK — scope: sufficient; continue this run with --phase advise` or
+`OK — scope: insufficient; N paths named`, then includes `Missing:` when needed, `Predicted risks:`,
+and `Report: ... · Log: ...`. An insufficient scope is still an `OK` run with `sufficient: false`,
+not a `LIMIT`. The advise reply contains `OK — recommend <option_id>: <text>`, `Rejected:`,
+`Counter:`, `Risks: <confirmed> confirmed · <refuted> refuted · open questions <count> · confidence
+<level>`, and `Report: ... · Log: ...`.
+
+```bash
+codex-bridge run --agent codex-advisor --repo . --phase scope --slug architecture-check --order-id order-43 --task-file /abs/path/to/advisor-task.md
+```
+
 `--agent` and `--order-id` are required. `--repo` defaults to the current directory, `--slug` is
 optional and defaults to the `order id`, `--effort` defaults to `medium`, and `--changeset` defaults to `uncommitted`.
 The `--effort` value is passed to Codex as is; the runner checks only that it is a single word.
@@ -79,11 +101,11 @@ and dots cannot be a safe directory name.
 For `codex-build`, `--scope` is required and contains comma-separated glob patterns relative to
 the repository root. The runner refuses before creating a paid call if scope is empty.
 
-Pattern format is checked before Codex starts for all three agents. The refusal is immediate and
-free if a pattern cannot match anything: an absolute path or drive path, backslashes, a `..`
-segment, or a pattern that matches no file in the repository. The file list comes from the
-repository itself—`git ls-files --cached --others --exclude-standard`, meaning tracked plus new
-uncommitted files, excluding ignored files; a directory without git is traversed manually while
+Pattern format is checked before Codex starts for all agents that accept scope patterns. The
+refusal is immediate and free if a pattern cannot match anything: an absolute path or drive path,
+backslashes, a `..` segment, or a pattern that matches no file in the repository. The file list
+comes from the repository itself: `git ls-files --cached --others --exclude-standard`, meaning
+tracked plus new uncommitted files, excluding ignored files; a directory without git is traversed manually while
 skipping `.git` and `node_modules`. Before scope validation moved ahead of execution, such a scope
 was discovered only in the verdict—the 2026-08-09 run with an absolute path consumed 18 minutes of
 someone else's quota and received `FAIL` for work it had completed.
@@ -116,7 +138,7 @@ empty tree and a green verification. A declared `fail` produces `FAIL` with the 
 `summary`; a declared `done` proves nothing—the tree, scope, and report consistency are still
 checked as before. Details and check order are in [verdict.md](verdict.md). `codex-scout` and
 `codex-review` do not have this field: their outcome is expressed by subquestion coverage and a
-verdict with findings.
+verdict with findings. `codex-advisor` reports its phase-specific scope assessment or recommendation.
 
 ### Repeated runs and `--continue`
 
@@ -327,11 +349,11 @@ node ~/.lyupro/.codex-bridge/lib/run-config.mjs hooks off
 node ~/.lyupro/.codex-bridge/lib/run-config.mjs reset
 ```
 
-`models` determines what each role runs on: an object with `scout`, `build`, and `review` keys,
-each containing optional `model` and `effort`. Edit it with `codex-bridge model set <role> <model>
-[effort]`, which checks the pair against that model's entry in the live catalogue before writing,
-and `codex-bridge model unset <role>`, which returns the role to whatever Codex chooses. A
-configured model reaches `codex exec` through the `-m` flag, while reasoning depth is chosen in
+`models` determines what each role runs on: an object with `scout`, `build`, `review`, and
+`advisor` keys, each containing optional `model` and `effort`. Use
+`codex-bridge model set <role> <model> [effort]` to configure it; the pair is checked against that
+model's entry in the live catalogue before writing. `codex-bridge model unset <role>` returns the
+role to whatever Codex chooses. A configured model reaches `codex exec` through the `-m` flag, while reasoning depth is chosen in
 this order: the request's explicit `--effort`, then the role profile, then `medium`. Reading the
 config and parsing `--effort` check only the form of the depth, never a list of values: that path
 runs at the start of every delegated run and must not wait on the network, and Codex refuses an
@@ -341,7 +363,8 @@ identifiers live only here and do not appear in code.
 ```json
 {
   "models": {
-    "build": { "model": "gpt-5.6-luna", "effort": "max" }
+    "build": { "model": "gpt-5.6-luna", "effort": "max" },
+    "advisor": { "effort": "high" }
   }
 }
 ```
@@ -380,10 +403,11 @@ A delegated run does not create subagents: the runner passes `-c agents.enabled=
 multi-agent tools are unavailable to the executor. Otherwise their edits would enter the tree
 snapshot as work by the run itself, bypassing the scope check by which it is judged.
 
-`budgets` is the run time limit in minutes by mode: `scout` 15, `build` 25, `review` 20. The key is
-edited directly in the file, and values are positive numbers; an empty field is a configuration
-error, not an absent value. When the limit expires, worker kills Codex together with its entire
-process tree, records the kill in `status.json` through the `stopped_on_deadline` field (the verdict
+`budgets` sets run time limits in minutes by role: `scout` 15, `build` 25, `review` 20, and
+`advisor` with `scope` 5 and `advise` 15. Single-phase roles accept a positive number; `advisor`
+requires a phase map, and partial maps override only the named phases while retaining the defaults.
+A bare number for `advisor` is refused. An empty field is a configuration error, not an absent
+value. When the limit expires, worker kills Codex together with its entire process tree, records the kill in `status.json` through the `stopped_on_deadline` field (the verdict
 judges the field written by the runner, not text to which Codex also writes), and closes the
 directory with a normal verdict—`FAIL` with a deadline reason. The limit makes “for hours”
 impossible by construction: its reference point is the project's longest legitimate run, which
@@ -391,7 +415,12 @@ took about twenty minutes.
 
 ```json
 {
-  "budgets": { "scout": 15, "build": 25, "review": 20 }
+  "budgets": {
+    "scout": 15,
+    "build": 25,
+    "review": 20,
+    "advisor": { "scope": 5, "advise": 15 }
+  }
 }
 ```
 
@@ -449,7 +478,7 @@ dilutes what actually must be followed.
 
 ## Response guard
 
-`hooks/reply-guard.mjs` is the `SubagentStop` hook for the three dispatchers. It checks that the response:
+`hooks/reply-guard.mjs` is the `SubagentStop` hook for the four dispatchers. It checks that the response:
 
 - contains `RUN=` with an existing directory;
 - is not issued over a live or abandoned run without a verdict;
@@ -463,9 +492,9 @@ The third check was added after 2026-08-05: the dispatcher returned the verdict 
 while leaving the second running in the background, and the orchestrator edited files in a tree
 that another run was snapshotting before and after itself. The guard reads the project's entire
 run directory, so omission no longer works: the fact comes from disk, not response text. Only
-`codex-build` runs count—reconnaissance and review live in the `read-only` sandbox, do not touch the
-tree, and can safely run alongside other work; blocking a response because of a reading run would
-spend the attempt budget and then the turn on a run that interferes with nothing.
+`codex-build` runs count—reconnaissance, review, and advice live in the `read-only` sandbox and do
+not touch the tree. They can safely run alongside other work; blocking a response because one is a
+reading run would spend the attempt budget and then the turn on a run that interferes with nothing.
 
 The guard can stop a turn because the promise “the run is still active” is not a result, while the
 worktree is occupied by worker. Form errors are blocked a limited number of times; for external
@@ -539,7 +568,7 @@ the host. `package.json`, required by npm outside that image, is the one documen
 | Root | What lives there |
 | --- | --- |
 | `~/.lyupro/.codex-bridge/` | runner and its modules (`lib/`), guards (`hooks/`), `config.json`, `conventions.md`, installation record `.installed.json` |
-| `~/.claude/agents/codex-bridge/` | three agent definitions—Claude Code reads them only from here |
+| `~/.claude/agents/codex-bridge/` | four agent definitions—Claude Code reads them only from here |
 | `~/.claude/commands/codex-bridge/` | two command files: `/codex-bridge:env` and `/codex-bridge:usage` |
 | `~/.codex/rules/` | Codex CLI rules file; the directory is not ours |
 
@@ -547,7 +576,7 @@ Agent and command markdown is placeholder-processed on install, and the frontmat
 valid YAML afterwards: any value a YAML reader would not take as a plain scalar is double-quoted.
 This is not tidiness. On 2026-08-10 the stop-guidance sentence — `` before `TaskStop`: TaskStop
 removes the wrapper … `` — entered `description:` unquoted, and a colon followed by a space starts a
-nested mapping, so the frontmatter did not parse and Claude Code registered none of the three
+nested mapping, so the frontmatter did not parse and Claude Code registered none of the four
 agents for five days while `doctor` reported every file present. `doctor` now parses each installed
 definition and checks its `name`, and the suite parses everything the installer would write. A definition whose content differs from the packaged one is reported as `fail` and exits 1 rather
 than warning: the drift that matters is a call form no permission rule matches, and a host in that
@@ -586,8 +615,8 @@ Hooks are registered in `settings.json` **by invocation**, not by file path:
 This keeps file moves and runtime version changes from becoming edits to someone else's
 configuration. Guard names are `reply-guard`, `order-gate`, `worktree-lock`, `prune-guard`, and
 `stop-guard`; each guard's matcher is defined by the package itself. The `SubagentStop` matcher may
-cover all subagents: the guard itself passes types other than `codex-scout`, `codex-build`, and
-`codex-review`.
+cover all subagents: the guard itself passes types other than `codex-scout`, `codex-build`,
+`codex-review`, and `codex-advisor`.
 
 If the command is not visible through `PATH` (installation through `npx`, a clone without
 `npm link`), the installer writes the full path to the guard copy in
