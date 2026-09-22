@@ -150,7 +150,7 @@ const REVIEW_SCHEMA = {
   },
 };
 
-/** Same three keys as AGENTS in write-meta.mjs; parseArgs() has already refused anything else. */
+/** Plan_59: execution schemas stay static; schemaFor selects the advisor contract by phase. */
 export const SCHEMAS = {
   'codex-scout': SCOUT_SCHEMA,
   'codex-build': BUILD_SCHEMA,
@@ -279,6 +279,11 @@ export const PHASE_SCHEMAS = {
     },
   },
 };
+
+// Plan_59: an advisor's phase, not its agent name alone, defines the answer contract.
+export function schemaFor(agent, phase) {
+  return agent === 'codex-advisor' ? advisorSchema(phase) : SCHEMAS[agent];
+}
 
 export function advisorSchema(phase) {
   if (!Object.hasOwn(PHASE_SCHEMAS.advisor, phase)) {

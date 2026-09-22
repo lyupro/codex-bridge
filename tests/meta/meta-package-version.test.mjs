@@ -32,7 +32,7 @@ test('every runner mode selects only a contract sandbox', () => {
   const runDir = path.join(os.tmpdir(), 'codex-run');
   const allowed = new Set(['read-only', 'workspace-write']);
 
-  for (const agent of ['codex-scout', 'codex-build', 'codex-review']) {
+  for (const agent of ['codex-scout', 'codex-build', 'codex-review', 'codex-advisor']) {
     const args = codexArgs(
       { agent, effort: 'medium', repo: process.cwd(), models: {} },
       runDir,

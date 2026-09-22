@@ -17,7 +17,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { collect } from '../src/home/lib/write-meta.mjs';
-import { SCHEMAS } from '../src/home/lib/runner/schemas.mjs';
+import { SCHEMAS, schemaFor } from '../src/home/lib/runner/schemas.mjs';
 import { INSTRUCTIONS } from '../src/home/lib/runner/prompts.mjs';
 import { buildResult as build, makeRun } from './meta/test-fixtures.mjs';
 
@@ -140,12 +140,14 @@ test('scout and review keep a fail reply without a worktree line', () => {
   assert.doesNotMatch(reply, /Worktree:/);
 });
 
-test('scout and review are not judged by a field they were never asked for', () => {
+test('read-only agents are not judged by a field they were never asked for', () => {
   // Deliberate asymmetry, decided 2026-08-04: scout states its outcome through coverage of the
   // sub-questions, review through its verdict. A second mandatory outcome field beside those
   // could disagree with them silently.
-  for (const agent of ['codex-scout', 'codex-review']) {
-    assert.equal(SCHEMAS[agent].required.includes('outcome'), false, agent);
+  for (const agent of ['codex-scout', 'codex-review', 'codex-advisor']) {
+    for (const phase of agent === 'codex-advisor' ? ['scope', 'advise'] : ['default']) {
+      assert.equal(schemaFor(agent, phase).required.includes('outcome'), false, agent);
+    }
   }
 });
 

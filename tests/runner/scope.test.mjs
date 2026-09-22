@@ -293,7 +293,7 @@ try { parseArgs(${JSON.stringify([
 
 test('all dispatcher prompts state the scope rule, and only build offers --scope-new', () => {
   const wording = '- Scope patterns are globs relative to the repository root. A pattern that matches nothing there is';
-  for (const name of ['codex-scout.md', 'codex-build.md', 'codex-review.md']) {
+  for (const name of ['codex-scout.md', 'codex-build.md', 'codex-review.md', 'codex-advisor.md']) {
     const content = fs.readFileSync(new URL(`../../src/agents/${name}`, import.meta.url), 'utf8');
     assert.equal(content.split(/\r?\n/).filter((line) => line === wording).length, 1, name);
     // The flag declares a file the run will create, so it belongs to the only agent that writes.
@@ -304,7 +304,7 @@ test('all dispatcher prompts state the scope rule, and only build offers --scope
 });
 
 test('--scope-new is refused for the agents that never create a file', () => {
-  for (const agent of ['codex-scout', 'codex-review']) {
+  for (const agent of ['codex-scout', 'codex-review', 'codex-advisor']) {
     const script = `
 import { parseArgs } from ${JSON.stringify(ARGS_MODULE)};
 try { parseArgs(${JSON.stringify([

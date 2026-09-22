@@ -27,7 +27,8 @@ import { parseArgs, die } from './args.mjs';
 import { settleTaskInput } from './task-input.mjs';
 import { parseContinuationGrant } from '../required-inputs.mjs';
 import { continuationRefusal } from './continuation.mjs';
-import { SCHEMAS } from './schemas.mjs';
+import { parseAdvisorTask } from '../meta/advisor-task.mjs';
+import { schemaFor } from './schemas.mjs';
 import { INSTRUCTIONS } from './prompts.mjs';
 import { git, headSha, branchName, worktreeSnapshot, reviewScope } from './git-state.mjs';
 import { agentRole } from '../agents.mjs';
@@ -40,7 +41,7 @@ import { cleanupRetention } from '../retention.mjs';
 import { renderConventions } from './conventions.mjs';
 import { validateScope } from './scope-check.mjs';
 import { probeSandbox, sandboxRefusal } from './sandbox-probe.mjs';
-import { preflightRefusal, resolveRunPhase, taskPreflight } from './preflight.mjs';
+import { preflightRefusal, resolveRunPhase, scopeRunRefusal, taskPreflight } from './preflight.mjs';
 
 /**
  * The worker is this same program re-invoked as `--worker <runDir>`, so the path spawned
@@ -159,6 +160,10 @@ export async function launcher(argv = process.argv.slice(2)) {
     continuationGrant,
   );
   if (continuationError) die(continuationError);
+  // Plan_59 D14: the grant is valid by now; an advise pass may continue only an OK scope run.
+  const scopeRun = continuationGrant &&
+    scopeRunRefusal({ agent: opts.agent, phase: opts.phase, runsRoot: projectRunsRoot, grantRun: continuationGrant.run });
+  if (scopeRun) die(scopeRun, 1);
 
   // One order produced six Codex runs on 2026-08-03 because the caller's time ceiling made it
   // restart the synchronous launcher. A live same-order run is now the repeat target: attach
@@ -269,6 +274,7 @@ export async function launcher(argv = process.argv.slice(2)) {
   if (opts.agent === 'codex-scout') {
     fs.writeFileSync(path.join(runDir, 'questions.json'), `${JSON.stringify(questions, null, 2)}\n`);
   }
+  if (opts.agent === 'codex-advisor') fs.writeFileSync(path.join(runDir, 'advisor-task.json'), `${JSON.stringify(parseAdvisorTask(taskText), null, 2)}\n`);
 
   if (opts.agent === 'codex-build') {
     fs.writeFileSync(path.join(runDir, 'scope.txt'), `${opts.scopePatterns.join('\n')}\n`);
@@ -314,7 +320,7 @@ export async function launcher(argv = process.argv.slice(2)) {
   fs.writeFileSync(path.join(runDir, 'task.md'), `${sections.join('\n\n')}\n`);
   fs.writeFileSync(
     path.join(runDir, 'schema.json'),
-    `${JSON.stringify(SCHEMAS[opts.agent], null, 2)}\n`,
+    `${JSON.stringify(schemaFor(opts.agent, opts.phase), null, 2)}\n`,
   );
 
   if (opts.agent === 'codex-build') {

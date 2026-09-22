@@ -1,4 +1,7 @@
 /** Valid advisor answers shared by the verdict and schema tests (Plan_59 D3-D5, D10). */
+import fs from 'node:fs';
+import path from 'node:path';
+
 export function validAdvice() {
   return {
     recommendation: { option_id: 'keep', text: 'Keep the current boundary.' },
@@ -24,4 +27,20 @@ export function validScope() {
     sufficient: true, missing_paths: [], taken_on_trust: ['The supplied requirements describe the intended caller.'],
     predicted_risks: ['r1', 'r2', 'r3'].map((id) => ({ id, risk: 'Concurrent callers could share mutable state.' })),
   };
+}
+
+/**
+ * The facts the advisor judge reads from a run folder beyond the result: the parsed task the
+ * launcher wrote and the repository its addresses resolve in. The run folder doubles as that
+ * repository, so `result.json` is the one listed path.
+ */
+export function advisorRunFacts(dir, phase = 'scope') {
+  fs.writeFileSync(path.join(dir, 'advisor-task.json'), JSON.stringify({
+    options: [{ id: 'keep', description: 'Keep the boundary.' }, { id: 'split', description: 'Split it.' }],
+    paths: ['result.json'],
+  }));
+  const statusFile = path.join(dir, 'status.json');
+  const status = fs.existsSync(statusFile) ? JSON.parse(fs.readFileSync(statusFile, 'utf8')) : {};
+  fs.writeFileSync(statusFile, JSON.stringify({ ...status, phase, repo: dir }));
+  return dir;
 }

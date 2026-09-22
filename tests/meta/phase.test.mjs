@@ -6,7 +6,7 @@ import { collect, writeFailure } from '../../src/home/lib/write-meta.mjs';
 import { makeRun, buildResult } from './test-fixtures.mjs';
 
 test('meta.json carries the resolved worker phase for each agent', () => {
-  for (const agent of ['codex-scout', 'codex-build', 'codex-review']) {
+  for (const agent of ['codex-scout', 'codex-build', 'codex-review', 'codex-advisor']) {
     const dir = makeRun({ result: buildResult([]), status: { phase: 'scope' } });
     fs.writeFileSync(path.join(dir, 'worker.json'), JSON.stringify({ phase: 'advise', budget_minutes: 15 }));
     const { meta } = collect(dir, agent, 1);

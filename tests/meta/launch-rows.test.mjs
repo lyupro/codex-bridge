@@ -6,6 +6,7 @@ import path from 'node:path';
 import { AGENTS, collect, writeFailure } from '../../src/home/lib/write-meta.mjs';
 import { launchRows, withLaunchRows } from '../../src/home/lib/meta/launch-rows.mjs';
 import { buildResult, COMPLETED_COMMAND, makeRun } from './test-fixtures.mjs';
+import { advisorRunFacts, validScope } from './advisor-fixtures.mjs';
 
 const retention = { bytes_freed: 41.2 * 1024 * 1024, runs: 12, days: 30 };
 const retentionRow = 'Retention: freed 41.2 MB from 12 runs older than 30 days';
@@ -23,6 +24,7 @@ const agents = [
     findings: [], unknowns: [], report_markdown: '# report',
   }],
   ['codex-review', { verdict: 'approve', findings: [] }],
+  ['codex-advisor', validScope()],
 ];
 
 for (const [agent, result] of agents) {
@@ -31,12 +33,13 @@ for (const [agent, result] of agents) {
       const dir = makeRun({
         args: ['exec', '--json'],
         events: status === 'LIMIT' ? [{ type: 'error', message: 'rate limit exceeded for this account' }]
-          : agent === 'codex-scout' && status === 'OK' ? [...started, COMPLETED_COMMAND] : started,
+          : ['codex-scout', 'codex-advisor'].includes(agent) && status === 'OK' ? [...started, COMPLETED_COMMAND] : started,
         result: status === 'OK' ? result : undefined,
         file: AGENTS[agent].result,
         profile,
         status: { state: 'running', retention, sandbox_probe: probe },
       });
+      if (agent === 'codex-advisor') advisorRunFacts(dir);
 
       const { meta, reply } = collect(dir, agent, status === 'OK' ? 0 : 1);
       const rows = reply.split('\n');

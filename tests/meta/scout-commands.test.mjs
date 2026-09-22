@@ -1,5 +1,6 @@
 /** Guards execution facts after the 2026-09-16 scout OK on a dead sandbox (Plan_57 D3). */
 import { test } from 'node:test';
+import { advisorRunFacts, validScope } from './advisor-fixtures.mjs';
 import assert from 'node:assert/strict';
 import { AGENTS, collect } from '../../src/home/lib/write-meta.mjs';
 import { readEvents } from '../../src/home/lib/meta/events.mjs';
@@ -152,3 +153,16 @@ for (const [agent, result] of [
     assert.equal(meta.status, 'OK', meta.reason);
   });
 }
+
+// Plan_59 D4: advice is judged against the code, so an advisor that ran no command did not read it.
+test('codex-advisor without any executed command fails on the advice contract', () => {
+  const dir = advisorRunFacts(makeRun({
+    args: ['exec', '--json'], events: noCommands, result: validScope(), file: AGENTS['codex-advisor'].result,
+  }));
+
+  assert.equal(readEvents(dir).commands_executed, 0);
+  const { meta } = collect(dir, 'codex-advisor', 0);
+
+  assert.equal(meta.status, 'FAIL');
+  assert.match(meta.reason, /^advice contract broken \(1\): D4 commandsRun 0/);
+});

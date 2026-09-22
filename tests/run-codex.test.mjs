@@ -203,7 +203,7 @@ test('parseArgs refuses empty or whitespace-containing efforts before launch', (
 test('no runner mode leaves subagent spawning available', () => {
   loadRunEnv();
   const runDir = path.join(os.tmpdir(), 'codex-run');
-  for (const agent of ['codex-scout', 'codex-build', 'codex-review']) {
+  for (const agent of ['codex-scout', 'codex-build', 'codex-review', 'codex-advisor']) {
     const args = codexArgs({ agent, repo: process.cwd() }, runDir, true);
     assert.equal(args.filter((arg) => arg === 'agents.enabled=false').length, 1, agent);
   }
@@ -212,7 +212,7 @@ test('no runner mode leaves subagent spawning available', () => {
 test('no runner mode disables installed Codex rules', () => {
   loadRunEnv();
   const runDir = path.join(os.tmpdir(), 'codex-run');
-  for (const agent of ['codex-scout', 'codex-build', 'codex-review']) {
+  for (const agent of ['codex-scout', 'codex-build', 'codex-review', 'codex-advisor']) {
     const args = codexArgs({ agent, effort: 'medium', repo: process.cwd() }, runDir, true);
     assert.equal(args.includes('--ignore-rules'), false, agent);
   }
@@ -225,6 +225,7 @@ test('each runner mode passes its configured model exactly once', () => {
     ['codex-scout', 'scout'],
     ['codex-build', 'build'],
     ['codex-review', 'review'],
+    ['codex-advisor', 'advisor'],
   ];
   for (const [agent, key] of cases) {
     const model = `model-${key}`;
@@ -265,7 +266,7 @@ test('reasoning depth comes from the request first, then the mode profile, then 
 test('runner modes omit the model flag when their model is not configured', () => {
   loadRunEnv();
   const runDir = path.join(os.tmpdir(), 'codex-run');
-  for (const agent of ['codex-scout', 'codex-build', 'codex-review']) {
+  for (const agent of ['codex-scout', 'codex-build', 'codex-review', 'codex-advisor']) {
     const args = codexArgs({ agent, effort: 'medium', repo: process.cwd(), models: {} }, runDir, true);
     assert.equal(args.includes('-m'), false, agent);
   }
@@ -274,7 +275,7 @@ test('runner modes omit the model flag when their model is not configured', () =
 test('all runner modes request the structured JSON event stream', () => {
   loadRunEnv();
   const runDir = path.join(os.tmpdir(), 'codex-run');
-  for (const agent of ['codex-scout', 'codex-build', 'codex-review']) {
+  for (const agent of ['codex-scout', 'codex-build', 'codex-review', 'codex-advisor']) {
     const args = codexArgs({ agent, effort: 'medium', repo: process.cwd() }, runDir, true);
     assert.equal(args.filter((arg) => arg === '--json').length, 1, agent);
   }

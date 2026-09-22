@@ -7,7 +7,7 @@ import { loadRunEnv } from '../../src/home/lib/runner/run-env.mjs';
 
 loadRunEnv();
 
-for (const role of ['scout', 'build', 'review']) {
+for (const role of ['scout', 'build', 'review', 'advisor']) {
   const agent = `codex-${role}`;
 
   test(`${agent} reports the configured tier alongside model and effort provenance`, () => {

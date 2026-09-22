@@ -10,6 +10,7 @@ const SANDBOX_BY_AGENT = new Map([
   ['codex-scout', 'read-only'],
   ['codex-build', 'workspace-write'],
   ['codex-review', 'read-only'],
+  ['codex-advisor', 'read-only'],
 ]);
 
 test('every runner command has exactly its one literal contract sandbox', () => {

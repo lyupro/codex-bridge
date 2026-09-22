@@ -47,8 +47,31 @@ export function taskPreflight({ agent, taskText }) {
     'An order that invents a construction needs a second opinion first; only work with no design choice may skip it.');
 }
 
+/** Plan_59 D14: an advice pass may continue only a completed, successful advisor scope run. */
+export function scopeRunRefusal({ agent, phase, runsRoot, grantRun }) {
+  if (agent !== 'codex-advisor' || phase !== 'advise') return null;
+  let meta;
+  try {
+    meta = readJson(path.join(runsRoot, grantRun, 'meta.json'));
+  } catch {
+    meta = null;
+  }
+  const failed = [
+    meta?.agent === 'codex-advisor' ? null : "agent must be 'codex-advisor'",
+    meta?.phase === 'scope' ? null : "phase must be 'scope'",
+    meta?.status === 'OK' ? null : "status must be 'OK'",
+  ].filter(Boolean);
+  if (!failed.length) return null;
+  return `continued run meta.json failed ${failed.join(', ')}. The run folder was not created; quota was not spent.`;
+}
+
 /** D2: phase mistakes must refuse before even the sandbox probe can spend quota. */
-export function resolveRunPhase({ agent, phase }, budgets) {
+export function resolveRunPhase({ agent, phase, continue: isContinue }, budgets) {
+  // Plan_59 D7: phase 2 must retain the scope run's predictions before quota is spent.
+  if (agent === 'codex-advisor' && phase === 'advise' && !isContinue) {
+    die('codex-advisor --phase advise requires --continue: phase 2 continues the scope run of the same order ' +
+      'so it can settle the risks phase 1 predicted. The run folder was not created; quota was not spent.');
+  }
   const phases = budgets[agentRole(agent)];
   const names = Object.keys(phases);
   if (phase === undefined && names.length === 1 && names[0] === 'default') return 'default';

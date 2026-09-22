@@ -70,6 +70,22 @@ test('missing dispatcher inputs are denied with actionable details', async (t) =
   assert.doesNotMatch(decision.permissionDecisionReason, /found `/);
 });
 
+// Plan_59 C2: registry-derived gates must recognize advisor and accept its real scope phase.
+test('advisor requires a phase at the order gate and accepts scope as a concrete input', async (t) => {
+  const root = await fixture(t);
+  const taskFile = path.join(root, 'task.md');
+  await fs.writeFile(taskFile, '## Options\n- keep: Keep it.\n- split: Split it.\n## Paths\n- source.mjs\n');
+  const prompt = validPrompt('advisor-order', taskFile);
+  const missing = runGate(root, payload('codex-advisor', prompt));
+  assert.equal(missing.status, 0);
+  const decision = JSON.parse(missing.stdout).hookSpecificOutput;
+  assert.equal(decision.permissionDecision, 'deny');
+  assert.match(decision.permissionDecisionReason, /phase/);
+  const present = runGate(root, payload('codex-advisor', `${prompt}\nphase: scope`));
+  assert.equal(present.status, 0);
+  assert.equal(present.stdout, '');
+});
+
 /**
  * The gate answers to every name a host gives the subagent-launching tool. A gate that knows
  * only the local name is silent on every other host, and silence there reads exactly like

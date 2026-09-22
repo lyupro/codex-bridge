@@ -40,11 +40,15 @@ test('an absent file means defaults, not an error', () => {
  * are derived from one registry, so this test now proves the derivation, not two hand-kept lists.
  */
 test('every agent maps to a role that has a budget', () => {
-  for (const agent of ['codex-scout', 'codex-build', 'codex-review']) {
+  for (const agent of ['codex-scout', 'codex-build', 'codex-review', 'codex-advisor']) {
     const role = agentRole(agent);
     assert.ok(role, `${agent} has no role`);
-    assert.equal(typeof DEFAULTS.budgets[role].default, 'number', `${role} has no default budget`);
-    assert.ok(DEFAULTS.budgets[role].default > 0);
+    const phases = agent === 'codex-advisor' ? ['scope', 'advise'] : ['default'];
+    assert.deepEqual(Object.keys(DEFAULTS.budgets[role]), phases);
+    for (const phase of phases) {
+      assert.equal(typeof DEFAULTS.budgets[role][phase], 'number', `${role} has no ${phase} budget`);
+      assert.ok(DEFAULTS.budgets[role][phase] > 0);
+    }
   }
 });
 
@@ -107,11 +111,12 @@ test('run-config state appends a pinned tier in the profile sentence and leaves 
 });
 
 test('budgets default per role and merge when only one role is written', () => {
-  assert.deepEqual(DEFAULTS.budgets, { scout: { default: 15 }, build: { default: 25 }, review: { default: 20 } });
+  assert.deepEqual(DEFAULTS.budgets, { scout: { default: 15 }, build: { default: 25 }, review: { default: 20 }, advisor: { scope: 5, advise: 15 } });
   assert.deepEqual(readRunConfig(tempFile('{"budgets": {"build": 7.5}}')).budgets, {
     scout: { default: 15 },
     build: { default: 7.5 },
     review: { default: 20 },
+    advisor: { scope: 5, advise: 15 },
   });
 });
 
@@ -121,7 +126,7 @@ test('budgets reject every invalid shape with an actionable message', () => {
   assert.throws(() => readRunConfig(tempFile('{"budgets": 5}')), /budgets.*must be an object/);
   assert.throws(
     () => readRunConfig(tempFile('{"budgets": {"deploy": 5}}')),
-    /budgets.*unknown role.*deploy.*scout, build, review/,
+    /budgets.*unknown role.*deploy.*scout, build, review, advisor/,
   );
   assert.throws(
     () => readRunConfig(tempFile('{"budgets": {"build": "5"}}')),
@@ -162,7 +167,7 @@ test('models must be known roles holding profiles of known string fields', () =>
   assert.throws(() => readRunConfig(tempFile('{"models": []}')), /models.*must be an object/);
   assert.throws(
     () => readRunConfig(tempFile('{"models": {"deploy": {"model": "model-d"}}}')),
-    /unknown role.*deploy.*scout, build, review/,
+    /unknown role.*deploy.*scout, build, review, advisor/,
   );
   assert.throws(
     () => readRunConfig(tempFile('{"models": {"build": "model-b"}}')),

@@ -50,6 +50,7 @@ test('the marker and platform gate are the agreed constants', () => {
 
 for (const [agent, mode] of [
   ['codex-build', 'workspace-write'], ['codex-scout', 'read-only'], ['codex-review', 'read-only'],
+  ['codex-advisor', 'read-only'],
 ]) {
   test(`${agent} is alive after one flagged Windows attempt using its role sandbox`, async () => {
     assert.equal(sandboxModeFor(agent), mode);

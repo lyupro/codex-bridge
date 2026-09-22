@@ -28,6 +28,7 @@ import { deadlineReason } from './deadline.mjs';
 import { startupGap } from './startup.mjs';
 import { transportGap } from './transport.mjs';
 import { reasonFrom } from './reason.mjs';
+import { adviceGap } from './advice-status.mjs';
 
 // How much prose an answer must carry once coordinates and paths are subtracted. Measured
 // on the scout run of 2026-07-30 that replied with a table of `file.ts:60-79` rows: every
@@ -327,6 +328,12 @@ export function resolveStatus({ resultOk, exit, agent, result, runDir, events })
       };
     }
     const gap = scoutCoverageGap(runDir, result);
+    if (gap) return { status: 'FAIL', reason: gap };
+  }
+  // Plan_59 D3/D4/D5/D10: a schema-valid agreement still needs evidence and decision checks.
+  // Place the advisor judge before the build-only scope check, alongside the other agent contracts.
+  if (agent === 'codex-advisor') {
+    const gap = adviceGap(runDir, result, eventData);
     if (gap) return { status: 'FAIL', reason: gap };
   }
   // Files the task never authorised. Checked before the mismatch below, because a run that

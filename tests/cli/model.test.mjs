@@ -12,7 +12,7 @@ import { HELP, main } from '../../bin/codex-bridge.mjs';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
-const roles = ['scout', 'build', 'review'];
+const roles = ['scout', 'build', 'review', 'advisor'];
 
 function fixture(t, models) {
   const root = makeTempTree('model-profile-');
@@ -25,7 +25,7 @@ function fixture(t, models) {
 
 function configuredProfiles() {
   return Object.fromEntries(roles.map((role, index) => [role, {
-    model: randomUUID(), effort: ['low', 'max', 'high'][index],
+    model: randomUUID(), effort: ['low', 'max', 'high', 'medium'][index],
   }]));
 }
 
@@ -33,11 +33,11 @@ function profileRows(output) {
   const [table] = output.split('\n\n');
   assert.match(table, /^role\s+model\s+effort\s+speed\s+source\n/);
   const rows = table.split('\n').slice(1);
-  assert.equal(rows.length, 3);
+  assert.equal(rows.length, roles.length);
   return rows;
 }
 
-test('model shows all three configured roles as a table without writing or printing', async (t) => {
+test('model shows every configured role as a table without writing or printing', async (t) => {
   const profiles = configuredProfiles();
   profiles.scout.speed = randomUUID();
   const { root, configPath, source } = fixture(t, profiles);
@@ -147,7 +147,7 @@ test('dispatcher shows the configured machine-wide profile from CODEX_BRIDGE_HOM
   });
 
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(profileRows(result.stdout).length, 3);
+  assert.equal(profileRows(result.stdout).length, roles.length);
   for (const role of roles) assert.ok(result.stdout.includes(profiles[role].model));
   assert.ok(result.stdout.includes(configPath));
   assert.equal(fs.readFileSync(configPath, 'utf8'), source);
@@ -207,7 +207,7 @@ test('set writes exactly one role immediately using positional, option and mixed
     const modelId = randomUUID();
     const effort = randomUUID();
     const forms = [[modelId, effort], ['--model', modelId, '--effort', effort], [modelId, '--effort', effort]];
-    const result = await model(['set', role, ...forms[roles.indexOf(role)]], {
+    const result = await model(['set', role, ...forms[roles.indexOf(role) % forms.length]], {
       configPath, fetchCatalogue: catalogue(catalogueEntry(modelId, [effort])),
     });
     assert.equal(result.exitCode, 0, result.output);

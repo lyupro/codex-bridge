@@ -99,9 +99,9 @@ function citationProblem(raw, root, allowed) {
   return null;
 }
 
-function checkCitations({ phase, result, task, repoRoot }, reasons) {
+function checkCitations({ phase, result, task, repoRoot, scopeResult }, reasons) {
   const root = path.resolve(repoRoot);
-  const allowed = [...task.paths, ...(phase === 'scope' ? result.missing_paths : [])]
+  const allowed = [...task.paths, ...(phase === 'scope' ? result.missing_paths : scopeResult?.missing_paths ?? [])]
     .map((raw) => entryInRepo(root, raw)).filter(Boolean);
   const check = (field, address) => {
     const problem = citationProblem(address, root, allowed);
@@ -211,7 +211,7 @@ export function judgeAdvice({ phase, result, task, repoRoot, commandsRun, langua
       }
     }
   }
-  checkCitations({ phase, result, task, repoRoot }, reasons);
+  checkCitations({ phase, result, task, repoRoot, scopeResult }, reasons);
   const phrases = Object.hasOwn(BACKSTOPS, language) ? BACKSTOPS[language] : Object.values(BACKSTOPS).flat();
   const patterns = phrases.map((phrase) => [phrase, backstopPattern(phrase)]);
   for (const { field, value } of strings(result)) {

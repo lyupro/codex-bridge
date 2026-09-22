@@ -145,8 +145,8 @@ test('the lock allows writes when no run is live', async (t) => {
   assertPass(runLock(root, runsRoot, 'Write', path.join(repo, 'file.txt')));
 });
 
-test('the lock allows live scout and review runs', async (t) => {
-  for (const agent of ['codex-scout', 'codex-review']) {
+test('the lock allows live scout, review and advisor runs', async (t) => {
+  for (const agent of ['codex-scout', 'codex-review', 'codex-advisor']) {
     const { root, runsRoot } = await fixture(t);
     const repo = path.join(root, 'repository');
     await liveRun(runsRoot, { repo, agent });

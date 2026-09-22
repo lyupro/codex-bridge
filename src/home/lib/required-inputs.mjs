@@ -80,6 +80,23 @@ export const REQUIRED_INPUTS = Object.freeze({
     TASK_FILE_INPUT,
     CONTINUATION_INPUT,
   ]),
+  // Plan_59 D7: the caller must name the phase and authorize the continued decision pass.
+  'codex-advisor': freezeEntries([
+    {
+      label: 'order id',
+      source: 'the orchestrator',
+      explanation: 'The label this design order is known by. Keep the same order id for scope and advise so phase 2 can settle the risks predicted in phase 1.',
+      example: 'plan-59-advisor-20260922',
+    },
+    TASK_FILE_INPUT,
+    CONTINUATION_INPUT,
+    {
+      label: 'phase',
+      source: 'the orchestrator',
+      explanation: 'Pass scope first to predict risks and check the reading boundary, then advise with --continue and a continuation grant naming the scope run of the same order.',
+      example: 'scope',
+    },
+  ]),
 });
 
 const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -100,6 +117,10 @@ export function isPlaceholder(value) {
   if (cleaned.startsWith('<') && cleaned.endsWith('>')) return true;
   return PLACEHOLDER_VALUES.has(cleaned.replace(/[.,;:]+$/, '').trim().toLowerCase());
 }
+
+// Plan_59: scope is a real phase value, while it remains a placeholder for existing inputs.
+const isInputPlaceholder = (value, label) =>
+  !(label === 'phase' && cleanValue(value) === 'scope') && isPlaceholder(value);
 
 export function extractValue(promptText, label) {
   const labelPattern = escapeRegExp(label).replaceAll('\\ ', '\\s+');
@@ -141,7 +162,7 @@ export function diagnoseInput(promptText, label) {
   if (candidateLine === undefined) return null;
 
   const value = extractValue(candidateLine, label);
-  if (value !== null && !isPlaceholder(value)) {
+  if (value !== null && !isInputPlaceholder(value, label)) {
     if (label === TASK_FILE_INPUT.label && !isAbsoluteTaskFilePath(value)) {
       return { line: readableDiagnosisLine(candidateLine), reason: `value \`${value}\` is not an absolute path` };
     }
@@ -149,7 +170,7 @@ export function diagnoseInput(promptText, label) {
   }
 
   const line = readableDiagnosisLine(candidateLine);
-  if (value !== null && isPlaceholder(value)) {
+  if (value !== null && isInputPlaceholder(value, label)) {
     const displayedValue = value.trim();
     if (!displayedValue) return { line, reason: 'value is empty; replace it with a concrete value' };
     return {
@@ -195,7 +216,7 @@ export function missingInputs(agentType, promptText) {
   return requiredInputsFor(agentType).filter((entry) => {
     if (entry.conditional) return false;
     const value = extractValue(prompt, entry.label);
-    if (isPlaceholder(value)) return true;
+    if (isInputPlaceholder(value, entry.label)) return true;
     return entry === TASK_FILE_INPUT && !isAbsoluteTaskFilePath(value);
   });
 }
@@ -206,7 +227,7 @@ export function shellUnsafeInputs(agentType, promptText) {
   return requiredInputsFor(agentType).flatMap((entry) => {
     if (entry.conditional) return [];
     const value = extractValue(prompt, entry.label);
-    if (value === null || isPlaceholder(value)) return [];
+    if (value === null || isInputPlaceholder(value, entry.label)) return [];
     const sequence = firstShellUnsafeSequence(value);
     return sequence === null ? [] : [{ entry, sequence }];
   });

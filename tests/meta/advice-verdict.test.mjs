@@ -198,6 +198,14 @@ test('D3 scope missing_paths authorizes exact files or directories only in scope
   value.result.independent_checks[0].address = 'docs/guide.md:1';
   fails(value, 'independent_checks[0].address', 'docs/guide.md:1');
 });
+test('D3 advise accepts phase-1 missing_paths only when its scope result is available', () => {
+  const value = input();
+  value.scopeResult = { ...validScope(), sufficient: false, missing_paths: ['docs/guide.md'] };
+  value.result.independent_checks[0].address = 'docs/guide.md:1';
+  passes(value);
+  delete value.scopeResult;
+  fails(value, 'independent_checks[0].address', 'docs/guide.md:1');
+});
 test('D3 checks traversal and symlink escapes in prose, and allows internal directory links', () => {
   const value = input();
   value.task.paths.push('linked-src');

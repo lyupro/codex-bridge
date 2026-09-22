@@ -266,7 +266,7 @@ test('a reply silent about a live writing sibling is blocked with status facts',
 // Running scout and review beside other work is deliberate practice, not an accident: they hold
 // a read-only sandbox and cannot touch the worktree. Blocking a reply over one would spend the
 // state budget — and eventually the session — on a run that threatens nothing.
-for (const reader of ['codex-scout', 'codex-review']) {
+for (const reader of ['codex-scout', 'codex-review', 'codex-advisor']) {
   test(`an unnamed live ${reader} sibling does not block: it cannot touch the tree`, async (t) => {
     const { root, runs } = await fixture(t);
     const own = await createRun(runs, 'own', ownStatus(), { status: 'OK' });

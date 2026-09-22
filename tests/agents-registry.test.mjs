@@ -15,17 +15,21 @@ import { AGENTS, agentRole } from '../src/home/lib/agents.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-test('the registry owns exactly the three agents and their existing defaults', () => {
+test('the registry owns execution agents and the phased advisor defaults from Plan_59', () => {
   assert.deepEqual(AGENTS, {
     'codex-scout': { role: 'scout', budget: 15, writes: false, result: 'result.json' },
     'codex-build': { role: 'build', budget: 25, writes: true, result: 'result.json' },
     'codex-review': { role: 'review', budget: 20, writes: false, result: 'review.json' },
+    'codex-advisor': { role: 'advisor', budget: { scope: 5, advise: 15 }, writes: false, result: 'result.json' },
   });
   for (const [name, agent] of Object.entries(AGENTS)) {
     assert.equal(typeof agent.role, 'string', `${name} must have a role`);
     assert.ok(agent.role.trim(), `${name} must have a non-empty role`);
-    assert.equal(typeof agent.budget, 'number', `${name} must have a numeric budget`);
-    assert.ok(Number.isFinite(agent.budget) && agent.budget > 0, `${name} must have a positive budget`);
+    const budgets = name === 'codex-advisor' ? Object.values(agent.budget) : [agent.budget];
+    for (const budget of budgets) {
+      assert.equal(typeof budget, 'number', `${name} must have numeric phase budgets`);
+      assert.ok(Number.isFinite(budget) && budget > 0, `${name} must have positive phase budgets`);
+    }
     assert.equal(typeof agent.writes, 'boolean', `${name} must declare write access`);
     assert.equal(agent.writes, name === 'codex-build');
   }
@@ -35,6 +39,7 @@ test('agentRole maps full agent names and leaves an unknown name undefined', () 
   assert.equal(agentRole('codex-scout'), 'scout');
   assert.equal(agentRole('codex-build'), 'build');
   assert.equal(agentRole('codex-review'), 'review');
+  assert.equal(agentRole('codex-advisor'), 'advisor');
   assert.equal(agentRole('codex-unknown'), undefined);
 });
 
@@ -48,11 +53,11 @@ function findSourceFiles(dir) {
 
 function hasCopiedRoleList(source) {
   const lists = source.matchAll(
-    /\[\s*((['"`])(?:codex-)?(?:scout|build|review)\2(?:\s*,\s*(['"`])(?:codex-)?(?:scout|build|review)\3){2}\s*,?)\s*\]/g,
+    /\[\s*((['"`])(?:codex-)?(?:scout|build|review|advisor)\2(?:\s*,\s*(['"`])(?:codex-)?(?:scout|build|review|advisor)\3){2,}\s*,?)\s*\]/g,
   );
   return [...lists].some(([, list]) => {
-    const roles = [...list.matchAll(/['"`](?:codex-)?(scout|build|review)['"`]/g)].map(([, role]) => role);
-    return new Set(roles).size === 3;
+    const roles = [...list.matchAll(/['"`](?:codex-)?(scout|build|review|advisor)['"`]/g)].map(([, role]) => role);
+    return new Set(roles).size >= 3;
   });
 }
 
@@ -82,6 +87,15 @@ test('the role-list gate recognizes both spellings in every ordering, as an arra
   }
   // The exact line that survived in reply-guard.mjs until acceptance caught it by hand.
   assert.ok(hasCopiedRoleList("const GUARDED = new Set(['codex-scout', 'codex-build', 'codex-review']);"));
+  // Plan_59: a fourth agent must not make the duplicate-list regression guard stop matching.
+  for (const ordering of orderings) {
+    for (let index = 0; index <= ordering.length; index += 1) {
+      const roles = ordering.toSpliced(index, 0, 'advisor');
+      for (const prefix of ['', 'codex-']) {
+        assert.ok(hasCopiedRoleList(JSON.stringify(roles.map((role) => `${prefix}${role}`))));
+      }
+    }
+  }
   assert.equal(hasCopiedRoleList("['scout', 'build']"), false);
   assert.equal(hasCopiedRoleList("['scout', 'scout', 'review']"), false);
   assert.equal(hasCopiedRoleList("['codex-scout', 'codex-scout', 'codex-review']"), false);

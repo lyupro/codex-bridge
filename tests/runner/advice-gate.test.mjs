@@ -25,6 +25,7 @@ function fixture() {
 
 function launch(tree, agent, taskText, { refuse = false, taskFile = false } = {}) {
   const args = ['--agent', agent, '--repo', tree.repo, '--order-id', 'advice-fixture',
+    ...(agent === 'codex-advisor' ? ['--phase', 'scope'] : []),
     ...(agent === 'codex-build' ? ['--scope', 'source.mjs'] : []),
     ...(agent === 'codex-scout' ? ['--question', 'What does source.mjs export?'] : [])];
   if (taskFile) {
@@ -122,15 +123,14 @@ for (const [name, task] of Object.entries(invalid)) {
   });
 }
 
-for (const agent of ['codex-scout', 'codex-review']) {
+for (const agent of ['codex-scout', 'codex-review', 'codex-advisor']) {
   test(`${agent} runs without advice and has no advice status field`, () => {
-    assert.equal(Object.hasOwn(statusFrom(launch(fixture(), agent, 'Inspect source.')), 'advice'), false);
+    const task = agent === 'codex-advisor' ? CLEAN_TASK : 'Inspect source.';
+    assert.equal(Object.hasOwn(statusFrom(launch(fixture(), agent, task)), 'advice'), false);
   });
 }
 
-// The launcher-level refusal for a biased advisor task arrives with the advisor's registration
-// (Plan_59 C2): parsing argv a second time only to reach an unregistered agent would be a copy
-// of parseArgs that drifts from it.
+// Plan_59 D5: retain the task-boundary guard alongside launcher coverage in advisor-run.test.mjs.
 test('biased advisor task is refused by the task gate with the free-refusal sentence', () => {
   const text = CLEAN_TASK.replace('Keep the boundary.', 'Keep the boundary (recommended).');
   const { refusal } = taskPreflight({ agent: 'codex-advisor', taskText: text });

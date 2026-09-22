@@ -16,6 +16,7 @@ import {
   parseContinuationGrant,
   renderRequiredInputSummary,
   renderRequiredInputs,
+  shellUnsafeInputs,
 } from '../src/home/lib/required-inputs.mjs';
 
 const agentDirectory = path.join('src', 'agents');
@@ -33,18 +34,44 @@ test('every agent the runner accepts has an entry in the table', () => {
 
 test('the immutable table lists each dispatcher input', () => {
   assert.equal(Object.isFrozen(REQUIRED_INPUTS), true);
-  assert.deepEqual(Object.keys(REQUIRED_INPUTS), ['codex-scout', 'codex-build', 'codex-review']);
+  assert.deepEqual(Object.keys(REQUIRED_INPUTS), ['codex-scout', 'codex-build', 'codex-review', 'codex-advisor']);
   for (const entries of Object.values(REQUIRED_INPUTS)) {
     assert.equal(Object.isFrozen(entries), true);
     for (const entry of entries) assert.equal(Object.isFrozen(entry), true);
   }
   assert.deepEqual(REQUIRED_INPUTS['codex-build'].map((entry) => entry.label), ['order id', 'scope', 'task file', 'continue']);
+  assert.deepEqual(REQUIRED_INPUTS['codex-advisor'].map((entry) => entry.label), ['order id', 'task file', 'continue', 'phase']);
 });
 
 test('missingInputs reports every required value for every dispatcher', () => {
   assert.deepEqual(missingInputs('codex-scout', '').map((entry) => entry.label), ['order id', 'task file']);
   assert.deepEqual(missingInputs('codex-build', '').map((entry) => entry.label), ['order id', 'scope', 'task file']);
   assert.deepEqual(missingInputs('codex-review', '').map((entry) => entry.label), ['order id', 'task file']);
+  assert.deepEqual(missingInputs('codex-advisor', '').map((entry) => entry.label), ['order id', 'task file', 'phase']);
+});
+
+// Plan_59: the real scope phase must not inherit the older scope-placeholder refusal.
+test('advisor phase inputs accept scope and advise without weakening existing placeholders', () => {
+  const order = 'order id: plan-59-advisor\ntask file: C:/scratch/task.md\n';
+  for (const phase of ['scope', 'advise']) {
+    for (const phaseLine of [`phase: ${phase}`, `--phase ${phase}`]) {
+      assert.deepEqual(missingInputs('codex-advisor', `${order}${phaseLine}`), []);
+      assert.equal(diagnoseInput(phaseLine, 'phase'), null);
+      assert.deepEqual(shellUnsafeInputs('codex-advisor', `${order}${phaseLine}`), []);
+    }
+  }
+  for (const value of ['', 'TODO', '<phase>']) {
+    assert.deepEqual(missingInputs('codex-advisor', `${order}phase: ${value}`).map((entry) => entry.label), ['phase']);
+  }
+  assert.deepEqual(missingInputs('codex-build', `${order}scope: scope`).map((entry) => entry.label), ['scope']);
+  assert.match(diagnoseInput('scope: scope', 'scope').reason, /placeholder/);
+  const rendered = renderRequiredInputs('codex-advisor');
+  assert.match(rendered, /scope first.*advise with --continue/);
+  assert.match(rendered, /same order/);
+  for (const entry of REQUIRED_INPUTS['codex-advisor']) {
+    assert.ok(entry.explanation.length > 0);
+    assert.ok(entry.example.length > 0);
+  }
 });
 
 test('template placeholders are missing even when their labels are present', () => {

@@ -75,7 +75,7 @@ test('missing and undeclared phases refuse before probes and leave no run direct
   }
 });
 
-test('all agents keep the default phase when omitted or explicitly requested', () => {
+test('single-phase agents keep the default phase when omitted or explicitly requested', () => {
   for (const agent of ['codex-scout', 'codex-build', 'codex-review']) {
     for (const phase of [undefined, 'default']) {
       const { order, status, env } = workerFrom(launch({ agent, phase }).output);
@@ -126,8 +126,8 @@ await import(${JSON.stringify(CONFIG.href)});
     });
     assert.equal(output.status, 0, output.stderr);
     const expected = budget === 15
-      ? 'budgets: scout: 15 minutes; build: 25 minutes; review: 20 minutes'
-      : 'budgets: scout: scope: 5 minutes, advise: 15 minutes; build: 25 minutes; review: 20 minutes';
+      ? 'budgets: scout: 15 minutes; build: 25 minutes; review: 20 minutes; advisor: scope: 5 minutes, advise: 15 minutes'
+      : 'budgets: scout: scope: 5 minutes, advise: 15 minutes; build: 25 minutes; review: 20 minutes; advisor: scope: 5 minutes, advise: 15 minutes';
     assert.equal(output.stdout.split(/\r?\n/).find((line) => line.startsWith('budgets:')), expected);
   }
 });

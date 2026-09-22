@@ -82,6 +82,7 @@ export function collect(runDir, agent, exitCode) {
   const exit = exitCode === undefined || exitCode === null ? null : Number(exitCode);
   const events = readEvents(runDir);
   const worker = readJson(path.join(runDir, 'worker.json'));
+  const launched = readJson(path.join(runDir, 'status.json')) || {};
 
   const args = Array.isArray(worker?.args) ? worker.args : [];
   const argValue = (flag) => {
@@ -100,7 +101,17 @@ export function collect(runDir, agent, exitCode) {
   const meta = {
     agent,
     // D2: old runs have no phase fact; do not invent one from today's registry.
-    phase: worker?.phase ?? readJson(path.join(runDir, 'status.json'))?.phase ?? null,
+    phase: worker?.phase ?? launched.phase ?? null,
+    // Plan_59 D4: the scope outcome is a field the orchestrator branches on, not a sentence in
+    // the reply. Null when the result never said, so a missing answer is not read as "sufficient".
+    ...(agent === 'codex-advisor'
+      ? {
+          sufficient: typeof result?.sufficient === 'boolean' ? result.sufficient : null,
+          missing_paths: Array.isArray(result?.missing_paths) ? result.missing_paths : null,
+        }
+      : {}),
+    // Plan_59 D6: which second opinion a build order named, so skipped advice is measurable.
+    ...(agent === 'codex-build' ? { advice: launched.advice ?? null } : {}),
     runner_version: RUNNER_VERSION,
     project: path.basename(path.dirname(runDir)),
     run: path.basename(runDir),

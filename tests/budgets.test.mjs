@@ -47,10 +47,27 @@ test('a scalar config budget for a phased role fails loud instead of erasing its
     /budgets.phased.*unknown phase.*default.*scope, advise/);
 });
 
-test('config accepts legacy numbers and explicit default maps for every registered role', () => {
-  for (const { role } of Object.values(AGENTS)) {
+test('config accepts legacy numbers and explicit default maps for every single-phase role', () => {
+  const single = Object.values(AGENTS).filter(({ budget }) => !(budget && typeof budget === 'object'));
+  assert.ok(single.length >= 3);
+  for (const { role } of single) {
     assert.deepEqual(validateRunConfig(FILE, { budgets: { [role]: 7.5 } }).budgets[role], { default: 7.5 });
     assert.deepEqual(validateRunConfig(FILE, { budgets: { [role]: { default: 8 } } }).budgets[role], { default: 8 });
+  }
+});
+
+test('every registered phased role takes a partial phase map and refuses a legacy number', () => {
+  // Plan_59: the advisor is the first real phased role; the scalar refusal above held only for a
+  // test registry until it existed.
+  const phased = Object.values(AGENTS).filter(({ budget }) => budget && typeof budget === 'object');
+  assert.ok(phased.length >= 1);
+  for (const { role, budget } of phased) {
+    const [first, ...rest] = Object.keys(budget);
+    assert.deepEqual(validateRunConfig(FILE, { budgets: { [role]: { [first]: 2.5 } } }).budgets[role],
+      { ...budget, [first]: 2.5 });
+    assert.ok(rest.length >= 1, role);
+    assert.throws(() => validateRunConfig(FILE, { budgets: { [role]: 7.5 } }),
+      new RegExp(`budgets\\.${role}.*must be a phase map`));
   }
 });
 

@@ -2,8 +2,7 @@
  * Renders the reply lines a dispatcher is allowed to return, one format per agent.
  *
  * AGENTS adds reply strategies to the shared agent registry: for each one it describes how
- * to tell the result file is filled in and which of the three reply strategies below
- * renders it. FAIL and LIMIT bypass the per-agent strategy — a run that
+ * to tell the result file is filled in and which reply strategy below renders it. FAIL and LIMIT bypass the per-agent strategy — a run that
  * produced nothing has nothing agent-specific left to say.
  *
  * The lines built here ARE the reply. Agents forward this text verbatim instead of
@@ -40,6 +39,12 @@ export const AGENTS = {
     ...AGENT_DEFINITIONS['codex-review'],
     filled: (r) => Boolean(String(r?.verdict || '').trim()),
     reply: reviewReply,
+  },
+  // Plan_59 D4: one result file, two contracts. Either phase's decisive field proves it is filled.
+  'codex-advisor': {
+    ...AGENT_DEFINITIONS['codex-advisor'],
+    filled: (r) => typeof r?.sufficient === 'boolean' || Boolean(String(r?.recommendation?.option_id || '').trim()),
+    reply: advisorReply,
   },
 };
 
@@ -110,6 +115,40 @@ function reviewReply(ctx) {
     `Findings: critical ${counts.critical} · high ${counts.high} · medium ${counts.medium} · low ${counts.low}`,
     `Top: ${top ? `${top.severity} ${line(top.file, 80)}:${top.line_start} — ${line(top.title, 90)}` : 'no critical or high findings'}`,
     `Report: ${ctx.file(path.basename(ctx.resultPath))} · Log: ${readCommand(ctx.runDir)}`,
+  ];
+}
+
+/**
+ * Plan_59 D4: an insufficient scope is an OK run with a named outcome, not a LIMIT — the first
+ * word stays the status, and the outcome that decides the orchestrator's next step is the first
+ * thing after it, derived from the same fields meta.json records.
+ */
+function advisorReply(ctx) {
+  const r = ctx.result;
+  const log = `Report: ${ctx.file(path.basename(ctx.resultPath))} · Log: ${readCommand(ctx.runDir)}`;
+  // The result's own shape picks the lines, as it does in `filled`: a run folder missing its phase
+  // record must not send a scope answer into the advise branch and crash the verdict.
+  if (typeof r.sufficient === 'boolean') {
+    const missing = r.missing_paths || [];
+    const risks = r.predicted_risks || [];
+    return [
+      r.sufficient
+        ? 'OK — scope: sufficient; continue this run with --phase advise'
+        : `OK — scope: insufficient; ${missing.length} paths named`,
+      ...(missing.length ? [`Missing: ${line(missing.join(', '), 160)}`] : []),
+      `Predicted risks: ${risks.length}${risks[0] ? ` — ${risks[0].id} ${line(risks[0].risk, 120)}` : ''}`,
+      log,
+    ];
+  }
+  const outcomes = r.risk_outcomes || [];
+  const confirmed = outcomes.filter((o) => o.outcome === 'confirmed').length;
+  const rejected = (r.rejected || []).map((o) => `${o.option_id} (${line(o.cost, 60)})`);
+  return [
+    `OK — recommend ${r.recommendation.option_id}: ${line(r.recommendation.text, 200)}`,
+    `Rejected: ${rejected.length ? line(rejected.join('; '), 180) : 'none'}`,
+    `Counter: ${line(r.strongest_counterargument, 180)}`,
+    `Risks: ${confirmed} confirmed · ${outcomes.length - confirmed} refuted · open questions ${(r.open_questions || []).length} · confidence ${r.confidence}`,
+    log,
   ];
 }
 

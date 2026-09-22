@@ -8,7 +8,7 @@ import { unsafeForCmd } from '../../src/home/lib/runner/codex-cmd.mjs';
 import { platformSandboxArgs, WINDOWS_SANDBOX } from '../../src/home/lib/runner/sandbox-flags.mjs';
 import { loadRunEnv } from '../../src/home/lib/runner/run-env.mjs';
 
-const AGENTS = ['codex-scout', 'codex-build', 'codex-review'];
+const AGENTS = ['codex-scout', 'codex-build', 'codex-review', 'codex-advisor'];
 
 const argsFor = (agent) => codexArgs(
   { agent, effort: 'medium', repo: process.cwd(), models: {} },

@@ -63,7 +63,7 @@ export function runProfile(opts) {
 // Plan_57: the preflight must probe the same permissions that the role will request.
 export function sandboxModeFor(agent) {
   if (agent === 'codex-build') return 'workspace-write';
-  if (agent === 'codex-scout' || agent === 'codex-review') return 'read-only';
+  if (agent === 'codex-scout' || agent === 'codex-review' || agent === 'codex-advisor') return 'read-only';
   throw new Error(`unknown agent for sandbox mode: ${agent}`);
 }
 
@@ -75,7 +75,8 @@ export function codexArgs(opts, runDir, isGitRepo) {
   const modelArgs = profile.model ? ['-m', profile.model] : [];
   // Plan_56 D35: there is no identifier for ordinary speed; an unpinned tier adds no override.
   const speedArgs = profile.speed ? ['-c', `service_tier=${profile.speed}`] : [];
-  if (opts.agent === 'codex-scout') {
+  // Plan_59: advisor uses schema-backed plain exec with the same read-only isolation as scout.
+  if (opts.agent === 'codex-scout' || opts.agent === 'codex-advisor') {
     return [
       'exec',
       '--json',
@@ -89,7 +90,7 @@ export function codexArgs(opts, runDir, isGitRepo) {
       ...modelArgs,
       '--sandbox',
       sandboxMode,
-      '--skip-git-repo-check',
+      ...(opts.agent === 'codex-scout' || !isGitRepo ? ['--skip-git-repo-check'] : []),
       '-C',
       opts.repo,
       '--output-schema',

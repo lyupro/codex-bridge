@@ -1,7 +1,7 @@
 /** Guards the advisor answer schemas handed to Codex as --output-schema (Plan_59 D3-D5, D10). */
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { advisorSchema, PHASE_SCHEMAS, SCHEMAS } from '../../src/home/lib/runner/schemas.mjs';
+import { advisorSchema, PHASE_SCHEMAS, SCHEMAS, schemaFor } from '../../src/home/lib/runner/schemas.mjs';
 import { validAdvice, validScope } from '../meta/advisor-fixtures.mjs';
 
 const sample = (phase) => (phase === 'advise' ? validAdvice() : validScope());
@@ -38,13 +38,15 @@ function* requiredPaths(schema, value, prefix = []) {
   }
 }
 
-test('advisor schemas are looked up by role and phase without registering an execution agent', () => {
+test('advisor schemas are selected by phase while execution schemas retain their static map', () => {
   assert.deepEqual(Object.keys(SCHEMAS), ['codex-scout', 'codex-build', 'codex-review']);
   for (const phase of ['scope', 'advise']) {
     assert.equal(advisorSchema(phase), PHASE_SCHEMAS.advisor[phase]);
+    assert.equal(schemaFor('codex-advisor', phase), advisorSchema(phase));
     assert.equal(validates(advisorSchema(phase), sample(phase)), true);
   }
   for (const phase of [undefined, '', 'other', 'toString', '__proto__']) assert.throws(() => advisorSchema(phase), RangeError);
+  for (const [agent, schema] of Object.entries(SCHEMAS)) assert.equal(schemaFor(agent, 'default'), schema);
 });
 
 test('every schema object has all properties required, disallows extras and has no defaults', () => {

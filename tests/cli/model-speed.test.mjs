@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { model } from '../../cli/model.mjs';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 
-const roles = ['scout', 'build', 'review'];
+const roles = ['scout', 'build', 'review', 'advisor'];
 const credits = 'https://learn.chatgpt.com/docs/agent-configuration/speed';
 const tier = () => ({ id: randomUUID(), name: 'Fast', description: '2x speed, increased usage' });
 const entry = (overrides = {}) => ({
@@ -33,7 +33,7 @@ function unchanged({ root, configPath, source }) {
   assert.deepEqual(fs.readdirSync(root), ['config.json']);
 }
 
-test('speed refuses missing and unknown roles with all three allowed roles before fetching', async (t) => {
+test('speed refuses missing and unknown roles with every allowed role before fetching', async (t) => {
   const data = fixture(t, {});
   for (const args of [[], ['unknown-role'], ['unknown-role', 'unset']]) {
     const result = await model(['speed', ...args], { ...data, fetchCatalogue: noFetch });

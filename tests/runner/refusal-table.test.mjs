@@ -48,6 +48,12 @@ const REFUSALS = [
     why: 'the chain, not the tree, is what refuses; no folder may join the chain',
   },
   {
+    name: 'a continuation that is not an OK advisor scope run',
+    side: 'before',
+    marker: 'scopeRunRefusal({ agent: opts.agent',
+    why: 'Plan_59 D14: phase 2 needs a successful phase 1 and must refuse before registration',
+  },
+  {
     name: 'a repeat that needs --continue',
     side: 'before',
     marker: '`--continue is required:',

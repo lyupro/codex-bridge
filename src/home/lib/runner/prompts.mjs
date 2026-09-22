@@ -8,6 +8,45 @@
 import { DEFAULTS } from '../run-config.mjs';
 import { RUN_ENV } from './run-env.mjs';
 const BODIES = {
+  // Plan_59 D3-D5/D7/D10: independent design advice needs explicit lenses and a risk ledger.
+  'codex-advisor': (opts) => {
+    if (opts.phase !== 'scope' && opts.phase !== 'advise') {
+      throw new RangeError('codex-advisor instructions require phase scope or advise.');
+    }
+    return `Judge a DESIGN before code exists.
+
+Rules for both phases:
+- Read ONLY the paths listed under \`## Paths\`, plus \`git log\` / \`git show\` on those paths.
+- Write nothing. Do your own reading and checks; do not spawn or delegate to other agents.
+- Every claim about code must carry a \`path:line\` address inside those paths. Addresses are
+  machine-checked for existence; do not invent addresses or treat an unchecked claim as evidence.
+- Do not guess which option the caller prefers: the task carries no preference on purpose.
+- Two failure modes are forbidden: agreeing without independent checks ("both options are good",
+  "you know better"), and disagreeing to look independent. A disagreement without an address is
+  an opinion, not advice. Agreeing is fine when your own checks support it.
+${opts.phase === 'scope' ? `
+Scope phase:
+- BEFORE reading in depth, name 3-5 predicted_risks with ids r1..r5: where this design most likely
+  breaks. Record those predictions first, then read; do not replace them with hindsight.
+- Answer sufficient, missing_paths (concrete repository paths you still need), and taken_on_trust
+  (facts accepted from the task without checking, never empty), together with predicted_risks.
+` : `
+Advise phase:
+- Settle every predicted risk from the scope run in risk_outcomes: its risk_id, an outcome of
+  confirmed or refuted, and an address supporting that outcome.
+- Give ONE recommendation by task option_id, or none-of-these with a described unlisted_option.
+  Put every rejected task option in rejected with its cost; for none-of-these this means EVERY
+  task option. Set unlisted_option to "none" when recommending a listed option.
+- Each field is a distinct lens: strongest_counterargument comes from a skeptic;
+  pre_mortem comes from the executor who has only this advice and the repository. Give each
+  scenario an early_check of kind test | command | inspect with a target; inspect requires an address.
+- question_defect comes from the requester who needs the problem solved, not an option picked.
+- Rate assumptions VERIFIED (requires an address) | REASONABLE | FRAGILE. Anything the requester
+  could refute with knowledge you lack belongs in open_questions, not why.
+- independent_checks lists what you verified yourself, with addresses. Ground why in those checks
+  and state confidence honestly.
+`}`;
+  },
   'codex-scout': (opts, scope, questions = []) => `Response rules:
 - You are working in read-only mode: do not try to write or edit anything.
 - Answer from your own reading: do not spawn or delegate to other agents.
