@@ -40,7 +40,7 @@ import { cleanupRetention } from '../retention.mjs';
 import { renderConventions } from './conventions.mjs';
 import { validateScope } from './scope-check.mjs';
 import { probeSandbox, sandboxRefusal } from './sandbox-probe.mjs';
-import { preflightRefusal, resolveRunPhase } from './preflight.mjs';
+import { preflightRefusal, resolveRunPhase, taskPreflight } from './preflight.mjs';
 
 /**
  * The worker is this same program re-invoked as `--worker <runDir>`, so the path spawned
@@ -95,6 +95,9 @@ export async function launcher(argv = process.argv.slice(2)) {
   const opts = parseArgs(argv);
   opts.phase = resolveRunPhase(opts, RUN_ENV.budgets);
   const taskText = settleTaskInput(opts);
+  // Plan_59 D5/D6: blind choices and design authority must be checked before the paid probe.
+  const taskGate = taskPreflight({ agent: opts.agent, taskText });
+  if (taskGate.refusal) die(taskGate.refusal, 1);
   const topLevel = git(opts.repo, ['rev-parse', '--show-toplevel']);
   const isGitRepo = topLevel.status === 0;
   const repoRoot = isGitRepo ? topLevel.stdout.trim() : opts.repo;
@@ -232,6 +235,7 @@ export async function launcher(argv = process.argv.slice(2)) {
     slug: opts.slug,
     order_id: opts.orderId,
     phase: opts.phase,
+    ...(taskGate.advice === undefined ? {} : { advice: taskGate.advice }),
     // Fingerprint of the order, so a later run of the same task finds this one whatever it
     // calls itself. Written here, before Codex starts, like everything the chain reads.
     task_hash: taskHash,

@@ -10,6 +10,11 @@
 const WORKER_MODES = ['spawn', 'error', 'forbidden'];
 const PROBE_MODES = ['marker', 'real', 'forbidden'];
 
+/** Plan_59 D6: existing build fixtures exercise mechanical work, without choosing a design. */
+export function fixtureTask(agent, text) {
+  return agent === 'codex-build' ? `${text}\nadvice: mechanical\n` : text;
+}
+
 export function launcherProcessMocks({ worker, probe }) {
   if (!WORKER_MODES.includes(worker)) throw new TypeError(`Unknown worker mock: ${worker}`);
   if (!PROBE_MODES.includes(probe)) throw new TypeError(`Unknown probe mock: ${probe}`);

@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { validateScope } from '../../src/home/lib/runner/scope-check.mjs';
-import { launcherProcessMocks } from './launcher-mocks.mjs';
+import { fixtureTask, launcherProcessMocks } from './launcher-mocks.mjs';
 
 const RUN_CODEX = new URL('../../src/home/lib/run-codex.mjs', import.meta.url).href;
 const LAUNCHER = new URL('../../src/home/lib/runner/launcher.mjs', import.meta.url).href;
@@ -45,7 +45,7 @@ try {
   return spawnSync(process.execPath, ['--input-type=module', '-e', script], {
     cwd,
     env: { ...process.env, ...env },
-    input,
+    input: fixtureTask(args[args.indexOf('--agent') + 1], input),
     encoding: 'utf8',
   });
 }

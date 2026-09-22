@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { resolveProjectRunsDir } from '../../src/home/lib/runner/project-dir.mjs';
 import { SANDBOX_PROBE_MARKER } from '../../src/home/lib/runner/sandbox-probe.mjs';
-import { launcherProcessMocks } from './launcher-mocks.mjs';
+import { fixtureTask, launcherProcessMocks } from './launcher-mocks.mjs';
 
 const RUN_CODEX = fileURLToPath(new URL('../../src/home/lib/run-codex.mjs', import.meta.url));
 const LAUNCHER = new URL('../../src/home/lib/runner/launcher.mjs', import.meta.url).href;
@@ -78,7 +78,7 @@ function baseArgs(agent, repo) {
 
 function runner(args, env, cwd) {
   return spawnSync(process.execPath, [RUN_CODEX, ...args], {
-    cwd, env, input: 'sandbox gate fixture', encoding: 'utf8', timeout: 20_000, windowsHide: true,
+    cwd, env, input: fixtureTask(args[args.indexOf('--agent') + 1], 'sandbox gate fixture'), encoding: 'utf8', timeout: 20_000, windowsHide: true,
   });
 }
 
@@ -103,7 +103,7 @@ try {
 }
 `;
   return spawnSync(process.execPath, ['--input-type=module', '-e', script], {
-    cwd, env, input: 'sandbox gate fixture', encoding: 'utf8', timeout: 20_000, windowsHide: true,
+    cwd, env, input: fixtureTask(args[args.indexOf('--agent') + 1], 'sandbox gate fixture'), encoding: 'utf8', timeout: 20_000, windowsHide: true,
   });
 }
 

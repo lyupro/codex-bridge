@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { parseContinuationGrant } from '../../src/home/lib/required-inputs.mjs';
 import { resolveProjectRunsDir } from '../../src/home/lib/runner/project-dir.mjs';
+import { fixtureTask } from './launcher-mocks.mjs';
 
 const RUN_CODEX = fileURLToPath(new URL('../../src/home/lib/run-codex.mjs', import.meta.url));
 const AGENT = 'codex-build';
@@ -27,7 +28,7 @@ function runner(args, input, runsRoot, repo) {
   return spawnSync(process.execPath, [RUN_CODEX, ...args], {
     cwd: repo,
     env: { ...process.env, CODEX_RUNS_ROOT: runsRoot },
-    input,
+    input: fixtureTask(AGENT, input),
     encoding: 'utf8',
   });
 }

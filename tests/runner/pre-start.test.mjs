@@ -15,7 +15,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { resolveProjectRunsDir } from '../../src/home/lib/runner/project-dir.mjs';
-import { launcherProcessMocks } from './launcher-mocks.mjs';
+import { fixtureTask, launcherProcessMocks } from './launcher-mocks.mjs';
 
 const RUN_CODEX = fileURLToPath(new URL('../../src/home/lib/run-codex.mjs', import.meta.url));
 const LAUNCHER = new URL('../../src/home/lib/runner/launcher.mjs', import.meta.url).href;
@@ -49,7 +49,7 @@ function runner(args, input, env, cwd) {
   return spawnSync(process.execPath, [RUN_CODEX, ...args], {
     cwd,
     env: { ...process.env, ...env },
-    input,
+    input: fixtureTask(args[args.indexOf('--agent') + 1], input),
     encoding: 'utf8',
   });
 }
@@ -76,7 +76,7 @@ try {
   return spawnSync(process.execPath, ['--input-type=module', '-e', script], {
     cwd,
     env: { ...process.env, ...env },
-    input,
+    input: fixtureTask(args[args.indexOf('--agent') + 1], input),
     encoding: 'utf8',
   });
 }

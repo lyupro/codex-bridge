@@ -24,6 +24,12 @@ const LAUNCHER = read('launcher.mjs');
  */
 const REFUSALS = [
   {
+    name: 'a biased advisor task or missing build advice',
+    side: 'before',
+    marker: 'if (taskGate.refusal) die(taskGate.refusal, 1)',
+    why: 'Plan_59 D5/D6: blind choices and design authority must be settled without spending quota',
+  },
+  {
     name: 'an impossible --scope pattern',
     side: 'before',
     marker: '`--scope pattern ${JSON.stringify(scopeRefusal.pattern)} refused',
@@ -78,6 +84,15 @@ const registrationIndex = LAUNCHER.indexOf('= makeRunDir(');
 test('the launcher registers a run exactly once', () => {
   assert.notEqual(registrationIndex, -1);
   assert.equal(LAUNCHER.split('= makeRunDir(').length - 1, 1);
+});
+
+test('task gates precede the paid sandbox probe and read the one parsed task', () => {
+  // Plan_59 D5/D6: a biased advisor task or a build order without advice costs nothing. The task
+  // text comes from parseArgs alone; a second argv reader would drift from it.
+  const taskGate = LAUNCHER.indexOf('if (taskGate.refusal) die(taskGate.refusal, 1)');
+  assert.ok(taskGate > LAUNCHER.indexOf('= parseArgs(argv)'));
+  assert.ok(taskGate >= 0 && taskGate < LAUNCHER.indexOf('await probeSandbox('));
+  assert.equal(LAUNCHER.includes('preflightAdvisorInput'), false);
 });
 
 for (const { name, side, marker, why } of REFUSALS) {
