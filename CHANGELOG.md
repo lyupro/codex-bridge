@@ -4,6 +4,51 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.5] - 2026-09-23
+
+### Added
+
+- A fourth dispatcher, `codex-advisor`, answers "which option is right" before any code is written.
+  The other three answer what is: what the code contains, make the change, what is wrong with a
+  finished diff. An orchestrator asked for advice four times in a row only after the fact, each time
+  convinced its own design was sound — so the advisor is read-only, runs on the Codex subscription,
+  and its answer is judged by the package rather than trusted. It works in two phases of one order:
+  `scope` (5 minutes) says whether the listed files are enough and names the missing ones, and
+  `advise` (15 minutes) continues that run with `--continue` and picks one option. An insufficient
+  scope is an `OK` run with `sufficient: false` and the missing paths in `meta.json`, never `LIMIT`:
+  `LIMIT` means the quota is gone and calls for the opposite reaction.
+- Agreement is made structurally hard to express. The task lists options as `- id: description`
+  with no preference marker — a task that says which option the orchestrator leans towards is refused
+  before the run starts, because an advisor that knows the expected answer agrees with it. The answer
+  names exactly one option id (or `none-of-these` with an unlisted option, and then every listed
+  option is rejected with its cost), a non-empty `rejected` list with costs, the strongest
+  counterargument, assumptions rated `VERIFIED | REASONABLE | FRAGILE`, a pre-mortem whose early
+  checks are a test, a command or an inspectable address, and what the advisor checked on its own.
+- Every `path:line` in the advice is checked: it must exist in the worktree, fall within the file,
+  and lie inside the listed paths or the paths phase 1 declared missing. The sandbox cannot restrict
+  what Codex reads, so the boundary is held on the output — an invented or out-of-scope citation fails
+  the run.
+- A run phase is a runner concept, not an advisor detail. `--phase` is checked against the phases the
+  role declares, travels through `worker.json`, `status.json` and `meta.json`, and the budget resolves
+  by role and phase in one place. `budgets.<role>` in the config accepts a number for single-phase
+  roles and a phase map (`{"scope": 5, "advise": 15}`, partial maps allowed) for roles with phases; a
+  bare number for a role with phases is refused on reading the config instead of silently erasing
+  its phases. Existing configs stay valid without edits.
+- Every `codex-build` task file carries exactly one `advice:` line: the folder of the advisor run
+  behind the order, or one of `mechanical | revert | docs-only | test-only` for work that needs no
+  second opinion. Anything else is refused before the run starts, and the value lands in `meta.json`,
+  so skipped advice is measurable instead of remembered.
+
+### Fixed
+
+- A scope pattern inside a service directory is refused before the run starts. The verdict fails
+  every change under `.git/`, `.claude/`, `.codex/`, `.omx/`, `.omc/` and `node_modules/` whatever the
+  scope says, but the preflight check let such a pattern through: an order scoped to
+  `.claude/context/architecture.md` worked 22 minutes, wrote every file correctly and was failed for
+  one of them. The check now uses the verdict's own definition of a service directory, so the gate and
+  the judge cannot become two measures of one tree. A glob that can also match ordinary files
+  (`**/*.md`) is still accepted.
+
 ## [0.6.4] - 2026-09-21
 
 ### Fixed

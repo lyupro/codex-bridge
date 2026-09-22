@@ -1,6 +1,6 @@
 # codex-bridge
 
-**Delegate implementation, reconnaissance and review from Claude Code to Codex — six host guards, zero runtime dependencies, zero build steps.**
+**Delegate implementation, reconnaissance, review and design advice from Claude Code to Codex — six host guards, zero runtime dependencies, zero build steps.**
 
 [![npm version](https://img.shields.io/npm/v/@lyupro/codex-bridge)](https://www.npmjs.com/package/@lyupro/codex-bridge)
 [![Node.js](https://img.shields.io/node/v/@lyupro/codex-bridge)](https://www.npmjs.com/package/@lyupro/codex-bridge)
@@ -33,7 +33,7 @@ Use `--scope project` to install the Claude Code-facing files under `<repo>/.cla
 Installation has two roots:
 
 - `~/.lyupro/.codex-bridge/` contains package runtime files, guards, configuration, conventions, and the installation record.
-- The selected Claude Code root (`~/.claude/` or `<repo>/.claude/`) contains the three agents, two slash commands, merged hook registrations in `settings.json`, and run artifacts under `codex-runs/`.
+- The selected Claude Code root (`~/.claude/` or `<repo>/.claude/`) contains the four agents (`codex-scout`, `codex-build`, `codex-review`, `codex-advisor`), two slash commands, merged hook registrations in `settings.json`, and run artifacts under `codex-runs/`.
 
 The repository's `src/home/` directory is the literal image copied into the branded root: its
 `hooks/`, `lib/`, `config.json`, and `conventions.md` paths are the host paths without remapping.
