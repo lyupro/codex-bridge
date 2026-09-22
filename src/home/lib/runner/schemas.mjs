@@ -155,3 +155,73 @@ export const SCHEMAS = {
   'codex-build': BUILD_SCHEMA,
   'codex-review': REVIEW_SCHEMA,
 };
+
+// Plan_59 D3/D4/D5 keeps the design contract separate from the existing execution roles.
+export const PHASE_SCHEMAS = {
+  advisor: {
+    scope: {
+      $schema: 'https://json-schema.org/draft/2020-12/schema',
+      type: 'object',
+      additionalProperties: false,
+      required: ['sufficient', 'missing_paths', 'taken_on_trust'],
+      properties: {
+        sufficient: { type: 'boolean' },
+        missing_paths: { type: 'array', items: { type: 'string' } },
+        taken_on_trust: { type: 'array', minItems: 1, items: { type: 'string' } },
+      },
+    },
+    advise: {
+      $schema: 'https://json-schema.org/draft/2020-12/schema',
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'recommendation', 'why', 'rejected', 'strongest_counterargument', 'question_defect',
+        'assumptions', 'falsifier', 'confidence', 'independent_checks',
+      ],
+      properties: {
+        recommendation: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['option_id', 'text'],
+          properties: {
+            option_id: { type: 'string' },
+            text: { type: 'string', maxLength: 300, pattern: '^[^\\r\\n\\u2028\\u2029]*$' },
+          },
+        },
+        why: { type: 'array', minItems: 3, maxItems: 5, items: { type: 'string' } },
+        rejected: {
+          type: 'array',
+          minItems: 1,
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['option_id', 'cost'],
+            properties: { option_id: { type: 'string' }, cost: { type: 'string' } },
+          },
+        },
+        strongest_counterargument: { type: 'string', minLength: 80 },
+        question_defect: { type: 'string' },
+        assumptions: { type: 'array', items: { type: 'string' } },
+        falsifier: { type: 'string', minLength: 20 },
+        confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
+        independent_checks: {
+          type: 'array',
+          minItems: 1,
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['check', 'address'],
+            properties: { check: { type: 'string' }, address: { type: 'string' } },
+          },
+        },
+      },
+    },
+  },
+};
+
+export function advisorSchema(phase) {
+  if (!Object.hasOwn(PHASE_SCHEMAS.advisor, phase)) {
+    throw new RangeError(`Unknown advisor phase ${JSON.stringify(phase)}; use "scope" or "advise".`);
+  }
+  return PHASE_SCHEMAS.advisor[phase];
+}
