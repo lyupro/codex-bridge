@@ -1,4 +1,4 @@
-/** Judges advisor evidence and independent decisions so Plan_59 D3/D4/D5 failures cannot pass as advice. */
+/** Judges advisor evidence and independent decisions so Plan_59 D3/D4/D5/D10 failures cannot pass as advice. */
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -107,21 +107,41 @@ function checkCitations({ phase, result, task, repoRoot }, reasons) {
     const problem = citationProblem(address, root, allowed);
     if (problem) reasons.push(`D3 ${field} ${JSON.stringify(address)}: ${problem}.`);
   };
-  for (const name of ['why', 'strongest_counterargument', 'falsifier']) {
-    for (const { field, value } of strings(result[name], name)) {
-      for (const address of addressesIn(value, root)) check(field, address);
-    }
+  const checkAddress = (field, raw) => {
+    const trimmed = raw.trim();
+    check(field, /^`.*`$/.test(trimmed) ? trimmed.slice(1, -1) : trimmed);
+  };
+  // D3 covers every address anywhere in the answer. A list of prose fields had to be edited by
+  // hand when `falsifier` became `pre_mortem`, and each new field would have joined it unchecked.
+  // Fields that ARE an address are checked whole below, so they are skipped here.
+  for (const { field, value } of strings(result)) {
+    if (/\.address$|\.early_check\.target$/.test(field)) continue;
+    for (const address of addressesIn(value, root)) check(field, address);
   }
   if (result.independent_checks) {
     for (const [index, item] of result.independent_checks.entries()) {
-      const raw = item.address.trim();
-      const address = /^`.*`$/.test(raw) ? raw.slice(1, -1) : raw;
-      check(`independent_checks[${index}].address`, address);
+      checkAddress(`independent_checks[${index}].address`, item.address);
+    }
+  }
+  if (phase === 'advise') {
+    for (const [index, item] of result.assumptions.entries()) {
+      if (item.rating === 'VERIFIED' || item.address !== '') {
+        checkAddress(`assumptions[${index}].address`, item.address);
+      }
+    }
+    for (const [index, item] of result.pre_mortem.entries()) {
+      if (item.early_check.kind === 'inspect') {
+        checkAddress(`pre_mortem[${index}].early_check.target`, item.early_check.target);
+      }
+    }
+    // An outcome's address is evidence whether or not the phase-1 answer is at hand.
+    for (const [index, item] of result.risk_outcomes.entries()) {
+      checkAddress(`risk_outcomes[${index}].address`, item.address);
     }
   }
 }
 
-export function judgeAdvice({ phase, result, task, repoRoot, commandsRun, language }) {
+export function judgeAdvice({ phase, result, task, repoRoot, commandsRun, language, scopeResult }) {
   if (phase !== 'scope' && phase !== 'advise') throw new RangeError('phase must be "scope" or "advise".');
   if (!Number.isInteger(commandsRun) || commandsRun < 0) {
     throw new TypeError('commandsRun must be a non-negative integer.');
@@ -143,11 +163,30 @@ export function judgeAdvice({ phase, result, task, repoRoot, commandsRun, langua
     if (result.sufficient === true && result.missing_paths.length) {
       reasons.push(`D4 missing_paths ${JSON.stringify(result.missing_paths)} with sufficient true: resolve the scope contradiction.`);
     }
+    const riskIds = new Set();
+    for (const [index, item] of result.predicted_risks.entries()) {
+      if (riskIds.has(item.id)) {
+        reasons.push(`D10 predicted_risks[${index}].id ${JSON.stringify(item.id)}: use a unique predicted risk id.`);
+      }
+      riskIds.add(item.id);
+    }
   } else {
     const ids = new Set(task.options.map(({ id }) => id));
     const chosen = result.recommendation.option_id;
-    if (!ids.has(chosen)) {
+    if (!ids.has(chosen) && chosen !== 'none-of-these') {
       reasons.push(`D5 recommendation.option_id ${JSON.stringify(chosen)}: choose a task option id.`);
+    }
+    if (chosen === 'none-of-these') {
+      if (result.unlisted_option === 'none' || [...result.unlisted_option.trim()].length < 40) {
+        reasons.push(`D10 unlisted_option ${JSON.stringify(result.unlisted_option)}: describe an unlisted option in at least 40 characters.`);
+      }
+      const rejected = new Set(result.rejected.map(({ option_id }) => option_id));
+      const missing = [...ids].filter((id) => !rejected.has(id));
+      if (missing.length) {
+        reasons.push(`D10 rejected ${JSON.stringify(missing)}: reject every task option when recommending "none-of-these".`);
+      }
+    } else if (ids.has(chosen) && result.unlisted_option !== 'none') {
+      reasons.push(`D10 unlisted_option ${JSON.stringify(result.unlisted_option)}: use "none" when recommending a task option.`);
     }
     for (const [index, item] of result.rejected.entries()) {
       if (!ids.has(item.option_id)) {
@@ -155,6 +194,20 @@ export function judgeAdvice({ phase, result, task, repoRoot, commandsRun, langua
       }
       if (item.option_id === chosen) {
         reasons.push(`D5 rejected[${index}].option_id ${JSON.stringify(chosen)}: do not reject the recommended option.`);
+      }
+    }
+    if (scopeResult !== undefined) {
+      const riskIds = new Set(scopeResult.predicted_risks.map(({ id }) => id));
+      for (const [index, item] of result.risk_outcomes.entries()) {
+        if (!riskIds.has(item.risk_id)) {
+          reasons.push(`D10 risk_outcomes[${index}].risk_id ${JSON.stringify(item.risk_id)}: use a scope predicted risk id.`);
+        }
+      }
+      for (const id of riskIds) {
+        const count = result.risk_outcomes.filter(({ risk_id }) => risk_id === id).length;
+        if (count !== 1) {
+          reasons.push(`D10 risk_outcomes ${JSON.stringify(id)} count ${count}: provide exactly one outcome per predicted risk.`);
+        }
       }
     }
   }

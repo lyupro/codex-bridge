@@ -1,5 +1,6 @@
 /**
  * The shape each agent's answer must have, one JSON schema per agent.
+ * Plan_59 D10 adds alternatives, rated assumptions, risk outcomes, pre-mortems and open questions.
  *
  * Handed to `codex exec --output-schema`, so a run that answers in the wrong shape is
  * rejected by Codex itself rather than discovered later by write-meta.mjs. Keyed by agent
@@ -156,18 +157,29 @@ export const SCHEMAS = {
   'codex-review': REVIEW_SCHEMA,
 };
 
-// Plan_59 D3/D4/D5 keeps the design contract separate from the existing execution roles.
+// Plan_59 D3/D4/D5/D10 keeps the design contract separate from the existing execution roles.
 export const PHASE_SCHEMAS = {
   advisor: {
     scope: {
       $schema: 'https://json-schema.org/draft/2020-12/schema',
       type: 'object',
       additionalProperties: false,
-      required: ['sufficient', 'missing_paths', 'taken_on_trust'],
+      required: ['sufficient', 'missing_paths', 'taken_on_trust', 'predicted_risks'],
       properties: {
         sufficient: { type: 'boolean' },
         missing_paths: { type: 'array', items: { type: 'string' } },
         taken_on_trust: { type: 'array', minItems: 1, items: { type: 'string' } },
+        predicted_risks: {
+          type: 'array',
+          minItems: 3,
+          maxItems: 5,
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['id', 'risk'],
+            properties: { id: { type: 'string', pattern: '^r[1-9]$' }, risk: { type: 'string' } },
+          },
+        },
       },
     },
     advise: {
@@ -176,7 +188,8 @@ export const PHASE_SCHEMAS = {
       additionalProperties: false,
       required: [
         'recommendation', 'why', 'rejected', 'strongest_counterargument', 'question_defect',
-        'assumptions', 'falsifier', 'confidence', 'independent_checks',
+        'unlisted_option', 'assumptions', 'risk_outcomes', 'pre_mortem', 'open_questions',
+        'confidence', 'independent_checks',
       ],
       properties: {
         recommendation: {
@@ -188,6 +201,7 @@ export const PHASE_SCHEMAS = {
             text: { type: 'string', maxLength: 300, pattern: '^[^\\r\\n\\u2028\\u2029]*$' },
           },
         },
+        unlisted_option: { type: 'string' },
         why: { type: 'array', minItems: 3, maxItems: 5, items: { type: 'string' } },
         rejected: {
           type: 'array',
@@ -201,8 +215,55 @@ export const PHASE_SCHEMAS = {
         },
         strongest_counterargument: { type: 'string', minLength: 80 },
         question_defect: { type: 'string' },
-        assumptions: { type: 'array', items: { type: 'string' } },
-        falsifier: { type: 'string', minLength: 20 },
+        assumptions: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['claim', 'rating', 'address'],
+            properties: {
+              claim: { type: 'string' },
+              rating: { type: 'string', enum: ['VERIFIED', 'REASONABLE', 'FRAGILE'] },
+              address: { type: 'string' },
+            },
+          },
+        },
+        risk_outcomes: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['risk_id', 'outcome', 'address'],
+            properties: {
+              risk_id: { type: 'string' },
+              outcome: { type: 'string', enum: ['confirmed', 'refuted'] },
+              address: { type: 'string' },
+            },
+          },
+        },
+        pre_mortem: {
+          type: 'array',
+          minItems: 2,
+          maxItems: 3,
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['scenario', 'early_check'],
+            properties: {
+              scenario: { type: 'string', minLength: 30 },
+              early_check: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['kind', 'target'],
+                properties: {
+                  kind: { type: 'string', enum: ['test', 'command', 'inspect'] },
+                  target: { type: 'string', minLength: 3 },
+                },
+              },
+            },
+          },
+        },
+        open_questions: { type: 'array', items: { type: 'string' } },
         confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
         independent_checks: {
           type: 'array',

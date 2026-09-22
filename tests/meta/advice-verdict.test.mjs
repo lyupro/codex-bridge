@@ -1,10 +1,11 @@
+/** Guards the advisor evidence and answer contracts in Plan_59 D3/D4/D5/D10. */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { makeTempTree } from '../temp-tree.mjs';
 import { judgeAdvice } from '../../src/home/lib/meta/advice-verdict.mjs';
-import { advisorSchema, PHASE_SCHEMAS, SCHEMAS } from '../../src/home/lib/runner/schemas.mjs';
+import { validAdvice, validScope } from './advisor-fixtures.mjs';
 
 const suiteRoot = makeTempTree('advisor-verdict-');
 const repoRoot = path.join(suiteRoot, 'repo');
@@ -29,26 +30,11 @@ fs.writeFileSync(path.join(outside, 'external.mjs'), 'external evidence\n');
 fs.symlinkSync(outside, path.join(repoRoot, 'src', 'escape'), 'junction');
 fs.symlinkSync(path.join(repoRoot, 'src'), path.join(repoRoot, 'linked-src'), 'junction');
 
-function validAdvice() {
-  return {
-    recommendation: { option_id: 'keep', text: 'Keep the current boundary.' },
-    why: ['The entry point is explicit at src/entry.mjs:1.', 'The second line is stable.', 'No caller migration is needed.'],
-    rejected: [{ option_id: 'split', cost: 'Requires a coordinated caller migration.' }],
-    strongest_counterargument: 'The existing boundary may retain coupling as more callers arrive, requiring a later coordinated migration.',
-    question_defect: 'none',
-    assumptions: [],
-    falsifier: 'A new caller requiring separate lifecycle ownership would overturn this decision.',
-    confidence: 'medium',
-    independent_checks: [{ check: 'Read the entry point.', address: 'src/entry.mjs:1-3' }],
-  };
-}
 
 function input(phase = 'advise') {
   return {
     phase,
-    result: phase === 'advise' ? validAdvice() : {
-      sufficient: true, missing_paths: [], taken_on_trust: ['The supplied requirements describe the intended caller.'],
-    },
+    result: phase === 'advise' ? validAdvice() : validScope(),
     task: { options: [{ id: 'keep', description: 'Keep' }, { id: 'split', description: 'Split' }, { id: 'later', description: 'Wait' }], paths: ['src'] },
     repoRoot, commandsRun: 1, language: 'English',
   };
@@ -60,10 +46,17 @@ function fails(value, field, offending) {
   assert.equal(verdict.ok, false);
   assert.ok(verdict.reasons.some((reason) => reason.includes(field) && reason.includes(offending)), JSON.stringify(verdict));
 }
+function rejectsChange(name, make, change, field, offending) {
+  test(name, () => {
+    const value = make();
+    passes(value);
+    change(value.result, value);
+    fails(value, field, offending);
+  });
+}
 
 test('accepts both phases, leaves unused options alone and does not mutate inputs or evidence', () => {
-  for (const phase of ['scope', 'advise']) {
-    const value = input(phase);
+  for (const value of [input('scope'), input(), withRisks(), noneOfThese(), { ...input(), result: { ...validAdvice(), assumptions: [], risk_outcomes: [], open_questions: [] } }]) {
     const before = structuredClone(value);
     passes(value);
     assert.deepEqual(value, before);
@@ -71,72 +64,72 @@ test('accepts both phases, leaves unused options alone and does not mutate input
   assert.equal(fs.readFileSync(path.join(repoRoot, 'src/entry.mjs'), 'utf8'), files['src/entry.mjs']);
 });
 
-for (const phase of ['scope', 'advise']) {
-  test(`D4 ${phase} requires at least one command`, () => {
-    const value = input(phase);
-    passes(value);
-    value.commandsRun = 0;
-    fails(value, 'commandsRun', '0');
-  });
-}
-
-test('D4 scope names what was taken on trust', () => {
-  const value = input('scope');
-  passes(value);
-  value.result.taken_on_trust = [];
-  fails(value, 'taken_on_trust', '[]');
-});
-test('D4 insufficient scope must name missing paths', () => {
-  const value = input('scope');
-  value.result.sufficient = false;
-  value.result.missing_paths = ['docs/guide.md'];
-  passes(value);
-  value.result.missing_paths = [];
-  fails(value, 'missing_paths', 'sufficient false');
-});
-test('D4 sufficient scope cannot also name missing paths', () => {
-  const value = input('scope');
-  passes(value);
-  value.result.missing_paths = ['docs/guide.md'];
-  fails(value, 'missing_paths', 'docs/guide.md');
-});
-for (const [name, change, field, offending] of [
-  ['unknown recommendation', (r) => { r.recommendation.option_id = 'invented'; }, 'recommendation.option_id', 'invented'],
-  ['unknown rejection', (r) => { r.rejected.push({ option_id: 'invented', cost: 'Unknown' }); }, 'rejected[1].option_id', 'invented'],
-  ['rejecting the recommendation', (r) => { r.rejected[0].option_id = 'keep'; }, 'rejected[0].option_id', 'keep'],
+// D3 is one definition over the whole answer, not a list of prose fields that new fields miss.
+for (const [field, make, change] of [
+  ['question_defect', input, (result) => { result.question_defect = 'The question ignores src/entry.mjs:99.'; }],
+  ['recommendation.text', input, (result) => { result.recommendation.text = 'Keep src/entry.mjs:40.'; }],
+  ['rejected[0].cost', input, (result) => { result.rejected[0].cost = 'Breaks src/entry.mjs:12.'; }],
+  ['taken_on_trust[0]', () => input('scope'), (result) => { result.taken_on_trust[0] = 'Callers use src/entry.mjs:77.'; }],
+  ['predicted_risks[0].risk', () => input('scope'), (result) => { result.predicted_risks[0].risk = 'Coupling at src/entry.mjs:55.'; }],
 ]) {
-  test(`D5 refuses ${name}`, () => {
-    const value = input();
-    passes(value);
-    change(value.result);
-    fails(value, field, offending);
-  });
+  rejectsChange(`D3 checks an unresolvable address in ${field}`, make, change, `D3 ${field}`, 'src/entry.mjs:');
 }
+rejectsChange('D3 checks risk outcome addresses without the phase-1 answer', input,
+  (result) => { result.risk_outcomes[0].address = 'src/entry.mjs:9'; }, 'D3 risk_outcomes[0].address', 'src/entry.mjs:9');
+
+function noneOfThese() {
+  const value = input();
+  value.result.recommendation.option_id = 'none-of-these';
+  value.result.unlisted_option = 'Use a separate adapter for caller state.';
+  value.result.rejected = value.task.options.map(({ id }) => ({ option_id: id, cost: 'Does not isolate caller ownership.' }));
+  return value;
+}
+function withRisks() { return { ...input(), scopeResult: input('scope').result }; }
+function insufficientScope() {
+  const value = input('scope');
+  Object.assign(value.result, { sufficient: false, missing_paths: ['docs/guide.md'] });
+  return value;
+}
+for (const row of [
+  ...['scope', 'advise'].map((phase) => [`D4 ${phase} requires at least one command`, () => input(phase), (r, v) => { v.commandsRun = 0; }, 'commandsRun', '0']),
+  ['D4 scope names what was taken on trust', () => input('scope'), (r) => { r.taken_on_trust = []; }, 'taken_on_trust', '[]'],
+  ['D4 insufficient scope must name missing paths', insufficientScope, (r) => { r.missing_paths = []; }, 'missing_paths', 'sufficient false'],
+  ['D4 sufficient scope cannot also name missing paths', () => input('scope'), (r) => { r.missing_paths = ['docs/guide.md']; }, 'missing_paths', 'docs/guide.md'],
+  ['D5 refuses unknown recommendation', input, (r) => { r.recommendation.option_id = 'invented'; }, 'recommendation.option_id', 'invented'],
+  ['D5 refuses unknown rejection', input, (r) => { r.rejected.push({ option_id: 'invented', cost: 'Unknown' }); }, 'rejected[1].option_id', 'invented'],
+  ['D5 refuses rejecting the recommendation', input, (r) => { r.rejected[0].option_id = 'keep'; }, 'rejected[0].option_id', 'keep'],
+  ...['src/entry.mjs:0', 'src/entry.mjs:2-1', 'src/entry.mjs:1-4', 'src/entry.mjs:9007199254740993', 'src/empty.mjs:1'].map((address) =>
+    [`D3 rejects invalid line bounds ${address}`, input, (r) => { r.independent_checks[0].address = address; }, 'independent_checks[0].address', address]),
+  ...['../outside/external.mjs:1', 'src/escape/external.mjs:1', 'src/../docs/guide.md:1', 'C:\\elsewhere\\entry.mjs:1', '/elsewhere/entry.mjs:1', 'src:1'].map((address) =>
+    [`D3 rejects evidence escaping its root or declared scope: ${address}`, input, (r) => { r.independent_checks[0].address = address; }, 'independent_checks[0].address', address.replaceAll('\\', '\\\\')]),
+  ...['', 'checked manually', 'src/entry.mjs', 'src/entry.mjs:1-bad', 'src/entry.mjs:1:2'].map((address) =>
+    [`D3 requires a resolvable independent address: ${JSON.stringify(address)}`, input, (r) => { r.independent_checks[0].address = address; }, 'independent_checks[0].address', address]),
+  ...['none', 'x'.repeat(39), '', ' '.repeat(40)].map((text) => ['D10 none-of-these requires a description ' + JSON.stringify(text), noneOfThese, (r) => { r.unlisted_option = text; }, 'unlisted_option', JSON.stringify(text)]),
+  ['D10 task options cannot describe an unlisted option', input, (r) => { r.unlisted_option = 'A different boundary.'; }, 'unlisted_option', 'none'],
+  ['D10 none-of-these names every missing rejection', noneOfThese, (r) => { r.rejected = r.rejected.slice(1, 2); }, 'rejected', '["keep","later"]'],
+  ['D10 scope rejects duplicate risk ids with different descriptions', () => input('scope'), (r) => { r.predicted_risks[2] = { id: 'r1', risk: 'Another risk.' }; }, 'predicted_risks[2].id', 'r1'],
+  ['D10 missing risk outcome', withRisks, (r) => { r.risk_outcomes.pop(); }, 'risk_outcomes', '"r3" count 0'],
+  ['D10 duplicate risk outcome', withRisks, (r) => { r.risk_outcomes.push({ ...r.risk_outcomes[0], outcome: 'refuted' }); }, 'risk_outcomes', '"r1" count 2'],
+  ['D10 unknown risk outcome', withRisks, (r) => { r.risk_outcomes.push({ risk_id: 'r4', outcome: 'confirmed', address: 'src/entry.mjs:1' }); }, 'risk_outcomes[3].risk_id', 'r4'],
+  ...['', 'src/missing.mjs:1', 'src/entry.mjs:4', 'docs/guide.md:1'].map((address) => ['D10 risk outcome citation ' + JSON.stringify(address), withRisks, (r) => { r.risk_outcomes[2].address = address; }, 'risk_outcomes[2].address', address]),
+  ['D10 VERIFIED assumptions require evidence', input, (r) => { r.assumptions[0].address = ''; }, 'D3 assumptions[0].address', '""'],
+  ...[1, 2].map((index) => [`D10 nonempty assumption address ${index} requires evidence`, input, (r) => { r.assumptions[index].address = ' '; }, `D3 assumptions[${index}].address`, '""']),
+  ...['', 'src/entry.mjs', 'src/entry.mjs:1-bad'].map((target) => [`D10 inspect requires a citation ${JSON.stringify(target)}`, input, (r) => { r.pre_mortem[0].early_check.target = target; }, 'D3 pre_mortem[0].early_check.target', target]),
+  ...['test', 'command'].map((kind) => [`D10 ${kind} target needs a citation only for inspect`, () => { const value = input(); value.result.pre_mortem[0].early_check = { kind, target: 'src/missing.mjs:1' }; return value; }, (r) => { r.pre_mortem[0].early_check.kind = 'inspect'; }, 'pre_mortem[0].early_check.target', 'src/missing.mjs:1']),
+]) rejectsChange(...row);
 
 function putCitation(result, field, address) {
-  if (field === 'why[0]') result.why[0] = `Evidence at ${address}.`;
-  else if (field === 'independent_checks[0].address') result.independent_checks[0].address = address;
-  else result[field] += ` Evidence at ${address}.`;
+  const keys = field.replaceAll('[', '.').replaceAll(']', '').split('.');
+  const parent = keys.slice(0, -1).reduce((object, key) => object[key], result);
+  if (field.endsWith('.address') || field.endsWith('.target')) parent[keys.at(-1)] = address;
+  else parent[keys.at(-1)] = `${parent[keys.at(-1)] ?? ''} Evidence at ${address}.`;
 }
-for (const field of ['why[0]', 'strongest_counterargument', 'falsifier', 'independent_checks[0].address']) {
+for (const field of ['why[0]', 'strongest_counterargument', 'pre_mortem[0].scenario', 'pre_mortem[0].early_check.target', 'open_questions[1]', 'independent_checks[0].address', ...[0, 1, 2].map((index) => `assumptions[${index}].address`)]) {
   for (const address of ['src/missing.mjs:1', 'src/entry.mjs:4', 'docs/guide.md:1']) {
-    test(`D3 validates ${address} in ${field}`, () => {
-      const value = input();
-      putCitation(value.result, field, 'src/entry.mjs:1-3');
-      passes(value);
-      putCitation(value.result, field, address);
-      fails(value, field, address);
-    });
+    rejectsChange(`D3 validates ${address} in ${field}`,
+      () => { const value = input(); putCitation(value.result, field, 'src/entry.mjs:1-3'); return value; },
+      (result) => putCitation(result, field, address), field, address);
   }
-}
-
-for (const address of ['src/entry.mjs:0', 'src/entry.mjs:2-1', 'src/entry.mjs:1-4', 'src/entry.mjs:9007199254740993', 'src/empty.mjs:1']) {
-  test(`D3 rejects invalid line bounds ${address}`, () => {
-    const value = input();
-    passes(value);
-    value.result.independent_checks[0].address = address;
-    fails(value, 'independent_checks[0].address', address);
-  });
 }
 
 test('D3 counts CRLF, lone CR, final newlines and files without extensions', () => {
@@ -205,15 +198,6 @@ test('D3 scope missing_paths authorizes exact files or directories only in scope
   value.result.independent_checks[0].address = 'docs/guide.md:1';
   fails(value, 'independent_checks[0].address', 'docs/guide.md:1');
 });
-for (const address of ['../outside/external.mjs:1', 'src/escape/external.mjs:1', 'src/../docs/guide.md:1', 'C:\\elsewhere\\entry.mjs:1', '/elsewhere/entry.mjs:1', 'src:1']) {
-  test(`D3 rejects evidence escaping its root or declared scope: ${address}`, () => {
-    const value = input();
-    passes(value);
-    value.result.independent_checks[0].address = address;
-    fails(value, 'independent_checks[0].address', address.replaceAll('\\', '\\\\'));
-  });
-}
-
 test('D3 checks traversal and symlink escapes in prose, and allows internal directory links', () => {
   const value = input();
   value.task.paths.push('linked-src');
@@ -223,15 +207,6 @@ test('D3 checks traversal and symlink escapes in prose, and allows internal dire
   fails(value, 'why[0]', 'src/escape/external.mjs:1');
   fails(value, 'why[0]', '../outside/external.mjs:1');
 });
-
-for (const address of ['', 'checked manually', 'src/entry.mjs', 'src/entry.mjs:1-bad', 'src/entry.mjs:1:2']) {
-  test(`D3 requires a resolvable independent address: ${JSON.stringify(address)}`, () => {
-    const value = input();
-    passes(value);
-    value.result.independent_checks[0].address = address;
-    fails(value, 'independent_checks[0].address', address);
-  });
-}
 
 const phrases = {
   English: ['both options are good', 'it depends on preference', 'you know better', 'either works'],
@@ -265,16 +240,9 @@ test('D5 language selects its own list; unrelated words do not become a backstop
   passes(value);
 });
 
-for (const field of ['why', 'rejected', 'strongest_counterargument', 'question_defect', 'assumptions', 'falsifier', 'independent_checks']) {
-  test(`D5 scans prose in ${field}`, () => {
-    const value = input();
-    passes(value);
-    if (field === 'rejected') value.result.rejected[0].cost = 'You know better.';
-    else if (field === 'independent_checks') value.result.independent_checks[0].check = 'You know better.';
-    else if (Array.isArray(value.result[field])) value.result[field].push('You know better.');
-    else value.result[field] = 'You know better.';
-    fails(value, field, 'you know better');
-  });
+for (const field of ['why[3]', 'rejected[0].cost', 'strongest_counterargument', 'question_defect', 'assumptions[0].claim', 'pre_mortem[0].scenario', 'open_questions[2]', 'unlisted_option', 'independent_checks[0].check']) {
+  const name = field.match(/^\w+/)[0];
+  rejectsChange(`D5 scans prose in ${name}`, input, (result) => putCitation(result, field, 'You know better.'), name, 'you know better');
 }
 
 test('required judgement context and unknown phases fail loudly', () => {
@@ -286,114 +254,8 @@ test('required judgement context and unknown phases fail loudly', () => {
   assert.throws(() => judgeAdvice({ ...input(), phase: 'other' }), /phase/);
 });
 
-// Plan_59 requires an independent test validator rather than accepting our own schema by inspection.
-function validates(schema, value) {
-  const type = value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value;
-  if (schema.type !== type) return false;
-  if (schema.enum && !schema.enum.includes(value)) return false;
-  if (type === 'string') {
-    const length = [...value].length;
-    return !(schema.minLength !== undefined && length < schema.minLength) &&
-      !(schema.maxLength !== undefined && length > schema.maxLength) &&
-      (!schema.pattern || new RegExp(schema.pattern, 'u').test(value));
-  }
-  if (type === 'array') {
-    return !(schema.minItems !== undefined && value.length < schema.minItems) &&
-      !(schema.maxItems !== undefined && value.length > schema.maxItems) &&
-      value.every((item) => validates(schema.items, item));
-  }
-  if (type === 'object') {
-    return schema.required.every((key) => Object.hasOwn(value, key)) &&
-      Object.entries(value).every(([key, item]) => Object.hasOwn(schema.properties, key)
-        ? validates(schema.properties[key], item) : schema.additionalProperties !== false);
-  }
-  return true;
-}
-function* requiredPaths(schema, value, prefix = []) {
-  if (schema.type === 'object') {
-    for (const key of schema.required) yield [...prefix, key];
-    for (const [key, child] of Object.entries(schema.properties)) yield* requiredPaths(child, value[key], [...prefix, key]);
-  } else if (schema.type === 'array') {
-    for (const [index, item] of value.entries()) yield* requiredPaths(schema.items, item, [...prefix, index]);
-  }
-}
-
-test('advisor schemas are looked up by role and phase without registering an execution agent', () => {
-  assert.deepEqual(Object.keys(SCHEMAS), ['codex-scout', 'codex-build', 'codex-review']);
-  for (const phase of ['scope', 'advise']) {
-    assert.equal(advisorSchema(phase), PHASE_SCHEMAS.advisor[phase]);
-    assert.equal(validates(advisorSchema(phase), input(phase).result), true);
-  }
-  for (const phase of [undefined, '', 'other', 'toString', '__proto__']) assert.throws(() => advisorSchema(phase), RangeError);
-});
-
-test('every schema object has all properties required, disallows extras and has no defaults', () => {
-  function inspect(schema) {
-    assert.equal(Object.hasOwn(schema, 'default'), false);
-    if (schema.type === 'object') {
-      assert.equal(schema.additionalProperties, false);
-      assert.deepEqual([...schema.required].sort(), Object.keys(schema.properties).sort());
-      Object.values(schema.properties).forEach(inspect);
-    } else if (schema.type === 'array') inspect(schema.items);
-  }
-  inspect(advisorSchema('scope'));
-  inspect(advisorSchema('advise'));
-});
-
-for (const phase of ['scope', 'advise']) {
-  const schema = advisorSchema(phase);
-  for (const keys of requiredPaths(schema, input(phase).result)) {
-    test(`${phase} schema rejects removal of required ${keys.join('.')}`, () => {
-      const value = input(phase).result;
-      assert.equal(validates(schema, value), true);
-      const parent = keys.slice(0, -1).reduce((object, key) => object[key], value);
-      delete parent[keys.at(-1)];
-      assert.equal(validates(schema, value), false);
-    });
-  }
-}
-
-for (const [name, change] of [
-  ['short why', (r) => { r.why = ['one', 'two']; }],
-  ['long why', (r) => { r.why = Array(6).fill('reason'); }],
-  ['empty rejected', (r) => { r.rejected = []; }],
-  ['short counterargument', (r) => { r.strongest_counterargument = 'x'.repeat(79); }],
-  ['short falsifier', (r) => { r.falsifier = 'x'.repeat(19); }],
-  ['invalid confidence', (r) => { r.confidence = 'certain'; }],
-  ['empty checks', (r) => { r.independent_checks = []; }],
-  ['long recommendation', (r) => { r.recommendation.text = 'x'.repeat(301); }],
-  ...['\n', '\r', '\u2028', '\u2029'].flatMap((newline) => [
-    ['multiline recommendation', (r) => { r.recommendation.text = `First${newline}Second`; }],
-    ['trailing line terminator', (r) => { r.recommendation.text = `First${newline}`; }],
-  ]),
-  ['wrong type', (r) => { r.assumptions = 'none'; }],
-  ['wrong array item type', (r) => { r.why[0] = 1; }],
-  ['null object', (r) => { r.recommendation = null; }],
-  ['top-level extra', (r) => { r.extra = true; }],
-  ['recommendation extra', (r) => { r.recommendation.extra = true; }],
-  ['rejected extra', (r) => { r.rejected[0].extra = true; }],
-  ['check extra', (r) => { r.independent_checks[0].extra = true; }],
-]) {
-  test(`advise schema rejects ${name}`, () => {
-    const value = validAdvice();
-    assert.equal(validates(advisorSchema('advise'), value), true);
-    change(value);
-    assert.equal(validates(advisorSchema('advise'), value), false);
-  });
-}
-
-test('schema length boundaries, all confidence values and scope types are enforced', () => {
-  const value = validAdvice();
-  value.recommendation.text = 'x'.repeat(300);
-  value.strongest_counterargument = 'x'.repeat(80);
-  value.falsifier = 'x'.repeat(20);
-  value.why = Array(5).fill('reason');
-  for (const confidence of ['high', 'medium', 'low']) {
-    value.confidence = confidence;
-    assert.equal(validates(advisorSchema('advise'), value), true);
-  }
-  for (const patch of [{ sufficient: 'true' }, { missing_paths: [1] }, { taken_on_trust: [] }]) {
-    assert.equal(validates(advisorSchema('scope'), input('scope').result), true);
-    assert.equal(validates(advisorSchema('scope'), { ...input('scope').result, ...patch }), false);
-  }
+test('a scope answer with five predicted risks passes judgement', () => {
+  const scope = input('scope');
+  scope.result.predicted_risks.push(...['r8', 'r9'].map((id) => ({ id, risk: 'Another risk.' })));
+  passes(scope);
 });
