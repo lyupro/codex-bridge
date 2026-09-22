@@ -97,6 +97,13 @@ here. Nothing was reworded on the way out.
   porcelain reading and on 2026-09-19 ordered the orchestrator, on every tool call, to revert the run's
   own folder; the same blindness covered environment writes and gitignored notes, and the rename token
   would have failed an honest build for moving a file inside its scope.
+- **A service directory is defined once, `SERVICE_RE` in `src/home/lib/meta/paths.mjs`, and both the
+  preflight scope check and the verdict import it.** The verdict fails every change under `.git/`,
+  `.claude/`, `.codex/`, `.omx/`, `.omc/` and `node_modules/` whatever the scope says; `structuralRefusal`
+  in `src/home/lib/runner/scope-check.mjs` refuses a pattern inside one before the run folder exists. A
+  glob that can also match ordinary files (`**/*.md`) is not refused. Why: on 2026-09-22 an order scoped
+  to `.claude/context/architecture.md` passed preflight, worked 22 minutes, wrote every file correctly
+  and was failed for that one — the gate and the judge were two measures of one tree.
 - **`makeRunDir()` is the single registration boundary, and a refusal decided before it leaves nothing
   in the worktree.** Everything that can refuse without spending quota — bad arguments, an impossible
   scope, a detached tree, a chain that needs `--continue`, a dead sandbox, a busy tree, a missing Codex
