@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.6] - 2026-09-23
+
+### Fixed
+
+- The advise phase is handed the risks it is judged on. `--continue` only grants permission to
+  continue: Codex starts a fresh session, and the advise prompt never listed the `predicted_risks` or
+  `missing_paths` of the scope run — it even forbade reading those paths — while the judge read them
+  from the scope run folder on its own. Every advise run therefore failed with
+  `risk_outcomes … count 0`. The launcher now takes one snapshot of the scope result into the advise
+  run's `advisor-task.json` (field `scope`) before the run folder exists; the prompt's
+  "Scope phase results" section is rendered from that snapshot and the judge reads only it. A scope
+  result that cannot be carried is refused before the run starts, spending no quota.
+- Repeating a `--continue` call returns the verdict of the run it started. The launcher starts a run
+  and returns, and only a repeated identical call attaches and returns the verdict — but a
+  continuation refused to attach, and the repeat was then rejected as reusing a spent grant. No
+  continuation of any agent could bring its verdict back to chat: a dispatcher reported `FAIL` while
+  its run was still working. A `--continue` call now first attaches to the run of the same order id
+  whose `continued_from` names the grant; with no such run a new pass starts as before. The grant stays
+  single-use.
+
 ## [0.6.5] - 2026-09-23
 
 ### Added
