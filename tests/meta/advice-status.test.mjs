@@ -22,15 +22,15 @@ function fixture() {
   return { root, repo, runsRoot };
 }
 
-function runFolder(tree, name, phase, { task = true, continuedFrom } = {}) {
+function runFolder(tree, name, phase, { task = true, scope } = {}) {
   const dir = path.join(tree.runsRoot, name);
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'worker.json'), JSON.stringify({ phase }));
-  fs.writeFileSync(path.join(dir, 'status.json'), JSON.stringify({
-    phase, repo: tree.repo, ...(continuedFrom ? { continued_from: continuedFrom } : {}),
-  }));
+  fs.writeFileSync(path.join(dir, 'status.json'), JSON.stringify({ phase, repo: tree.repo }));
   fs.writeFileSync(path.join(dir, 'env.json'), JSON.stringify({ answerLanguage: 'English' }));
-  if (task) fs.writeFileSync(path.join(dir, 'advisor-task.json'), JSON.stringify(parseAdvisorTask(TASK)));
+  if (task) fs.writeFileSync(path.join(dir, 'advisor-task.json'), JSON.stringify({
+    ...parseAdvisorTask(TASK), ...(scope === undefined ? {} : { scope }),
+  }));
   return dir;
 }
 
@@ -52,24 +52,35 @@ test('scope with no executed commands fails the advice contract', () => {
 
 test('advise must resolve every risk predicted in phase 1', () => {
   const tree = fixture();
-  const scopeDir = runFolder(tree, 'scope', 'scope');
-  fs.writeFileSync(path.join(scopeDir, 'result.json'), JSON.stringify({
-    ...validScope(), predicted_risks: [...validScope().predicted_risks, { id: 'r4', risk: 'Another risk.' }],
-  }));
-  const dir = runFolder(tree, 'advise', 'advise', { continuedFrom: 'scope' });
+  const scopeResult = { ...validScope(), predicted_risks: [...validScope().predicted_risks, { id: 'r4', risk: 'Another risk.' }] };
+  const dir = runFolder(tree, 'advise', 'advise', { scope: { run: 'scope', ...scopeResult } });
   assert.match(adviceGap(dir, validAdvice(), events()), /risk_outcomes/);
 });
 
 test('advise can cite a path requested by phase 1', () => {
   const tree = fixture();
-  const scopeDir = runFolder(tree, 'scope', 'scope');
-  fs.writeFileSync(path.join(scopeDir, 'result.json'), JSON.stringify({
-    ...validScope(), sufficient: false, missing_paths: ['docs/guide.md'],
-  }));
-  const dir = runFolder(tree, 'advise', 'advise', { continuedFrom: 'scope' });
+  const scopeResult = { ...validScope(), missing_paths: ['docs/guide.md'] };
+  const dir = runFolder(tree, 'advise', 'advise', { scope: { run: 'scope', ...scopeResult } });
   const result = validAdvice();
   result.independent_checks[0].address = 'docs/guide.md:1';
   assert.equal(adviceGap(dir, result, events()), null);
+});
+
+// Plan_59 D22: the judge reads only the advise run's own snapshot; the scope folder is never created.
+test('advise passes with no scope run folder on disk', () => {
+  const tree = fixture();
+  const scopeResult = { ...validScope(), missing_paths: ['docs/guide.md'] };
+  const dir = runFolder(tree, 'advise', 'advise', { scope: { run: 'scope', ...scopeResult } });
+  const result = validAdvice();
+  result.independent_checks[0].address = 'docs/guide.md:1';
+  assert.equal(fs.existsSync(path.join(tree.runsRoot, 'scope')), false);
+  assert.equal(adviceGap(dir, result, events()), null);
+});
+
+test('advise without task.scope fails the advice contract', () => {
+  const tree = fixture();
+  const dir = runFolder(tree, 'advise', 'advise');
+  assert.match(adviceGap(dir, validAdvice(), events()), /advisor-task\.json#scope is missing the phase-1 predicted_risks/);
 });
 
 test('a missing advisor-task.json fails with its artifact name', () => {

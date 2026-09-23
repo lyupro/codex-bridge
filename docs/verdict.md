@@ -72,8 +72,10 @@ the first matching branch determines the status. The order is therefore part of 
     it is not one of them): “both options are good,” “it depends on preference,” “you know better,”
     “either works,” “оба варианта хороши,” “зависит от предпочтений,” “вам виднее,” and
     “подойдёт любой.” They are a backstop: the structure of the answer is the defence.
-    Missing `advisor-task.json`, invalid artifact shapes, missing phase/repository/command evidence, or a
-    missing/malformed prior scope result for `advise` also fail the contract. An insufficient scope is
+    Missing `advisor-task.json`, invalid artifact shapes, missing phase/repository/command evidence, or an
+    `advise` run whose `advisor-task.json#scope` lacks the phase-1 `predicted_risks` also fail the
+    contract. The phase-1 risks and `missing_paths` are read from that snapshot — the same one the
+    prompt was rendered from — never from the scope run's folder. An insufficient scope is
     still `OK` when its required explanation and evidence are valid: it asks the orchestrator to provide
     the missing paths. `LIMIT` means the quota is exhausted and calls for the opposite reaction, so
     insufficient scope must never be classified as `LIMIT`.

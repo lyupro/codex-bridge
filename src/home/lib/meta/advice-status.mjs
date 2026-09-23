@@ -32,14 +32,10 @@ export function adviceGap(runDir, result, eventData) {
 
   let scopeResult;
   if (phase === 'advise') {
-    if (typeof status.continued_from !== 'string' || !status.continued_from) {
-      reasons.push('status.json#continued_from for the phase-1 result is missing');
+    if (!task?.scope || !Array.isArray(task.scope.predicted_risks)) {
+      reasons.push('advisor-task.json#scope is missing the phase-1 predicted_risks');
     } else {
-      const scopeFile = path.join(path.dirname(runDir), status.continued_from, 'result.json');
-      scopeResult = readJson(scopeFile);
-      if (!scopeResult || typeof scopeResult !== 'object' || !Array.isArray(scopeResult.predicted_risks)) {
-        reasons.push('phase-1 result.json or its predicted_risks is missing');
-      }
+      scopeResult = { predicted_risks: task.scope.predicted_risks, missing_paths: task.scope.missing_paths };
     }
   }
   if (reasons.length) return contractReason(reasons);

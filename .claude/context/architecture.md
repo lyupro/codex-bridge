@@ -52,7 +52,9 @@ hand-edited files stop the run unless `--force`.
   closing it would write — `running`/`unverified`/`abandoned`/`finished`; it requires the run folder,
   because the reply guard once asked with a bare pid and read a reused number as a live run, Plan_57
   D27). The advisor path uses `meta/advisor-task.mjs` (task parser), `meta/advice-verdict.mjs`
-  (pure judge), and `meta/advice-status.mjs` (run-folder adapter).
+  (pure judge), and `meta/advice-status.mjs` (run-folder adapter); `runner/advise-carry.mjs` takes the
+  one snapshot of the scope result that both the advise prompt and the judge read (Plan_59 D22 — on
+  2026-09-23 the judge read the scope folder while the prompt was handed nothing).
 - `hooks/` holds the four guards, all fail-open on anything they do not recognise:
   `reply-guard.mjs` (SubagentStop) rejects a dispatcher reply that `meta.json` does not support or
   that stays silent about a live `codex-build` run of the same project; `order-gate.mjs`

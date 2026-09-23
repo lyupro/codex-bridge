@@ -160,6 +160,28 @@ test('advise continues the scope order with its own schema and budget', () => {
   assert.equal(second.status.order_id, first.status.order_id);
   assert.equal(second.status.continued_from, path.basename(first.dir));
   assert.match(second.task, /Advise phase:/);
+  assert.match(second.task, /## Scope phase results[\s\S]*- r1: Concurrent callers could share mutable state\./);
+  for (const { id } of validScope().predicted_risks) assert.match(second.task, new RegExp(`- ${id}:`));
+  assert.equal(second.advisorTask.scope.run, path.basename(first.dir));
+  assert.deepEqual(second.advisorTask.scope.predicted_risks, validScope().predicted_risks);
+});
+
+// Plan_59 D22: the snapshot is read before registration, so a scope result that cannot be carried
+// refuses for free instead of leaving a folder whose advise pass is doomed.
+test('advise refuses for free when the scope result cannot be carried', () => {
+  const tree = fixture();
+  const first = runFrom(launch(tree, { phase: 'scope' }));
+  fs.writeFileSync(path.join(first.dir, 'status.json'), JSON.stringify({ ...first.status, state: 'finished' }));
+  fs.writeFileSync(path.join(first.dir, 'meta.json'), JSON.stringify({ agent: 'codex-advisor', status: 'OK', phase: 'scope' }));
+  fs.writeFileSync(path.join(first.dir, 'result.json'), JSON.stringify({ sufficient: true }));
+  const task = `${TASK}\ncontinue: ${path.basename(first.dir)} — settle the scope predictions\n`;
+  const before = fs.readdirSync(tree.runs);
+  const output = launch(tree, { phase: 'advise', continued: true, task, refuse: true });
+  assert.equal(output.status, 1, output.stdout || output.error?.message);
+  assert.equal(output.stdout, '');
+  assert.match(output.stderr, /Malformed advise scope result/);
+  assert.match(output.stderr, /The run folder was not created; quota was not spent\.\s*$/);
+  assert.deepEqual(fs.readdirSync(tree.runs), before);
 });
 
 test('launcher saves the exact parsed task given to the advisor', () => {

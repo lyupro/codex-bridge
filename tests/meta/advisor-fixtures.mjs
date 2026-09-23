@@ -35,9 +35,11 @@ export function validScope() {
  * repository, so `result.json` is the one listed path.
  */
 export function advisorRunFacts(dir, phase = 'scope') {
+  const scope = validScope();
   fs.writeFileSync(path.join(dir, 'advisor-task.json'), JSON.stringify({
     options: [{ id: 'keep', description: 'Keep the boundary.' }, { id: 'split', description: 'Split it.' }],
     paths: ['result.json'],
+    ...(phase === 'advise' ? { scope: { run: 'scope', predicted_risks: scope.predicted_risks, missing_paths: scope.missing_paths } } : {}),
   }));
   const statusFile = path.join(dir, 'status.json');
   const status = fs.existsSync(statusFile) ? JSON.parse(fs.readFileSync(statusFile, 'utf8')) : {};

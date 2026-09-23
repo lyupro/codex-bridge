@@ -123,6 +123,7 @@ also contains runner-generated instructions and is the full prompt sent to Codex
 | --- | --- |
 | `options` | Parsed entries from `## Options`, each with an option `id` and its `description`. |
 | `paths` | Parsed list entries from `## Paths`; citations are judged against these paths and the applicable `missing_paths`. |
+| `scope` | `advise` phase only: `{ run, predicted_risks, missing_paths }`, a snapshot of the continued `scope` run's `result.json` taken once, before the run folder exists. The `## Scope phase results` section of `task.md` is rendered from it and the verdict reads it; neither goes back to the scope run's folder. A scope result that cannot be carried is refused before any quota is spent. |
 
 ## File relationships
 

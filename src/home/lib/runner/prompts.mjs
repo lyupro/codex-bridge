@@ -16,7 +16,7 @@ const BODIES = {
     return `Judge a DESIGN before code exists.
 
 Rules for both phases:
-- Read ONLY the paths listed under \`## Paths\`, plus \`git log\` / \`git show\` on those paths.
+- Read ONLY the paths listed under \`## Paths\` and, in the advise phase, under \`## Scope phase results\`, plus \`git log\` / \`git show\` on those paths.
 - Write nothing. Do your own reading and checks; do not spawn or delegate to other agents.
 - Every claim about code must carry a \`path:line\` address inside those paths. Addresses are
   machine-checked for existence; do not invent addresses or treat an unchecked claim as evidence.
@@ -32,7 +32,7 @@ Scope phase:
   (facts accepted from the task without checking, never empty), together with predicted_risks.
 ` : `
 Advise phase:
-- Settle every predicted risk from the scope run in risk_outcomes: its risk_id, an outcome of
+- Settle every predicted risk listed under \`## Scope phase results\` in risk_outcomes: its risk_id, an outcome of
   confirmed or refuted, and an address supporting that outcome.
 - Give ONE recommendation by task option_id, or none-of-these with a described unlisted_option.
   Put every rejected task option in rejected with its cost; for none-of-these this means EVERY

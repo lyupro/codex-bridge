@@ -27,7 +27,7 @@ import { parseArgs, die } from './args.mjs';
 import { settleTaskInput } from './task-input.mjs';
 import { parseContinuationGrant } from '../required-inputs.mjs';
 import { continuationRefusal } from './continuation.mjs';
-import { parseAdvisorTask } from '../meta/advisor-task.mjs';
+import { advisorTaskOrRefuse, adviseSection } from './advise-carry.mjs';
 import { schemaFor } from './schemas.mjs';
 import { INSTRUCTIONS } from './prompts.mjs';
 import { git, headSha, branchName, worktreeSnapshot, reviewScope } from './git-state.mjs';
@@ -164,6 +164,8 @@ export async function launcher(argv = process.argv.slice(2)) {
   const scopeRun = continuationGrant &&
     scopeRunRefusal({ agent: opts.agent, phase: opts.phase, runsRoot: projectRunsRoot, grantRun: continuationGrant.run });
   if (scopeRun) die(scopeRun, 1);
+  // Plan_59 D22: the advise snapshot is read before the folder exists, so a broken scope result refuses for free.
+  const advisorTask = opts.agent === 'codex-advisor' ? advisorTaskOrRefuse({ taskText, phase: opts.phase, runsRoot: projectRunsRoot, grantRun: continuationGrant?.run }) : null;
 
   // One order produced six Codex runs on 2026-08-03 because the caller's time ceiling made it
   // restart the synchronous launcher. A live same-order run is now the repeat target: attach
@@ -274,7 +276,7 @@ export async function launcher(argv = process.argv.slice(2)) {
   if (opts.agent === 'codex-scout') {
     fs.writeFileSync(path.join(runDir, 'questions.json'), `${JSON.stringify(questions, null, 2)}\n`);
   }
-  if (opts.agent === 'codex-advisor') fs.writeFileSync(path.join(runDir, 'advisor-task.json'), `${JSON.stringify(parseAdvisorTask(taskText), null, 2)}\n`);
+  if (advisorTask) fs.writeFileSync(path.join(runDir, 'advisor-task.json'), `${JSON.stringify(advisorTask, null, 2)}\n`);
 
   if (opts.agent === 'codex-build') {
     fs.writeFileSync(path.join(runDir, 'scope.txt'), `${opts.scopePatterns.join('\n')}\n`);
@@ -289,6 +291,8 @@ export async function launcher(argv = process.argv.slice(2)) {
   // and what may be edited. Both also go to disk as questions.json / scope.txt, so the verdict
   // is computed from the same list Codex was handed, not from a second reading of the wording.
   const sections = [`## Operator task (verbatim)\n\n${taskText}`];
+  const scopeResults = adviseSection(advisorTask);
+  if (scopeResults) sections.push(scopeResults);
   if (questions.length) {
     sections.push(
       [
