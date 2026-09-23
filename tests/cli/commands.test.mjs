@@ -82,9 +82,10 @@ test('package.json, --help, and README expose the same binary names', async () =
   const packageJson = JSON.parse(packageSource);
   const packageNames = Object.keys(packageJson.bin);
   assert.deepEqual(sorted(packageNames), sorted(CLI_NAMES), 'package.json#bin names are stale.');
+  // No leading "./": npm 11 publish rewrites it and logs the entry as "invalid and removed" (0.6.6).
   assert.ok(
-    packageNames.every((name) => packageJson.bin[name] === './bin/codex-bridge.mjs'),
-    'Every binary name must point to the dispatcher entry point.',
+    packageNames.every((name) => packageJson.bin[name] === 'bin/codex-bridge.mjs'),
+    'Every binary name must point to the dispatcher entry point, spelled the way npm publishes it.',
   );
 
   const result = spawnSync(process.execPath, [BIN, '--help'], { encoding: 'utf8' });
