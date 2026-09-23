@@ -4,11 +4,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { parseContinuationGrant } from '../../src/home/lib/required-inputs.mjs';
 import { resolveProjectRunsDir } from '../../src/home/lib/runner/project-dir.mjs';
-import { fixtureTask } from './launcher-mocks.mjs';
+import { fixtureTask, launcherProcessMocks } from './launcher-mocks.mjs';
 
 const RUN_CODEX = fileURLToPath(new URL('../../src/home/lib/run-codex.mjs', import.meta.url));
 const AGENT = 'codex-build';
@@ -26,6 +26,24 @@ function fixture(t) {
 
 function runner(args, input, runsRoot, repo) {
   return spawnSync(process.execPath, [RUN_CODEX, ...args], {
+    cwd: repo,
+    env: { ...process.env, CODEX_RUNS_ROOT: runsRoot },
+    input: fixtureTask(AGENT, input),
+    encoding: 'utf8',
+  });
+}
+
+function mockedRunner(args, input, runsRoot, repo) {
+  const script = [
+    "import childProcess from 'node:child_process';",
+    "import { syncBuiltinESMExports } from 'node:module';",
+    launcherProcessMocks({ worker: 'spawn', probe: 'marker' }),
+    'syncBuiltinESMExports();',
+    `const { runCodexCommand } = await import(${JSON.stringify(pathToFileURL(RUN_CODEX).href)});`,
+    'const code = await runCodexCommand(process.argv.slice(1));',
+    'if (code !== undefined) process.exitCode = code;',
+  ].join('\n');
+  return spawnSync(process.execPath, ['--input-type=module', '-e', script, '--', ...args], {
     cwd: repo,
     env: { ...process.env, CODEX_RUNS_ROOT: runsRoot },
     input: fixtureTask(AGENT, input),
@@ -105,6 +123,37 @@ test('a --continue flag without a grant keeps the existing refusal', (t) => {
   assert.match(output.stderr, /did not provide a `continue:` grant/);
   assert.doesNotMatch(output.stdout, /ATTACH=/);
   assert.deepEqual(runFolders(project), [LAST_RUN]);
+});
+
+test('repeating a --continue command attaches to its run without creating another folder', (t) => {
+  const root = fixture(t);
+  const repo = path.join(root, 'repo');
+  const runsRoot = path.join(root, 'runs');
+  fs.mkdirSync(path.join(repo, 'src'), { recursive: true });
+  fs.writeFileSync(path.join(repo, 'src', 'existing.mjs'), 'export default 1;\n');
+  const project = resolveProjectRunsDir(runsRoot, repo).dir;
+  createPriorRun(project, repo);
+  const command = args(repo, true);
+  const input = `The order needs a second pass.\ncontinue: ${LAST_RUN} — ${GRANT_REASON}\n`;
+
+  const first = mockedRunner(command, input, runsRoot, repo);
+
+  assert.equal(first.status, 0, first.stderr);
+  const afterStart = runFolders(project);
+  assert.equal(afterStart.length, 2);
+  const continuation = afterStart.find((name) => name !== LAST_RUN);
+  const continuationDir = path.join(project, continuation);
+  fs.writeFileSync(path.join(continuationDir, 'meta.json'), '{"status":"OK"}\n');
+  fs.writeFileSync(path.join(continuationDir, 'reply.txt'), 'OK — continuation answered\n');
+
+  const repeated = mockedRunner(command, input, runsRoot, repo);
+
+  assert.equal(repeated.status, 0, repeated.stderr);
+  assert.ok(repeated.stdout.includes(`ATTACH=${continuationDir} order-id=${ORDER_ID}`), repeated.stdout);
+  assert.match(repeated.stdout, /This is the answer of the previous run/);
+  assert.match(repeated.stdout, /OK — continuation answered/);
+  assert.doesNotMatch(`${repeated.stdout}\n${repeated.stderr}`, /--continue is refused/);
+  assert.deepEqual(runFolders(project), afterStart);
 });
 
 test('prose mentioning the continuation label is not a grant', () => {

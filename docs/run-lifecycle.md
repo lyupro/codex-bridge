@@ -167,8 +167,13 @@ directory creation, immediately after finding the chain and before the `--contin
 - **There is no `reply.txt`, and the pid is dead** — this is an abandoned run with nothing to attach to;
   the earlier path applies (`markAbandoned()` has already marked the directory, then the `--continue`
   refusal takes effect).
-- **`--continue` was passed** — attachment does not happen at all: the orchestrator has read the previous
-  response and requests a new attempt.
+- **`--continue` was passed** — the invocation attaches only to a run of this order label whose
+  `status.json#continued_from` names the same run as the `continue:` grant, and it does so BEFORE the
+  grant is checked: that run is what an identical earlier continuation command started, and by now the
+  grant is spent. Live, saved and dead cases are then handled exactly as above. No such run — a new pass
+  starts, subject to the authorization below. On 2026-09-23 a dispatcher repeating its continuation to
+  collect the verdict was refused as a reused grant while its advise run was working — every
+  continuation was unable to return its verdict to chat.
 
 ## Continuation authorization
 
@@ -199,7 +204,8 @@ directory is absent, all three hints are still provided; the entered name is not
 
 The last rule makes authorization single-use: continuation appends a later run to the chain, so the same
 line stops matching by itself — without a counter or new state. The named run is recorded in
-`status.json` as `continued_from`; this is an investigation trace, not a validation input.
+`status.json` as `continued_from`. It is not a validation input for the grant; it is the key by which a
+repeated continuation command finds the run it already started (see the attach rules above).
 
 Without the line, a normal repeat without `--continue` can still safely attach to the previous run; a
 line without the flag cannot pass through `attach()`. Therefore the `PreToolUse` job-label gate does not

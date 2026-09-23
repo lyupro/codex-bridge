@@ -82,15 +82,16 @@ test('a run that already answered replies from disk rather than refusing the rep
   assert.match(lines[2], /OK — done/);
 });
 
-test('--continue never attaches: the orchestrator asked for another pass', async (t) => {
+test('--continue starts a new pass when no run of this order continues its grant', async (t) => {
   const runsRoot = fixture(t);
   const repo = path.join(runsRoot, 'repo');
-  run(runsRoot, '2026-08-04_090000_async-start', running(repo), {
+  const first = '2026-08-04_090000_async-start';
+  run(runsRoot, first, running(repo), {
     'meta.json': JSON.stringify({ status: 'OK' }),
     'reply.txt': 'OK — the first pass\n',
   });
 
-  const { code } = await attaching(order(runsRoot, repo, { isContinue: true }));
+  const { code } = await attaching(order(runsRoot, repo, { isContinue: true, grantRun: first }));
 
   assert.equal(code, null);
 });
@@ -139,14 +140,18 @@ test('a reused order id with a different task is not refused under --continue', 
   const runsRoot = fixture(t);
   const repo = path.join(runsRoot, 'repo');
   const name = '2026-08-15_090000_continue';
-  run(runsRoot, name, running(repo, { task_hash: 'old-hash' }));
+  const grantRun = '2026-08-14_090000_prior';
+  run(runsRoot, name, running(repo, { task_hash: 'old-hash', continued_from: grantRun }), {
+    'reply.txt': 'OK — continuation despite changed grant text\n',
+    'meta.json': JSON.stringify({ status: 'OK' }),
+  });
 
   const { code, lines } = await attaching(
-    order(runsRoot, repo, { taskHash: 'new-hash', isContinue: true }),
+    order(runsRoot, repo, { taskHash: 'new-hash', isContinue: true, grantRun }),
   );
 
-  assert.equal(code, null);
-  assert.deepEqual(lines, []);
+  assert.equal(code, 0);
+  assert.equal(lines[2], 'OK — continuation despite changed grant text');
   assert.deepEqual(fs.readdirSync(runsRoot), [name]);
 });
 

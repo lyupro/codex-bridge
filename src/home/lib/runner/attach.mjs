@@ -5,6 +5,7 @@ import { readJsonFileSync } from '../json-file.mjs';
 import { workerMayBeAlive } from '../meta/run-liveness.mjs';
 import { processAlive } from '../process-identity.mjs';
 import { exitCodeFor, writeFailure, chainRuns } from '../write-meta.mjs';
+import { sameRun } from './continuation.mjs';
 import { conflictingOrderOwner, runsForOrder } from './order-owner.mjs';
 
 // The attach call is the only process that waits for a worker it did not spawn. Keeping that
@@ -93,18 +94,21 @@ export async function waitForReply(runDir, workerPid, status) {
  * path only covers a live run that has not recorded a verdict yet.
  *
  * A repeat that arrives after the verdict is answered from disk rather than refused, for the same
- * reason. `--continue` is the one case that must not attach: it is the orchestrator saying it read
- * the previous reply and wants another pass.
+ * reason. `--continue` may attach to a run created from its grant: the 2026-09-23 dispatcher
+ * incident showed that repeating the identical continuation command must return to that run.
  */
-export async function attach({ runsRoot, repo, slug, taskHash, orderId, chain, isContinue, noWait } = {}) {
-  if (isContinue) return null;
+export async function attach({ runsRoot, repo, slug, taskHash, orderId, chain, grantRun, isContinue, noWait } = {}) {
   const runs = chain || chainRuns(runsRoot, repo, slug, taskHash, orderId);
   const runRecords = runs
     .map((run) => ({ run, status: readJsonFile(path.join(runsRoot, run, 'status.json')) }))
     .filter(({ status }) => status);
   const sameOrder = runsForOrder(runRecords, orderId);
+  const attachRuns = isContinue
+    ? sameOrder.filter(({ status }) => grantRun && status.continued_from && sameRun(runsRoot, status.continued_from, grantRun))
+    : sameOrder;
+  if (isContinue && !attachRuns.length) return null;
 
-  const owner = conflictingOrderOwner(runRecords, orderId, taskHash);
+  const owner = isContinue ? null : conflictingOrderOwner(runRecords, orderId, taskHash);
   if (owner) {
     const ownerDir = path.join(runsRoot, owner.run);
     console.log(
@@ -120,8 +124,8 @@ export async function attach({ runsRoot, repo, slug, taskHash, orderId, chain, i
   // order, and while it was in flight a repeat used to be answered by the first run's reply.txt —
   // a stale verdict presented as this pass's answer. Found by the Plan_11-2 checklist, 2026-08-04.
   let candidate = null;
-  for (let i = sameOrder.length - 1; i >= 0; i -= 1) {
-    const entry = sameOrder[i];
+  for (let i = attachRuns.length - 1; i >= 0; i -= 1) {
+    const entry = attachRuns[i];
     const dir = path.join(runsRoot, entry.run);
     if (fs.existsSync(path.join(dir, 'reply.txt'))) {
       announceSavedReply(dir, orderId, entry.status.started_at);

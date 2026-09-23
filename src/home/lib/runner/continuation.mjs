@@ -9,7 +9,9 @@ import path from 'node:path';
 import { CONTINUATION_INPUT, parseContinuationGrant } from '../required-inputs.mjs';
 import { readJson } from '../write-meta.mjs';
 
-const sameRun = (runsRootPath, left, right) => {
+// One comparison of run names for the grant gate and for attach, so a repeat and a grant can never
+// disagree about whether two spellings name the same folder.
+export const sameRun = (runsRootPath, left, right) => {
   const a = path.resolve(runsRootPath, left);
   const b = path.resolve(runsRootPath, right);
   return process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;

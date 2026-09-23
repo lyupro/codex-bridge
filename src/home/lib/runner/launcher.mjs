@@ -146,12 +146,18 @@ export async function launcher(argv = process.argv.slice(2)) {
   const chain = chainRuns(projectRunsRoot, repoRoot, opts.slug, taskHash, opts.orderId);
   const startedChain = startedRuns(projectRunsRoot, chain);
   const continuationGrant = parseContinuationGrant(taskText);
+  const attachExistingRun = () => attach({
+    runsRoot: projectRunsRoot, repo: repoRoot, slug: opts.slug, taskHash, orderId: opts.orderId, chain,
+    grantRun: continuationGrant?.run, isContinue: opts.continue, noWait: opts.noWait,
+  });
+  let attachedExitCode = opts.continue ? await attachExistingRun() : null;
+  if (attachedExitCode !== null) return attachedExitCode;
 
   // The 2026-08-10_220535_plan25-2-install-table-two-roots incident exposed this ordering:
   // a grant without its flag must refuse before attach can print an older run's verdict.
   // markAbandoned() ran before this gate, so a dead runner already has meta.json with FAIL.
   // A run without a verdict can therefore only still be in flight; ordinary repeats go through
-  // attach(), while --continue must refuse to overlap that live work.
+  // attach() after this gate. Repeated --continue calls attach first because their grant is spent.
   const continuationError = continuationRefusal(
     projectRunsRoot,
     startedChain,
@@ -170,16 +176,7 @@ export async function launcher(argv = process.argv.slice(2)) {
   // One order produced six Codex runs on 2026-08-03 because the caller's time ceiling made it
   // restart the synchronous launcher. A live same-order run is now the repeat target: attach
   // before creating a folder, probing Codex or spending another token.
-  const attachedExitCode = await attach({
-    runsRoot: projectRunsRoot,
-    repo: repoRoot,
-    slug: opts.slug,
-    taskHash,
-    orderId: opts.orderId,
-    chain,
-    isContinue: opts.continue,
-    noWait: opts.noWait,
-  });
+  if (!opts.continue) attachedExitCode = await attachExistingRun();
   if (attachedExitCode !== null) return attachedExitCode;
 
   if (startedChain.length && !opts.continue) {
