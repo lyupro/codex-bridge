@@ -96,7 +96,7 @@ test('absent hook registration keeps the existing warning', async (t) => {
   assert.equal(hook.value, `${definition.event} matcher ${definition.matcher} does not point to the installed ${definition.file} (path command; installed copy ${ownPackage.name}@${ownPackage.version})`);
 });
 
-test('doctor reports the recorded hook form and the version that form executes', async (t) => {
+test('doctor reports the recorded hook form and launcher safety', async (t) => {
   const { host, record } = await installedFixture(t);
   const shortHookRecord = record.hooks.find((hook) => hook.event === 'SubagentStop');
   const settings = JSON.parse(await fs.readFile(host.settingsPath, 'utf8'));
@@ -110,14 +110,14 @@ test('doctor reports the recorded hook form and the version that form executes',
     host,
     codexProbe,
     bridgeProbe: () => ({ available: true, value: 'codex-bridge 8.8.8' }),
+    launcherProbe: () => ({ ok: true }),
     currentPackage: ownPackage,
   });
   const shortHook = result.checks.find((item) => item.key === 'hook:SubagentStop');
   const pathHook = result.checks.find((item) => item.key === 'hook:PreToolUse'
     && item.value.includes('order-gate.mjs'));
-  assert.equal(shortHook.status, 'warn');
-  assert.match(shortHook.value, /short command;.*global command codex-bridge 8\.8\.8/);
-  assert.match(shortHook.value, /global PATH package version 8\.8\.8 differs from clone version 0\.1\.0/);
+  assert.equal(shortHook.status, 'ok');
+  assert.match(shortHook.value, /codex-bridge on PATH launches guards from this home/);
   assert.match(pathHook.value, /path command;.*installed copy @lyupro\/codex-bridge@0\.1\.0/);
 });
 

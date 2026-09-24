@@ -59,6 +59,7 @@ export async function diagnose({
   host,
   codexProbe = probeCodex,
   bridgeProbe = probeCodexBridge,
+  launcherProbe,
   currentPackage,
   contractRecord,
   handbackWitnessRecord,
@@ -105,7 +106,7 @@ export async function diagnose({
   checks.push(await permissionsCheck(host));
   const bridge = bridgeProbe();
   checks.push(bridgeCommandCheck(bridge));
-  checks.push(...await hookChecks(host, record, () => bridge, ownPackage, packageSource().kind));
+  checks.push(...await hookChecks(host, record, launcherProbe));
   const detectedHostVersion = hostVersion === undefined ? detectHostVersion() : hostVersion;
   const hostContract = contractStatus({
     record: contractRecord === undefined ? await readHostContract(host) : contractRecord,
@@ -140,7 +141,7 @@ export async function diagnose({
   return {
     exitCode: !record || recordBroken || missingFiles.length || agents.status === 'fail' || rules.status === 'fail'
       || hostContractStatus === 'fail' || retention.status === 'fail' || conventions.status === 'fail'
-      || projectRuns.status === 'fail' ? 1 : 0,
+      || projectRuns.status === 'fail' || checks.some((item) => item.key.startsWith('hook:') && item.status === 'fail') ? 1 : 0,
     checks,
     record,
     missingFiles,
