@@ -72,6 +72,14 @@ here. Nothing was reworded on the way out.
   interpreter comes from `ComSpec`, never from the PATH handed in, because a caller's trimmed PATH
   would otherwise turn the version check into a silent null and send installs back to writing full
   paths into hooks.
+- **The installer is the package; the runtime is the home.** `codex-bridge hook <name>` is only a
+  launcher: it resolves the home through `brand-home.mjs` and imports one home file,
+  `lib/hook-entry.mjs`, which owns the name list and the guard import. It never falls back to the
+  package's own `src/home/`. Every launcher-side failure (unknown name, no home, import error) exits 1
+  with a stderr line and runs no guard; exit 2 belongs to a guard's own deliberate refusal. Why: on
+  2026-09-24 a clone install registered three new names against a global 0.6.6 whose package copy did
+  not know them, `hook` answered 2, and every Bash and PowerShell call on the machine was refused.
+  `tests/cli/hook-home-launcher.test.mjs` holds it.
 - **A refused dispatcher fails; it never routes around the refusal.** No `run-codex.mjs` by path, no
   interpreter, no retry in the other shell, and never advice to grant a rule on an internal file.
   The self-execution block names the command only — it once said "start a run through
