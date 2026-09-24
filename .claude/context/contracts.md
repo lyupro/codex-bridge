@@ -79,7 +79,13 @@ here. Nothing was reworded on the way out.
   with a stderr line and runs no guard; exit 2 belongs to a guard's own deliberate refusal. Why: on
   2026-09-24 a clone install registered three new names against a global 0.6.6 whose package copy did
   not know them, `hook` answered 2, and every Bash and PowerShell call on the machine was refused.
-  `tests/cli/hook-home-launcher.test.mjs` holds it.
+  `tests/cli/hook-home-launcher.test.mjs` holds it. `codex-bridge run` follows the same rule through
+  `cli/run-launcher.mjs` (the home's `lib/run-codex.mjs`, no package fallback,
+  `tests/cli/run-home-launcher.test.mjs`); a test that spawns `bin run` gives it a home image with
+  `tests/home-image.mjs`, or it would execute the operator's installed runner. The installer writes
+  the short `codex-bridge hook <name>` only when `hook --home` on PATH proves a launcher of the current
+  protocol serving this very home (`cli/launcher-probe.mjs`); a version comparison proves nothing,
+  since a clone carries the previous release's version.
 - **A refused dispatcher fails; it never routes around the refusal.** No `run-codex.mjs` by path, no
   interpreter, no retry in the other shell, and never advice to grant a rule on an internal file.
   The self-execution block names the command only — it once said "start a run through

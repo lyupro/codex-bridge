@@ -6,6 +6,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
+import { makeHomeImage } from '../home-image.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const RUNNER = path.join(ROOT, 'src', 'home', 'lib', 'run-codex.mjs');
@@ -24,12 +25,13 @@ function args(repo, taskFile) {
   ];
 }
 
-function run(entry, argv, root, input) {
+function run(entry, argv, root, input, extraEnv = {}) {
   return spawnSync(process.execPath, [entry, ...argv], {
     cwd: root,
     encoding: 'utf8',
     input,
-    env: { ...process.env, CODEX_RUNS_ROOT: path.join(root, 'runs') },
+    windowsHide: true,
+    env: { ...process.env, CODEX_RUNS_ROOT: path.join(root, 'runs'), ...extraEnv },
   });
 }
 
@@ -82,19 +84,19 @@ test('non-empty stdin and --task-file refuse instead of choosing precedence', (t
   assert.match(result.stderr, /both stdin and --task-file/);
 });
 
-test('the direct file and package run command share task-channel output and exit code', (t) => {
+test('the direct file and package run command share task-channel output and exit code', async (t) => {
   const root = fixture(t);
   const taskFile = path.join(root, 'empty.md');
   fs.writeFileSync(taskFile, '');
   const argv = args(root, taskFile);
   const direct = run(RUNNER, argv, root);
-  const command = run(BIN, ['run', ...argv], root);
+  const command = run(BIN, ['run', ...argv], root, undefined, { CODEX_BRIDGE_HOME: await makeHomeImage(t) });
   assert.equal(command.status, direct.status);
   assert.equal(command.stdout, direct.stdout);
   assert.equal(command.stderr, direct.stderr);
 });
 
-test('the direct file and package run command share the runner crash reply and exit code', (t) => {
+test('the direct file and package run command share the runner crash reply and exit code', async (t) => {
   const root = fixture(t);
   const taskFile = path.join(root, 'task.md');
   const runsRootFile = path.join(root, 'runs-root-file');
@@ -104,8 +106,11 @@ test('the direct file and package run command share the runner crash reply and e
     '--agent', 'codex-review', '--repo', root, '--order-id', 'crash-check', '--task-file', taskFile,
   ];
   const env = { ...process.env, CODEX_RUNS_ROOT: runsRootFile };
-  const direct = spawnSync(process.execPath, [RUNNER, ...argv], { cwd: root, encoding: 'utf8', env });
-  const command = spawnSync(process.execPath, [BIN, 'run', ...argv], { cwd: root, encoding: 'utf8', env });
+  const direct = spawnSync(process.execPath, [RUNNER, ...argv], { cwd: root, encoding: 'utf8', windowsHide: true, env });
+  const command = spawnSync(process.execPath, [BIN, 'run', ...argv], {
+    cwd: root, encoding: 'utf8', windowsHide: true,
+    env: { ...env, CODEX_BRIDGE_HOME: await makeHomeImage(t) },
+  });
   assert.equal(direct.status, 1);
   assert.equal(command.status, direct.status);
   assert.equal(command.stdout, direct.stdout);

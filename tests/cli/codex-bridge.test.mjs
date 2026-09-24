@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { main } from '../../bin/codex-bridge.mjs';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
+import { makeHomeImage } from '../home-image.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..', '..');
@@ -15,6 +16,7 @@ const BIN = path.join(ROOT, 'bin', 'codex-bridge.mjs');
 function run(args, env = {}) {
   return spawnSync(process.execPath, [BIN, ...args], {
     encoding: 'utf8',
+    windowsHide: true,
     env: { ...process.env, ...env },
   });
 }
@@ -36,25 +38,27 @@ test('--help and -h print the command list', () => {
 test('run forwards runner arguments and returns the runner exit code unchanged', async (t) => {
   const root = makeTempTree('bridge-bin-run-');
   t.after(() => removeTempTree(root));
+  const home = await makeHomeImage(t);
   const taskFile = path.join(root, 'task.md');
   await fs.writeFile(taskFile, 'check current state\n');
   const result = run(
     ['run', '--agent', 'codex-review', '--repo', root, '--order-id', 'bin-run', '--task-file', taskFile, '--no-wait'],
-    { CODEX_RUNS_ROOT: path.join(root, 'runs') },
+    { CODEX_RUNS_ROOT: path.join(root, 'runs'), CODEX_BRIDGE_HOME: home },
   );
   assert.equal(result.status, 4, result.stderr);
   assert.match(result.stdout, /--no-wait never starts a new run/);
   assert.doesNotMatch(result.stderr, /unknown run option/);
 });
 
-test('run forwards --phase and an undeclared phase leaves no run directory', async () => {
+test('run forwards --phase and an undeclared phase leaves no run directory', async (t) => {
+  const home = await makeHomeImage(t);
   const root = makeTempTree('bridge-bin-phase-');
   const runs = path.join(root, 'runs');
   const task = path.join(root, 'task.md');
   await fs.writeFile(task, 'check current state\n');
   const args = ['run', '--agent', 'codex-review', '--repo', root, '--order-id', 'bin-phase',
     '--task-file', task, '--no-wait', '--phase'];
-  const env = { CODEX_RUNS_ROOT: runs, CODEX_BRIDGE_HOME: path.join(root, 'home') };
+  const env = { CODEX_RUNS_ROOT: runs, CODEX_BRIDGE_HOME: home };
   const invalid = run([...args, 'undeclared'], env);
   assert.equal(invalid.status, 2, invalid.stderr);
   assert.match(invalid.stderr, /undeclared --phase "undeclared".*allowed phases: default/);

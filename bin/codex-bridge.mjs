@@ -9,7 +9,7 @@ import { install } from '../cli/install.mjs';
 import { model } from '../cli/model.mjs';
 import { projects } from '../cli/projects.mjs';
 import { read } from '../cli/read.mjs';
-import { runCodexCommand } from '../src/home/lib/run-codex.mjs';
+import { runCodex } from '../cli/run-launcher.mjs';
 import { packageInfo } from '../cli/manifest.mjs';
 import { permissions } from '../cli/permissions.mjs';
 import { prune } from '../cli/prune.mjs';
@@ -93,7 +93,7 @@ export async function main(argv, io = console) {
     io.log((await packageInfo()).version);
     return 0;
   }
-  if (command === 'run') return runCodexCommand(rest);
+  if (command === 'run') return runCodex(rest);
   if (command === 'doctor') {
     const options = commandOptions(command, rest);
     const host = resolveHost(options);
