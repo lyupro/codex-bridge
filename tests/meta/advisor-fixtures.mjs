@@ -10,15 +10,15 @@ export function validAdvice() {
     rejected: [{ option_id: 'split', cost: 'Requires a coordinated caller migration.' }],
     strongest_counterargument: 'The existing boundary may retain coupling as more callers arrive, requiring a later coordinated migration.',
     question_defect: 'none',
-    assumptions: ['VERIFIED', 'REASONABLE', 'FRAGILE'].map((rating) => ({ claim: 'The caller uses this boundary.', rating, address: rating === 'VERIFIED' ? 'src/entry.mjs:1' : '' })),
-    risk_outcomes: ['r1', 'r2', 'r3'].map((risk_id, index) => ({ risk_id, outcome: index === 1 ? 'refuted' : 'confirmed', address: 'src/entry.mjs:1' })),
+    assumptions: ['VERIFIED', 'REASONABLE', 'FRAGILE'].map((rating) => ({ claim: 'The caller uses this boundary.', rating, evidence: rating === 'VERIFIED' ? [{ file: 'src/entry.mjs', line_start: 1, line_end: 1 }] : [] })),
+    risk_outcomes: ['r1', 'r2', 'r3'].map((risk_id, index) => ({ risk_id, outcome: index === 1 ? 'refuted' : 'confirmed', note: 'The entry point supports this result.', evidence: [{ file: 'src/entry.mjs', line_start: 1, line_end: 1 }] })),
     pre_mortem: [
-      { scenario: 'A new caller requiring separate lifecycle ownership would overturn this decision.', early_check: { kind: 'inspect', target: 'src/entry.mjs:1' } },
-      { scenario: 'Concurrent callers could share mutable state and corrupt their independent results.', early_check: { kind: 'test', target: 'caller isolation' } },
+      { scenario: 'A new caller requiring separate lifecycle ownership would overturn this decision.', early_check: { kind: 'inspect', target: 'inspect caller lifecycle ownership', evidence: [{ file: 'src/entry.mjs', line_start: 1, line_end: 1 }] } },
+      { scenario: 'Concurrent callers could share mutable state and corrupt their independent results.', early_check: { kind: 'test', target: 'caller isolation', evidence: [] } },
     ],
     open_questions: ['Which callers need separate ownership?', 'Which constraints remain uncertain?'],
     confidence: 'medium',
-    independent_checks: [{ check: 'Read the entry point.', address: 'src/entry.mjs:1-3' }],
+    independent_checks: [{ check: 'Read the entry point.', evidence: [{ file: 'src/entry.mjs', line_start: 1, line_end: 3 }] }],
   };
 }
 

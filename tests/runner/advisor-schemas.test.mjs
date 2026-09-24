@@ -1,16 +1,18 @@
 /** Guards the advisor answer schemas handed to Codex as --output-schema (Plan_59 D3-D5, D10). */
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { advisorSchema, PHASE_SCHEMAS, SCHEMAS, schemaFor } from '../../src/home/lib/runner/schemas.mjs';
+import { advisorSchema, EVIDENCE_LOCATION, PHASE_SCHEMAS, SCHEMAS, schemaFor } from '../../src/home/lib/runner/schemas.mjs';
 import { validAdvice, validScope } from '../meta/advisor-fixtures.mjs';
 
 const sample = (phase) => (phase === 'advise' ? validAdvice() : validScope());
 
 // Plan_59 requires an independent test validator rather than accepting our own schema by inspection.
 function validates(schema, value) {
-  const type = value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value;
+  const type = schema.type === 'integer' && Number.isInteger(value)
+    ? 'integer' : value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value;
   if (schema.type !== type) return false;
   if (schema.enum && !schema.enum.includes(value)) return false;
+  if (schema.minimum !== undefined && value < schema.minimum) return false;
   if (type === 'string') {
     const length = [...value].length;
     return !(schema.minLength !== undefined && length < schema.minLength) &&
@@ -62,6 +64,37 @@ test('every schema object has all properties required, disallows extras and has 
   inspect(advisorSchema('advise'));
 });
 
+test('advisor evidence always uses the shared location schema and never an address property', () => {
+  function inspect(schema) {
+    if (schema.type === 'object') {
+      assert.equal(Object.hasOwn(schema.properties, 'address'), false);
+      for (const [name, child] of Object.entries(schema.properties)) {
+        if (name === 'evidence') {
+          assert.equal(child.type, 'array');
+          assert.equal(child.items, EVIDENCE_LOCATION);
+        }
+        inspect(child);
+      }
+    } else if (schema.type === 'array') inspect(schema.items);
+  }
+  inspect(advisorSchema('scope'));
+  inspect(advisorSchema('advise'));
+});
+
+test('evidence file pattern allows one repository path with spaces and rejects folded locations', () => {
+  const file = EVIDENCE_LOCATION.properties.file;
+  for (const value of ['a.mjs; b.mjs', 'a.mjs, b.mjs', 'a.mjs:12', 'src/*.mjs', 'C:\\x.mjs']) {
+    assert.equal(validates(file, value), false, value);
+  }
+  for (const value of ['docs/My Plan.md', 'src/home/lib/runner/schemas.mjs']) {
+    assert.equal(validates(file, value), true, value);
+  }
+  const location = { file: 'src/entry.mjs', line_start: 1, line_end: 1 };
+  assert.equal(validates(EVIDENCE_LOCATION, location), true);
+  assert.equal(validates(EVIDENCE_LOCATION, { ...location, line_start: 1.5 }), false);
+  assert.equal(validates(EVIDENCE_LOCATION, { ...location, line_end: 0 }), false);
+});
+
 for (const phase of ['scope', 'advise']) {
   const schema = advisorSchema(phase);
   for (const keys of requiredPaths(schema, sample(phase))) {
@@ -94,6 +127,8 @@ for (const [name, change] of [
   ['early-check extra', (r) => { r.pre_mortem[0].early_check.extra = true; }],
   ['invalid confidence', (r) => { r.confidence = 'certain'; }],
   ['empty checks', (r) => { r.independent_checks = []; }],
+  ['empty independent-check evidence', (r) => { r.independent_checks[0].evidence = []; }],
+  ['empty risk-outcome evidence', (r) => { r.risk_outcomes[0].evidence = []; }],
   ['long recommendation', (r) => { r.recommendation.text = 'x'.repeat(301); }],
   ...['\n', '\r', '\u2028', '\u2029'].flatMap((newline) => [
     ['multiline recommendation', (r) => { r.recommendation.text = `First${newline}Second`; }],
@@ -121,7 +156,7 @@ test('schema length boundaries, all confidence values and scope types are enforc
   value.strongest_counterargument = 'x'.repeat(80);
   value.pre_mortem[0].scenario = 'x'.repeat(30);
   value.pre_mortem[0].early_check.target = 'xxx';
-  value.pre_mortem.push({ scenario: 'x'.repeat(30), early_check: { kind: 'command', target: 'npm test' } });
+  value.pre_mortem.push({ scenario: 'x'.repeat(30), early_check: { kind: 'command', target: 'npm test', evidence: [] } });
   value.why = Array(5).fill('reason');
   for (const confidence of ['high', 'medium', 'low']) {
     value.confidence = confidence;

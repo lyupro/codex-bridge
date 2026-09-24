@@ -228,7 +228,8 @@ test('both prompt phases preserve the read boundary, independent evidence and la
     const prompt = INSTRUCTIONS['codex-advisor']({ phase });
     for (const text of ['DESIGN before code exists', 'ONLY the paths listed under `## Paths`',
       '`git log` / `git show` on those paths', 'Write nothing', 'do not spawn or delegate',
-      '`path:line` address inside those paths', 'machine-checked for existence',
+      'Prose fields cite code as `path:line`', 'ONE location per object', 'never a list inside `file`',
+      'Locations are machine-checked for existence',
       'task carries no preference on purpose', 'agreeing without independent checks',
       'disagreeing to look independent', 'opinion, not advice', 'Agreeing is fine',
       'every text field of result.json in English']) assert.ok(prompt.includes(text), text);
@@ -242,10 +243,11 @@ test('scope predicts before reading and advise uses each required decision lens'
     'taken_on_trust', 'never empty']) assert.ok(scope.includes(text), text);
   const advise = INSTRUCTIONS['codex-advisor']({ phase: 'advise' });
   for (const text of ['every predicted risk', 'risk_outcomes', 'confirmed or refuted',
+    'a `note` explaining it, and evidence',
     'ONE recommendation', 'option_id', 'none-of-these', 'unlisted_option', 'rejected with its cost',
     'EVERY', 'strongest_counterargument comes from a skeptic', 'pre_mortem comes from the executor',
-    'early_check of kind test | command | inspect', 'inspect requires an address',
-    'question_defect comes from the requester', 'VERIFIED (requires an address) | REASONABLE | FRAGILE',
+    'early_check of kind test | command | inspect', 'inspect requires evidence',
+    'question_defect comes from the requester', 'VERIFIED (requires evidence) | REASONABLE | FRAGILE',
     'open_questions, not why', 'independent_checks']) assert.ok(advise.includes(text), text);
   assert.doesNotMatch(scope, /Advise phase:/);
   assert.doesNotMatch(advise, /Scope phase:/);

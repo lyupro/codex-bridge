@@ -62,7 +62,7 @@ test('advise can cite a path requested by phase 1', () => {
   const scopeResult = { ...validScope(), missing_paths: ['docs/guide.md'] };
   const dir = runFolder(tree, 'advise', 'advise', { scope: { run: 'scope', ...scopeResult } });
   const result = validAdvice();
-  result.independent_checks[0].address = 'docs/guide.md:1';
+  result.independent_checks[0].evidence = [{ file: 'docs/guide.md', line_start: 1, line_end: 1 }];
   assert.equal(adviceGap(dir, result, events()), null);
 });
 
@@ -72,7 +72,7 @@ test('advise passes with no scope run folder on disk', () => {
   const scopeResult = { ...validScope(), missing_paths: ['docs/guide.md'] };
   const dir = runFolder(tree, 'advise', 'advise', { scope: { run: 'scope', ...scopeResult } });
   const result = validAdvice();
-  result.independent_checks[0].address = 'docs/guide.md:1';
+  result.independent_checks[0].evidence = [{ file: 'docs/guide.md', line_start: 1, line_end: 1 }];
   assert.equal(fs.existsSync(path.join(tree.runsRoot, 'scope')), false);
   assert.equal(adviceGap(dir, result, events()), null);
 });

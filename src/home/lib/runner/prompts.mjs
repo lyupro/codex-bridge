@@ -18,8 +18,9 @@ const BODIES = {
 Rules for both phases:
 - Read ONLY the paths listed under \`## Paths\` and, in the advise phase, under \`## Scope phase results\`, plus \`git log\` / \`git show\` on those paths.
 - Write nothing. Do your own reading and checks; do not spawn or delegate to other agents.
-- Every claim about code must carry a \`path:line\` address inside those paths. Addresses are
-  machine-checked for existence; do not invent addresses or treat an unchecked claim as evidence.
+- Prose fields cite code as \`path:line\`; every \`evidence\` field is a list of
+  \`{file, line_start, line_end}\` objects, ONE location per object. Several places mean several
+  objects, never a list inside \`file\`. Locations are machine-checked for existence.
 - Do not guess which option the caller prefers: the task carries no preference on purpose.
 - Two failure modes are forbidden: agreeing without independent checks ("both options are good",
   "you know better"), and disagreeing to look independent. A disagreement without an address is
@@ -32,18 +33,18 @@ Scope phase:
   (facts accepted from the task without checking, never empty), together with predicted_risks.
 ` : `
 Advise phase:
-- Settle every predicted risk listed under \`## Scope phase results\` in risk_outcomes: its risk_id, an outcome of
-  confirmed or refuted, and an address supporting that outcome.
+- Settle every predicted risk listed under \`## Scope phase results\` in risk_outcomes with its
+  risk_id, an outcome of confirmed or refuted, a \`note\` explaining it, and evidence.
 - Give ONE recommendation by task option_id, or none-of-these with a described unlisted_option.
   Put every rejected task option in rejected with its cost; for none-of-these this means EVERY
   task option. Set unlisted_option to "none" when recommending a listed option.
 - Each field is a distinct lens: strongest_counterargument comes from a skeptic;
   pre_mortem comes from the executor who has only this advice and the repository. Give each
-  scenario an early_check of kind test | command | inspect with a target; inspect requires an address.
+  scenario an early_check of kind test | command | inspect with a target; inspect requires evidence.
 - question_defect comes from the requester who needs the problem solved, not an option picked.
-- Rate assumptions VERIFIED (requires an address) | REASONABLE | FRAGILE. Anything the requester
+- Rate assumptions VERIFIED (requires evidence) | REASONABLE | FRAGILE. Anything the requester
   could refute with knowledge you lack belongs in open_questions, not why.
-- independent_checks lists what you verified yourself, with addresses. Ground why in those checks
+- independent_checks lists what you verified yourself, with evidence. Ground why in those checks
   and state confidence honestly.
 `}`;
   },

@@ -76,10 +76,9 @@ function* addressesIn(value, root) {
   }
 }
 
-function citationProblem(raw, root, allowed) {
-  const match = raw.match(/^(.+):(\d+)(?:-(\d+))?$/);
-  if (!match) return 'use a repository-relative path:line or path:line-line address';
-  const entry = entryInRepo(root, match[1]);
+function citationProblem(file, start, end, root, allowed) {
+  if (typeof file !== 'string' || !file) return 'use a repository-relative path:line or path:line-line address';
+  const entry = entryInRepo(root, file);
   if (!entry?.isFile) return 'cite an existing file under repoRoot';
   let count;
   try {
@@ -87,8 +86,6 @@ function citationProblem(raw, root, allowed) {
   } catch {
     return 'cite a readable file under repoRoot';
   }
-  const start = Number(match[2]);
-  const end = match[3] === undefined ? start : Number(match[3]);
   if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 1 || end < start || end > count) {
     return `use an ascending line range within this file's ${count} lines`;
   }
@@ -103,40 +100,59 @@ function checkCitations({ phase, result, task, repoRoot, scopeResult }, reasons)
   const root = path.resolve(repoRoot);
   const allowed = [...task.paths, ...(phase === 'scope' ? result.missing_paths : scopeResult?.missing_paths ?? [])]
     .map((raw) => entryInRepo(root, raw)).filter(Boolean);
-  const check = (field, address) => {
-    const problem = citationProblem(address, root, allowed);
-    if (problem) reasons.push(`D3 ${field} ${JSON.stringify(address)}: ${problem}.`);
+  const locationLabel = ({ file, line_start, line_end }) =>
+    `${file}:${line_start}${line_end === line_start ? '' : `-${line_end}`}`;
+  const checkLocation = (field, location) => {
+    const { file, line_start: start, line_end: end } = location;
+    const label = locationLabel(location);
+    const problem = citationProblem(file, start, end, root, allowed);
+    if (problem) reasons.push(`D3 ${field} ${JSON.stringify(label)}: ${problem}.`);
   };
   const checkAddress = (field, raw) => {
-    const trimmed = raw.trim();
-    check(field, /^`.*`$/.test(trimmed) ? trimmed.slice(1, -1) : trimmed);
+    const match = raw.match(/^(.+):(\d+)(?:-(\d+))?$/);
+    if (!match) {
+      reasons.push(`D3 ${field} ${JSON.stringify(raw)}: use a repository-relative path:line or path:line-line address.`);
+      return;
+    }
+    const start = Number(match[2]);
+    checkLocation(field, {
+      file: match[1],
+      line_start: start,
+      line_end: match[3] === undefined ? start : Number(match[3]),
+    });
   };
   // D3 covers every address anywhere in the answer. A list of prose fields had to be edited by
   // hand when `falsifier` became `pre_mortem`, and each new field would have joined it unchecked.
-  // Fields that ARE an address are checked whole below, so they are skipped here.
+  // Structured evidence and the free-text early_check.target are handled separately below.
   for (const { field, value } of strings(result)) {
-    if (/\.address$|\.early_check\.target$/.test(field)) continue;
-    for (const address of addressesIn(value, root)) check(field, address);
+    if (/(?:^|\.)evidence(?:\[|\.|$)|\.early_check\.target$/.test(field)) continue;
+    for (const address of addressesIn(value, root)) checkAddress(field, address);
   }
+  const checkEvidence = (field, evidence) => {
+    for (const [index, location] of evidence.entries()) checkLocation(`${field}[${index}]`, location);
+  };
   if (result.independent_checks) {
     for (const [index, item] of result.independent_checks.entries()) {
-      checkAddress(`independent_checks[${index}].address`, item.address);
+      checkEvidence(`independent_checks[${index}].evidence`, item.evidence);
     }
   }
   if (phase === 'advise') {
     for (const [index, item] of result.assumptions.entries()) {
-      if (item.rating === 'VERIFIED' || item.address !== '') {
-        checkAddress(`assumptions[${index}].address`, item.address);
+      if (item.rating === 'VERIFIED' && item.evidence.length === 0) {
+        reasons.push(`D10 assumptions[${index}].evidence []: a VERIFIED assumption needs at least one location.`);
       }
+      checkEvidence(`assumptions[${index}].evidence`, item.evidence);
     }
     for (const [index, item] of result.pre_mortem.entries()) {
-      if (item.early_check.kind === 'inspect') {
-        checkAddress(`pre_mortem[${index}].early_check.target`, item.early_check.target);
+      const { early_check: earlyCheck } = item;
+      if (earlyCheck.kind === 'inspect' && earlyCheck.evidence.length === 0) {
+        reasons.push(`D10 pre_mortem[${index}].early_check.evidence []: an inspect check needs at least one location.`);
       }
+      checkEvidence(`pre_mortem[${index}].early_check.evidence`, earlyCheck.evidence);
     }
-    // An outcome's address is evidence whether or not the phase-1 answer is at hand.
+    // A risk outcome's locations are evidence whether or not the phase-1 answer is at hand.
     for (const [index, item] of result.risk_outcomes.entries()) {
-      checkAddress(`risk_outcomes[${index}].address`, item.address);
+      checkEvidence(`risk_outcomes[${index}].evidence`, item.evidence);
     }
   }
 }

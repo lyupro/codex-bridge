@@ -150,6 +150,30 @@ const REVIEW_SCHEMA = {
   },
 };
 
+// The 2026-09-24_094352_plan62-g1-dispatcher-gate run folded 3-5 citations into one advisor
+// address; like the 2026-07-31 build changes[].file precedent, constrain a single location here.
+export const EVIDENCE_LOCATION = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['file', 'line_start', 'line_end'],
+  properties: {
+    file: {
+      type: 'string',
+      minLength: 1,
+      pattern: '^[^:;,*?{}\\r\\n]+$',
+      description: 'Exactly one repository-root-relative path. Spaces are allowed; lists, globs, drive letters and line suffixes are not — use a separate location object for each place.',
+    },
+    line_start: { type: 'integer', minimum: 1 },
+    line_end: { type: 'integer', minimum: 1 },
+  },
+};
+
+const EVIDENCE_LIST = (minItems) => ({
+  type: 'array',
+  ...(minItems === undefined ? {} : { minItems }),
+  items: EVIDENCE_LOCATION,
+});
+
 /** Plan_59: execution schemas stay static; schemaFor selects the advisor contract by phase. */
 export const SCHEMAS = {
   'codex-scout': SCOUT_SCHEMA,
@@ -220,11 +244,11 @@ export const PHASE_SCHEMAS = {
           items: {
             type: 'object',
             additionalProperties: false,
-            required: ['claim', 'rating', 'address'],
+            required: ['claim', 'rating', 'evidence'],
             properties: {
               claim: { type: 'string' },
               rating: { type: 'string', enum: ['VERIFIED', 'REASONABLE', 'FRAGILE'] },
-              address: { type: 'string' },
+              evidence: EVIDENCE_LIST(),
             },
           },
         },
@@ -233,11 +257,12 @@ export const PHASE_SCHEMAS = {
           items: {
             type: 'object',
             additionalProperties: false,
-            required: ['risk_id', 'outcome', 'address'],
+            required: ['risk_id', 'outcome', 'note', 'evidence'],
             properties: {
               risk_id: { type: 'string' },
               outcome: { type: 'string', enum: ['confirmed', 'refuted'] },
-              address: { type: 'string' },
+              note: { type: 'string' },
+              evidence: EVIDENCE_LIST(1),
             },
           },
         },
@@ -254,10 +279,11 @@ export const PHASE_SCHEMAS = {
               early_check: {
                 type: 'object',
                 additionalProperties: false,
-                required: ['kind', 'target'],
+                required: ['kind', 'target', 'evidence'],
                 properties: {
                   kind: { type: 'string', enum: ['test', 'command', 'inspect'] },
                   target: { type: 'string', minLength: 3 },
+                  evidence: EVIDENCE_LIST(),
                 },
               },
             },
@@ -271,8 +297,8 @@ export const PHASE_SCHEMAS = {
           items: {
             type: 'object',
             additionalProperties: false,
-            required: ['check', 'address'],
-            properties: { check: { type: 'string' }, address: { type: 'string' } },
+            required: ['check', 'evidence'],
+            properties: { check: { type: 'string' }, evidence: EVIDENCE_LIST(1) },
           },
         },
       },
