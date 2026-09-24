@@ -55,6 +55,14 @@ test('every shipped agent command crosses the codex-bridge run boundary without 
   }
 });
 
+test('the four dispatcher prompts retry the identical command without --no-wait', async () => {
+  for (const name of ['codex-build.md', 'codex-scout.md', 'codex-review.md', 'codex-advisor.md']) {
+    const source = await fs.readFile(path.join(AGENTS_DIR, name), 'utf8');
+    assert.doesNotMatch(source, /--no-wait/, `${name} must not offer --no-wait.`);
+    assert.match(source, /run the identical command again/, `${name} must explain the identical-command retry.`);
+  }
+});
+
 test('whole-definition guard rejects command regressions outside tagged shell fences', () => {
   const safe = '```bash\ncodex-bridge run --agent codex-review\n```\n';
   const mutations = [

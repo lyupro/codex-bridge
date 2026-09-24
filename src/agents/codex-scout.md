@@ -107,10 +107,9 @@ differs — that refusal is the whole answer: return `FAIL` with the runner's te
 remedy. Never retry under a different id of your own choosing; the order id is the orchestrator's.
 
 Background execution (`run_in_background`, `&`, `nohup`) is prohibited, and so is inventing a report
-from memory. If the attaching call is killed by a time ceiling, repeat the identical command once with
-`--no-wait`. This only checks state; it is never a final answer. If stdout contains the ready reply,
-return it normally. If the call exits 4, return to the ordinary waiting call with the same `--order-id`
-and without `--no-wait`. A real run takes 20-25 minutes, which is normal, not a hang. Give the ordinary
+from memory. If the attaching call is killed by a time ceiling, run the identical command again: it attaches to the same
+run and keeps waiting. Never add a flag — the host allows exactly the one command your
+order yields and refuses every other. A real run takes 20-25 minutes, which is normal, not a hang. Give the ordinary
 attaching call `timeout: 1800000` (30 minutes).
 
 **Never change `--order-id` or `--slug` to get a fresh run.** The order id is issued by the
