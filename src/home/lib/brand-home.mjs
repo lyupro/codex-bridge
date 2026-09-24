@@ -23,6 +23,7 @@ export function resolveBrandHome({ homedir = os.homedir(), env = process.env } =
   return {
     root,
     source: overridden ? 'CODEX_BRIDGE_HOME' : 'default',
+    stateDir: path.join(root, 'state'),
     configPath: path.join(root, 'config.json'),
     conventionsPath: path.join(root, 'conventions.md'),
   };
@@ -35,5 +36,6 @@ export function resolveBrandHome({ homedir = os.homedir(), env = process.env } =
  * environment after import, which would not be seen here.
  */
 export const BRAND_HOME = resolveBrandHome();
+export const BRAND_STATE_DIR = BRAND_HOME.stateDir;
 export const BRAND_CONFIG_PATH = BRAND_HOME.configPath;
 export const BRAND_CONVENTIONS_PATH = BRAND_HOME.conventionsPath;
