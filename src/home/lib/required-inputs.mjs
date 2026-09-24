@@ -119,7 +119,7 @@ export function isPlaceholder(value) {
 }
 
 // Plan_59: scope is a real phase value, while it remains a placeholder for existing inputs.
-const isInputPlaceholder = (value, label) =>
+export const isInputPlaceholder = (value, label) =>
   !(label === 'phase' && cleanValue(value) === 'scope') && isPlaceholder(value);
 
 export function extractValue(promptText, label) {
