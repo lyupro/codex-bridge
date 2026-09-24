@@ -104,6 +104,9 @@ export async function main(argv, io = console) {
     if (options.probeContract) {
       probe = await probeContract({ host });
       io.log(`probe: ${probe.message}`);
+      for (const [name, verdict] of Object.entries(probe.dispatcher ?? {})) {
+        io.log(`probe: ${name} ${verdict.result} — ${verdict.detail}`);
+      }
     }
     const result = await diagnose({ host });
     io.log(renderDoctor(result));

@@ -8,11 +8,14 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { detectHostVersion, writeHostContract } from './host-contract.mjs';
+import { buildRig } from './probe-rig.mjs';
+import { DISPATCHER_CONTRACTS, judgeDispatcherContracts } from './dispatcher-contract.mjs';
+import { writeDispatcherContract } from './dispatcher-contract-record.mjs';
+import { brandStateDir } from '../src/home/lib/brand-home.mjs';
+import { parseJsonText } from '../src/home/lib/json-file.mjs';
+import { randomUUID } from 'node:crypto';
 
 export const PROBE_MARKER = 'codex-bridge-contract-probe';
-
-const MARKER_NAME = `${PROBE_MARKER}.marker`;
-const JOURNAL_NAME = 'probe-journal.log';
 
 const exists = async (target) => {
   try {
@@ -55,63 +58,6 @@ export function judgeProbe({ markerExists, hookFired, hostResult }) {
   return { result: 'honored', reason: 'The hook fired and the refused marker command did not run.' };
 }
 
-const hookSource = `#!/usr/bin/env node
-import fs from 'node:fs';
-import { fileURLToPath } from 'node:url';
-
-const marker = ${JSON.stringify(PROBE_MARKER)};
-const journalPath = fileURLToPath(new URL('../${JOURNAL_NAME}', import.meta.url));
-let input;
-try {
-  input = JSON.parse(fs.readFileSync(0, 'utf8'));
-} catch {
-  process.exit(0);
-}
-
-if (typeof input?.tool_input?.command === 'string' && input.tool_input.command.includes(marker)) {
-  fs.appendFileSync(journalPath, \`${PROBE_MARKER}\\n\`, 'utf8');
-  process.stdout.write(JSON.stringify({
-    hookSpecificOutput: {
-      hookEventName: 'PreToolUse',
-      permissionDecision: 'deny',
-      permissionDecisionReason: 'Contract probe refused its marker command.',
-    },
-  }));
-}
-`;
-
-// Forward slashes on purpose: the host runs this hook command line through a POSIX shell, and a
-// Windows path handed over verbatim arrives carrying backslashes that shell may swallow. The
-// doubled form this replacement first carried matched nothing at all on a real path.
-const shellQuote = (value) => `"${value.replaceAll('\\', '/').replaceAll('"', '\\"')}"`;
-
-export async function buildRig(dir) {
-  const claudeDir = path.join(dir, '.claude');
-  const hooksDir = path.join(claudeDir, 'hooks');
-  const hookPath = path.join(hooksDir, 'probe-hook.mjs');
-  const markerPath = path.join(dir, MARKER_NAME);
-  const journalPath = path.join(claudeDir, JOURNAL_NAME);
-  const command = `touch ${MARKER_NAME}`;
-  const prompt = `Run exactly this Bash command and nothing else: ${command}`;
-  const settings = {
-    hooks: {
-      PreToolUse: [{
-        matcher: 'Bash',
-        hooks: [{ type: 'command', command: `${shellQuote(process.execPath)} ${shellQuote(hookPath)}` }],
-      }],
-    },
-  };
-
-  await fs.mkdir(hooksDir, { recursive: true });
-  await fs.writeFile(hookPath, hookSource, 'utf8');
-  await fs.writeFile(
-    path.join(claudeDir, 'settings.json'),
-    `${JSON.stringify(settings, null, 2)}\n`,
-    'utf8',
-  );
-  return { dir, markerPath, journalPath, command, prompt };
-}
-
 export async function probeContract({
   host,
   version = detectHostVersion(),
@@ -126,18 +72,20 @@ export async function probeContract({
       version: null,
       message: 'The host version could not be read, so no contract probe was run.',
       recorded: false,
+      dispatcher: Object.fromEntries(DISPATCHER_CONTRACTS.map((name) => [name, { result: 'inconclusive', detail: 'Host version is unavailable.' }])),
     };
   }
 
   await fs.mkdir(rigRoot, { recursive: true });
   const dir = await fs.mkdtemp(path.join(rigRoot, `${PROBE_MARKER}-`));
   try {
-    const rig = await buildRig(dir);
+    const token = randomUUID().slice(0, 8);
+    const rig = await buildRig(dir, token);
     let hostResult;
     try {
       hostResult = runHost('claude', [
         '--setting-sources', 'project',
-        '--allowedTools', 'Bash',
+        '--allowedTools', 'Bash,Agent',
         '-p', rig.prompt,
       ], {
         cwd: rig.dir,
@@ -150,11 +98,29 @@ export async function probeContract({
       hostResult = { error };
     }
 
+    let entries = [];
+    let malformed = false;
+    try {
+      const source = await fs.readFile(rig.dispatcherJournalPath, 'utf8');
+      entries = source.split(/\r?\n/).filter(Boolean).map((line) => parseJsonText(rig.dispatcherJournalPath, line));
+    } catch (error) {
+      if (error.code !== 'ENOENT') malformed = true;
+    }
     const verdict = judgeProbe({
       markerExists: await exists(rig.markerPath),
       hookFired: await exists(rig.journalPath),
       hostResult,
     });
+    let dispatcher = judgeDispatcherContracts({
+      entries: malformed ? null : entries,
+      hostHealthy: !malformed && !hostResult?.error && !hostResult?.signal && hostResult?.status === 0,
+      okCommand: rig.okCommand, failCommand: rig.failCommand, okOutput: rig.okOutput,
+      failOutput: rig.failOutput, agentType: 'probe-agent', promptToken: token,
+    });
+    if (verdict.result == null) dispatcher = Object.fromEntries(Object.keys(dispatcher).map((name) => [name, { result: 'inconclusive', detail: 'Refusal probe did not complete.' }]));
+    if (verdict.result != null && version != null && !malformed && !hostResult?.error && !hostResult?.signal && hostResult?.status === 0) {
+      await writeDispatcherContract({ stateDir: brandStateDir(host.brandRoot), version, verdicts: dispatcher, now });
+    }
     if (verdict.result == null) {
       return {
         state: 'inconclusive',
@@ -162,6 +128,7 @@ export async function probeContract({
         version,
         message: verdict.reason,
         recorded: false,
+        dispatcher: Object.fromEntries(Object.entries(dispatcher).map(([name, item]) => [name, { result: 'inconclusive', detail: 'Host did not complete the probe.' }])),
       };
     }
 
@@ -172,6 +139,7 @@ export async function probeContract({
       version,
       message: verdict.reason,
       recorded: true,
+      dispatcher,
     };
   } finally {
     // Windows can retain a just-written hook tree briefly; cleanup failure must not erase a valid

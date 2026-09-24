@@ -24,7 +24,7 @@ const stdinHookExpressions = Object.freeze({
   // Not a hook file itself: it carries the source of the throwaway probe hook as a template, and
   // that hook reads its payload from stdin exactly like the five above. The rig it runs in has no
   // access to this package, so the shared reader cannot be imported there.
-  'cli/probe-contract.mjs': "JSON.parse(fs.readFileSync(0, 'utf8'))",
+  'cli/probe-rig.mjs': "JSON.parse(fs.readFileSync(0, 'utf8'))",
 });
 
 async function fixture(t, content) {
