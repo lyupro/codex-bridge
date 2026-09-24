@@ -18,6 +18,9 @@ import {
 import { hookChecks } from './doctor-hooks.mjs';
 import { contractStatus, detectHostVersion, readHostContract } from './host-contract.mjs';
 import { handbackWitnessStatus } from './handback-witness-check.mjs';
+import { dispatcherContractStatus } from './dispatcher-contract.mjs';
+import { DISPATCHER_CONTRACT_FILE, readDispatcherContract } from './dispatcher-contract-record.mjs';
+import { PROBE_COMMAND } from './host-contract.mjs';
 import { readHandbackWitness } from '../src/home/lib/handback-witness.mjs';
 import { brandStateDir } from '../src/home/lib/brand-home.mjs';
 import { liveRunsCheck, projectRunsCheck, retentionCheck } from './doctor-runs.mjs';
@@ -55,6 +58,19 @@ export function probeCodexBridge() {
   return { available: true, value: (result.stdout || result.stderr).trim() };
 }
 
+// Plan_62 D19: `changed` fails because the dispatcher gate rests on that contract; everything short of a
+// measured break only warns. A corrupt record gets one line: the probe refuses to overwrite it.
+const DISPATCHER_CONTRACT_STATUS = { verified: 'ok', changed: 'fail' };
+
+function dispatcherContractChecks({ record, version, stateDir }) {
+  if (record?.corrupt) {
+    return [check('dispatcherContract', 'warn',
+      `The dispatcher contract record is unreadable; delete ${path.join(stateDir, DISPATCHER_CONTRACT_FILE)}, then run ${PROBE_COMMAND}.`)];
+  }
+  return dispatcherContractStatus({ record, version }).map(({ contract, state, message }) =>
+    check(`dispatcherContract:${contract}`, DISPATCHER_CONTRACT_STATUS[state] ?? 'warn', message));
+}
+
 export async function diagnose({
   host,
   codexProbe = probeCodex,
@@ -63,6 +79,7 @@ export async function diagnose({
   currentPackage,
   contractRecord,
   handbackWitnessRecord,
+  dispatcherContractRecord,
   hostVersion,
 } = {}) {
   const checks = [sourceCheck()];
@@ -116,14 +133,18 @@ export async function diagnose({
     ? 'ok'
     : hostContract.state === 'ignored' ? 'fail' : 'warn';
   checks.push(check('hostContract', hostContractStatus, hostContract.message));
+  const stateDir = brandStateDir(host.brandRoot);
   const witness = handbackWitnessStatus({
-    record: handbackWitnessRecord === undefined
-      ? readHandbackWitness({ stateDir: brandStateDir(host.brandRoot) })
-      : handbackWitnessRecord,
+    record: handbackWitnessRecord === undefined ? readHandbackWitness({ stateDir }) : handbackWitnessRecord,
     hostVersion: detectedHostVersion,
-    stateDir: brandStateDir(host.brandRoot),
+    stateDir,
   });
   checks.push(check('handbackWitness', ['seen', 'unobserved'].includes(witness.state) ? 'ok' : 'warn', witness.message));
+  checks.push(...dispatcherContractChecks({
+    record: dispatcherContractRecord === undefined ? readDispatcherContract({ stateDir }) : dispatcherContractRecord,
+    version: detectedHostVersion,
+    stateDir,
+  }));
   const retention = retentionCheck(host);
   checks.push(retention);
   const conventions = await conventionsCheck(host);
@@ -141,7 +162,8 @@ export async function diagnose({
   return {
     exitCode: !record || recordBroken || missingFiles.length || agents.status === 'fail' || rules.status === 'fail'
       || hostContractStatus === 'fail' || retention.status === 'fail' || conventions.status === 'fail'
-      || projectRuns.status === 'fail' || checks.some((item) => item.key.startsWith('hook:') && item.status === 'fail') ? 1 : 0,
+      || projectRuns.status === 'fail'
+      || checks.some((item) => /^(hook|dispatcherContract):/.test(item.key) && item.status === 'fail') ? 1 : 0,
     checks,
     record,
     missingFiles,
