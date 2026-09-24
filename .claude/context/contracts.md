@@ -54,6 +54,13 @@ here. Nothing was reworded on the way out.
   read by all three layers that police this: the order gate, the runner and
   `tests/shell-unsafe-arguments.test.mjs`, which also checks the examples in `docs/overview.md` and
   `README.md` for continuations and relative task-file paths. Never restate the list anywhere.
+- **Every child process in `src` or `cli` hides its console window: `windowsHide: true` at the call
+  site.** The run worker is spawned detached, so on Windows it owns no console, and each console program
+  it starts without the flag opens a visible window — on 2026-09-24 the before/after `git` snapshots
+  flashed a burst of black windows over the operator's screen at the end of every run. A spread of
+  options the scanner cannot follow does not count; say it again at the call.
+  `tests/child-process-hidden-window.test.mjs` fails otherwise (it shares its scanner with the shell
+  guard, `tests/child-process-scan.mjs`).
 - **No child process in `src` or `cli` is started through a shell.** The `shell` option may only be
   the literal `false` (omitting it is the same thing and how most calls are written), and
   `exec`/`execSync` may not be imported at all, since they always use one. `tests/no-shell-child-process.test.mjs`

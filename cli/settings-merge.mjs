@@ -71,9 +71,9 @@ export function reachableCommandVersion(name = 'codex-bridge', env = process.env
   const shell = envValue(env, 'comspec') || process.env.ComSpec || 'cmd.exe';
   const result = process.platform === 'win32'
     ? spawnSync(shell, ['/d', '/s', '/c', `""${shimPath}" --version"`], {
-      encoding: 'utf8', env, shell: false, windowsVerbatimArguments: true,
+      encoding: 'utf8', env, shell: false, windowsVerbatimArguments: true, windowsHide: true,
     })
-    : spawnSync(shimPath, ['--version'], { encoding: 'utf8', env, shell: false });
+    : spawnSync(shimPath, ['--version'], { encoding: 'utf8', env, shell: false, windowsHide: true });
   if (result.error || result.status !== 0) return null;
   return String(result.stdout || '').trim().split(/\r?\n/).pop()?.trim() || null;
 }

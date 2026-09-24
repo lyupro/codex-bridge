@@ -23,7 +23,7 @@ export function retentionCheck(host) {
  * report a location no run will ever use.
  */
 function repoRoot(cwd) {
-  const top = spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd, encoding: 'utf8' });
+  const top = spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd, encoding: 'utf8', windowsHide: true });
   return top.status === 0 && top.stdout.trim() ? top.stdout.trim() : cwd;
 }
 

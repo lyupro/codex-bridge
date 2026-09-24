@@ -83,6 +83,7 @@ export function detectHostVersion({ run = spawnSync } = {}) {
       encoding: 'utf8',
       shell: false,
       timeout: 5000,
+      windowsHide: true,
     });
     if (!result || result.error || result.status !== 0) return null;
     return parseHostVersion(result.stdout);

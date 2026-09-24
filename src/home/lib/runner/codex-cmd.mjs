@@ -77,7 +77,7 @@ export function spawnCaptured(command, args, options) {
     throw new TypeError('spawnCaptured requires a finite timeout greater than zero');
   }
   return new Promise((resolve) => {
-    const child = spawn(command, args, { ...rest, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(command, args, { ...rest, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
     let stdout = Buffer.alloc(0);
     let stderr = Buffer.alloc(0);
     let captureError = null;
@@ -232,6 +232,7 @@ export function runCodex(args, taskText, eventsPath, budgetMinutes, graceMs = ST
   const child = spawn(spec.command, spec.args, {
     ...spec.options,
     stdio: ['pipe', 'pipe', 'pipe'],
+    windowsHide: true,
   });
 
   return new Promise((resolve) => {
@@ -345,7 +346,7 @@ export function codexUnavailableReason() {
   const probe = spawnSync(
     process.platform === 'win32' ? process.env.ComSpec || 'cmd.exe' : 'codex',
     process.platform === 'win32' ? ['/d', '/s', '/c', 'codex --version'] : ['--version'],
-    { encoding: 'utf8' },
+    { encoding: 'utf8', windowsHide: true },
   );
   if (probe.error || probe.status !== 0) {
     return (probe.stderr || probe.error?.message || 'codex --version is not responding').trim();

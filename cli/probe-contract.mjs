@@ -144,6 +144,7 @@ export async function probeContract({
         encoding: 'utf8',
         shell: false,
         timeout: 120000,
+        windowsHide: true,
       });
     } catch (error) {
       hostResult = { error };

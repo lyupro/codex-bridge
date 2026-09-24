@@ -96,6 +96,7 @@ const gitMetadata = target === `${repository}/.git` || target.startsWith(`${repo
 if (!gitMetadata) {
   const ignored = spawnSync('git', ['-C', status.repo, 'check-ignore', '--quiet', '--', match.targetPath], {
     stdio: 'ignore',
+    windowsHide: true,
   });
   if (ignored.status === 0) pass();
 }

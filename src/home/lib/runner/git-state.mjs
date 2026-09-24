@@ -15,7 +15,7 @@ import { runsRoot } from './runs-root.mjs';
 export const MAX_LOG = 256 * 1024 * 1024;
 
 export const git = (repo, args) =>
-  spawnSync('git', ['-C', repo, ...args], { encoding: 'utf8', maxBuffer: MAX_LOG });
+  spawnSync('git', ['-C', repo, ...args], { encoding: 'utf8', maxBuffer: MAX_LOG, windowsHide: true });
 
 /**
  * Prefix of the run folders as seen from inside the repository, or null when they live
