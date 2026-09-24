@@ -10,6 +10,8 @@ import {
   recordTarget,
 } from './manifest.mjs';
 import { removePermissionRules } from './permissions.mjs';
+import { hostContractPath } from './host-contract.mjs';
+import { brandStateDir } from '../src/home/lib/brand-home.mjs';
 import {
   commandFor,
   removeHook,
@@ -31,6 +33,17 @@ function permissionOutput(host, removed, dryRun) {
   const verb = dryRun ? 'Would remove' : 'Removed';
   const plural = removed === 1 ? 'string' : 'strings';
   return `${verb} ${removed} permission rule ${plural} from ${host.settingsPath}.`;
+}
+
+// Plan_62 D22: uninstall removes only recorded files, and the message used to name only runs and
+// config.json — state/, the host measurement and conventions.md stayed behind unmentioned. Until
+// Plan_65 derives this from a registry, the sentence names every kind the package writes while working.
+function preservationText(host) {
+  return `Run artifacts in ${path.join(host.root, 'codex-runs')} are preserved, and so is what the package `
+    + `wrote into ${host.brandRoot} while working: the run configuration ${host.brandConfigPath}, the conventions `
+    + `${host.brandConventionsPath}, the host measurement ${hostContractPath(host)} and runtime state in `
+    + `${brandStateDir(host.brandRoot)} (dispatcher state, guard counters, the handback witness, dispatcher `
+    + 'contract verdicts, and hook diagnostics that hold the full hook input). Delete them by hand for a complete removal.';
 }
 
 function displayFile(file) {
@@ -62,8 +75,7 @@ async function uninstallInRun({ host, dryRun = false } = {}) {
   const permissionResult = await removePermissionRules(host.settingsPath, { dryRun });
   const permissionLine = permissionOutput(host, permissionResult.removed, dryRun);
   const record = await readInstallRecord(host);
-  const preservation = `Run artifacts in ${path.join(host.root, 'codex-runs')} and the run `
-    + `configuration in ${host.brandConfigPath} are preserved.`;
+  const preservation = preservationText(host);
   if (!record) {
     return { exitCode: 1, output: `${permissionLine}\ncodex-bridge is not installed.\n${preservation}` };
   }

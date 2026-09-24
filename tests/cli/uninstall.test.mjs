@@ -125,6 +125,20 @@ test('uninstall removes only recorded files and hook while preserving foreign ho
   await assert.rejects(() => fs.access(host.commandsDir), { code: 'ENOENT' });
 });
 
+test('uninstall and its dry run name everything the package leaves in its home', async (t) => {
+  const { host } = await fixture(t);
+  await install({ host });
+  const dryRun = await uninstall({ host, dryRun: true });
+  const result = await uninstall({ host });
+  for (const output of [dryRun.output, result.output]) {
+    for (const kept of [host.brandConfigPath, host.brandConventionsPath,
+      path.join(host.brandRoot, '.host-contract.json'), path.join(host.brandRoot, 'state')]) {
+      assert.ok(output.includes(kept), `expected ${kept} in: ${output}`);
+    }
+    assert.match(output, /full hook input/);
+  }
+});
+
 test('uninstall removes unchanged bridge rules but preserves adjacent Codex rules', async (t) => {
   const { host } = await fixture(t);
   const defaultRules = path.join(host.codexRulesDir, 'default.rules');
