@@ -164,7 +164,9 @@ const hasOwnCommand = (group, commands) => {
  * deleted file. Conversely, the 2026-08-17 host proved that finding alone is insufficient: its
  * worktree lock stayed under the pre-shell matcher, so Bash never reached the guard. The command
  * is this package's own absolute path, so it identifies our entry wherever the group ended up,
- * and merge can move it without creating a duplicate.
+ * and merge can move it without creating a duplicate. Alternate commands identify our entry, but
+ * do not prove it is in the launcher form selected for this operation. Update must rewrite stale
+ * forms, or unsafe registrations already in settings.json would survive every future update.
  */
 export async function inspectHook(settingsPath, specOrPath) {
   const state = await readSettings(settingsPath);
@@ -173,11 +175,15 @@ export async function inspectHook(settingsPath, specOrPath) {
   let matchedCommand;
   let matchedMatcher;
   let requiresMove = false;
+  let requiresRewrite = false;
+  let duplicates = 0;
   for (const group of groups(state.settings, spec.event)) {
     for (const hook of groupHooks(group)) {
       if (hook?.type !== 'command' || !commands.includes(hook.command)) continue;
       matchedCommand ??= hook.command;
       matchedMatcher ??= group?.matcher;
+      duplicates += 1;
+      if (hook.command !== spec.command) requiresRewrite = true;
       if (group?.matcher !== spec.matcher) requiresMove = true;
     }
   }
@@ -188,6 +194,9 @@ export async function inspectHook(settingsPath, specOrPath) {
     matchedCommand,
     matchedMatcher,
     requiresMove,
+    requiresRewrite,
+    duplicates: duplicates > 1,
+    current: Boolean(matchedCommand) && !requiresMove && !requiresRewrite && duplicates === 1,
   };
 }
 
@@ -259,15 +268,17 @@ export async function mergeHook(settingsPath, specOrPath, inspected) {
   return withMutationRun(settingsPath, async () => {
     const spec = normalizeSpec(specOrPath);
     const state = inspected || await inspectHook(settingsPath, spec);
-    if (state.present && !state.requiresMove) return { changed: false, createdGroup: false };
+    if (state.current) return { changed: false, createdGroup: false };
     const settings = structuredClone(state.settings);
     settings.hooks ??= {};
     if (!Array.isArray(settings.hooks[spec.event])) settings.hooks[spec.event] = [];
     if (state.present) {
       const eventGroups = settings.hooks[spec.event];
       const commands = [spec.command, ...spec.alternateCommands];
+      // The entry in the declared group wins, so a field the operator added there (a timeout)
+      // survives the rewrite; groups are walked from the end, which would otherwise pick a stale copy.
       let hookToMove;
-      let keptDeclaredHook = false;
+      let declaredHook;
       for (let index = eventGroups.length - 1; index >= 0; index -= 1) {
         const group = eventGroups[index];
         if (!Array.isArray(group?.hooks)) continue;
@@ -275,26 +286,21 @@ export async function mergeHook(settingsPath, specOrPath, inspected) {
         group.hooks = group.hooks.filter((hook) => {
           if (hook?.type !== 'command' || !commands.includes(hook.command)) return true;
           hookToMove ??= hook;
-          if (group.matcher === spec.matcher && !keptDeclaredHook) {
-            keptDeclaredHook = true;
-            return true;
-          }
+          if (group.matcher === spec.matcher) declaredHook ??= hook;
           return false;
         });
         if (hadOwnHook && group.hooks.length === 0) eventGroups.splice(index, 1);
       }
       let group = eventGroups.find((entry) => entry?.matcher === spec.matcher);
       const createdGroup = !group;
-      if (!keptDeclaredHook) {
-        if (!group) {
-          group = { matcher: spec.matcher, hooks: [] };
-          eventGroups.push(group);
-        }
-        if (!Array.isArray(group.hooks)) group.hooks = [];
-        group.hooks.push(hookToMove);
+      if (!group) {
+        group = { matcher: spec.matcher, hooks: [] };
+        eventGroups.push(group);
       }
+      if (!Array.isArray(group.hooks)) group.hooks = [];
+      group.hooks.push({ ...(declaredHook || hookToMove), command: spec.command });
       await atomicWrite(settingsPath, settings, state);
-      return { changed: true, createdGroup, moved: true };
+      return { changed: true, createdGroup, ...(state.requiresMove ? { moved: true } : {}), ...(state.requiresRewrite ? { rewritten: true } : {}) };
     }
     let group = settings.hooks[spec.event].find((entry) => entry?.matcher === spec.matcher);
     const createdGroup = !group;

@@ -17,7 +17,7 @@ import {
   rulesPlan,
 } from './manifest.mjs';
 import { targetMatches } from './copy.mjs';
-import { hookTargets } from './hook-targets.mjs';
+import { hookTargets, recordHasHooks } from './hook-targets.mjs';
 import { definitionForRecordedHook, fileEntry, fingerprintFor } from './install-record.mjs';
 import {
   commandFor,
@@ -81,12 +81,6 @@ function classifyOrphan(state) {
   return 'modified';
 }
 
-function recordHasHooks(record, targets) {
-  return Boolean(record)
-    && targets.every(({ definition, relative }) => record.hooks?.some((hook) =>
-      hook.event === definition.event && hook.root === 'brand' && hook.path === relative));
-}
-
 function appliedOutput(states) {
   const count = (status) => states.filter((state) => state.status === status).length;
   const parts = [
@@ -125,7 +119,9 @@ function dryRunOutput(states, hookStates, legacy, oldHooks) {
   ));
   hookStates.forEach(({ state, target }) => {
     const { definition, registration } = target;
-    if (!state.present) {
+    if (state.present && !state.current) {
+      lines.push(`Would rewrite ${definition.event} hook ${definition.name} for matcher ${definition.matcher} to ${registration.form} command: ${registration.reason}.`);
+    } else if (!state.present) {
       lines.push(`Would register ${definition.event} hook ${definition.name} for matcher ${definition.matcher} with ${registration.form} command.`);
     }
   });
@@ -237,7 +233,7 @@ async function updateInRun({ host, dryRun = false, force = false, packageRoot, e
     new Map(plannedStates.map((state) => [recordFileKey(state.item), state.fingerprint])),
     { path: rule.target, fingerprint: ruleState.fingerprint });
   const changed = states.some((state) => state.status !== 'up-to-date') || oldHooks.length > 0;
-  if (!changed && inspectedHooks.every(({ state }) => state.present)
+  if (!changed && inspectedHooks.every(({ state }) => state.current)
     && recordHasHooks(record, targets) && recordCurrent) {
     const legacyLogOutput = await retireLegacyGuardLogs(host, { dryRun });
     if (!dryRun) {

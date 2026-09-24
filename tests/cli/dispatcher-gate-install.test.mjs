@@ -1,26 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import fsSync from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { install } from '../../cli/install.mjs';
 import { uninstall } from '../../cli/uninstall.mjs';
-import { HOOK_LAUNCHER_PROTOCOL } from '../../cli/hook.mjs';
-import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
+import { launcherEnv } from './launcher-shim.mjs';
 import { HOOK_DEFINITIONS } from '../../src/home/lib/hook-definitions.mjs';
 import { fixture } from './host-fixture.mjs';
-
-function launcherEnv(t, root) {
-  const directory = makeTempTree('dispatcher-launcher-');
-  t.after(() => removeTempTree(directory));
-  const answer = JSON.stringify({ protocol: HOOK_LAUNCHER_PROTOCOL, dispatch: 'home', homeRoot: root });
-  const windows = process.platform === 'win32';
-  fsSync.writeFileSync(path.join(directory, windows ? 'codex-bridge.cmd' : 'codex-bridge'),
-    windows ? `@echo off\r\nif "%*"=="hook --home" echo ${answer}\r\n`
-      : `#!/bin/sh\nprintf '%s\\n' '${answer}'\n`, { mode: 0o755 });
-  return windows ? { PATH: directory, PATHEXT: '.CMD' } : { PATH: directory };
-}
 
 test('dispatcher gate hooks install with exact matchers and uninstall preserves unrelated settings', async (t) => {
   const { host } = await fixture(t);

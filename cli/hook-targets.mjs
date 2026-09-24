@@ -38,3 +38,10 @@ export function hookTargets(host, env = process.env) {
     };
   });
 }
+
+export function recordHasHooks(record, targets) {
+  return Boolean(record)
+    && targets.every(({ definition, relative, spec }) => record.hooks?.some((hook) =>
+      hook.event === definition.event && hook.root === 'brand' && hook.path === relative
+        && hook.command === spec.command));
+}

@@ -15,7 +15,7 @@ import {
   writeInstallRecord,
 } from './manifest.mjs';
 import { copyPlannedFile, targetMatches } from './copy.mjs';
-import { hookTargets } from './hook-targets.mjs';
+import { hookTargets, recordHasHooks } from './hook-targets.mjs';
 import { fingerprintFor, INSTALL_METHOD_COPY, INSTALL_METHOD_KEY } from './install-record.mjs';
 import {
   commandFor,
@@ -39,12 +39,6 @@ async function targetExists(target) {
     if (err.code === 'ENOENT') return false;
     throw err;
   }
-}
-
-function recordHasHooks(record, targets) {
-  return Boolean(record)
-    && targets.every(({ definition, relative }) => record.hooks?.some((hook) =>
-      hook.event === definition.event && hook.root === 'brand' && hook.path === relative));
 }
 
 function retentionLine(host) {
@@ -167,7 +161,7 @@ async function installInRun({
   const sameRecord = recordMatchesPackage(record, plan, currentPackage,
     new Map(states.map((state) => [recordFileKey(state.item), state.fingerprint])),
     { path: rule.target, fingerprint: ruleState.fingerprint });
-  if (!changedFiles.length && !changedRule && inspectedHooks.every((state) => state.present)
+  if (!changedFiles.length && !changedRule && inspectedHooks.every((state) => state.current)
     && recordHasHooks(record, targets) && sameRecord) {
     if (!dryRun) {
       await addRulesOwner(host);
@@ -199,8 +193,10 @@ async function installInRun({
     }
     inspectedHooks.forEach((state, index) => {
       const { definition, registration } = targets[index];
-      lines.push(state.present
-        ? `${definition.event} hook is already registered (${registration.form} command).`
+      lines.push(state.present && !state.current
+        ? `Would rewrite ${definition.event} hook ${definition.name} for matcher ${definition.matcher} to ${registration.form} command: ${registration.reason}.`
+        : state.present
+          ? `${definition.event} hook is already registered (${registration.form} command).`
         : `Would register ${definition.event} hook ${definition.name} for matcher ${definition.matcher} with ${registration.form} command.`);
     });
     lines.push('Would write installation record in the brand root.');
@@ -241,7 +237,7 @@ async function installInRun({
     const prior = record?.hooks?.find((hook) => hook.event === definition.event
       && hook.root === 'brand' && hook.path === relative);
     const createdGroup = hookResults[index].createdGroup || prior?.createdGroup === true;
-    const command = inspectedHooks[index].matchedCommand || registration.command;
+    const command = registration.command;
     return {
       event: definition.event,
       root: 'brand',
