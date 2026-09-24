@@ -83,3 +83,19 @@ test('recent scans report unreadable JSON as uncertainty', () => {
   fs.writeFileSync(path.join(dir, 'status.json'), '{ broken');
   assert.equal(recentRuns(runs, { agent: 'codex-build' }), null);
 });
+
+test('recent scans keep only the ordered order id when one is given', () => {
+  const now = Date.now();
+  const { runs, dir } = makeRun();
+  fs.writeFileSync(path.join(dir, 'status.json'), `${JSON.stringify({
+    state: 'finished', agent: 'codex-scout', order_id: 'earlier-order', finished_at: new Date(now - 500).toISOString(),
+  })}\n`);
+  const own = path.join(runs, 'own');
+  fs.mkdirSync(own);
+  fs.writeFileSync(path.join(own, 'status.json'), `${JSON.stringify({
+    state: 'finished', agent: 'codex-scout', order_id: 'this-order', finished_at: new Date(now - 2_000).toISOString(),
+  })}\n`);
+  assert.deepEqual(recentRuns(runs, { agent: 'codex-scout', orderId: 'this-order', now }).map((run) => run.dir), [own]);
+  assert.deepEqual(recentRuns(runs, { agent: 'codex-scout', orderId: 'absent', now }), []);
+  assert.equal(recentRuns(runs, { agent: 'codex-scout', now }).length, 2);
+});

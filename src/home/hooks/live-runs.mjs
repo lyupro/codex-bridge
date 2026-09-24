@@ -129,6 +129,7 @@ export function recentRuns(runsDir, options = {}) {
     }
     if (!status || typeof status !== 'object' || Array.isArray(status)) return null;
     if (options.agent && status.agent !== options.agent) continue;
+    if (options.orderId && String(status.order_id ?? '').trim() !== options.orderId) continue;
     const timestamp = Date.parse(status.finished_at || status.started_at || '');
     if (!Number.isFinite(timestamp) || timestamp > now || now - timestamp > maxAgeMs) continue;
     result.push({ dir, status, timestamp });

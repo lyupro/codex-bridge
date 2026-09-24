@@ -226,7 +226,12 @@ if (!runDir) {
   let candidates;
   try {
     searchedRunsDir = resolveProjectRunsDir(runsRoot(), input.cwd, { create: false }).dir;
-    candidates = recentRuns(searchedRunsDir, { agent: input.agent_type });
+    // Plan_62 r2: on 2026-09-24 the newest run of this agent type belonged to an earlier order, and the
+    // guard judged the reply against that stranger's folder. With the order id known, only its runs count.
+    candidates = recentRuns(searchedRunsDir, {
+      agent: input.agent_type,
+      ...(orderedOrderId ? { orderId: orderedOrderId } : {}),
+    });
   } catch {
     pass();
   }
