@@ -61,12 +61,20 @@ async function main() {
       const stored = readDispatcherState(ids);
       const state = stored?.corrupt ? {} : (stored || {});
       decision = decidePreToolUse({ payload, order, state });
-      if (decision.stateUpdate) {
-        await updateDispatcherState(ids, (current) => ({
+      const toolUseId = typeof payload.tool_use_id === 'string' && payload.tool_use_id.length > 0
+        ? payload.tool_use_id
+        : null;
+      await updateDispatcherState(ids, (current) => {
+        const next = {
           ...(current.corrupt ? {} : current),
-          ...decision.stateUpdate,
-        }));
-      }
+          ...(decision.stateUpdate || {}),
+        };
+        if (toolUseId) {
+          const seenToolUseIds = Array.isArray(next.seenToolUseIds) ? next.seenToolUseIds : [];
+          next.seenToolUseIds = [...seenToolUseIds, toolUseId].slice(-200);
+        }
+        return next;
+      });
     } catch (error) {
       decision = {
         kind: 'deny',

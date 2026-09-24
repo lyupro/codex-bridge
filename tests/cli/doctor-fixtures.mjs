@@ -35,11 +35,12 @@ export async function installedFixture(t) {
   const host = await hostFixture(t);
   const agentPlan = (await buildInstallPlan(host))
     .filter((item) => /[\\/]src[\\/]agents[\\/][^\\/]+\.md$/.test(item.source));
+  const hookFiles = [...new Set(HOOK_DEFINITIONS.map(({ file }) => file))];
   const files = [
     { root: 'claude', path: 'agents/codex-bridge/run-codex.mjs' },
     { root: 'claude', path: 'agents/codex-bridge/required-inputs.mjs' },
     ...agentPlan.map((item) => ({ root: item.root, path: item.relativeToRoot })),
-    ...HOOK_DEFINITIONS.map(({ file }) => ({ root: 'brand', path: `hooks/${file}` })),
+    ...hookFiles.map((file) => ({ root: 'brand', path: `hooks/${file}` })),
   ];
   for (const file of files) {
     const target = recordTarget(host, file);
@@ -68,7 +69,8 @@ export async function installedFixture(t) {
   // healthy host green while the real one drifted.
   const hooks = {};
   for (const definition of HOOK_DEFINITIONS) {
-    const recorded = record.hooks.find((hook) => path.basename(hook.path) === definition.file);
+    const recorded = record.hooks.find((hook) => hook.event === definition.event
+      && path.basename(hook.path) === definition.file);
     hooks[definition.event] ??= [];
     hooks[definition.event].push({
       matcher: definition.matcher,

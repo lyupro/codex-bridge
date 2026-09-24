@@ -202,7 +202,7 @@ async function installInRun({
       const { definition, registration } = targets[index];
       lines.push(state.present
         ? `${definition.event} hook is already registered (${registration.form} command).`
-        : `Would register ${definition.event} hook for matcher ${definition.matcher} with ${registration.form} command.`);
+        : `Would register ${definition.event} hook ${definition.name} for matcher ${definition.matcher} with ${registration.form} command.`);
     });
     lines.push('Would write installation record in the brand root.');
     return { exitCode: 0, output: contractOutput(hostContract, retentionOutput(configuredRetentionLine, lines.join('\n'))) };

@@ -33,8 +33,14 @@ function guardClaims(text) {
 
 const SHOWCASE_FILES = ['README.md', 'CLAUDE.md'];
 
+/**
+ * A guard is a hook file, not a registration: `dispatcher-gate.mjs` listens on PreToolUse,
+ * PostToolUse and PostToolUseFailure (Plan_62 D15) and is still one guard to the reader of the README.
+ */
+const GUARD_COUNT = new Set(HOOK_DEFINITIONS.map(({ file }) => file)).size;
+
 test('every advertised guard count matches the hook registry', () => {
-  const expected = HOOK_DEFINITIONS.length;
+  const expected = GUARD_COUNT;
   for (const file of SHOWCASE_FILES) {
     const claims = guardClaims(fs.readFileSync(path.join(ROOT, file), 'utf8'));
     for (const claim of claims) {
@@ -47,7 +53,7 @@ test('the package description states the guard count the registry has', () => {
   const { description } = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
   const claims = guardClaims(description);
   assert.ok(claims.length > 0, 'package.json description no longer states a guard count');
-  for (const claim of claims) assert.equal(claim, HOOK_DEFINITIONS.length);
+  for (const claim of claims) assert.equal(claim, GUARD_COUNT);
 });
 
 test('the package description states the suite size README states', () => {

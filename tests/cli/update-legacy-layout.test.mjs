@@ -86,7 +86,7 @@ test('the dry run names the registrations it would take away', async (t) => {
   await fs.writeFile(recordPath, `${JSON.stringify(record)}\n`);
   const result = await update({ host, dryRun: true });
   assert.equal(result.output.includes('undefined'), false, result.output);
-  assert.match(result.output, /Would remove the previous SubagentStop hook registration for matcher \*\./);
+  assert.match(result.output, /Would remove the previous SubagentStop hook registration reply-guard for matcher \*\./);
 });
 
 test('a dry run retires nothing', async (t) => {

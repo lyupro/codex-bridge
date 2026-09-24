@@ -92,7 +92,7 @@ async function uninstallInRun({ host, dryRun = false } = {}) {
     }
     for (const hook of record.hooks) {
       const definition = definitionForRecordedHook(hook);
-      lines.push(`Would remove the ${hook.event} hook for matcher ${definition.matcher}.`);
+      lines.push(`Would remove the ${hook.event} hook ${definition.name} for matcher ${definition.matcher}.`);
     }
     lines.push('Would remove the installation record from the brand root.');
     lines.push(preservation);

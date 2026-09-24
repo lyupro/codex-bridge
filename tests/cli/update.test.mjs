@@ -110,18 +110,21 @@ test('an outdated recorded file updates silently', async (t) => {
 test('update migrates a legacy single-root layout and removes it once', async (t) => {
   const { host } = await fixture(t);
   const oldFiles = [
-    ...HOOK_DEFINITIONS.map(({ file }) => `agents/codex/hooks/${file}`),
+    ...new Set(HOOK_DEFINITIONS.map(({ file }) => `agents/codex/hooks/${file}`)),
     'commands/codex/env.md',
   ];
   const fingerprints = {};
   const hooks = [];
   const settingsHooks = {};
-  for (const [index, definition] of HOOK_DEFINITIONS.entries()) {
-    const relative = oldFiles[index];
+  for (const relative of oldFiles) {
     const target = path.join(host.root, relative);
     await fs.mkdir(path.dirname(target), { recursive: true });
-    await fs.writeFile(target, `legacy ${definition.file}\n`);
+    await fs.writeFile(target, `legacy ${path.basename(relative)}\n`);
     fingerprints[relative] = await fileFingerprint(target);
+  }
+  for (const [index, definition] of HOOK_DEFINITIONS.entries()) {
+    const relative = `agents/codex/hooks/${definition.file}`;
+    const target = path.join(host.root, relative);
     const command = index === 0 ? `codex-bridge hook ${definition.name}` : `node "${target}"`;
     hooks.push({ event: definition.event, path: relative, command, form: 'path' });
     settingsHooks[definition.event] ??= [];

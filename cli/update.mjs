@@ -104,12 +104,12 @@ function dryRunOutput(states, hookStates, legacy, oldHooks) {
   // "the previous undefined hook registration" five times during the Plan_25 migration — the one
   // dry run where the operator most needed to see which registrations were about to be taken away.
   oldHooks.forEach(({ hook, definition }) => lines.push(
-    `Would remove the previous ${hook.event} hook registration for matcher ${definition.matcher}.`,
+    `Would remove the previous ${hook.event} hook registration ${definition.name} for matcher ${definition.matcher}.`,
   ));
   hookStates.forEach(({ state, target }) => {
     const { definition, registration } = target;
     if (!state.present) {
-      lines.push(`Would register ${definition.event} hook for matcher ${definition.matcher} with ${registration.form} command.`);
+      lines.push(`Would register ${definition.event} hook ${definition.name} for matcher ${definition.matcher} with ${registration.form} command.`);
     }
   });
   lines.push('Would write installation record with new fingerprints in both roots.');

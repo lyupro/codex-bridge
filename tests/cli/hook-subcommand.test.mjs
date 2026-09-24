@@ -126,6 +126,28 @@ test('every definition name reaches its existing top-level guard', async (t) => 
       assert.equal(JSON.parse(result.stdout).hookSpecificOutput.permissionDecision, 'deny');
       continue;
     }
+    if (definition.file === 'dispatcher-gate.mjs') {
+      const input = {
+        agent_type: 'codex-build',
+        hook_event_name: definition.event,
+        session_id: `session-${definition.name}`,
+        agent_id: `agent-${definition.name}`,
+        tool_use_id: `tool-${definition.name}`,
+        tool_name: 'Bash',
+        tool_input: { command: 'cat C:/abs/task.md' },
+      };
+      const result = run(['hook', definition.name], JSON.stringify(input), {
+        ...env,
+        CODEX_BRIDGE_HOME: root,
+      });
+      assert.equal(result.status, 0, definition.name);
+      if (definition.event === 'PreToolUse') {
+        assert.equal(JSON.parse(result.stdout).hookSpecificOutput.permissionDecision, 'deny');
+      } else {
+        assert.equal(result.stdout, '');
+      }
+      continue;
+    }
     const repo = path.join(root, 'repository');
     const runsRoot = await liveRun(root, repo);
     const result = run(['hook', definition.name], JSON.stringify({

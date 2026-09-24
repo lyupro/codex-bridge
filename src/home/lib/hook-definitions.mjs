@@ -39,6 +39,13 @@ export const SHELL_TOOLS = Object.freeze(['Bash', 'PowerShell']);
 /** A PreToolUse matcher is a regular expression over tool names, so alternation covers both. */
 export const SHELL_TOOL_MATCHER = SHELL_TOOLS.join('|');
 
+// Probed live on 2026-09-24; this is the one place the host handback tool name is spelled.
+export const HANDBACK_TOOL = 'SubagentHandback';
+
+// Plan_62 D15: a dispatcher has only its shell whitelist and handback tool; `*` would tax every session.
+export const DISPATCHER_TOOLS = Object.freeze([...SHELL_TOOLS, HANDBACK_TOOL]);
+export const DISPATCHER_TOOL_MATCHER = DISPATCHER_TOOLS.join('|');
+
 // Plan_31 routes host stop requests through the package guard; keep the matcher derived from
 // the tool list so registration and uninstall cannot drift from the host event spelling.
 export const STOP_TOOLS = Object.freeze(['TaskStop']);
@@ -66,4 +73,7 @@ export const HOOK_DEFINITIONS = Object.freeze([
   Object.freeze({ name: 'prune-guard', event: 'PreToolUse', matcher: SHELL_TOOL_MATCHER, file: 'prune-guard.mjs' }),
   Object.freeze({ name: 'worktree-witness', event: 'PostToolUse', matcher: SHELL_TOOL_MATCHER, file: 'worktree-witness.mjs' }),
   Object.freeze({ name: 'stop-guard', event: 'PreToolUse', matcher: STOP_TOOL_MATCHER, file: 'stop-guard.mjs' }),
+  Object.freeze({ name: 'dispatcher-gate', event: 'PreToolUse', matcher: DISPATCHER_TOOL_MATCHER, file: 'dispatcher-gate.mjs' }),
+  Object.freeze({ name: 'dispatcher-capture', event: 'PostToolUse', matcher: SHELL_TOOL_MATCHER, file: 'dispatcher-gate.mjs' }),
+  Object.freeze({ name: 'dispatcher-capture-failure', event: 'PostToolUseFailure', matcher: SHELL_TOOL_MATCHER, file: 'dispatcher-gate.mjs' }),
 ]);

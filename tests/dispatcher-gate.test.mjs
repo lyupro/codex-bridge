@@ -1,6 +1,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { canonicalRunCommand } from '../src/home/lib/dispatcher-command.mjs';
+import {
+  DISPATCHER_TOOLS,
+  DISPATCHER_TOOL_MATCHER,
+  HANDBACK_TOOL as DEFINED_HANDBACK_TOOL,
+  HOOK_DEFINITIONS,
+  SHELL_TOOLS,
+  SHELL_TOOL_MATCHER,
+} from '../src/home/lib/hook-definitions.mjs';
 import {
   decidePreToolUse,
   gateOrder,
@@ -11,6 +22,41 @@ import {
 
 const prompt = 'order id: order-62\nscope: src/home\ntask file: C:/abs/task.md';
 const command = canonicalRunCommand('codex-build', prompt).command;
+
+test('the handback tool string literal is defined only in hook-definitions', () => {
+  const sourceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src');
+  const sourceExtensions = new Set(['.mjs', '.js', '.cjs', '.ts', '.tsx', '.json']);
+  const filesUnder = (directory) => fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const file = path.join(directory, entry.name);
+    return entry.isDirectory()
+      ? filesUnder(file)
+      : sourceExtensions.has(path.extname(file)) ? [file] : [];
+  });
+  const literal = "'SubagentHandback'";
+  const occurrences = [];
+  for (const file of filesUnder(sourceRoot)) {
+    const source = fs.readFileSync(file, 'utf8');
+    let offset = source.indexOf(literal);
+    while (offset !== -1) {
+      occurrences.push(path.relative(sourceRoot, file).split(path.sep).join('/'));
+      offset = source.indexOf(literal, offset + literal.length);
+    }
+  }
+  assert.deepEqual(occurrences, ['home/lib/hook-definitions.mjs']);
+});
+
+test('dispatcher registrations use only its shell whitelist and handback tool', () => {
+  assert.equal(DEFINED_HANDBACK_TOOL, HANDBACK_TOOL);
+  assert.deepEqual(DISPATCHER_TOOLS, [...SHELL_TOOLS, HANDBACK_TOOL]);
+  assert.equal(DISPATCHER_TOOL_MATCHER, DISPATCHER_TOOLS.join('|'));
+  assert.deepEqual(HOOK_DEFINITIONS.filter(({ file }) => file === 'dispatcher-gate.mjs').map(({
+    name, event, matcher,
+  }) => [name, event, matcher]), [
+    ['dispatcher-gate', 'PreToolUse', DISPATCHER_TOOL_MATCHER],
+    ['dispatcher-capture', 'PostToolUse', SHELL_TOOL_MATCHER],
+    ['dispatcher-capture-failure', 'PostToolUseFailure', SHELL_TOOL_MATCHER],
+  ]);
+});
 
 test('runnerOutput captures stdout and strips an exit-code line from failures', () => {
   assert.deepEqual(runnerOutput({
@@ -127,5 +173,21 @@ test('decidePreToolUse seals every tool, the canonical command included, after d
     assert.equal(decision.kind, 'deny');
     assert.match(decision.reason, /already delivered/);
     assert.ok(!decision.reason.includes(command), 'a sealed dispatcher must not be told what to run');
+  }
+});
+
+test('decidePreToolUse never allows any tool but the handback, whatever the state', () => {
+  // The rewrite exemption in tests/hooks/no-command-rewrite.test.mjs rests on this: an `allow` with a
+  // replaced input is only ever issued for the handback message, never for a command the host runs.
+  const states = [{}, { runnerOutput: 'OK — done', runnerFinal: true }, { runnerOutput: 'STARTED x', runnerFinal: false },
+    { handbackAttempts: 5 }, { handback: 'delivered' }];
+  const orders = [{ command }, { refusal: 'no order' }];
+  for (const tool_name of ['Bash', 'PowerShell', 'Read', 'Write', 'Edit', 'Agent', 'ToolSearch']) {
+    for (const state of states) {
+      for (const order of orders) {
+        const decision = decidePreToolUse({ payload: { tool_name, tool_input: { command } }, order, state });
+        assert.notEqual(decision.kind, 'allow', `${tool_name} was allowed with a replaced input`);
+      }
+    }
   }
 });

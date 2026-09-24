@@ -57,6 +57,40 @@ function hookOutput(result) {
   return JSON.parse(result.stdout).hookSpecificOutput;
 }
 
+async function seenToolUseIds(root) {
+  const stateRoot = path.join(root, 'home', 'state');
+  async function findIn(value) {
+    if (!value || typeof value !== 'object') return null;
+    if (Array.isArray(value.seenToolUseIds)) return value.seenToolUseIds;
+    for (const child of Object.values(value)) {
+      const found = await findIn(child);
+      if (found) return found;
+    }
+    return null;
+  }
+  async function visit(directory) {
+    let entries;
+    try {
+      entries = await fs.readdir(directory, { withFileTypes: true });
+    } catch (error) {
+      if (error.code === 'ENOENT') return null;
+      throw error;
+    }
+    for (const entry of entries) {
+      const file = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        const found = await visit(file);
+        if (found) return found;
+      } else if (entry.isFile() && entry.name.endsWith('.json')) {
+        const found = await findIn(JSON.parse(await fs.readFile(file, 'utf8')));
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+  return visit(stateRoot);
+}
+
 test('TradeForge replay blocks tools and rejects a repeated handback without delegation', async (t) => {
   const root = await fixture(t);
   const identity = await addTranscript(root);
@@ -117,6 +151,59 @@ test('main-session and unregistered agent payloads are ignored', async (t) => {
   const unknown = dispatcherPayload(identity, 'Write');
   unknown.agent_type = 'unregistered-agent';
   assert.equal(outcome(root, unknown).stdout, '');
+});
+
+test('PreToolUse receipts cover pass, deny, and allow decisions', async (t) => {
+  const root = await fixture(t);
+  const identity = await addTranscript(root);
+
+  const pass = dispatcherPayload(identity, 'Bash', { command: COMMAND });
+  pass.tool_use_id = 'receipt-pass';
+  assert.equal(outcome(root, pass).stdout, '');
+  assert.deepEqual(await seenToolUseIds(root), ['receipt-pass']);
+
+  const deny = dispatcherPayload(identity, 'Bash', { command: 'cat C:/abs/task.md' });
+  deny.tool_use_id = 'receipt-deny';
+  assert.equal(hookOutput(outcome(root, deny)).permissionDecision, 'deny');
+  assert.deepEqual(await seenToolUseIds(root), ['receipt-pass', 'receipt-deny']);
+
+  const launch = dispatcherPayload(identity, 'Bash', { command: COMMAND });
+  launch.tool_use_id = 'receipt-launch';
+  assert.equal(outcome(root, launch).stdout, '');
+  const completed = dispatcherPayload(identity, 'Bash', { command: COMMAND }, 'PostToolUse');
+  completed.tool_response = { stdout: 'OK — runner completed' };
+  outcome(root, completed);
+
+  const handback = dispatcherPayload(identity, 'SubagentHandback', { message: 'OK' });
+  handback.tool_use_id = 'receipt-allow';
+  assert.equal(hookOutput(outcome(root, handback)).permissionDecision, 'allow');
+  assert.deepEqual(await seenToolUseIds(root), [
+    'receipt-pass', 'receipt-deny', 'receipt-launch', 'receipt-allow',
+  ]);
+});
+
+test('PreToolUse receipts retain only the newest 200 IDs', async (t) => {
+  const root = await fixture(t);
+  const identity = await addTranscript(root);
+  for (let index = 1; index <= 201; index += 1) {
+    const payload = dispatcherPayload(identity, 'Bash', { command: 'cat C:/abs/task.md' });
+    payload.tool_use_id = `receipt-${index}`;
+    assert.equal(hookOutput(outcome(root, payload)).permissionDecision, 'deny');
+  }
+  const receipts = await seenToolUseIds(root);
+  assert.equal(receipts.length, 200);
+  assert.equal(receipts[0], 'receipt-2');
+  assert.equal(receipts.at(-1), 'receipt-201');
+});
+
+test('a PreToolUse payload without a tool_use_id still decides and records no receipt', async (t) => {
+  const root = await fixture(t);
+  const identity = await addTranscript(root);
+  const denied = hookOutput(outcome(root, dispatcherPayload(
+    identity, 'Bash', { command: 'cat C:/abs/task.md' },
+  )));
+  assert.equal(denied.permissionDecision, 'deny');
+  assert.equal(await seenToolUseIds(root), null);
 });
 
 test('a missing agent transcript denies tools and returns a fail-closed handback', async (t) => {

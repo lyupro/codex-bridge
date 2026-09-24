@@ -1,0 +1,40 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { install } from '../../cli/install.mjs';
+import { uninstall } from '../../cli/uninstall.mjs';
+import { HOOK_DEFINITIONS } from '../../src/home/lib/hook-definitions.mjs';
+import { fixture } from './host-fixture.mjs';
+
+test('dispatcher gate hooks install with exact matchers and uninstall preserves unrelated settings', async (t) => {
+  const { host } = await fixture(t);
+  const unrelatedHook = { matcher: '*', hooks: [{ type: 'command', command: 'operator-session-hook' }] };
+  const initialSettings = { model: 'keep-this', hooks: { SessionStart: [unrelatedHook] } };
+  await fs.mkdir(path.dirname(host.settingsPath), { recursive: true });
+  await fs.writeFile(host.settingsPath, `${JSON.stringify(initialSettings)}\n`);
+
+  await install({ host });
+  const installedSettings = JSON.parse(await fs.readFile(host.settingsPath, 'utf8'));
+  const expected = [
+    ['dispatcher-gate', 'PreToolUse', 'Bash|PowerShell|SubagentHandback'],
+    ['dispatcher-capture', 'PostToolUse', 'Bash|PowerShell'],
+    ['dispatcher-capture-failure', 'PostToolUseFailure', 'Bash|PowerShell'],
+  ];
+  const actual = HOOK_DEFINITIONS.filter(({ file }) => file === 'dispatcher-gate.mjs')
+    .map(({ name, event, matcher }) => [name, event, matcher]);
+  assert.deepEqual(actual, expected);
+  for (const [name, event, matcher] of expected) {
+    assert.ok((installedSettings.hooks[event] || []).some((group) => group.matcher === matcher
+      && JSON.stringify(group).includes(`codex-bridge hook ${name}`)), `${event}: ${name}`);
+  }
+
+  await uninstall({ host });
+  const uninstalledSettings = JSON.parse(await fs.readFile(host.settingsPath, 'utf8'));
+  assert.equal(uninstalledSettings.model, 'keep-this');
+  assert.deepEqual(uninstalledSettings.hooks.SessionStart, [unrelatedHook]);
+  for (const [name, event] of expected) {
+    assert.ok(!(uninstalledSettings.hooks[event] || []).some((group) =>
+      JSON.stringify(group).includes(`codex-bridge hook ${name}`)), `${event}: ${name}`);
+  }
+});

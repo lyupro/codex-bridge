@@ -1,8 +1,9 @@
 /** Holds dispatchers to the ordered runner because the 2026-09-23 TradeForge incident let one write and hand back without running it. */
 import { canonicalRunCommand, sameCommand } from './dispatcher-command.mjs';
 import { ownTranscriptPath, transcriptPrompt } from './dispatcher-order.mjs';
+import { HANDBACK_TOOL } from './hook-definitions.mjs';
 
-export const HANDBACK_TOOL = 'SubagentHandback';
+export { HANDBACK_TOOL };
 
 export function gateOrder(payload) {
   const transcriptPath = ownTranscriptPath(payload);

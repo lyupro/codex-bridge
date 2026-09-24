@@ -48,6 +48,19 @@ const FORBIDDEN_IN_COMMAND = ['`', '$(', '${', '&&', '||', '|', ';'];
 const PROBE_COMMAND = 'echo hi';
 
 /**
+ * The one rewrite this package makes, and it is not of anything the host runs. Plan_62 D3/D8 replace a
+ * dispatcher's `SubagentHandback` message — the words its caller receives — with the runner's own output,
+ * because on 2026-09-23 a dispatcher handed back "OK" for work it never delegated. A handback carries no
+ * command and no permission rule is matched against it, so the header's hazard does not arise; the
+ * exemption is still pinned to one file and one spelling, and `tests/dispatcher-gate.test.mjs` holds that
+ * the gate never allows any other tool.
+ */
+const HANDBACK_SUBSTITUTION = Object.freeze({
+  file: 'dispatcher-gate.mjs',
+  spelling: 'updatedInput = { ...toolInput, message: decision.message }',
+});
+
+/**
  * How many hook answers the behavioural checks must actually inspect. Fixed rather than derived, so
  * that losing a refusing input reddens the gate instead of quietly shrinking what it covers.
  */
@@ -184,7 +197,15 @@ test('no hook source builds a command line or claims a key that rewrites one', (
   const forbidden = ['updatedInput', 'updatedToolInput', 'updatedToolOutput', 'PIPESTATUS'];
   for (const definition of HOOK_DEFINITIONS) {
     const source = fs.readFileSync(path.join(HOOKS_DIR, definition.file), 'utf8');
+    const permitted = HANDBACK_SUBSTITUTION.file === definition.file ? HANDBACK_SUBSTITUTION : null;
+    if (permitted) {
+      assert.ok(
+        source.includes(permitted.spelling),
+        `${definition.file} must replace only the handback message, spelled ${permitted.spelling}`,
+      );
+    }
     for (const name of forbidden) {
+      if (permitted && name === 'updatedInput') continue;
       assert.ok(
         !source.includes(name),
         `${definition.file} mentions ${name}: rewriting what the host runs is a dead end, see the header`,
