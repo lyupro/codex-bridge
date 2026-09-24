@@ -28,6 +28,14 @@ outside its quota. It must never claim that files were created without a run tha
 place: no run means no result. `SubagentStop` additionally blocks a response without a run
 directory, so this rule is enforced both in text and by an external guard.
 
+`codex-bridge hook <name>` and `codex-bridge run` load the code installed in the brand home, never
+the package copy beside the command. `codex-bridge hook --home` answers a JSON protocol line.
+Install and update write the short command form only when the command on `PATH` answers that
+protocol for this home; otherwise they register path form for every hook. Update also rewrites a
+registration using the wrong form, even when it exists. A launcher failure exits 1 rather than 2.
+This prevents a repeat of the 2026-09-24 `dev:install` incident, when hook names unknown to the
+older global package were registered and every shell call on the machine was refused.
+
 `codex-review` supports the `uncommitted`, `base:<branch>`, and `commit:<sha>` scopes through
 `--changeset`. By default, it reviews uncommitted changes.
 
@@ -478,9 +486,26 @@ The whole `CLAUDE.md` is intentionally not pasted—more than half of it concern
 releases, and UI, none of which relates to a Codex run: extra text in every task is not free and
 dilutes what actually must be followed.
 
+## Dispatcher gate
+
+The gate is registered for `PreToolUse` on the shell tools and `SubagentHandback`, and for
+`PostToolUse` and `PostToolUseFailure` on the shell tools. It acts only for the four dispatcher
+agent types. The first line of the dispatcher's own transcript is the caller's order verbatim; the
+gate derives exactly one `codex-bridge run …` command from it and permits only that command,
+byte for byte. Every other tool call is refused with the command quoted in the refusal. Repeating
+the command attaches to the same run, so a dispatcher never needs `--no-wait`. The runner's own
+stdout replaces the handback. A handback without a runner call is refused once with the command,
+then replaced by `FAIL — dispatcher did not delegate`; after a delivered handback every tool call,
+including the runner command, is refused. This closes the 2026-09-17..24 TradeForge incident, when
+a dispatcher returned its own words and a second writer started in the same tree.
+
 ## Response guard
 
-`hooks/reply-guard.mjs` is the `SubagentStop` hook for the four dispatchers. It checks that the response:
+`hooks/reply-guard.mjs` is the `SubagentStop` hook for the four dispatchers. After a handback it
+stays silent; if the dispatcher stopped without one, it asks once for a handback. Its stop audit
+checks that every tool call in the dispatcher transcript passed through the gate. A bypass raises
+an alarm in the same turn (“do not trust this dispatcher answer”) and in the witness. The run is
+looked up by the dispatcher's order id, not by the most recent run. It also checks that the response:
 
 - contains `RUN=` with an existing directory;
 - is not issued over a live or abandoned run without a verdict;
@@ -518,6 +543,10 @@ this package keeps paying for. Uncertain disk state — an unreadable task file,
 yet, a run folder written a moment before its `status.json` — passes silently, per folder rather
 than per directory, so one stray folder cannot disarm the check for every other order.
 
+A dispatcher call carrying `name` or `team_name` is refused before launch: it would start a
+teammate, whose `agent_type` is its name and whose handback goes through `SendMessage`, outside the
+dispatcher gate.
+
 ## Worktree lock
 
 `hooks/worktree-lock.mjs` is a `PreToolUse` hook on file-writing tools (`Write`, `Edit`,
@@ -549,16 +578,25 @@ suite proves a hook returned a refusal; it cannot prove the host applied it.
 machine: never probed, probed on another host version, refusals ignored (which names the guards it
 makes inert and exits non-zero), verified, or a host whose version cannot be read.
 
+Doctor also reports `handbackWitness` and four dispatcher contract lines:
+`dispatcherContract:agentIdentity`, `dispatcherContract:shellStdout`,
+`dispatcherContract:shellFailure`, and `dispatcherContract:agentTranscript`. Verified contracts
+are `ok`; never probed, another host version, and unknown host version are `warn`. A measured
+change is `fail` and exits 1. An unreadable record produces one warning naming its file.
+
 `codex-bridge doctor --probe-contract` performs the measurement. It builds a throwaway rig outside
 the repository, registers one temporary hook there refusing one marker command, runs the real host
 inside the rig with only the tool under test allowed and with settings read from the project alone,
 and judges by whether the marker file appeared. The verdict is written next to the installation and
 bound to the host version, because the host is what updates underneath an installation.
 
-The probe costs about ten seconds and one short host request, so it never runs on its own: not from
+The probe takes up to two minutes and one host session with a short subagent, spent from the
+operator's Claude quota, so it never runs on its own: not from
 `doctor` without the flag, not from `install`, not from the suite. A run that could not measure —
 no host on `PATH`, a crash, a timeout, a hook that never fired — records nothing and exits `2`; an
-absent marker counts as a refusal only when the hook fired and the host survived to the end.
+absent marker counts as a refusal only when the hook fired and the host survived to the end. The
+same host run measures the four dispatcher contracts; `state/dispatcher-contract.json` is written
+only when the host completed the run.
 
 ## Installation into another Claude Code configuration
 
@@ -570,6 +608,7 @@ the host. `package.json`, required by npm outside that image, is the one documen
 | Root | What lives there |
 | --- | --- |
 | `~/.lyupro/.codex-bridge/` | runner and its modules (`lib/`), guards (`hooks/`), `config.json`, `conventions.md`, installation record `.installed.json` |
+| `~/.lyupro/.codex-bridge/state/` | Per-dispatcher state (pruned after 7 days), `handback-witness.json`, `dispatcher-contract.json`, `reply-guard-tries.json`, and `diagnostics/*.last.json`; `update` removes diagnostics formerly under `~/.claude/logs/` |
 | `~/.claude/agents/codex-bridge/` | four agent definitions—Claude Code reads them only from here |
 | `~/.claude/commands/codex-bridge/` | two command files: `/codex-bridge:env` and `/codex-bridge:usage` |
 | `~/.codex/rules/` | Codex CLI rules file; the directory is not ours |

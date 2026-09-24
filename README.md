@@ -62,7 +62,7 @@ If a global install and a clone coexist, you have two package copies. `codex-bri
 - **Every run leaves an audit folder.** The verbatim task, scope, before/after git state, events, report, verdict, and reason remain together.
 - **Zero runtime dependencies and zero build steps.** The package is plain `.mjs` on the Node.js standard library.
 
-The current suite contains **1501 automated tests: 1500 passing and 1 skipped**.
+The current suite contains **1635 automated tests: 1634 passing and 1 skipped**.
 
 ## Verify
 
@@ -91,7 +91,7 @@ Output on a healthy host (trimmed):
 [ok] liveRuns: 0 runs working right now
 ```
 
-`doctor` reports the selected host, package source, installed files and guards, Codex availability, retention policy, permissions, live runs, and the current repository's run folder. The `agents` line is a read, not a file count: each installed definition is parsed and its `name` checked against the dispatcher it claims to be, because a definition the host cannot read is a dispatcher that does not exist while every other line still says `[ok]`. Content that drifts from the packaged definition is a failure, not a warning: `doctor` exits 1 and names `codex-bridge update --force`, because a host running someone else's agent files may be calling the runner in a form no permission rule matches.
+`doctor` reports the selected host, package source, installed files and guards, Codex availability, retention policy, permissions, live runs, and the current repository's run folder. It also reports `handbackWitness` and the four dispatcher contract lines (`dispatcherContract:agentIdentity`, `dispatcherContract:shellStdout`, `dispatcherContract:shellFailure`, and `dispatcherContract:agentTranscript`): verified contracts are `ok`, unknown, unprobed, or stale contracts are `warn`, and a measured change is `fail` with exit 1. The `agents` line is a read, not a file count: each installed definition is parsed and its `name` checked against the dispatcher it claims to be, because a definition the host cannot read is a dispatcher that does not exist while every other line still says `[ok]`. Content that drifts from the packaged definition is a failure, not a warning: `doctor` exits 1 and names `codex-bridge update --force`, because a host running someone else's agent files may be calling the runner in a form no permission rule matches.
 
 If a session answers `Agent type 'codex-build' not found`, a run can still be started without the dispatcher — the agent is a wrapper that types one command:
 
@@ -128,7 +128,7 @@ Transport files from runs at least **30 days** old are pruned automatically when
 | `update [--scope user\|project] [--host <path>] [--dry-run] [--force]` | Refresh a recorded installation. |
 | `permissions [add\|remove] [--scope user\|project] [--host <path>]` | Inspect or manage optional shell rules. |
 | `uninstall [--scope user\|project] [--host <path>] [--dry-run]` | Remove recorded package files while preserving run artifacts. |
-| `doctor [--scope user\|project] [--host <path>] [--probe-contract]` | Diagnose the selected host and Codex connection. `--probe-contract` measures on a live host whether it still honours a hook refusal, and records the answer. |
+| `doctor [--scope user\|project] [--host <path>] [--probe-contract]` | Diagnose the selected host and Codex connection, including the handback witness and four dispatcher contract lines. `--probe-contract` measures refusal and dispatcher contracts in one live host run and records them when the host completes it. |
 | `run <runner options> --task-file <abs path>` | Start or attach to a delegated run through the permission-stable package command. The task file carries the statement, the scout questions and the verification command; its path must be absolute. Piping the statement on stdin is the alternative channel, and the two cannot be combined. |
 | `model [list\|set\|unset\|speed]` | Show the model, effort, pinned speed tier and provenance of each role, with the config path; `model list` prints the live catalogue from Codex, hidden models included and marked; `model set <role> <model> [effort]` checks the pair and any retained speed tier against that model's catalogue entry, and `model unset <role>` removes the profile. `model speed <role> <tier>` previews a live accelerated tier and its quoted cost description; repeat with trailing `confirm` to pin it. `model speed <role> unset` removes only speed, without confirmation. The profile is machine-wide, shared by every project on this machine. |
 | `projects [<name>] [--json]` | List projects or runs in the run store. |
