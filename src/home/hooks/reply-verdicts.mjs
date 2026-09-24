@@ -57,6 +57,11 @@ export const missingRunReason =
   'confirmed. Run codex-bridge run and return its stdout verbatim. If the runner refused before ' +
   'creating a folder, return that refusal exactly as printed.';
 
+export const handbackDemandReason =
+  'Hand your answer back now through SubagentHandback. If the dispatcher gate refuses the handback, run ' +
+  'exactly the command its refusal quotes and hand back again; the gate replaces the message with the ' +
+  "runner's output.";
+
 export const noRecentRunReason =
   'Contract violated: the response has no RUN= or ATTACH= line, and no recent run for this ' +
   'dispatcher was found on disk. Run codex-bridge run and return its stdout verbatim; your own ' +

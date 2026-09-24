@@ -21,6 +21,8 @@
  * argument about the SHAPE of the reply can loop forever and eventually steps aside, an
  * argument about EXTERNAL run state cannot be argued away by the model and ends the turn
  * with `continue: false` instead of a silent pass. See MAX_FORM_BLOCKS / MAX_STATE_BLOCKS.
+ * In the handback era, SubagentHandback delivers the caller-visible answer before SubagentStop.
+ * Plan_62 makes this hook yield after delivery and audit every transcript tool call against gate receipts.
  *
  * Input is JSON on stdin. The fields used here (`agent_type`, `last_assistant_message`)
  * come from Claude Code; the last payload is kept in logs/codex-reply-guard.last.json so
@@ -30,9 +32,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { AGENTS } from '../lib/agents.mjs';
+import { BRAND_STATE_DIR } from '../lib/brand-home.mjs';
 import { runOrderMismatch, transcriptOrderId } from '../lib/dispatcher-order.mjs';
+import { decideDispatcherStop, transcriptToolUses } from '../lib/dispatcher-stop.mjs';
 import { recognizeHostRefusal } from '../lib/host-refusal.mjs';
 import { readJsonFileSync } from '../lib/json-file.mjs';
+import { readDispatcherState, updateDispatcherState } from '../lib/dispatcher-state.mjs';
+import { hostSdkVersion, recordHandbackWitness } from '../lib/handback-witness.mjs';
 import { runLiveness } from '../lib/meta/run-liveness.mjs';
 import { resolveProjectRunsDir } from '../lib/runner/project-dir.mjs';
 import { runsRoot } from '../lib/runner/runs-root.mjs';
@@ -44,6 +50,7 @@ import {
   abandonedRunStop,
   deadRunReason,
   deadRunStop,
+  handbackDemandReason,
   liveRunReason,
   liveRunStop,
   missingDiscoveredMetaStop,
@@ -91,7 +98,13 @@ const GUARDED = new Set(Object.keys(AGENTS));
  * worktree was busy.
  */
 /** Never let a guard failure break real work: on any doubt, stay silent. */
-const pass = () => process.exit(0);
+let dispatcherSystemMessage = null;
+const pass = () => {
+  if (dispatcherSystemMessage) {
+    process.stdout.write(JSON.stringify({ systemMessage: dispatcherSystemMessage }));
+  }
+  process.exit(0);
+};
 
 let input;
 try {
@@ -112,10 +125,59 @@ try {
 // unrelated one, which cost a re-answer for nothing.
 if (!GUARDED.has(input.agent_type)) pass();
 
+const emitStop = (payload) => {
+  process.stdout.write(JSON.stringify(payload));
+  process.exit(0);
+};
+try {
+  if (typeof input.session_id === 'string' && input.session_id.length > 0
+    && typeof input.agent_id === 'string' && input.agent_id.length > 0) {
+    const ids = {
+      stateDir: BRAND_STATE_DIR,
+      sessionId: input.session_id,
+      agentId: input.agent_id,
+    };
+    const state = readDispatcherState(ids);
+    const toolUses = transcriptToolUses(input.agent_transcript_path);
+    const stop = decideDispatcherStop({ state, toolUses });
+    if (stop.unseen.length) {
+      const names = stop.unseen.map((toolUse) => toolUse.name).join(', ');
+      dispatcherSystemMessage = `codex-bridge: dispatcher ${input.agent_type} used ${names} outside the dispatcher gate — do not trust its answer; run codex-bridge doctor.`;
+      await recordHandbackWitness({
+        stateDir: BRAND_STATE_DIR,
+        kind: 'alarm',
+        sdkVersion: hostSdkVersion(),
+        detail: `${input.agent_type} ${input.agent_id}: ${names} outside the dispatcher gate`,
+      });
+    }
+    if (stop.stateUpdate) {
+      await updateDispatcherState(ids, (current) => ({
+        ...(current.corrupt ? {} : current),
+        ...stop.stateUpdate,
+      }));
+    }
+    if (stop.route === 'yield') {
+      if (dispatcherSystemMessage) emitStop({ systemMessage: dispatcherSystemMessage });
+      pass();
+    }
+    if (stop.route === 'demand') {
+      emitStop({
+        decision: 'block',
+        reason: handbackDemandReason,
+        ...(dispatcherSystemMessage ? { systemMessage: dispatcherSystemMessage } : {}),
+      });
+    }
+  }
+} catch {
+  // The handback path is fail-open; the established reply checks remain the fallback.
+}
+
 const reply = String(input.last_assistant_message || '').trim();
 if (!reply) pass();
 const emit = (payload) => {
-  process.stdout.write(JSON.stringify(payload));
+  process.stdout.write(JSON.stringify(
+    dispatcherSystemMessage ? { ...payload, systemMessage: dispatcherSystemMessage } : payload,
+  ));
   process.exit(0);
 };
 /** Wrong shape of reply: three tries, then the reply goes through as it always has. */
