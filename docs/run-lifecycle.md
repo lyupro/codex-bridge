@@ -46,7 +46,8 @@ complete job before detaching from the launcher.
    malformed advisor task: `## Options` must contain at least two distinct `- option-id: description`
    choices without preference markers, and `## Paths` must contain at least one list path. A build task
    must contain exactly one valid `advice:` line: `mechanical`, `revert`, `docs-only`, `test-only`, or
-   an absolute path to an existing advisor run directory with `meta.json` naming `codex-advisor`.
+   an absolute path to an existing advisor run directory whose `meta.json` says agent `codex-advisor`,
+   phase `advise` and status `OK` — a scope pass or a failed advice authorizes nothing.
    These task-contract refusals happen before the run folder exists and spend no quota.
 4. The repository root is determined through git; `--repo` is used for a non-git directory.
    Immediately afterward, `validateScope()` checks scope patterns against repository contents and

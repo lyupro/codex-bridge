@@ -58,6 +58,8 @@ function statusFrom(output) {
   return JSON.parse(fs.readFileSync(path.join(line.slice(4).split(' order-id=')[0], 'status.json'), 'utf8'));
 }
 
+const JUDGED_ADVICE = { agent: 'codex-advisor', phase: 'advise', status: 'OK' };
+
 function assertFree(tree, output) {
   assert.equal(output.status, 1, output.stderr || output.error?.message);
   assert.equal(output.stdout, '');
@@ -82,13 +84,13 @@ test('an absolute advisor run path with spaces passes and is persisted', () => {
   const tree = fixture();
   const advisorRun = path.join(tree.root, 'finished advisor');
   fs.mkdirSync(advisorRun);
-  fs.writeFileSync(path.join(advisorRun, 'meta.json'), JSON.stringify({ agent: 'codex-advisor' }));
+  fs.writeFileSync(path.join(advisorRun, 'meta.json'), JSON.stringify(JUDGED_ADVICE));
   assert.equal(statusFrom(launch(tree, 'codex-build', `Edit source.\nadvice: ${advisorRun}`)).advice, advisorRun);
 });
 
 test('advisor metadata uses the shared BOM-tolerant JSON reader', () => {
   const tree = fixture();
-  fs.writeFileSync(path.join(tree.home, 'meta.json'), '\uFEFF{"agent":"codex-advisor"}\n');
+  fs.writeFileSync(path.join(tree.home, 'meta.json'), `\uFEFF${JSON.stringify(JUDGED_ADVICE)}\n`);
   assert.equal(statusFrom(launch(tree, 'codex-build', `advice: ${tree.home}`)).advice, tree.home);
 });
 
@@ -105,6 +107,19 @@ const invalid = {
   'file path': (tree) => `advice: ${path.join(tree.repo, 'source.mjs')}`,
   'another agent': (tree) => {
     fs.writeFileSync(path.join(tree.home, 'meta.json'), JSON.stringify({ agent: 'codex-scout' }));
+    return `advice: ${tree.home}`;
+  },
+  // Plan_59 D26: an advisor folder authorizes a build only as a judged, successful advise pass.
+  'advisor scope run': (tree) => {
+    fs.writeFileSync(path.join(tree.home, 'meta.json'), JSON.stringify({ ...JUDGED_ADVICE, phase: 'scope' }));
+    return `advice: ${tree.home}`;
+  },
+  'failed advise run': (tree) => {
+    fs.writeFileSync(path.join(tree.home, 'meta.json'), JSON.stringify({ ...JUDGED_ADVICE, status: 'FAIL' }));
+    return `advice: ${tree.home}`;
+  },
+  'advisor run without phase': (tree) => {
+    fs.writeFileSync(path.join(tree.home, 'meta.json'), JSON.stringify({ agent: 'codex-advisor', status: 'OK' }));
     return `advice: ${tree.home}`;
   },
   'malformed meta': (tree) => {

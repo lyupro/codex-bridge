@@ -33,8 +33,10 @@ export function taskPreflight({ agent, taskText }) {
     }
     if (path.isAbsolute(advice)) {
       try {
-        if (fs.statSync(advice).isDirectory() &&
-            readJson(path.join(advice, 'meta.json'))?.agent === 'codex-advisor') {
+        // Plan_59 D26: only a judged advice authorizes a construction. On 2026-09-24 the gate took
+        // any codex-advisor folder, so a scope run or a FAIL advice would have passed as a second opinion.
+        const meta = fs.statSync(advice).isDirectory() ? readJson(path.join(advice, 'meta.json')) : null;
+        if (meta?.agent === 'codex-advisor' && meta.phase === 'advise' && meta.status === 'OK') {
           return { refusal: null, advice };
         }
       } catch {
@@ -43,7 +45,8 @@ export function taskPreflight({ agent, taskText }) {
     }
   }
   return freeRefusal('codex-build requires exactly one advice: line: mechanical | revert | docs-only | test-only ' +
-    'or an absolute path to an existing advisor run directory with meta.json agent codex-advisor. ' +
+    'or an absolute path to an existing advisor run directory whose meta.json says agent codex-advisor, ' +
+    'phase advise, status OK. ' +
     'An order that invents a construction needs a second opinion first; only work with no design choice may skip it.');
 }
 
