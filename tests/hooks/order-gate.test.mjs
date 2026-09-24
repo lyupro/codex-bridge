@@ -319,3 +319,37 @@ test('non-subagent tools pass silently', async (t) => {
   assert.equal(result.status, 0);
   assert.equal(result.stdout, '');
 });
+
+// Plan_62 D7: a teammate's agent_type is its name, so the dispatcher gate would not recognise it.
+test('a dispatcher launched as a teammate is refused before it starts', async (t) => {
+  const root = await fixture(t);
+  const prompt = validPrompt('plan62-teammate-20260924', 'C:/abs/task.md');
+  for (const field of ['name', 'team_name']) {
+    const input = JSON.stringify({
+      hook_event_name: 'PreToolUse',
+      tool_name: 'Agent',
+      tool_input: { subagent_type: 'codex-scout', prompt, [field]: 'scout-1' },
+      tool_use_id: 'toolu-test-order-gate',
+    });
+    const result = runGate(root, input);
+    assert.equal(result.status, 0);
+    const output = JSON.parse(result.stdout).hookSpecificOutput;
+    assert.equal(output.permissionDecision, 'deny', field);
+    assert.match(output.permissionDecisionReason, new RegExp(`passes \`${field}\``));
+  }
+
+  const blank = JSON.stringify({
+    hook_event_name: 'PreToolUse',
+    tool_name: 'Agent',
+    tool_input: { subagent_type: 'codex-scout', prompt, name: '  ' },
+    tool_use_id: 'toolu-test-order-gate',
+  });
+  assert.equal(runGate(root, blank).stdout, '', 'a blank name is not a teammate');
+
+  const unrelated = JSON.stringify({
+    hook_event_name: 'PreToolUse',
+    tool_name: 'Agent',
+    tool_input: { subagent_type: 'general-purpose', prompt: 'x', name: 'helper' },
+  });
+  assert.equal(runGate(root, unrelated).stdout, '', 'only registered dispatchers are refused');
+});

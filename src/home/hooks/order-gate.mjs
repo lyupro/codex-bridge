@@ -73,6 +73,22 @@ const toolInput = input.tool_input;
 if (!toolInput || typeof toolInput !== 'object' || Array.isArray(toolInput)) pass();
 if (!GUARDED.has(toolInput.subagent_type) || typeof toolInput.prompt !== 'string') pass();
 
+/**
+ * Plan_62 D7: with agent teams enabled, a registered dispatcher launched with `name` or `team_name`
+ * starts as a teammate — its `agent_type` becomes the teammate's name and it answers through
+ * SendMessage (live probe 2026-09-24, `docs/plans/Plan_62-probe/journal-run1.jsonl`), so the dispatcher
+ * gate never recognises it and every prohibition falls back to prompt text. Refused before it starts.
+ */
+const teammateField = ['name', 'team_name']
+  .find((key) => typeof toolInput[key] === 'string' && toolInput[key].trim());
+if (teammateField) {
+  deny(
+    `Order gate denied the Agent call because it passes \`${teammateField}\`: a dispatcher launched as a ` +
+      'teammate escapes the dispatcher gate, whose agent_type becomes the teammate name. Call ' +
+      `${toolInput.subagent_type} with subagent_type only, without name or team_name.`,
+  );
+}
+
 const missing = missingInputs(toolInput.subagent_type, toolInput.prompt);
 const unsafe = shellUnsafeInputs(toolInput.subagent_type, toolInput.prompt);
 if (missing.length || unsafe.length) {
