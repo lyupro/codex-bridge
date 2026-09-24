@@ -5,7 +5,7 @@ import { writeJsonAtomic } from './atomic-json.mjs';
 import { parseJsonText } from './json-file.mjs';
 import { withFileLock } from './file-lock.mjs';
 
-const WITNESS_FILE = 'handback-witness.json';
+export const WITNESS_FILE = 'handback-witness.json';
 
 export function hostSdkVersion(env = process.env) {
   const version = env.CLAUDE_AGENT_SDK_VERSION;

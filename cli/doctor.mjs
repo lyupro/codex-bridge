@@ -17,6 +17,9 @@ import {
 } from './doctor-installation.mjs';
 import { hookChecks } from './doctor-hooks.mjs';
 import { contractStatus, detectHostVersion, readHostContract } from './host-contract.mjs';
+import { handbackWitnessStatus } from './handback-witness-check.mjs';
+import { readHandbackWitness } from '../src/home/lib/handback-witness.mjs';
+import { brandStateDir } from '../src/home/lib/brand-home.mjs';
 import { liveRunsCheck, projectRunsCheck, retentionCheck } from './doctor-runs.mjs';
 
 export { renderDoctor };
@@ -58,6 +61,7 @@ export async function diagnose({
   bridgeProbe = probeCodexBridge,
   currentPackage,
   contractRecord,
+  handbackWitnessRecord,
   hostVersion,
 } = {}) {
   const checks = [sourceCheck()];
@@ -102,14 +106,23 @@ export async function diagnose({
   const bridge = bridgeProbe();
   checks.push(bridgeCommandCheck(bridge));
   checks.push(...await hookChecks(host, record, () => bridge, ownPackage, packageSource().kind));
+  const detectedHostVersion = hostVersion === undefined ? detectHostVersion() : hostVersion;
   const hostContract = contractStatus({
     record: contractRecord === undefined ? await readHostContract(host) : contractRecord,
-    version: hostVersion === undefined ? detectHostVersion() : hostVersion,
+    version: detectedHostVersion,
   });
   const hostContractStatus = hostContract.state === 'verified'
     ? 'ok'
     : hostContract.state === 'ignored' ? 'fail' : 'warn';
   checks.push(check('hostContract', hostContractStatus, hostContract.message));
+  const witness = handbackWitnessStatus({
+    record: handbackWitnessRecord === undefined
+      ? readHandbackWitness({ stateDir: brandStateDir(host.brandRoot) })
+      : handbackWitnessRecord,
+    hostVersion: detectedHostVersion,
+    stateDir: brandStateDir(host.brandRoot),
+  });
+  checks.push(check('handbackWitness', ['seen', 'unobserved'].includes(witness.state) ? 'ok' : 'warn', witness.message));
   const retention = retentionCheck(host);
   checks.push(retention);
   const conventions = await conventionsCheck(host);

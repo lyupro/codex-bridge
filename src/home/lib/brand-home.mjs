@@ -15,6 +15,10 @@
 import os from 'node:os';
 import path from 'node:path';
 
+export function brandStateDir(root) {
+  return path.join(root, 'state');
+}
+
 export function resolveBrandHome({ homedir = os.homedir(), env = process.env } = {}) {
   const overridden = Boolean(env.CODEX_BRIDGE_HOME);
   const root = path.resolve(
@@ -23,7 +27,7 @@ export function resolveBrandHome({ homedir = os.homedir(), env = process.env } =
   return {
     root,
     source: overridden ? 'CODEX_BRIDGE_HOME' : 'default',
-    stateDir: path.join(root, 'state'),
+    stateDir: brandStateDir(root),
     configPath: path.join(root, 'config.json'),
     conventionsPath: path.join(root, 'conventions.md'),
   };

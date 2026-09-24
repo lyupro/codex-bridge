@@ -12,7 +12,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { resolveBrandHome } from '../src/home/lib/brand-home.mjs';
+import { brandStateDir, resolveBrandHome } from '../src/home/lib/brand-home.mjs';
+
+test('brandStateDir is the shared state path resolver', () => {
+  const root = path.join(os.tmpdir(), 'brand-state-dir');
+  assert.equal(brandStateDir(root), resolveBrandHome({ env: { CODEX_BRIDGE_HOME: root } }).stateDir);
+});
 
 test('brand home reports whether its root came from the environment or the default', () => {
   const homedir = path.join(os.tmpdir(), 'bridge-resolver-home');
