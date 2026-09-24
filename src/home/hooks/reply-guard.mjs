@@ -25,11 +25,10 @@
  * Plan_62 makes this hook yield after delivery and audit every transcript tool call against gate receipts.
  *
  * Input is JSON on stdin. The fields used here (`agent_type`, `last_assistant_message`)
- * come from Claude Code; the last payload is kept in logs/codex-reply-guard.last.json so
- * the contract stays inspectable if it ever changes shape.
+ * come from Claude Code; the last payload is kept in state/diagnostics/reply-guard.last.json
+ * so the contract stays inspectable if it ever changes shape.
  */
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { AGENTS } from '../lib/agents.mjs';
 import { BRAND_STATE_DIR } from '../lib/brand-home.mjs';
@@ -72,8 +71,6 @@ import {
 // Plan_46's first invariant recognizes only direct expressions such as
 // blockForm('Contract violated: run codex-bridge run and return its stdout verbatim.');
 // The broader hook-directory scan protects the extracted verdict text from the same incident.
-const HOME = os.homedir();
-const LOG_DIR = path.join(HOME, '.claude', 'logs');
 const GUARDED = new Set(Object.keys(AGENTS));
 
 /**
@@ -114,8 +111,9 @@ try {
 }
 
 try {
-  fs.mkdirSync(LOG_DIR, { recursive: true });
-  fs.writeFileSync(path.join(LOG_DIR, 'codex-reply-guard.last.json'), `${JSON.stringify(input, null, 2)}\n`);
+  const diagnosticsDir = path.join(BRAND_STATE_DIR, 'diagnostics');
+  fs.mkdirSync(diagnosticsDir, { recursive: true });
+  fs.writeFileSync(path.join(diagnosticsDir, 'reply-guard.last.json'), `${JSON.stringify(input, null, 2)}\n`);
 } catch {
   // Diagnostics are a convenience, never a reason to fail the turn.
 }

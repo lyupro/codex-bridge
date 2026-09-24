@@ -12,9 +12,9 @@
  * silently because a diagnostic guard must never break an unrelated tool call.
  */
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { AGENTS } from '../lib/agents.mjs';
+import { BRAND_STATE_DIR } from '../lib/brand-home.mjs';
 import { readJsonFileSync } from '../lib/json-file.mjs';
 import {
   diagnoseInput,
@@ -30,8 +30,7 @@ import { resolveProjectRunsDir } from '../lib/runner/project-dir.mjs';
 import { runsRoot } from '../lib/runner/runs-root.mjs';
 import { parseTaskDocument } from '../lib/runner/task-file.mjs';
 
-const HOME = os.homedir();
-const LOG_DIR = path.join(HOME, '.claude', 'logs');
+const DIAGNOSTICS_DIR = path.join(BRAND_STATE_DIR, 'diagnostics');
 const GUARDED = new Set(Object.keys(AGENTS));
 /**
  * Both spellings of the subagent-launching tool, from the same list the installer builds its
@@ -60,8 +59,8 @@ try {
 }
 
 try {
-  fs.mkdirSync(LOG_DIR, { recursive: true });
-  fs.writeFileSync(path.join(LOG_DIR, 'codex-order-gate.last.json'), `${JSON.stringify(input, null, 2)}\n`);
+  fs.mkdirSync(DIAGNOSTICS_DIR, { recursive: true });
+  fs.writeFileSync(path.join(DIAGNOSTICS_DIR, 'order-gate.last.json'), `${JSON.stringify(input, null, 2)}\n`);
 } catch {
   // Diagnostics are a convenience, never a reason to fail the turn.
 }

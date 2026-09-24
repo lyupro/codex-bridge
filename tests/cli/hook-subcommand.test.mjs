@@ -46,6 +46,7 @@ function hookEnvironment(root, runsRoot = path.join(root, 'runs')) {
     HOME: root,
     USERPROFILE: root,
     CODEX_RUNS_ROOT: runsRoot,
+    CODEX_BRIDGE_HOME: path.join(root, '.lyupro', '.codex-bridge'),
   };
 }
 
@@ -58,10 +59,11 @@ test('every definition name reaches its existing top-level guard', async (t) => 
       const result = run(['hook', definition.name], JSON.stringify(input), env);
       assert.equal(result.status, 0, definition.name);
       const saved = JSON.parse(await fs.readFile(
-        path.join(root, '.claude', 'logs', 'codex-reply-guard.last.json'),
+        path.join(root, '.lyupro', '.codex-bridge', 'state', 'diagnostics', 'reply-guard.last.json'),
         'utf8',
       ));
       assert.deepEqual(saved, input, definition.name);
+      await assert.rejects(fs.access(path.join(root, '.claude', 'logs')), { code: 'ENOENT' });
       continue;
     }
     if (definition.file === 'order-gate.mjs') {
@@ -74,6 +76,11 @@ test('every definition name reaches its existing top-level guard', async (t) => 
       const result = run(['hook', definition.name], JSON.stringify(input), env);
       assert.equal(result.status, 0, definition.name);
       assert.match(result.stdout, /Order gate denied/, definition.name);
+      const saved = JSON.parse(await fs.readFile(path.join(
+        root, '.lyupro', '.codex-bridge', 'state', 'diagnostics', 'order-gate.last.json',
+      ), 'utf8'));
+      assert.deepEqual(saved, input, definition.name);
+      await assert.rejects(fs.access(path.join(root, '.claude', 'logs')), { code: 'ENOENT' });
       continue;
     }
     if (definition.file === 'worktree-lock.mjs') {
@@ -176,9 +183,12 @@ test('stdin and the guard exit status pass through the CLI unchanged', async (t)
   assert.equal(dispatched.stdout, direct.stdout);
   assert.equal(dispatched.stderr, direct.stderr);
   assert.deepEqual(
-    JSON.parse(await fs.readFile(path.join(root, '.claude', 'logs', 'codex-order-gate.last.json'), 'utf8')),
+    JSON.parse(await fs.readFile(path.join(
+      root, '.lyupro', '.codex-bridge', 'state', 'diagnostics', 'order-gate.last.json',
+    ), 'utf8')),
     JSON.parse(input),
   );
+  await assert.rejects(fs.access(path.join(root, '.claude', 'logs')), { code: 'ENOENT' });
 });
 
 test('unknown, missing, and extra names fail with exit 2 and list every valid name', () => {

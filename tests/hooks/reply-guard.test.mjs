@@ -21,7 +21,13 @@ function runGuard(root, reply, agentId = 'test-reply-guard', transcriptPath = un
       last_assistant_message: reply,
     }),
     encoding: 'utf8',
-    env: { ...process.env, CODEX_RUNS_ROOT: path.join(root, 'runs'), HOME: root, USERPROFILE: root },
+    env: {
+      ...process.env,
+      CODEX_RUNS_ROOT: path.join(root, 'runs'),
+      HOME: root,
+      USERPROFILE: root,
+      CODEX_BRIDGE_HOME: path.join(root, '.lyupro', '.codex-bridge'),
+    },
   });
 }
 
@@ -89,7 +95,7 @@ test('a complete host refusal passes immediately without spending try budget', a
   assert.equal(result.status, 0);
   assert.equal(result.stdout, '');
   await assert.rejects(
-    fs.access(path.join(root, '.claude', 'logs', 'codex-reply-guard.blocked.json')),
+    fs.access(path.join(root, '.lyupro', '.codex-bridge', 'state', 'reply-guard-tries.json')),
     { code: 'ENOENT' },
   );
 });

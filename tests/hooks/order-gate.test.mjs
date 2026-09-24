@@ -22,6 +22,7 @@ function runGate(root, input) {
       CODEX_RUNS_ROOT: path.join(root, 'runs'),
       HOME: root,
       USERPROFILE: root,
+      CODEX_BRIDGE_HOME: path.join(root, '.lyupro', '.codex-bridge'),
     },
   });
 }
@@ -161,9 +162,12 @@ test('a valid dispatcher call passes and keeps the last payload', async (t) => {
   assert.equal(result.status, 0);
   assert.equal(result.stdout, '');
   assert.deepEqual(
-    JSON.parse(await fs.readFile(path.join(root, '.claude', 'logs', 'codex-order-gate.last.json'), 'utf8')),
+    JSON.parse(await fs.readFile(path.join(
+      root, '.lyupro', '.codex-bridge', 'state', 'diagnostics', 'order-gate.last.json',
+    ), 'utf8')),
     JSON.parse(input),
   );
+  await assert.rejects(fs.access(path.join(root, '.claude', 'logs')), { code: 'ENOENT' });
 });
 
 test('a conditional continuation grant is not an order-gate requirement', async (t) => {

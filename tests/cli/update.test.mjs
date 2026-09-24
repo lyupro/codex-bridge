@@ -3,9 +3,6 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
-import { resolveHost } from '../../cli/hosts.mjs';
 import { install } from '../../cli/install.mjs';
 import {
   buildInstallPlan,
@@ -21,46 +18,7 @@ import {
 import { targetMatches } from '../../cli/copy.mjs';
 import { update } from '../../cli/update.mjs';
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(HERE, '..', '..');
-const PACKAGE = await packageInfo();
-const SOURCE = `${PACKAGE.name}@${PACKAGE.version} from ${ROOT} (clone)`;
-
-async function fixture(t) {
-  const root = makeTempTree('bridge-update-');
-  t.after(() => removeTempTree(root));
-  // Naming the Codex home is not optional: without it the installed rules land in the real one.
-  return {
-    root,
-    host: resolveHost({
-      host: path.join(root, 'host'),
-      codexHome: path.join(root, 'codex-home'),
-      brandRoot: path.join(root, 'brand'),
-    }),
-  };
-}
-
-async function packageFixture(root, name, { version = '0.0.0', extraFile } = {}) {
-  const packageRoot = path.join(root, name);
-  await fs.cp(path.join(ROOT, 'src'), path.join(packageRoot, 'src'), { recursive: true });
-  const manifest = JSON.parse(await fs.readFile(path.join(ROOT, 'package.json'), 'utf8'));
-  manifest.version = version;
-  await fs.writeFile(path.join(packageRoot, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`);
-  if (extraFile) await fs.writeFile(path.join(packageRoot, 'src', 'home', extraFile), 'obsolete package file\n');
-  return packageRoot;
-}
-
-async function installOutdated(t) {
-  const value = await fixture(t);
-  const oldPackage = await packageFixture(value.root, 'old-package');
-  const oldPlan = await buildInstallPlan(value.host, oldPackage);
-  await fs.writeFile(oldPlan[0].source, 'old package content\n');
-  await install({ host: value.host, packageRoot: oldPackage });
-  const currentPlan = await buildInstallPlan(value.host);
-  const changed = currentPlan.find((item) =>
-    item.root === oldPlan[0].root && item.relativeToRoot === oldPlan[0].relativeToRoot);
-  return { ...value, changed };
-}
+import { fixture, installOutdated, PACKAGE, packageFixture, ROOT, SOURCE } from './update-fixtures.mjs';
 
 test('update without an installation record refuses and recommends install', async (t) => {
   const { host } = await fixture(t);

@@ -29,6 +29,12 @@ import {
 import { addRulesOwner, readRulesRegistry } from './rules-owners.mjs';
 import { claudeBoundary, removeEmptyLayout, removeEmptyParents } from './remove-layout.mjs';
 
+const LEGACY_GUARD_LOG_FILES = [
+  'codex-reply-guard.blocked.json',
+  'codex-order-gate.last.json',
+  'codex-reply-guard.last.json',
+];
+
 async function exists(target) {
   try {
     return (await fs.stat(target)).isFile();
@@ -43,6 +49,18 @@ async function retireLegacyLayout(host) {
   await fs.rm(legacyInstallRecordPath(host), { force: true });
   await removeEmptyLayout(host.legacyAgentsDir);
   await removeEmptyLayout(host.legacyCommandsDir);
+}
+
+async function retireLegacyGuardLogs(host, { dryRun = false } = {}) {
+  const logDir = path.join(path.dirname(host.settingsPath), 'logs');
+  const lines = [];
+  for (const name of LEGACY_GUARD_LOG_FILES) {
+    const target = path.join(logDir, name);
+    if (!await exists(target)) continue;
+    if (!dryRun) await fs.rm(target, { force: true });
+    lines.push(`${dryRun ? 'Would remove' : 'Removed'} ${path.join('logs', name)}.`);
+  }
+  return lines.join('\n');
 }
 
 function displayFile(file) {
@@ -222,6 +240,7 @@ async function updateInRun({ host, dryRun = false, force = false, packageRoot, e
   const changed = states.some((state) => state.status !== 'up-to-date') || oldHooks.length > 0;
   if (!changed && inspectedHooks.every(({ state }) => state.present)
     && recordHasHooks(record, targets) && recordCurrent) {
+    const legacyLogOutput = await retireLegacyGuardLogs(host, { dryRun });
     if (!dryRun) {
       await addRulesOwner(host);
       // An update that installed the new layout but stopped before retiring the old one used to
@@ -230,10 +249,20 @@ async function updateInRun({ host, dryRun = false, force = false, packageRoot, e
       // it on this path costs nothing when there is nothing left to retire.
       await retireLegacyLayout(host);
     }
-    return { exitCode: 0, output: `codex-bridge is up to date with ${source}${mismatch}` };
+    return {
+      exitCode: 0,
+      output: [`codex-bridge is up to date with ${source}${mismatch}`, legacyLogOutput]
+        .filter(Boolean).join('\n'),
+    };
   }
   if (dryRun) {
-    return { exitCode: 0, output: `Would update codex-bridge with ${source}.${mismatch}\n${dryRunOutput(states, inspectedHooks, legacy, oldHooks)}` };
+    const legacyLogOutput = await retireLegacyGuardLogs(host, { dryRun: true });
+    return {
+      exitCode: 0,
+      output: [`Would update codex-bridge with ${source}.${mismatch}`,
+        dryRunOutput(states, inspectedHooks, legacy, oldHooks), legacyLogOutput]
+        .filter(Boolean).join('\n'),
+    };
   }
 
   for (const state of orphanStates) {
@@ -249,7 +278,12 @@ async function updateInRun({ host, dryRun = false, force = false, packageRoot, e
   const installed = await install({ host, force: true, packageRoot, env });
   if (installed.exitCode !== 0) return installed;
   await retireLegacyLayout(host);
-  return { exitCode: 0, output: `${appliedOutput(states)}\nSource: ${source}${mismatch}` };
+  const legacyLogOutput = await retireLegacyGuardLogs(host);
+  return {
+    exitCode: 0,
+    output: [`${appliedOutput(states)}\nSource: ${source}${mismatch}`, legacyLogOutput]
+      .filter(Boolean).join('\n'),
+  };
 }
 
 export async function update(options = {}) {

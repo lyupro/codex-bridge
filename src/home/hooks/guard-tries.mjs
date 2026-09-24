@@ -1,15 +1,14 @@
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
+import { BRAND_STATE_DIR } from '../lib/brand-home.mjs';
 import { readJsonFileSync } from '../lib/json-file.mjs';
 
-const LOG_DIR = path.join(os.homedir(), '.claude', 'logs');
 /**
- * The file keeps its reply-guard name although two guards now share it: renaming would abandon the
- * budgets already spent on hosts in the field, and a guard that forgets its refusals starts
- * refusing the same call again.
+ * Two guards share this budget (reply-guard and stop-guard). It lived in Claude Code's own
+ * `~/.claude/logs/` until Plan_62 D14 moved package state into the brand home; the move abandons
+ * budgets spent before it, which is harmless because they are keyed by agent ids that no longer run.
  */
-export const BLOCKED_FILE = path.join(LOG_DIR, 'codex-reply-guard.blocked.json');
+export const BLOCKED_FILE = path.join(BRAND_STATE_DIR, 'reply-guard-tries.json');
 export const FORM = 'form';
 export const STATE = 'state';
 export const MAX_FORM_BLOCKS = 3;
