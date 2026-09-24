@@ -57,44 +57,45 @@ export function commandReachable(name = 'codex-bridge', env = process.env) {
  * could decide anything, and the host refused Bash, PowerShell, file edits and agent launches.
  */
 export function reachableCommandVersion(name = 'codex-bridge', env = process.env) {
+  const result = runReachableCommand(name, ['--version'], env);
+  if (!result || result.status !== 0) return null;
+  return String(result.stdout || '').trim().split(/\r?\n/).pop()?.trim() || null;
+}
+
+export function runReachableCommand(name, args, env = process.env) {
   const shimPath = resolveCommand(name, env);
   if (!shimPath) return null;
   // Node 24 warned with DEP0190 during update (2026-09-07): invoke cmd explicitly for npm shims.
   // Live probes covered plain, bin with space, Program Files (x86), weird & name, and caret^dir.
-  // /d /s /c with path and --version as separate arguments only passed the plain directory:
+  // /d /s /c with path and fixed arguments as separate arguments only passed the plain directory:
   // Node adds quotes, then cmd's /s strips the first and last quote of the whole command line.
   // /d /c without /s failed on & and ^. This single, double-wrapped verbatim command passed all
   // five. Keep native path separators: forward-slash Windows paths do not work through cmd.
   // The interpreter is a property of the machine, not of the PATH handed in: resolving cmd.exe
-  // through the caller's PATH would return null on any env whose PATH omits System32, and a null
-  // version is exactly the silent failure this function exists to prevent.
+  // through the caller's PATH would return null on any env whose PATH omits System32, hiding the
+  // exact command outcome this probe exists to report.
   const shell = envValue(env, 'comspec') || process.env.ComSpec || 'cmd.exe';
+  const fixedArgs = args.map((argument) => ` ${argument}`).join('');
   const result = process.platform === 'win32'
-    ? spawnSync(shell, ['/d', '/s', '/c', `""${shimPath}" --version"`], {
+    ? spawnSync(shell, ['/d', '/s', '/c', `""${shimPath}"${fixedArgs}"`], {
       encoding: 'utf8', env, shell: false, windowsVerbatimArguments: true, windowsHide: true,
+      timeout: 10000, maxBuffer: 64 * 1024,
     })
-    : spawnSync(shimPath, ['--version'], { encoding: 'utf8', env, shell: false, windowsHide: true });
-  if (result.error || result.status !== 0) return null;
-  return String(result.stdout || '').trim().split(/\r?\n/).pop()?.trim() || null;
+    : spawnSync(shimPath, args, {
+      encoding: 'utf8', env, shell: false, windowsHide: true, timeout: 10000, maxBuffer: 64 * 1024,
+    });
+  return { path: shimPath, status: result.status, stdout: String(result.stdout || '') };
 }
 
-export function hookRegistration(name, target, env = process.env, packageVersion = null) {
-  // Requiring the versions to match is stricter than asking whether `hook` exists, deliberately:
-  // a command of another version would run code this install has never seen, which is the hazard
-  // README describes when a global install and a clone coexist. Anything short of a match falls
-  // back to the copy this install placed itself.
-  const reachable = reachableCommandVersion('codex-bridge', env);
-  if (reachable && packageVersion && reachable === packageVersion) {
+export function hookRegistration(name, target, probe) {
+  if (probe.ok) {
     return {
       command: shortCommandFor(name),
       form: 'short',
-      reason: `codex-bridge ${reachable} on PATH matches this package; the global command will execute`,
+      reason: `codex-bridge on PATH launches guards from this home (${probe.homeRoot})`,
     };
   }
-  const reason = reachable
-    ? `codex-bridge on PATH reports ${reachable}, not ${packageVersion}; the installed copy will execute`
-    : 'codex-bridge is not reachable from PATH; the installed copy will execute';
-  return { command: commandFor(target), form: 'path', reason };
+  return { command: commandFor(target), form: 'path', reason: `${probe.reason}; the installed copy will execute` };
 }
 
 export function commandForm(command) {

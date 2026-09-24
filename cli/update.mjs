@@ -21,7 +21,6 @@ import { hookTargets } from './hook-targets.mjs';
 import { definitionForRecordedHook, fileEntry, fingerprintFor } from './install-record.mjs';
 import {
   commandFor,
-  hookRegistration,
   inspectHook,
   removeHook,
   withSettingsRun,
@@ -228,7 +227,7 @@ async function updateInRun({ host, dryRun = false, force = false, packageRoot, e
       + ' The home was updated from the copy that answered, not from that checkout'
       + ` (npm i -g ${currentPackage.name}@${elsewhere.version} changes which one that is).`
     : '';
-  const targets = hookTargets(host, env, currentPackage.version);
+  const targets = hookTargets(host, env);
   const inspectedHooks = await Promise.all(targets.map(async (target) => ({
     target,
     state: await inspectHook(host.settingsPath, target.spec),

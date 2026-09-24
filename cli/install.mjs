@@ -19,7 +19,6 @@ import { hookTargets } from './hook-targets.mjs';
 import { fingerprintFor, INSTALL_METHOD_COPY, INSTALL_METHOD_KEY } from './install-record.mjs';
 import {
   commandFor,
-  hookRegistration,
   inspectHook,
   mergeHook,
   withSettingsRun,
@@ -128,7 +127,7 @@ async function installInRun({
   const rule = { ...rulesPlan(host, packageRoot), processing: 'copy' };
   const currentPackage = await packageInfo(packageRoot);
   const record = await readInstallRecord(host);
-  const targets = hookTargets(host, env, currentPackage.version);
+  const targets = hookTargets(host, env);
   for (const target of targets) {
     if (!plan.some((item) => item.root === 'brand' && item.relativeToRoot === target.relative)) {
       throw new Error(`install plan does not contain hooks/${target.definition.file}`);
