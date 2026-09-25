@@ -5,6 +5,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { readHandbackWitness } from '../../src/home/lib/handback-witness.mjs';
+import { HOST_OBSERVATIONS_FILE } from '../../src/home/lib/host-observations.mjs';
 import { canonicalRunCommand } from '../../src/home/lib/dispatcher-command.mjs';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 
@@ -151,6 +152,20 @@ test('main-session and unregistered agent payloads are ignored', async (t) => {
   const unknown = dispatcherPayload(identity, 'Write');
   unknown.agent_type = 'unregistered-agent';
   assert.equal(outcome(root, unknown).stdout, '');
+});
+
+test('main-session PreToolUse records host version without gate output', async (t) => {
+  const root = await fixture(t);
+  const transcriptPath = path.join(root, 'session.jsonl');
+  await fs.writeFile(transcriptPath, `${JSON.stringify({ version: '9.8.7' })}\n`);
+  const result = outcome(root, {
+    hook_event_name: 'PreToolUse', session_id: 'main-session', transcript_path: transcriptPath,
+  });
+  assert.equal(result.stdout, '');
+  const observations = JSON.parse(await fs.readFile(
+    path.join(root, 'home', 'state', HOST_OBSERVATIONS_FILE), 'utf8',
+  ));
+  assert.equal(observations.hosts['9.8.7'].lastSeen, observations.sessions['main-session'].at);
 });
 
 test('PreToolUse receipts cover pass, deny, and allow decisions', async (t) => {

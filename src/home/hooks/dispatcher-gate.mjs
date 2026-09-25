@@ -18,6 +18,7 @@ import {
   updateDispatcherState,
 } from '../lib/dispatcher-state.mjs';
 import { hostSdkVersion, recordHandbackWitness } from '../lib/handback-witness.mjs';
+import { observeSessionHost } from '../lib/host-observations.mjs';
 
 function emit(decision, toolInput) {
   const hookSpecificOutput = {
@@ -41,6 +42,18 @@ async function main() {
     payload = parseJsonText('stdin', fs.readFileSync(0, 'utf8'));
   } catch {
     return;
+  }
+
+  if (payload?.hook_event_name === 'PreToolUse'
+    && typeof payload.session_id === 'string' && payload.session_id.length > 0
+    && typeof payload.transcript_path === 'string' && payload.transcript_path.length > 0) {
+    try {
+      await observeSessionHost({
+        stateDir: BRAND_STATE_DIR,
+        sessionId: payload.session_id,
+        transcriptPath: payload.transcript_path,
+      });
+    } catch {}
   }
 
   if (!payload || !Object.prototype.hasOwnProperty.call(AGENTS, payload.agent_type)
