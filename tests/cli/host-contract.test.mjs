@@ -193,6 +193,29 @@ test('writeHostContract creates a missing brand root and round-trips atomically'
   }
 });
 
+test('writeHostContract refuses a target outside its writer root before creating either root', async () => {
+  const parent = makeTempTree('codex-bridge-host-contract-layout-');
+  const targetRoot = path.join(parent, 'target-brand-root');
+  const writerRoot = path.join(parent, 'different-writer-root');
+  let brandRootReads = 0;
+  const host = {
+    get brandRoot() {
+      brandRootReads += 1;
+      return brandRootReads <= 2 ? targetRoot : writerRoot;
+    },
+  };
+  try {
+    await assert.rejects(
+      () => writeHostContract(host, { version: '2.1.240', result: 'honored' }),
+      { code: 'EHOMEREGISTRY' },
+    );
+    assert.throws(() => fs.accessSync(targetRoot), { code: 'ENOENT' });
+    assert.throws(() => fs.accessSync(writerRoot), { code: 'ENOENT' });
+  } finally {
+    await removeTempTree(parent);
+  }
+});
+
 test('writes preserve both host versions and expire entries older than 180 days', async () => {
   const root = makeTempTree('codex-bridge-host-contract-versions-'); const host = { brandRoot: root };
   try {

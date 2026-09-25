@@ -21,6 +21,19 @@ test('dispatcher record writes and reads an atomic round trip', async () => {
   } finally { await removeTempTree(root); }
 });
 
+test('dispatcher record refuses a state directory outside the home layout before creating it', () => {
+  const root = makeTempTree('dispatcher-contract-wrong-layout-');
+  const stateDir = path.join(root, 'not-state');
+  try {
+    assert.throws(
+      () => writeDispatcherContract({ stateDir, version: '2.1.281', verdicts: {} }),
+      { code: 'EHOMEREGISTRY' },
+    );
+    assert.throws(() => fs.accessSync(stateDir), { code: 'ENOENT' });
+    assert.throws(() => fs.accessSync(path.join(stateDir, DISPATCHER_CONTRACT_FILE)), { code: 'ENOENT' });
+  } finally { removeTempTree(root); }
+});
+
 test('inconclusive verdicts preserve the previous contract entry', async () => {
   const root = makeTempTree('dispatcher-contract-preserve-');
   const stateDir = path.join(root, 'state'); fs.mkdirSync(stateDir);

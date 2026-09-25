@@ -1,6 +1,6 @@
 /** Reads, validates, and writes the installation record shared by installer commands. */
-import fs from 'node:fs/promises';
 import path from 'node:path';
+import { createHomeWriter } from '../src/home/lib/home-write.mjs';
 import { readJsonFile } from '../src/home/lib/json-file.mjs';
 import { HOOK_DEFINITIONS } from '../src/home/lib/hook-definitions.mjs';
 
@@ -274,8 +274,10 @@ export async function readInstallRecord(host) {
 export async function writeInstallRecord(host, record) {
   const normalized = normalizeInstallRecord(record);
   const target = installRecordPath(host);
-  await fs.mkdir(path.dirname(target), { recursive: true });
-  await fs.writeFile(target, `${JSON.stringify(normalized, null, 2)}\n`);
+  const writer = createHomeWriter({ root: host.brandRoot });
+  writer.assertArtifact('install-record', target);
+  await writer.mkdir('install-record', path.dirname(target), { recursive: true });
+  await writer.writeFile('install-record', target, `${JSON.stringify(normalized, null, 2)}\n`);
 }
 
 export function fingerprintFor(record, file) {

@@ -12,10 +12,10 @@
  */
 import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import fs from 'node:fs/promises';
 import path from 'node:path';
 import { CLI_NAMES } from '../src/home/lib/cli-names.mjs';
 import { HOOK_DEFINITIONS } from '../src/home/lib/hook-definitions.mjs';
+import { createHomeWriter } from '../src/home/lib/home-write.mjs';
 import { readJsonFile } from '../src/home/lib/json-file.mjs';
 
 export const HOST_CONTRACT_RECORD_NAME = '.host-contract.json';
@@ -69,12 +69,18 @@ export async function writeHostContract(host, { version, result, now = new Date(
     Number.isFinite(Date.parse(entry?.checkedAt)) && Date.parse(entry.checkedAt) >= cutoff));
   hosts[version] = { result, checkedAt: now.toISOString() };
   const record = { hosts };
-  await fs.mkdir(host.brandRoot, { recursive: true });
+  const writer = createHomeWriter({ root: host.brandRoot });
+  writer.assertArtifact('host-contract', target);
+  await writer.mkdir('host-contract', host.brandRoot, { recursive: true });
   try {
-    await fs.writeFile(temporary, `${JSON.stringify(record, null, 2)}\n`, 'utf8');
-    await fs.rename(temporary, target);
+    await writer.writeFile('host-contract', temporary, `${JSON.stringify(record, null, 2)}\n`, 'utf8');
+    await writer.rename('host-contract', temporary, target);
   } finally {
-    await fs.rm(temporary, { force: true });
+    try {
+      await writer.unlink('host-contract', temporary);
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
   }
 }
 

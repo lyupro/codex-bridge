@@ -68,6 +68,17 @@ test('write and read keep both installation roots and nested fingerprints', asyn
   await assert.rejects(() => fs.access(legacyInstallRecordPath(host)), { code: 'ENOENT' });
 });
 
+test('write refuses an undeclared install record path before creating it', async (t) => {
+  const host = await fixture(t);
+  const target = path.join(host.brandRoot, 'not-declared', 'missing-record.json');
+  await assert.rejects(
+    () => writeInstallRecord({ ...host, brandInstallRecordPath: target }, record()),
+    { code: 'EHOMEREGISTRY' },
+  );
+  await assert.rejects(() => fs.access(path.dirname(target)), { code: 'ENOENT' });
+  await assert.rejects(() => fs.access(target), { code: 'ENOENT' });
+});
+
 test('read migrates an old single-root record and singular hook to normalized entries', async (t) => {
   const host = await fixture(t);
   const legacyFiles = [

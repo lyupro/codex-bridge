@@ -6,7 +6,8 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { writeJsonAtomic } from '../src/home/lib/atomic-json.mjs';
+import { writeHomeJsonAtomic } from '../src/home/lib/atomic-json.mjs';
+import { stateDirWriter } from '../src/home/lib/home-write.mjs';
 import { parseJsonText } from '../src/home/lib/json-file.mjs';
 import { DISPATCHER_CONTRACTS } from './dispatcher-contract.mjs';
 
@@ -46,6 +47,6 @@ export function writeDispatcherContract({ stateDir, version, verdicts, now = new
     }
   }
   const record = { hosts: { ...(previous?.hosts ?? {}), [version]: { contracts } } };
-  writeJsonAtomic(file, record);
+  writeHomeJsonAtomic(stateDirWriter(stateDir), 'dispatcher-contract', file, record);
   return record;
 }
