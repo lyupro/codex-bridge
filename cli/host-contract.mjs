@@ -6,7 +6,9 @@
  * somewhere between host 2.1.119 and 2.1.231, with no error printed on the way. Nothing in this
  * package would notice `deny` going the same way — the suite checks that a hook RETURNED a refusal,
  * never that the host APPLIED it. The record is bound to a host version because that is what
- * changes underneath an installation: the host updates itself, the package does not.
+ * changes underneath an installation: the host updates itself, the package does not. The
+ * 2026-09-25 incident ran VS Code host 2.1.282 beside CLI host 2.1.281, so each version keeps
+ * its own verdict and probing either must preserve the other.
  */
 import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -40,13 +42,12 @@ export async function readHostContract(host) {
   const target = hostContractPath(host);
   try {
     const record = await readJsonFile(target);
-    if (!record || typeof record !== 'object' || Array.isArray(record)
-      || typeof record.version !== 'string' || !record.version) return null;
-    return {
-      version: record.version,
-      checkedAt: record.checkedAt,
-      result: record.result,
-    };
+    if (!record || typeof record !== 'object' || Array.isArray(record)) return null;
+    if (record.hosts && typeof record.hosts === 'object' && !Array.isArray(record.hosts)) return record;
+    if (typeof record.version === 'string' && record.version) {
+      return { hosts: { [record.version]: { result: record.result, checkedAt: record.checkedAt } } };
+    }
+    return null;
   } catch {
     return null;
   }
@@ -62,7 +63,12 @@ export async function writeHostContract(host, { version, result, now = new Date(
 
   const target = hostContractPath(host);
   const temporary = `${target}.${process.pid}.${randomUUID()}.tmp`;
-  const record = { version, result, checkedAt: now.toISOString() };
+  const previous = await readHostContract(host);
+  const cutoff = now.getTime() - 180 * 24 * 60 * 60 * 1000;
+  const hosts = Object.fromEntries(Object.entries(previous?.hosts ?? {}).filter(([, entry]) =>
+    Number.isFinite(Date.parse(entry?.checkedAt)) && Date.parse(entry.checkedAt) >= cutoff));
+  hosts[version] = { result, checkedAt: now.toISOString() };
+  const record = { hosts };
   await fs.mkdir(host.brandRoot, { recursive: true });
   try {
     await fs.writeFile(temporary, `${JSON.stringify(record, null, 2)}\n`, 'utf8');
@@ -107,13 +113,16 @@ export function contractStatus({ record, version }) {
       message: `The refusal contract has never been probed on this machine (host ${version}); run ${PROBE_COMMAND}.`,
     };
   }
-  if (record.version !== version) {
+  const entry = record.hosts?.[version];
+  if (!entry && Object.keys(record.hosts ?? {}).length) {
+    const [otherVersion] = Object.entries(record.hosts).sort((a, b) => Date.parse(b[1]?.checkedAt) - Date.parse(a[1]?.checkedAt))[0];
     return {
       state: 'stale',
-      message: `The refusal contract was probed on host ${record.version}, but the current host is ${version}; run ${PROBE_COMMAND}.`,
+      message: `The refusal contract was probed on host ${otherVersion}, but the current host is ${version}; run ${PROBE_COMMAND}.`,
     };
   }
-  if (record.result === 'ignored') {
+  if (!entry) return { state: 'unverified', message: `The refusal contract has never been probed on this machine (host ${version}); run ${PROBE_COMMAND}.` };
+  if (entry.result === 'ignored') {
     const guards = HOOK_DEFINITIONS
       .filter((definition) => definition.event === 'PreToolUse')
       .map((definition) => definition.name)
@@ -123,10 +132,10 @@ export function contractStatus({ record, version }) {
       message: `DANGER: Host ${version} does not honour hook refusals, so every guard is inert: ${guards}. Re-run ${PROBE_COMMAND} once the host updates.`,
     };
   }
-  if (record.result === 'honored') {
+  if (entry.result === 'honored') {
     return {
       state: 'verified',
-      message: `Host ${version} honours hook refusals (verified ${record.checkedAt}).`,
+      message: `Host ${version} honours hook refusals (verified ${entry.checkedAt}).`,
     };
   }
   return {

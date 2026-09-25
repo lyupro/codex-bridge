@@ -38,16 +38,16 @@ test('a message advises the probe exactly when a probe would change its answer',
   // to learn, the second cannot run the probe at all.
   const advising = [
     { record: null, version: '2.1.240' },
-    { record: { version: '2.1.231', result: 'honored' }, version: '2.1.240' },
-    { record: { version: '2.1.240', result: 'ignored' }, version: '2.1.240' },
-    { record: { version: '2.1.240', result: 'nonsense' }, version: '2.1.240' },
+    { record: { hosts: { '2.1.231': { result: 'honored', checkedAt: '2026-08-22' } } }, version: '2.1.240' },
+    { record: { hosts: { '2.1.240': { result: 'ignored' } } }, version: '2.1.240' },
+    { record: { hosts: { '2.1.240': { result: 'nonsense' } } }, version: '2.1.240' },
   ];
   for (const input of advising) {
     assert.ok(contractStatus(input).message.includes(PROBE_COMMAND), JSON.stringify(input));
   }
   const silent = [
     { record: null, version: null },
-    { record: { version: '2.1.240', result: 'honored' }, version: '2.1.240' },
+    { record: { hosts: { '2.1.240': { result: 'honored' } } }, version: '2.1.240' },
   ];
   for (const input of silent) {
     assert.ok(!contractStatus(input).message.includes(PROBE_COMMAND), JSON.stringify(input));
@@ -79,7 +79,7 @@ test('contractStatus reports a machine that has never been probed', () => {
 
 test('contractStatus reports a record made for another host version', () => {
   const status = contractStatus({
-    record: { version: '2.1.231', result: 'honored', checkedAt: '2026-08-23T12:00:00.000Z' },
+    record: { hosts: { '2.1.231': { result: 'honored', checkedAt: '2026-08-23T12:00:00.000Z' } } },
     version: '2.1.240',
   });
   assert.equal(status.state, 'stale');
@@ -89,7 +89,7 @@ test('contractStatus reports a record made for another host version', () => {
 
 test('contractStatus loudly names inert guards when refusals are ignored', () => {
   const status = contractStatus({
-    record: { version: '2.1.240', result: 'ignored', checkedAt: '2026-08-23T12:00:00.000Z' },
+    record: { hosts: { '2.1.240': { result: 'ignored', checkedAt: '2026-08-23T12:00:00.000Z' } } },
     version: '2.1.240',
   });
   assert.equal(status.state, 'ignored');
@@ -100,7 +100,7 @@ test('contractStatus loudly names inert guards when refusals are ignored', () =>
 
 test('contractStatus reports a verified refusal contract calmly', () => {
   const status = contractStatus({
-    record: { version: '2.1.240', result: 'honored', checkedAt: '2026-08-23T12:00:00.000Z' },
+    record: { hosts: { '2.1.240': { result: 'honored', checkedAt: '2026-08-23T12:00:00.000Z' } } },
     version: '2.1.240',
   });
   assert.equal(status.state, 'verified');
@@ -157,7 +157,7 @@ test('readHostContract returns null for a missing file, malformed JSON, or missi
   }
 });
 
-test('readHostContract returns the fields from a valid record', async () => {
+test('readHostContract returns the host map and migrates a valid legacy record', async () => {
   const root = makeTempTree('codex-bridge-host-contract-valid-');
   const host = { brandRoot: root };
   const record = {
@@ -167,7 +167,10 @@ test('readHostContract returns the fields from a valid record', async () => {
   };
   try {
     fs.writeFileSync(hostContractPath(host), JSON.stringify({ ...record, extra: true }), 'utf8');
-    assert.deepEqual(await readHostContract(host), record);
+    const migrated = await readHostContract(host);
+    assert.deepEqual(migrated, { hosts: { '2.1.240': { checkedAt: record.checkedAt, result: record.result } } });
+    assert.equal(contractStatus({ record: migrated, version: '2.1.240' }).state, 'verified');
+    assert.equal(contractStatus({ record: migrated, version: '2.1.241' }).state, 'stale');
   } finally {
     await removeTempTree(root);
   }
@@ -179,20 +182,25 @@ test('writeHostContract creates a missing brand root and round-trips atomically'
   const now = new Date('2026-08-24T10:30:00.000Z');
   try {
     await writeHostContract(host, { version: '2.1.240', result: 'honored', now });
-    assert.deepEqual(await readHostContract(host), {
-      version: '2.1.240',
-      checkedAt: now.toISOString(),
-      result: 'honored',
-    });
+    assert.deepEqual(await readHostContract(host), { hosts: { '2.1.240': { checkedAt: now.toISOString(), result: 'honored' } } });
     const later = new Date('2026-08-24T11:30:00.000Z');
     await writeHostContract(host, { version: '2.1.240', result: 'ignored', now: later });
-    assert.deepEqual(await readHostContract(host), {
-      version: '2.1.240',
-      checkedAt: later.toISOString(),
-      result: 'ignored',
-    });
+    assert.deepEqual(await readHostContract(host), { hosts: { '2.1.240': { checkedAt: later.toISOString(), result: 'ignored' } } });
     assert.deepEqual(fs.readdirSync(host.brandRoot), [HOST_CONTRACT_RECORD_NAME]);
   } finally {
     await removeTempTree(parent);
   }
+});
+
+test('writes preserve both host versions and expire entries older than 180 days', async () => {
+  const root = makeTempTree('codex-bridge-host-contract-versions-'); const host = { brandRoot: root };
+  try {
+    await writeHostContract(host, { version: '2.1.281', result: 'honored', now: new Date('2026-09-25T00:00:00Z') });
+    await writeHostContract(host, { version: '2.1.282', result: 'honored', now: new Date('2026-09-25T01:00:00Z') });
+    const both = await readHostContract(host);
+    for (const version of ['2.1.281', '2.1.282']) assert.equal(contractStatus({ record: both, version }).state, 'verified');
+    assert.equal(contractStatus({ record: both, version: '2.1.280' }).state, 'stale');
+    await writeHostContract(host, { version: '2.1.283', result: 'ignored', now: new Date('2027-03-25T00:00:00Z') });
+    assert.deepEqual(Object.keys((await readHostContract(host)).hosts), ['2.1.283']);
+  } finally { await removeTempTree(root); }
 });

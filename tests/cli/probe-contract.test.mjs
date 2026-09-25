@@ -79,7 +79,7 @@ test('probeContract records ignored when the refused marker command ran', async 
     assert.equal(scenario.result.state, 'probed');
     assert.equal(scenario.result.result, 'ignored');
     assert.equal(scenario.result.recorded, true);
-    assert.equal((await readHostContract(scenario.host)).result, 'ignored');
+    assert.equal((await readHostContract(scenario.host)).hosts['2.1.240'].result, 'ignored');
     assert.equal(fs.existsSync(scenario.rigDir), false);
   } finally {
     scenario.cleanup();
@@ -109,9 +109,9 @@ test('probeContract records honored when the hook fired and no marker appeared',
   try {
     assert.equal(scenario.result.state, 'probed');
     assert.equal(scenario.result.result, 'honored');
-    assert.equal((await readHostContract(scenario.host)).result, 'honored');
+    assert.equal((await readHostContract(scenario.host)).hosts['2.1.240'].result, 'honored');
     const record = readDispatcherContract({ stateDir: path.join(scenario.host.brandRoot, 'state') });
-    assert.deepEqual(Object.values(record.contracts).map((entry) => entry.result), ['honored', 'honored', 'honored', 'honored']);
+    assert.deepEqual(Object.values(record.hosts['2.1.240'].contracts).map((entry) => entry.result), ['honored', 'honored', 'honored', 'honored']);
     assert.deepEqual(Object.values(scenario.result.dispatcher).map((entry) => entry.result), ['honored', 'honored', 'honored', 'honored']);
     assert.equal(fs.existsSync(scenario.rigDir), false);
   } finally {

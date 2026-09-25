@@ -1,4 +1,4 @@
-/** Judges dispatcher host behaviour so a silent regression cannot leave the Plan_62 D19 gate trusted. */
+/** Judges dispatcher host behaviour per version: the 2026-09-25 incident ran VS Code 2.1.282 beside CLI 2.1.281. */
 import { parseJsonText } from '../src/home/lib/json-file.mjs';
 import { PROBE_COMMAND } from './host-contract.mjs';
 
@@ -68,15 +68,16 @@ export function judgeDispatcherContracts({ entries, hostHealthy, okCommand, fail
 
 export function dispatcherContractStatus({ record, version }) {
   return DISPATCHER_CONTRACTS.map((contract) => {
-    const item = record?.contracts?.[contract];
+    const item = record?.hosts?.[version]?.contracts?.[contract];
     let state;
     let message;
     if (version == null) {
       state = 'unknown-host'; message = 'Host version is unknown; dispatcher contracts cannot be judged.';
     } else if (!item) {
-      state = 'unverified'; message = `Dispatcher contract ${contract} has never been probed on host ${version}; run ${PROBE_COMMAND}.`;
-    } else if (item.version !== version) {
-      state = 'stale'; message = `Dispatcher contract ${contract} was recorded for host ${item.version}; run ${PROBE_COMMAND}.`;
+      const other = Object.entries(record?.hosts ?? {}).filter(([, host]) => host?.contracts?.[contract])
+        .sort((a, b) => Date.parse(b[1].contracts[contract].checkedAt) - Date.parse(a[1].contracts[contract].checkedAt))[0];
+      if (other) { state = 'stale'; message = `Dispatcher contract ${contract} was recorded for host ${other[0]}; run ${PROBE_COMMAND}.`; }
+      else { state = 'unverified'; message = `Dispatcher contract ${contract} has never been probed on host ${version}; run ${PROBE_COMMAND}.`; }
     } else if (item.result === 'honored') {
       state = 'verified'; message = `Dispatcher contract ${contract} is verified on host ${version}.`;
     } else if (item.result === 'changed') {

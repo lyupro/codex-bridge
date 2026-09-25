@@ -61,10 +61,10 @@ test('dispatcher status exposes all five states', () => {
   const entries = dispatcherContractStatus({ record: null, version: '2.1.281' });
   assert.ok(entries.every((entry) => entry.state === 'unverified'));
   assert.ok(dispatcherContractStatus({ record: null, version: null }).every((entry) => entry.state === 'unknown-host'));
-  const record = { contracts: Object.fromEntries(DISPATCHER_CONTRACTS.map((name) => [name, { result: 'honored', version: '2.1.281' }])) };
+  const record = { hosts: { '2.1.281': { contracts: Object.fromEntries(DISPATCHER_CONTRACTS.map((name) => [name, { result: 'honored', checkedAt: '2026-09-24T21:56:00.000Z' }])) } } };
   assert.ok(dispatcherContractStatus({ record, version: '2.1.281' }).every((entry) => entry.state === 'verified'));
   assert.ok(dispatcherContractStatus({ record, version: '2.1.282' }).every((entry) => entry.state === 'stale'));
-  record.contracts.agentIdentity.result = 'changed';
+  record.hosts['2.1.281'].contracts.agentIdentity.result = 'changed';
   const changed = dispatcherContractStatus({ record, version: '2.1.281' })[0];
   assert.equal(changed.state, 'changed');
   assert.match(changed.message, /cannot be trusted.*Plan_62 D19/);

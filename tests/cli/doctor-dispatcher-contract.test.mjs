@@ -13,7 +13,7 @@ const verdicts = (result) => Object.fromEntries(DISPATCHER_CONTRACTS.map((name) 
 const contractLines = (result) => result.checks.filter((item) => item.key.startsWith('dispatcherContract'));
 
 function record(results) {
-  return { contracts: Object.fromEntries(Object.entries(results).map(([name, result]) => [name, { result, version: '2.1.281' }])) };
+  return { hosts: { '2.1.281': { contracts: Object.fromEntries(Object.entries(results).map(([name, result]) => [name, { result, checkedAt: '2026-09-24T12:00:00Z' }])) } } };
 }
 
 async function run(t, options) {

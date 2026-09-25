@@ -15,19 +15,19 @@ const cases = [
   { state: 'unverified', contractRecord: null, hostVersion: VERSION, status: 'warn' },
   {
     state: 'stale',
-    contractRecord: { version: '2.1.231', result: 'honored', checkedAt: CHECKED_AT },
+    contractRecord: { hosts: { '2.1.231': { result: 'honored', checkedAt: CHECKED_AT } } },
     hostVersion: VERSION,
     status: 'warn',
   },
   {
     state: 'ignored',
-    contractRecord: { version: VERSION, result: 'ignored', checkedAt: CHECKED_AT },
+    contractRecord: { hosts: { [VERSION]: { result: 'ignored', checkedAt: CHECKED_AT } } },
     hostVersion: VERSION,
     status: 'fail',
   },
   {
     state: 'verified',
-    contractRecord: { version: VERSION, result: 'honored', checkedAt: CHECKED_AT },
+    contractRecord: { hosts: { [VERSION]: { result: 'honored', checkedAt: CHECKED_AT } } },
     hostVersion: VERSION,
     status: 'ok',
   },
@@ -59,7 +59,7 @@ for (const item of cases) {
 
 test('installer appends only a non-verified host contract message', async (t) => {
   const { host } = await fixture(t);
-  const verifiedRecord = { version: VERSION, result: 'honored', checkedAt: CHECKED_AT };
+  const verifiedRecord = { hosts: { [VERSION]: { result: 'honored', checkedAt: CHECKED_AT } } };
   const verified = await install({
     host,
     dryRun: true,
