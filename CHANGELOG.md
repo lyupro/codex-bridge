@@ -4,6 +4,46 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.7] - 2026-09-25
+
+### Added
+
+- The dispatcher gate allows only the single `codex-bridge run …` command derived from its order, and
+  hands back the runner's own words. After a handback is delivered, the dispatcher cannot keep
+  working; its stop is audited for calls the gate missed, teammate launches are refused, and the
+  reply guard looks up runs for that order. A dispatcher had written code itself and returned its
+  own `OK`, while another writer started in the same tree.
+- `doctor --probe-contract` measures the four host behaviours the dispatcher gate relies on in one
+  host run. `doctor` prints four `dispatcherContract:` lines and a handback witness line, so a
+  changed or missing host contract is visible instead of silently weakening the gate.
+
+### Changed
+
+- Package state and hook diagnostics now live under `~/.lyupro/.codex-bridge/state/` instead of
+  `~/.claude/logs/`; `update` removes the three legacy files so one package no longer splits its
+  state across another product's logs directory.
+
+### Fixed
+
+- `codex-bridge hook` and `codex-bridge run` now launch the installed home copy. The installer uses
+  the short hook command only when PATH proves it serves that home, `update` rewrites registrations
+  in an unsafe form, and `doctor` fails them. Launcher failures exit 1, not 2: a global older
+  command once rejected newly registered guard names and refused every shell call on the machine.
+- Windows child processes no longer open console windows during delegated runs; visible windows had
+  flashed for each process used to snapshot or inspect the repository and host.
+- Advisor evidence now names locations as a list, and only an `OK` judged `advise` pass authorizes
+  a build. Real citations had failed because multiple addresses were folded into one string, while
+  a scope pass or an advice the judge had failed still counted as the second opinion a build needs.
+- The published `bin` entries use the spelling npm publishes. Publishing 0.6.6 logged both CLI entries
+  as invalid and removed; the registry kept them, but a release log saying so had to be checked by
+  hand every time.
+- `uninstall` now names every kind of file it leaves in the package home, including runtime state,
+  host refusal measurements and conventions; complete removal still requires deleting those files
+  by hand.
+
+After installing 0.6.7, run `codex-bridge update` once to rewrite hook registrations to the safe form
+and register the dispatcher gate; releases up to 0.6.6 cannot launch the new guard names.
+
 ## [0.6.6] - 2026-09-23
 
 ### Fixed
