@@ -15,6 +15,7 @@ import {
   writeInstallRecord,
 } from './manifest.mjs';
 import { copyPlannedFile, planHomeWriter, targetMatches } from './copy.mjs';
+import { removeOutside } from './record-removal.mjs';
 import { hookTargets, recordHasHooks } from './hook-targets.mjs';
 import { fingerprintFor, INSTALL_METHOD_COPY, INSTALL_METHOD_KEY } from './install-record.mjs';
 import {
@@ -87,7 +88,7 @@ function permissionOutput(result, settingsPath) {
   return `All ${result.total} permission rules are already in place in ${settingsPath}, so the host runs the package command without asking.`;
 }
 
-async function migrateLegacySeed(host, seed) {
+async function migrateLegacySeed(host, seed, writer, id) {
   if (await targetExists(seed.target)) return;
   const legacyName = path.basename(seed.target) === 'config.json' ? 'run-config.json' : path.basename(seed.target);
   const legacy = path.join(host.legacyAgentsDir, legacyName);
@@ -98,10 +99,12 @@ async function migrateLegacySeed(host, seed) {
   // so the previous layout is never taken down and the operator goes on editing a file nothing
   // reads. If the comparison fails the old file stays: a half-copied config is the one case where
   // having two is better than having none.
-  await fs.mkdir(path.dirname(seed.target), { recursive: true });
-  await fs.copyFile(legacy, seed.target);
+  // Plan_65 B10: the seed lands in the home only by its registry id, and the old copy under the
+  // host agents directory is removed only after the adapter proves it lies outside the home.
+  await writer.mkdir(id, path.dirname(seed.target));
+  await writer.copyFile(id, legacy, seed.target);
   if (await fileFingerprint(legacy) !== await fileFingerprint(seed.target)) return;
-  await fs.rm(legacy, { force: true });
+  await removeOutside(writer, legacy);
 }
 
 async function installInRun({
@@ -227,7 +230,7 @@ async function installInRun({
   // exactly as it is, including under --force, because --force is about our files, not theirs.
   for (const seed of seedPlan(host, packageRoot)) {
     if (!(await targetExists(seed.target))) {
-      await migrateLegacySeed(host, seed);
+      await migrateLegacySeed(host, seed, writer, copyId(seed));
       if (!(await targetExists(seed.target))) {
         await copyPlannedFile(seed, host.brandRoot, { writer, id: copyId(seed) });
       }
