@@ -48,7 +48,8 @@ const entries = [
     removal: 'purge-only',
     consequence: "The operator's edited conventions are lost.",
     primary: ['conventions.md'],
-    sides: [],
+    // Plan_65 B9: install seeds it through the planned-file copier, which publishes via a temporary.
+    sides: ['copy-temporary'],
   },
   {
     id: 'host-contract',

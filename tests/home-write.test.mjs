@@ -137,3 +137,27 @@ test('copyFile accepts external sources only for caller-declared image members',
   assert.equal(await writer.copyFile('install-image', source, destination), undefined);
   assert.equal(fs.readFileSync(destination, 'utf8'), 'package image');
 });
+
+test('assertOutside admits only paths beyond the home root', () => {
+  const tree = makeTempTree('home-write-outside-');
+  const root = path.join(tree, 'home');
+  const writer = createHomeWriter({ root });
+  assert.doesNotThrow(() => writer.assertOutside(path.join(tree, 'claude', 'agents', 'codex-build.md')));
+  assert.doesNotThrow(() => writer.assertOutside(path.join(tree, 'home-sibling', 'x')));
+  for (const inside of [root, path.join(root, 'hooks', 'order-gate.mjs'), path.join(root, 'state', '..', 'config.json')]) {
+    assert.throws(() => writer.assertOutside(inside), { code: 'EHOMEREGISTRY' });
+  }
+  assert.throws(() => writer.assertOutside('relative/path'), { code: 'EHOMEREGISTRY' });
+});
+
+test('the conventions seed may be published through the copier temporary', () => {
+  const tree = makeTempTree('home-write-conventions-');
+  const root = path.join(tree, 'home');
+  const writer = createHomeWriter({ root });
+  const target = path.join(root, 'conventions.md');
+  const temporary = dotTemporary(target);
+  writer.mkdirSync('conventions', root);
+  writer.writeFileSync('conventions', temporary, 'seed', { flag: 'wx' });
+  writer.renameSync('conventions', temporary, target);
+  assert.deepEqual(fs.readdirSync(root), ['conventions.md']);
+});

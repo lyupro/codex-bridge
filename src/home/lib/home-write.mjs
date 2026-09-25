@@ -119,6 +119,19 @@ export function createHomeWriter({ root, imageMembers } = {}) {
     assertArtifact(id, absolutePath) {
       assertArtifactPath(id, absolutePath);
     },
+    // Plan_65 B9 (advice A1, order 11): a helper that also writes outside the home — the installer's
+    // copier for Claude host files and Codex rules — takes its raw route only past this check, so the
+    // raw route can never land in the home and escape the registry.
+    assertOutside(absolutePath) {
+      if (typeof absolutePath !== 'string' || !path.isAbsolute(absolutePath)) {
+        throw registryError('outside', absolutePath, 'an absolute path is required');
+      }
+      const relativeNative = path.relative(homeRoot, absolutePath);
+      const inside = relativeNative === ''
+        || !(path.isAbsolute(relativeNative) || relativeNative === '..'
+          || relativeNative.startsWith(`..${path.sep}`));
+      if (inside) throw registryError('outside', absolutePath, 'path is inside the home root');
+    },
     writeFileSync(id, absolutePath, ...args) {
       assertArtifactPath(id, absolutePath);
       return fs.writeFileSync(absolutePath, ...args);
