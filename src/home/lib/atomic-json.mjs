@@ -9,13 +9,41 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
-export function writeJsonAtomic(file, record) {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+function removeIfPresent(remove, temporary) {
+  try {
+    remove(temporary);
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+}
+
+function publishJsonAtomic(file, record, operations) {
   const temporary = `${file}.${randomUUID()}.tmp`;
   try {
-    fs.writeFileSync(temporary, `${JSON.stringify(record, null, 2)}\n`, { flag: 'wx' });
-    fs.renameSync(temporary, file);
+    operations.mkdir(path.dirname(file), { recursive: true });
+    operations.write(temporary, `${JSON.stringify(record, null, 2)}\n`, { flag: 'wx' });
+    operations.rename(temporary, file);
   } finally {
-    fs.rmSync(temporary, { force: true });
+    removeIfPresent(operations.unlink, temporary);
   }
+}
+
+export function writeJsonAtomic(file, record) {
+  return publishJsonAtomic(file, record, {
+    mkdir(directory, options) { return fs.mkdirSync(directory, options); },
+    write(temporary, contents, options) { return fs.writeFileSync(temporary, contents, options); },
+    rename(temporary, target) { return fs.renameSync(temporary, target); },
+    unlink(temporary) { return fs.unlinkSync(temporary); },
+  });
+}
+
+export function writeHomeJsonAtomic(writer, id, file, record) {
+  // Plan_65 B2: `state/` is shared by artifacts, so validate the file before mkdir can create it.
+  writer.assertArtifact(id, file);
+  return publishJsonAtomic(file, record, {
+    mkdir(directory, options) { return writer.mkdirSync(id, directory, options); },
+    write(temporary, contents, options) { return writer.writeFileSync(id, temporary, contents, options); },
+    rename(temporary, target) { return writer.renameSync(id, temporary, target); },
+    unlink(temporary) { return writer.unlinkSync(id, temporary); },
+  });
 }

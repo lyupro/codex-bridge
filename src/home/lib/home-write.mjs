@@ -106,6 +106,11 @@ export function createHomeWriter({ root, imageMembers } = {}) {
   }
 
   return {
+    // Plan_65 B2: a helper whose first write is a shared parent (`state/`) checks the target here, so a
+    // wrong id is refused before mkdir creates anything — without opening the file to find out.
+    assertArtifact(id, absolutePath) {
+      assertArtifactPath(id, absolutePath);
+    },
     writeFileSync(id, absolutePath, ...args) {
       assertArtifactPath(id, absolutePath);
       return fs.writeFileSync(absolutePath, ...args);

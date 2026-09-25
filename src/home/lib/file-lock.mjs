@@ -15,11 +15,11 @@ function waitForLock(delayMs) {
  * 2026-08-04). An owner update takes milliseconds, so a lock older than the staleness window
  * belongs to a process that is gone.
  */
-async function dropStaleLock(lockPath, staleMs) {
+async function dropStaleLock(lockPath, staleMs, remove) {
   try {
     const { mtimeMs } = await fs.stat(lockPath);
     if (Date.now() - mtimeMs < staleMs) return false;
-    await fs.rm(lockPath, { force: true });
+    await remove(lockPath);
     return true;
   } catch {
     // Vanished or unreadable — let the next open() decide rather than guess here.
@@ -42,17 +42,17 @@ export function isLockTaken(err) {
   return LOCK_TAKEN_CODES.has(err?.code);
 }
 
-async function acquireFileLock(lockPath, { retries, delayMs, staleMs, description }) {
-  await fs.mkdir(path.dirname(lockPath), { recursive: true });
+async function acquireFileLock(lockPath, { retries, delayMs, staleMs, description }, operations) {
+  await operations.mkdir(path.dirname(lockPath), { recursive: true });
   let lastTaken;
   for (let attempt = 0; attempt < retries; attempt += 1) {
     try {
-      const handle = await fs.open(lockPath, 'wx');
-      return { handle, lockPath };
+      const handle = await operations.open(lockPath);
+      return { handle, lockPath, remove: operations.remove };
     } catch (err) {
       if (!isLockTaken(err)) throw err;
       lastTaken = err;
-      if (!(await dropStaleLock(lockPath, staleMs))) await waitForLock(delayMs);
+      if (!(await dropStaleLock(lockPath, staleMs, operations.remove))) await waitForLock(delayMs);
     }
   }
   // The code is part of the message: a timeout on EPERM points at a delete that never completed,
@@ -66,11 +66,41 @@ async function acquireFileLock(lockPath, { retries, delayMs, staleMs, descriptio
 export async function withFileLock(lockPath, action, {
   retries = 200, delayMs = 5, staleMs = 30_000, description = 'file',
 } = {}) {
-  const lock = await acquireFileLock(lockPath, { retries, delayMs, staleMs, description });
+  const remove = (target) => fs.rm(target, { force: true });
+  const lock = await acquireFileLock(lockPath, { retries, delayMs, staleMs, description }, {
+    mkdir(directory, options) { return fs.mkdir(directory, options); },
+    open(lockFile) { return fs.open(lockFile, 'wx'); },
+    remove,
+  });
   try {
     return await action();
   } finally {
     await lock.handle.close().catch(() => {});
-    await fs.rm(lock.lockPath, { force: true }).catch(() => {});
+    await lock.remove(lock.lockPath).catch(() => {});
+  }
+}
+
+export async function withHomeFileLock(writer, id, lockPath, action, {
+  retries = 200, delayMs = 5, staleMs = 30_000, description = 'file',
+} = {}) {
+  // Plan_65 B2: the lock's parent is shared by artifacts, so a wrong id is refused before mkdir.
+  writer.assertArtifact(id, lockPath);
+  const remove = async (target) => {
+    try {
+      return await writer.unlink(id, target);
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+    }
+  };
+  const lock = await acquireFileLock(lockPath, { retries, delayMs, staleMs, description }, {
+    mkdir(directory, options) { return writer.mkdir(id, directory, options); },
+    open(lockFile) { return writer.open(id, lockFile, 'wx'); },
+    remove,
+  });
+  try {
+    return await action();
+  } finally {
+    await lock.handle.close().catch(() => {});
+    await lock.remove(lock.lockPath).catch(() => {});
   }
 }
