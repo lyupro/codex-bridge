@@ -1,6 +1,6 @@
-import fs from 'node:fs';
 import path from 'node:path';
-import { BRAND_STATE_DIR } from '../lib/brand-home.mjs';
+import { BRAND_HOME, BRAND_STATE_DIR } from '../lib/brand-home.mjs';
+import { createHomeWriter } from '../lib/home-write.mjs';
 import { readJsonFileSync } from '../lib/json-file.mjs';
 
 /**
@@ -49,8 +49,10 @@ export function takeTry(agentId, kind, maxBlocks = kind === STATE ? MAX_STATE_BL
   const ids = Object.keys(seen);
   if (ids.length > 200) ids.slice(0, ids.length - 200).forEach((id) => delete seen[id]);
   try {
-    fs.mkdirSync(path.dirname(BLOCKED_FILE), { recursive: true });
-    fs.writeFileSync(BLOCKED_FILE, `${JSON.stringify(seen)}\n`);
+    // Plan_65 B4: the budget is the registered guard-tries artifact, so purge can name and remove it.
+    const writer = createHomeWriter({ root: BRAND_HOME.root });
+    writer.mkdirSync('guard-tries', path.dirname(BLOCKED_FILE), { recursive: true });
+    writer.writeFileSync('guard-tries', BLOCKED_FILE, `${JSON.stringify(seen)}\n`);
   } catch {
     return 'untracked';
   }

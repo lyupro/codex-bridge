@@ -39,8 +39,6 @@ export const HOME_WRITE_INVENTORY = Object.freeze([
   outside('cli/settings-merge.mjs', 'writeFile', 2, 'Writes the host settings.json backup and temporary replacement.'),
   migrating('cli/uninstall.mjs', 'rm', 4, 'May remove install-image and install-record artifacts; Plan_65 B8 install-record and B9 manifest/copy.'),
   migrating('cli/update.mjs', 'rm', 3, 'May remove install-image and install-record artifacts; Plan_65 B8 install-record and B9 manifest/copy.'),
-  migrating('src/home/hooks/guard-tries.mjs', 'mkdirSync', 1, 'guard-tries artifact parent directory; Plan_65 B4 guard-tries.'),
-  migrating('src/home/hooks/guard-tries.mjs', 'writeFileSync', 1, 'guard-tries artifact; Plan_65 B4 guard-tries.'),
   migrating('src/home/lib/atomic-json.mjs', 'mkdirSync', 1, 'Atomic JSON home artifacts including config, dispatcher-contract, dispatcher-state, handback-witness, and host-observations; Plan_65 B2 atomic-json/file-lock.'),
   migrating('src/home/lib/atomic-json.mjs', 'renameSync', 1, 'Atomic JSON home artifacts including config, dispatcher-contract, dispatcher-state, handback-witness, and host-observations; Plan_65 B2 atomic-json/file-lock.'),
   migrating('src/home/lib/atomic-json.mjs', 'unlinkSync', 1, 'Atomic temporary files for config, dispatcher-contract, dispatcher-state, handback-witness, and host-observations; Plan_65 B2 atomic-json/file-lock.'),
