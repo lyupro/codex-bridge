@@ -116,6 +116,13 @@ test('rejection on a missing file creates neither a target nor temporary files',
   assert.deepEqual(fs.readdirSync(directory), []);
 });
 
+test('an undeclared config filename is refused before creating its directory', async () => {
+  const { directory } = fixture();
+  const file = path.join(directory, 'new-home', 'other.json');
+  await assert.rejects(editRunConfig('hooks', () => true, file), { code: 'EHOMEREGISTRY' });
+  assert.deepEqual(fs.readdirSync(directory), []);
+});
+
 test('malformed, non-object, and unrelated invalid input cannot be silently overwritten', async () => {
   for (const raw of ['{"hooks":', 'null', '[]', '{"manualTypo":true}']) {
     const { directory, file } = fixture(raw);

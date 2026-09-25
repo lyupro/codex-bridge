@@ -13,7 +13,8 @@ import { randomUUID } from 'node:crypto';
 import { BRAND_CONFIG_PATH } from './brand-home.mjs';
 import { parseJsonText } from './json-file.mjs';
 import { validateRunConfig } from './config-validate.mjs';
-import { withFileLock } from './file-lock.mjs';
+import { createHomeWriter } from './home-write.mjs';
+import { withHomeFileLock } from './file-lock.mjs';
 
 function replaceValue(file, raw, key, value) {
   // The shared reader has already checked JSON syntax; tokens locate top-level value spans.
@@ -72,6 +73,14 @@ async function readBytes(file) {
   }
 }
 
+async function removeTemporary(writer, temporary) {
+  try {
+    await writer.unlink('config', temporary);
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+}
+
 function readBytesSync(file) {
   try {
     return fsSync.readFileSync(file);
@@ -82,15 +91,17 @@ function readBytesSync(file) {
 }
 
 export async function editRunConfig(key, transform, file = BRAND_CONFIG_PATH) {
+  const directory = path.dirname(path.resolve(file));
+  const writer = createHomeWriter({ root: directory });
+  writer.assertArtifact('config', file);
   const reset = key !== null && typeof key === 'object' && !Array.isArray(key)
     && key.reset === true && Object.keys(key).length === 1 && transform === undefined;
   if (!reset && (typeof key !== 'string' || !key || typeof transform !== 'function')) {
     throw new Error('Config edit requires a non-empty string key and a transformer function or { reset: true }');
   }
-  const directory = path.dirname(file);
-  const created = await fs.mkdir(directory, { recursive: true });
+  const created = await writer.mkdir('config', directory, { recursive: true });
   try {
-    return await withFileLock(`${file}.lock`, async () => {
+    return await withHomeFileLock(writer, 'config', `${file}.lock`, async () => {
       let collision;
       for (let attempt = 0; attempt < 3; attempt += 1) {
         const original = await readBytes(file);
@@ -109,9 +120,9 @@ export async function editRunConfig(key, transform, file = BRAND_CONFIG_PATH) {
         }
         // Validate the exact bytes to be persisted, before even creating a temporary file (D27).
         const config = validateRunConfig(file, parseJsonText(file, text));
-        await fs.mkdir(path.dirname(file), { recursive: true });
+        await writer.mkdir('config', directory, { recursive: true });
         const temporary = path.join(path.dirname(file), `.${path.basename(file)}.${randomUUID()}.tmp`);
-        const handle = await fs.open(temporary, 'wx');
+        const handle = await writer.open('config', temporary, 'wx');
         try {
           await handle.writeFile(text, 'utf8');
           await handle.close();
@@ -121,14 +132,14 @@ export async function editRunConfig(key, transform, file = BRAND_CONFIG_PATH) {
           // suspension point between the two, so a competing edit is seen by whoever compares second.
           const current = readBytesSync(file);
           if (original === null ? current !== null : current === null || !original.equals(current)) {
-            await fs.rm(temporary, { force: true });
+            await removeTemporary(writer, temporary);
             continue;
           }
-          fsSync.renameSync(temporary, file);
+          writer.renameSync('config', temporary, file);
           return config;
         } catch (error) {
           await handle.close().catch(() => {});
-          await fs.rm(temporary, { force: true });
+          await removeTemporary(writer, temporary);
           // Windows refuses the rename outright when another process is publishing onto the same name
           // at that instant: two concurrent `model set` calls returned EPERM here on a live probe, and
           // one operator edit was lost with the file system's wording instead of an answer. A collision
@@ -149,9 +160,13 @@ export async function editRunConfig(key, transform, file = BRAND_CONFIG_PATH) {
     if (created) {
       // Windows mkdir returns a namespaced path; compare that form on both sides of the boundary.
       const boundary = path.toNamespacedPath(path.resolve(created));
+      const homeRoot = path.toNamespacedPath(path.resolve(directory));
       for (let current = path.toNamespacedPath(path.resolve(directory));
         current === boundary || current.startsWith(`${boundary}${path.sep}`); current = path.dirname(current)) {
-        try { await fs.rmdir(current); } catch { break; }
+        try {
+          if (current === homeRoot) writer.rmdirSync('config', directory);
+          else await fs.rmdir(current);
+        } catch { break; }
       }
     }
     throw error;

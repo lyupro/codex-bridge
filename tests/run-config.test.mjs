@@ -22,7 +22,7 @@ import { makeTempTree } from './temp-tree.mjs';
 
 const tempFile = (content) => {
   const dir = makeTempTree('codex-cfg-');
-  const file = path.join(dir, 'run-config.json');
+  const file = path.join(dir, 'config.json');
   if (content !== undefined) fs.writeFileSync(file, content);
   return file;
 };
