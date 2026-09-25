@@ -1,5 +1,4 @@
 /** Uninstalls only recorded files from both roots while preserving host data and foreign files. */
-import fs from 'node:fs/promises';
 import path from 'node:path';
 import {
   definitionForRecordedHook,
@@ -18,12 +17,8 @@ import {
   withSettingsRun,
 } from './settings-merge.mjs';
 import { readRulesRegistry, removeRulesOwner, remainingRulesOwners } from './rules-owners.mjs';
-import {
-  claudeBoundary,
-  removeEmpty,
-  removeEmptyLayout,
-  removeEmptyParents,
-} from './remove-layout.mjs';
+import { removeEmpty, removeEmptyLayout } from './remove-layout.mjs';
+import { recordHomeWriter, removeOutside, removeRecordedFile } from './record-removal.mjs';
 
 function remainingOwnersText(count) {
   return `${count} other owner${count === 1 ? '' : 's'} ${count === 1 ? 'remains' : 'remain'}`;
@@ -80,6 +75,7 @@ async function uninstallInRun({ host, dryRun = false } = {}) {
   if (!record) {
     return { exitCode: 1, output: `${permissionLine}\ncodex-bridge is not installed.\n${preservation}` };
   }
+  const writer = recordHomeWriter(host, record.files);
 
   if (dryRun) {
     const lines = [permissionLine, ...record.files.map((file) => `Would remove ${displayFile(file)}`)];
@@ -135,7 +131,7 @@ async function uninstallInRun({ host, dryRun = false } = {}) {
       } else {
         const currentFingerprint = await fileFingerprint(record.rules.path);
         if (currentFingerprint === record.rules.fingerprint) {
-          await fs.rm(record.rules.path, { force: true });
+          await removeOutside(writer, record.rules.path);
         } else if (currentFingerprint !== null) {
           rulesOutput.push(`Left ${record.rules.path} because its contents changed after installation.`);
         }
@@ -146,16 +142,15 @@ async function uninstallInRun({ host, dryRun = false } = {}) {
     }
   }
   for (const file of record.files) {
-    const target = recordTarget(host, file);
-    await fs.rm(target, { force: true });
-    const boundary = file.root === 'brand'
-      ? host.brandRoot
-      : claudeBoundary(host, target);
-    await removeEmptyParents(target, boundary);
+    await removeRecordedFile(host, writer, file);
   }
   await removeEmpty(host.commandsDir);
-  await fs.rm(installRecordPath(host), { force: true });
-  await fs.rm(legacyInstallRecordPath(host), { force: true });
+  try {
+    await writer.unlink('install-record', installRecordPath(host));
+  } catch (err) {
+    if (err.code !== 'ENOENT') throw err;
+  }
+  await removeOutside(writer, legacyInstallRecordPath(host));
   await removeEmpty(host.agentsDir);
   await removeEmptyLayout(host.legacyAgentsDir);
   await removeEmptyLayout(host.legacyCommandsDir);

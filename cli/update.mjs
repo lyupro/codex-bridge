@@ -26,7 +26,8 @@ import {
   withSettingsRun,
 } from './settings-merge.mjs';
 import { addRulesOwner, readRulesRegistry } from './rules-owners.mjs';
-import { claudeBoundary, removeEmptyLayout, removeEmptyParents } from './remove-layout.mjs';
+import { removeEmptyLayout } from './remove-layout.mjs';
+import { recordHomeWriter, removeOutside, removeRecordedFile } from './record-removal.mjs';
 
 const LEGACY_GUARD_LOG_FILES = [
   'codex-reply-guard.blocked.json',
@@ -44,19 +45,19 @@ async function exists(target) {
 }
 
 /** Drops the previous layout's record and its emptied directories; safe to run when both are gone. */
-async function retireLegacyLayout(host) {
-  await fs.rm(legacyInstallRecordPath(host), { force: true });
+async function retireLegacyLayout(host, writer) {
+  await removeOutside(writer, legacyInstallRecordPath(host));
   await removeEmptyLayout(host.legacyAgentsDir);
   await removeEmptyLayout(host.legacyCommandsDir);
 }
 
-async function retireLegacyGuardLogs(host, { dryRun = false } = {}) {
+async function retireLegacyGuardLogs(host, writer, { dryRun = false } = {}) {
   const logDir = path.join(path.dirname(host.settingsPath), 'logs');
   const lines = [];
   for (const name of LEGACY_GUARD_LOG_FILES) {
     const target = path.join(logDir, name);
     if (!await exists(target)) continue;
-    if (!dryRun) await fs.rm(target, { force: true });
+    if (!dryRun) await removeOutside(writer, target);
     lines.push(`${dryRun ? 'Would remove' : 'Removed'} ${path.join('logs', name)}.`);
   }
   return lines.join('\n');
@@ -159,6 +160,7 @@ async function updateInRun({ host, dryRun = false, force = false, packageRoot, e
   if (!record) {
     return { exitCode: 1, output: 'codex-bridge is not installed. Run codex-bridge install first.' };
   }
+  const writer = recordHomeWriter(host, record.files);
 
   const plan = await buildInstallPlan(host, packageRoot);
   const rule = { ...rulesPlan(host, packageRoot), processing: 'copy' };
@@ -235,14 +237,14 @@ async function updateInRun({ host, dryRun = false, force = false, packageRoot, e
   const changed = states.some((state) => state.status !== 'up-to-date') || oldHooks.length > 0;
   if (!changed && inspectedHooks.every(({ state }) => state.current)
     && recordHasHooks(record, targets) && recordCurrent) {
-    const legacyLogOutput = await retireLegacyGuardLogs(host, { dryRun });
+    const legacyLogOutput = await retireLegacyGuardLogs(host, writer, { dryRun });
     if (!dryRun) {
       await addRulesOwner(host);
       // An update that installed the new layout but stopped before retiring the old one used to
       // land here forever after: everything it compares is current, so it reported "up to date"
       // while agents/codex sat next to agents/codex-bridge. Retirement is idempotent, so running
       // it on this path costs nothing when there is nothing left to retire.
-      await retireLegacyLayout(host);
+      await retireLegacyLayout(host, writer);
     }
     return {
       exitCode: 0,
@@ -251,7 +253,7 @@ async function updateInRun({ host, dryRun = false, force = false, packageRoot, e
     };
   }
   if (dryRun) {
-    const legacyLogOutput = await retireLegacyGuardLogs(host, { dryRun: true });
+    const legacyLogOutput = await retireLegacyGuardLogs(host, writer, { dryRun: true });
     return {
       exitCode: 0,
       output: [`Would update codex-bridge with ${source}.${mismatch}`,
@@ -262,18 +264,15 @@ async function updateInRun({ host, dryRun = false, force = false, packageRoot, e
 
   for (const state of orphanStates) {
     if (state.status !== 'orphaned' || !state.exists) continue;
-    const target = recordTarget(host, state.entry);
-    await fs.rm(target, { force: true });
-    const boundary = state.entry.root === 'brand' ? host.brandRoot : claudeBoundary(host, target);
-    await removeEmptyParents(target, boundary);
+    await removeRecordedFile(host, writer, state.entry);
   }
   for (const { spec, hook } of oldHooks) {
     await removeHook(host.settingsPath, spec, { createdGroup: hook.createdGroup === true });
   }
   const installed = await install({ host, force: true, packageRoot, env });
   if (installed.exitCode !== 0) return installed;
-  await retireLegacyLayout(host);
-  const legacyLogOutput = await retireLegacyGuardLogs(host);
+  await retireLegacyLayout(host, writer);
+  const legacyLogOutput = await retireLegacyGuardLogs(host, writer);
   return {
     exitCode: 0,
     output: [`${appliedOutput(states)}\nSource: ${source}${mismatch}`, legacyLogOutput]
