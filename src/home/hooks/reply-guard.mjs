@@ -33,6 +33,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { AGENTS } from '../lib/agents.mjs';
 import { BRAND_STATE_DIR } from '../lib/brand-home.mjs';
+import { recordHookDiagnostic } from '../lib/hook-diagnostics.mjs';
 import { runOrderMismatch, transcriptOrderId } from '../lib/dispatcher-order.mjs';
 import { decideDispatcherStop, transcriptToolUses } from '../lib/dispatcher-stop.mjs';
 import { recognizeHostRefusal } from '../lib/host-refusal.mjs';
@@ -111,13 +112,7 @@ try {
   pass();
 }
 
-try {
-  const diagnosticsDir = path.join(BRAND_STATE_DIR, 'diagnostics');
-  fs.mkdirSync(diagnosticsDir, { recursive: true });
-  fs.writeFileSync(path.join(diagnosticsDir, 'reply-guard.last.json'), `${JSON.stringify(input, null, 2)}\n`);
-} catch {
-  // Diagnostics are a convenience, never a reason to fail the turn.
-}
+recordHookDiagnostic('reply-guard', input);
 
 // A host that stops sending agent_type would let every dispatcher past the gate and this
 // audit without a word (Plan_66 D2 (c)); say so instead of passing silently.

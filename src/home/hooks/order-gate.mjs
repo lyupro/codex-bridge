@@ -14,7 +14,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { AGENTS } from '../lib/agents.mjs';
-import { BRAND_STATE_DIR } from '../lib/brand-home.mjs';
+import { recordHookDiagnostic } from '../lib/hook-diagnostics.mjs';
 import { readJsonFileSync } from '../lib/json-file.mjs';
 import {
   diagnoseInput,
@@ -30,7 +30,6 @@ import { resolveProjectRunsDir } from '../lib/runner/project-dir.mjs';
 import { runsRoot } from '../lib/runner/runs-root.mjs';
 import { parseTaskDocument } from '../lib/runner/task-file.mjs';
 
-const DIAGNOSTICS_DIR = path.join(BRAND_STATE_DIR, 'diagnostics');
 const GUARDED = new Set(Object.keys(AGENTS));
 /**
  * Both spellings of the subagent-launching tool, from the same list the installer builds its
@@ -58,12 +57,7 @@ try {
   pass();
 }
 
-try {
-  fs.mkdirSync(DIAGNOSTICS_DIR, { recursive: true });
-  fs.writeFileSync(path.join(DIAGNOSTICS_DIR, 'order-gate.last.json'), `${JSON.stringify(input, null, 2)}\n`);
-} catch {
-  // Diagnostics are a convenience, never a reason to fail the turn.
-}
+recordHookDiagnostic('order-gate', input);
 
 if (!input || typeof input !== 'object' || Array.isArray(input)) pass();
 if (!SUBAGENT_TOOL_NAMES.has(input.tool_name)) pass();
