@@ -42,8 +42,9 @@ function preservationText(host) {
   return `Run artifacts in ${path.join(host.root, 'codex-runs')} are preserved, and so is what the package `
     + `wrote into ${host.brandRoot} while working: the run configuration ${host.brandConfigPath}, the conventions `
     + `${host.brandConventionsPath}, the host measurement ${hostContractPath(host)} and runtime state in `
-    + `${brandStateDir(host.brandRoot)} (dispatcher state, guard counters, the handback witness, dispatcher `
-    + 'contract verdicts, and hook diagnostics that hold the full hook input). Delete them by hand for a complete removal.';
+    + `${brandStateDir(host.brandRoot)} (dispatcher state, guard counters, the handback witness, the host `
+    + 'observations, dispatcher contract verdicts, and hook diagnostics that hold the full hook input). Delete them by '
+    + 'hand for a complete removal.';
 }
 
 function displayFile(file) {

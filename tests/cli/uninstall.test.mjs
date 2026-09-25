@@ -113,6 +113,8 @@ test('uninstall removes only recorded files and hook while preserving foreign ho
   const result = await uninstall({ host });
   assert.equal(result.exitCode, 0);
   assert.match(result.output, /artifacts.*preserved/i);
+  // Plan_66 added state/host-observations.json; the 0.6.7 promise was that every kept kind is named.
+  assert.match(result.output, /host observations/);
   assert.equal(await fs.readFile(foreign, 'utf8'), 'keep');
   assert.equal(await fs.readFile(run, 'utf8'), 'keep');
   assert.equal(await readInstallRecord(host), null);
