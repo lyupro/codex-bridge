@@ -82,8 +82,16 @@ hand-edited files stop the run unless `--force`.
 - `cli/probe-contract.mjs` + `cli/probe-rig.mjs` run the one paid host session behind
   `doctor --probe-contract`; `cli/host-contract.mjs` judges the refusal contract,
   `cli/dispatcher-contract.mjs` the four dispatcher contracts, `cli/dispatcher-contract-record.mjs` keeps
-  their verdicts in `state/dispatcher-contract.json` (D19).
-  `live-runs.mjs` is the one answer to "is this run live" the guards ask — the judgment of
+  their verdicts in `state/dispatcher-contract.json` (D19). Both records are keyed by host version.
+- **The judged host is the one sessions ran on, named by its transcript** (Plan_66). `lib/host-version.mjs`
+  reads the `version` the host writes into its own transcript; `lib/host-observations.mjs` records it once
+  per session from the gate, before its dispatcher filter (`state/host-observations.json`).
+  `cli/session-hosts.mjs` turns observations into the current host and `otherHost:*` lines for `doctor`
+  and `install`; `cli/probe-target.mjs` picks the executable `--probe-contract` measures. Never identify
+  the host by `claude` on PATH or by `CLAUDE_CODE_EXECPATH`/`CLAUDE_AGENT_SDK_VERSION`: on 2026-09-25 the
+  VS Code extension 2.1.282 ran the sessions beside PATH 2.1.281, and those variables proved inherited by
+  every descendant `claude`.
+- `live-runs.mjs` is the one answer to "is this run live" the guards ask — the judgment of
   `meta/run-liveness.mjs` plus a fresh heartbeat. `meta/run-state.mjs` deliberately uses the judgment
   without the heartbeat; the comment there says why merging the two broke both.
 - `heartbeat.mjs` stamps that a run is *moving*, not that a process exists: a worker outliving its

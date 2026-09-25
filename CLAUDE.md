@@ -57,6 +57,7 @@ memory:**
 | Any `spawn`/`spawnSync`/`execFile` call, the `shell` option, anything executing a command on PATH | the shell is never enabled; a `.cmd` shim goes through `cmd.exe` in one proven spelling |
 | Path comparison, `cli/invoked-directly.mjs` | Windows paths are compared normalized, symlinks deliberately unresolved |
 | `src/home/lib/cli-names.mjs`, `codex-runs/`, prune | one list of spellings; run artifacts are user data |
+| Host version, `doctor`/`install` host lines, `--probe-contract`, witness, `host-observations` | the host is named by its transcript version, never by PATH or inherited env |
 
 Adding a rule to that file is fine; restating one here is not — two copies drift, which is the exact
 defect Plan_46 was written about.

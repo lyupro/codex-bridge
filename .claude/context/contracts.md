@@ -86,6 +86,13 @@ here. Nothing was reworded on the way out.
   the short `codex-bridge hook <name>` only when `hook --home` on PATH proves a launcher of the current
   protocol serving this very home (`cli/launcher-probe.mjs`); a version comparison proves nothing,
   since a clone carries the previous release's version.
+- **The host is named by the `version` in its own transcript, nothing else** (Plan_66 D4). Contracts,
+  the handback witness and the probe target are judged against versions sessions recorded
+  (`src/home/lib/host-observations.mjs`), never against `claude --version` from PATH and never by
+  `CLAUDE_CODE_EXECPATH`/`CLAUDE_AGENT_SDK_VERSION`: on 2026-09-25 the VS Code extension 2.1.282 ran the
+  sessions beside PATH 2.1.281, and both variables are set once by the extension and inherited by every
+  descendant `claude`. An executable is a probe candidate only when its own `--version` matches; with no
+  observation the answer is "not observed", never a quiet fall back to PATH.
 - **A refused dispatcher fails; it never routes around the refusal.** No `run-codex.mjs` by path, no
   interpreter, no retry in the other shell, and never advice to grant a rule on an internal file.
   The self-execution block names the command only — it once said "start a run through
