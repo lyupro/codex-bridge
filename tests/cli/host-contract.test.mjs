@@ -117,8 +117,9 @@ test('parseHostVersion accepts Claude Code output and rejects non-version text',
 
 test('detectHostVersion parses a successful injected command result', () => {
   const version = detectHostVersion({
+    executable: 'claude-test.exe',
     run(command, args, options) {
-      assert.equal(command, 'claude');
+      assert.equal(command, 'claude-test.exe');
       assert.deepEqual(args, ['--version']);
       assert.equal(options.shell, false);
       assert.ok(options.timeout <= 5000);

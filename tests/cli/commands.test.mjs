@@ -6,6 +6,13 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { CLI_NAMES } from '../../src/home/lib/cli-names.mjs';
+import { commandOptions } from '../../bin/codex-bridge.mjs';
+
+test('doctor accepts a probe executable and other commands reject it', () => {
+  assert.deepEqual(commandOptions('doctor', ['--probe-contract', '--probe-executable', 'x.exe']),
+    { probeContract: true, probeExecutable: 'x.exe' });
+  assert.throws(() => commandOptions('install', ['--probe-executable', 'x.exe']), /unknown install option/);
+});
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..', '..');

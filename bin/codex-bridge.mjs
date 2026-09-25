@@ -2,6 +2,8 @@
 /** Dispatches codex-bridge CLI arguments to focused command modules. */
 import { diagnose, renderDoctor } from '../cli/doctor.mjs';
 import { probeContract } from '../cli/probe-contract.mjs';
+import { resolveProbeTarget } from '../cli/probe-target.mjs';
+import { brandStateDir } from '../src/home/lib/brand-home.mjs';
 import { isInvokedDirectly } from '../cli/invoked-directly.mjs';
 import { hook } from '../cli/hook.mjs';
 import { resolveHost } from '../cli/hosts.mjs';
@@ -25,7 +27,7 @@ Usage:
   codex-bridge update [--scope user|project] [--host <path>] [--dry-run] [--force]
   codex-bridge permissions [add|remove] [--scope user|project] [--host <path>]
   codex-bridge uninstall [--scope user|project] [--host <path>] [--dry-run]
-  codex-bridge doctor [--scope user|project] [--host <path>] [--probe-contract]
+  codex-bridge doctor [--scope user|project] [--host <path>] [--probe-contract] [--probe-executable <path>]
   codex-bridge run <runner options> --task-file <path>
   codex-bridge model [list]
   codex-bridge projects [<name>] [--json]
@@ -74,10 +76,10 @@ export function commandOptions(command, argv) {
       options[flagNames.get(arg)] = true;
       continue;
     }
-    if (arg !== '--scope' && arg !== '--host') throw new Error(`unknown ${command} option "${arg}"`);
+    if (arg !== '--scope' && arg !== '--host' && !(command === 'doctor' && arg === '--probe-executable')) throw new Error(`unknown ${command} option "${arg}"`);
     const value = argv[index + 1];
     if (!value || value.startsWith('-')) throw new Error(`${arg} requires a value`);
-    options[arg === '--scope' ? 'scope' : 'host'] = value;
+    options[arg === '--scope' ? 'scope' : arg === '--host' ? 'host' : 'probeExecutable'] = value;
     index += 1;
   }
   return options;
@@ -96,13 +98,16 @@ export async function main(argv, io = console) {
   if (command === 'run') return runCodex(rest);
   if (command === 'doctor') {
     const options = commandOptions(command, rest);
+    if (options.probeExecutable && !options.probeContract) throw new Error('--probe-executable requires --probe-contract');
     const host = resolveHost(options);
     // The probe runs BEFORE the diagnosis so the `hostContract` line below carries the verdict just
     // measured. Printing the diagnosis first and the measurement after would answer one question
     // twice in one output, with the older answer on top (Plan_52 D25).
     let probe = null;
     if (options.probeContract) {
-      probe = await probeContract({ host });
+      const target = resolveProbeTarget({ stateDir: brandStateDir(host.brandRoot), executable: options.probeExecutable });
+      if (!target.error) io.log(`probe: target ${target.version} at ${target.executable} (${target.source})`);
+      probe = await probeContract({ host, target });
       io.log(`probe: ${probe.message}`);
       for (const [name, verdict] of Object.entries(probe.dispatcher ?? {})) {
         io.log(`probe: ${name} ${verdict.result} — ${verdict.detail}`);

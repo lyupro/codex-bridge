@@ -83,9 +83,9 @@ export function parseHostVersion(text) {
   return text.trim().match(/^(\d+\.\d+\.\d+)(?:\s|$)/)?.[1] ?? null;
 }
 
-export function detectHostVersion({ run = spawnSync } = {}) {
+export function detectHostVersion({ run = spawnSync, executable = 'claude' } = {}) {
   try {
-    const result = run('claude', ['--version'], {
+    const result = run(executable, ['--version'], {
       encoding: 'utf8',
       shell: false,
       timeout: 5000,

@@ -41,7 +41,7 @@ test('judgeProbe keeps every unmeasured outcome inconclusive', () => {
   }
 });
 
-async function runProbeScenario(name, runHost) {
+async function runProbeScenario(name, runHost, seenVersion = '2.1.240') {
   const root = makeTempTree(`codex-bridge-probe-${name}-`);
   const host = { brandRoot: path.join(root, 'brand') };
   const rigRoot = path.join(root, 'rig-root');
@@ -49,12 +49,28 @@ async function runProbeScenario(name, runHost) {
   try {
     const result = await probeContract({
       host,
-      version: '2.1.240',
+      target: { executable: 'claude-test.exe', version: '2.1.240', source: 'flag' },
       rigRoot,
       now: new Date('2026-08-24T12:00:00.000Z'),
       runHost(command, args, options) {
         rigDir = options.cwd;
-        return runHost({ command, args, options });
+        assert.equal(command, 'claude-test.exe');
+        const result = runHost({ command, args, options });
+        const transcriptPath = path.join(options.cwd, 'host-transcript.jsonl');
+        fs.writeFileSync(transcriptPath, `${JSON.stringify({ version: seenVersion })}\n`, 'utf8');
+        const journalPath = path.join(options.cwd, '.claude', 'dispatcher-journal.jsonl');
+        if (fs.existsSync(journalPath)) {
+          const entries = fs.readFileSync(journalPath, 'utf8').trimEnd().split(/\r?\n/);
+          const first = JSON.parse(entries[0]);
+          first.payload ??= {};
+          first.payload.transcript_path = transcriptPath;
+          entries[0] = JSON.stringify(first);
+          fs.writeFileSync(journalPath, `${entries.join('\n')}\n`, 'utf8');
+        } else {
+          fs.mkdirSync(path.dirname(journalPath), { recursive: true });
+          fs.writeFileSync(journalPath, `${JSON.stringify({ payload: { transcript_path: transcriptPath } })}\n`, 'utf8');
+        }
+        return result;
       },
     });
     return { result, host, rigDir, cleanup: () => removeTempTree(root) };
@@ -66,17 +82,20 @@ async function runProbeScenario(name, runHost) {
 
 test('probeContract records ignored when the refused marker command ran', async () => {
   const scenario = await runProbeScenario('ignored', ({ command, args, options }) => {
-    assert.equal(command, 'claude');
+    assert.equal(command, 'claude-test.exe');
     assert.deepEqual(args.slice(0, 4), ['--setting-sources', 'project', '--allowedTools', 'Bash,Agent']);
     assert.equal(args.at(-2), '-p');
     assert.match(args.at(-1), new RegExp(PROBE_MARKER));
     assert.equal(options.timeout, 120000);
     const token = args.at(-1).match(/probe ([^:]+):/)[1];
     fs.writeFileSync(path.join(options.cwd, `${PROBE_MARKER}-${token}.marker`), 'ran', 'utf8');
+    fs.mkdirSync(path.join(options.cwd, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(options.cwd, '.claude', 'dispatcher-journal.jsonl'),
+      `${JSON.stringify({ payload: { transcript_path: path.join(options.cwd, 'host-transcript.jsonl') } })}\n`, 'utf8');
     return { status: 0 };
   });
   try {
-    assert.equal(scenario.result.state, 'probed');
+    assert.equal(scenario.result.state, 'probed', scenario.result.message);
     assert.equal(scenario.result.result, 'ignored');
     assert.equal(scenario.result.recorded, true);
     assert.equal((await readHostContract(scenario.host)).hosts['2.1.240'].result, 'ignored');
@@ -152,10 +171,31 @@ test('probeContract skips execution when the host version is unavailable', async
   let ran = false;
   const result = await probeContract({
     host: { brandRoot: 'unused' },
-    version: null,
+    target: { error: 'unavailable' },
     runHost: () => { ran = true; },
   });
   assert.equal(result.state, 'inconclusive');
+  assert.equal(result.recorded, false);
+  assert.equal(ran, false);
+});
+
+test('probeContract refuses to record when the running transcript host differs from target', async () => {
+  const scenario = await runProbeScenario('wrong-host', ({ options }) => {
+    fs.appendFileSync(path.join(options.cwd, '.claude', 'probe-journal.log'), 'fired\n', 'utf8');
+    return { status: 0 };
+  }, '2.1.999');
+  try {
+    assert.equal(scenario.result.state, 'inconclusive');
+    assert.equal(scenario.result.message, 'The probe ran on host 2.1.999, not on 2.1.240; nothing was recorded.');
+    assert.equal(fs.existsSync(hostContractPath(scenario.host)), false);
+    assert.equal(fs.existsSync(path.join(scenario.host.brandRoot, 'state', 'dispatcher-contract.json')), false);
+  } finally { scenario.cleanup(); }
+});
+
+test('probeContract does not run for an errored target', async () => {
+  let ran = false;
+  const result = await probeContract({ host: { brandRoot: 'unused' }, target: { error: 'cannot resolve' }, runHost: () => { ran = true; } });
+  assert.equal(result.message, 'cannot resolve');
   assert.equal(result.recorded, false);
   assert.equal(ran, false);
 });

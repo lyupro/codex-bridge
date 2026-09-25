@@ -7,13 +7,14 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { detectHostVersion, writeHostContract } from './host-contract.mjs';
+import { writeHostContract } from './host-contract.mjs';
 import { buildRig } from './probe-rig.mjs';
 import { DISPATCHER_CONTRACTS, judgeDispatcherContracts } from './dispatcher-contract.mjs';
 import { writeDispatcherContract } from './dispatcher-contract-record.mjs';
 import { brandStateDir } from '../src/home/lib/brand-home.mjs';
 import { parseJsonText } from '../src/home/lib/json-file.mjs';
 import { randomUUID } from 'node:crypto';
+import { transcriptHostVersion } from '../src/home/lib/host-version.mjs';
 
 export const PROBE_MARKER = 'codex-bridge-contract-probe';
 
@@ -60,17 +61,18 @@ export function judgeProbe({ markerExists, hookFired, hostResult }) {
 
 export async function probeContract({
   host,
-  version = detectHostVersion(),
+  target,
   runHost = spawnSync,
   rigRoot = os.tmpdir(),
   now = new Date(),
 }) {
-  if (version == null) {
+  if (target?.error || !target?.version || !target?.executable) {
+    const message = target?.error ?? 'The probe target is unavailable.';
     return {
       state: 'inconclusive',
       result: null,
       version: null,
-      message: 'The host version could not be read, so no contract probe was run.',
+      message,
       recorded: false,
       dispatcher: Object.fromEntries(DISPATCHER_CONTRACTS.map((name) => [name, { result: 'inconclusive', detail: 'Host version is unavailable.' }])),
     };
@@ -83,7 +85,7 @@ export async function probeContract({
     const rig = await buildRig(dir, token);
     let hostResult;
     try {
-      hostResult = runHost('claude', [
+      hostResult = runHost(target.executable, [
         '--setting-sources', 'project',
         '--allowedTools', 'Bash,Agent',
         '-p', rig.prompt,
@@ -106,6 +108,20 @@ export async function probeContract({
     } catch (error) {
       if (error.code !== 'ENOENT') malformed = true;
     }
+    // Only a host that completed the run can be asked who it was; a spawn failure or timeout keeps its own
+    // reason below instead of reading as "ran on host unknown".
+    const hostCompleted = !malformed && !hostResult?.error && !hostResult?.signal && hostResult?.status === 0;
+    let seen = null;
+    const transcriptPath = entries.find((entry) => typeof entry?.payload?.transcript_path === 'string')?.payload.transcript_path;
+    if (transcriptPath) seen = await transcriptHostVersion(transcriptPath);
+    if (hostCompleted && seen !== target.version) {
+      return {
+        state: 'inconclusive', result: null, version: target.version,
+        message: `The probe ran on host ${seen ?? 'unknown'}, not on ${target.version}; nothing was recorded.`,
+        recorded: false,
+        dispatcher: Object.fromEntries(DISPATCHER_CONTRACTS.map((name) => [name, { result: 'inconclusive', detail: 'Probe host version did not match target.' }])),
+      };
+    }
     const verdict = judgeProbe({
       markerExists: await exists(rig.markerPath),
       hookFired: await exists(rig.journalPath),
@@ -118,25 +134,25 @@ export async function probeContract({
       failOutput: rig.failOutput, agentType: 'probe-agent', promptToken: token,
     });
     if (verdict.result == null) dispatcher = Object.fromEntries(Object.keys(dispatcher).map((name) => [name, { result: 'inconclusive', detail: 'Refusal probe did not complete.' }]));
-    if (verdict.result != null && version != null && !malformed && !hostResult?.error && !hostResult?.signal && hostResult?.status === 0) {
-      await writeDispatcherContract({ stateDir: brandStateDir(host.brandRoot), version, verdicts: dispatcher, now });
+    if (verdict.result != null && !malformed && !hostResult?.error && !hostResult?.signal && hostResult?.status === 0) {
+      await writeDispatcherContract({ stateDir: brandStateDir(host.brandRoot), version: target.version, verdicts: dispatcher, now });
     }
     if (verdict.result == null) {
       return {
         state: 'inconclusive',
         result: null,
-        version,
+        version: target.version,
         message: verdict.reason,
         recorded: false,
         dispatcher: Object.fromEntries(Object.entries(dispatcher).map(([name, item]) => [name, { result: 'inconclusive', detail: 'Host did not complete the probe.' }])),
       };
     }
 
-    await writeHostContract(host, { version, result: verdict.result, now });
+    await writeHostContract(host, { version: target.version, result: verdict.result, now });
     return {
       state: 'probed',
       result: verdict.result,
-      version,
+      version: target.version,
       message: verdict.reason,
       recorded: true,
       dispatcher,
