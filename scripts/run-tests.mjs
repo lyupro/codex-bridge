@@ -21,6 +21,13 @@ import { spawnSync } from 'node:child_process';
 import { ISOLATED_ROOTS } from './isolated-roots.mjs';
 import { readmeText, suiteCountMismatch } from './suite-count.mjs';
 
+// One pattern only: on 2026-09-25 three files passed as three arguments ran just the first, and a
+// verification reported green for two files it never touched. Refuse before any root is created.
+if (process.argv.length > 3) {
+  console.error('run-tests: takes ONE pattern; pass a glob such as "tests/cli/{doctor,install}.test.mjs"');
+  process.exit(2);
+}
+
 const created = ISOLATED_ROOTS.map((name) => [
   name,
   fs.mkdtempSync(path.join(os.tmpdir(), `codex-bridge-test-${name.toLowerCase()}-`)),
