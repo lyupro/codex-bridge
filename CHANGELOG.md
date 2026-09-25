@@ -4,6 +4,45 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.8] - 2026-09-25
+
+### Added
+
+- Every session records the version of the host that runs its hooks, read from the `version` the
+  host writes into its own transcript, in `state/host-observations.json`. `doctor` prints a
+  `sessionHost` line and one `otherHost:<version>` line for each other host seen in the last 30
+  days. Sessions ran in the VS Code extension 2.1.282 while `claude` on PATH was 2.1.281, and the
+  extension's `CLAUDE_CODE_EXECPATH` and `CLAUDE_AGENT_SDK_VERSION` are inherited by every `claude`
+  it starts, so neither PATH nor the environment names the host.
+- A subagent stop that carries an `agent_id` but no `agent_type` records a witness alarm and tells
+  the session that the dispatcher gate cannot recognise dispatchers. That was the one host change the
+  gate would otherwise have passed silently.
+
+### Changed
+
+- `.host-contract.json` and `state/dispatcher-contract.json` keep one verdict per host version, so a
+  CLI session and an extension session on different versions no longer overwrite each other's
+  measurement. Existing single-version files are read as the record of their own version.
+- `doctor --probe-contract` measures the executable of the newest observed host. `claude` on PATH
+  and `CLAUDE_CODE_EXECPATH` are used only when their own `--version` matches it;
+  `--probe-executable <path>` names one explicitly. A host that completes the probe but writes
+  another version into its transcript records nothing.
+
+### Fixed
+
+- `doctor` and `install` judge the hosts sessions actually ran on instead of `claude` on PATH. A
+  machine whose sessions run in an editor extension had its contracts reported as verified for a
+  different program, and a permanent `handbackWitness` warning asked for a dispatcher run that could
+  never clear it. With no session observed yet, `doctor` says so rather than falling back to PATH.
+- The handback witness records the host version from the transcript and compares it exactly. It had
+  matched an SDK version to a CLI version by patch number, which accepted unrelated versions sharing
+  a patch. An older SDK-based witness file reads as "not seen yet" and keeps its alarms.
+- `uninstall` names the host observations among the files it leaves in the package home.
+
+After installing 0.6.8, run `codex-bridge update` once so the home receives the observation code,
+then run any shell command in a session. If `doctor` reports the session host as probed on another
+version, run `codex-bridge doctor --probe-contract` once (about two minutes of Claude quota).
+
 ## [0.6.7] - 2026-09-25
 
 ### Added
