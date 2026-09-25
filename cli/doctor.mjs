@@ -16,13 +16,15 @@ import {
   rulesCheck,
 } from './doctor-installation.mjs';
 import { hookChecks } from './doctor-hooks.mjs';
-import { contractStatus, detectHostVersion, readHostContract } from './host-contract.mjs';
+import { contractStatus, readHostContract } from './host-contract.mjs';
 import { handbackWitnessStatus } from './handback-witness-check.mjs';
 import { dispatcherContractStatus } from './dispatcher-contract.mjs';
 import { DISPATCHER_CONTRACT_FILE, readDispatcherContract } from './dispatcher-contract-record.mjs';
 import { PROBE_COMMAND } from './host-contract.mjs';
 import { readHandbackWitness } from '../src/home/lib/handback-witness.mjs';
 import { brandStateDir } from '../src/home/lib/brand-home.mjs';
+import { readHostObservations } from '../src/home/lib/host-observations.mjs';
+import { otherHostCheck, sessionHostCheck, sessionHostVersions } from './session-hosts.mjs';
 import { liveRunsCheck, projectRunsCheck, retentionCheck } from './doctor-runs.mjs';
 
 export { renderDoctor };
@@ -81,6 +83,7 @@ export async function diagnose({
   handbackWitnessRecord,
   dispatcherContractRecord,
   hostVersion,
+  observations,
 } = {}) {
   const checks = [sourceCheck()];
   const hostExists = await exists(host.root);
@@ -124,27 +127,35 @@ export async function diagnose({
   const bridge = bridgeProbe();
   checks.push(bridgeCommandCheck(bridge));
   checks.push(...await hookChecks(host, record, launcherProbe));
-  const detectedHostVersion = hostVersion === undefined ? detectHostVersion() : hostVersion;
+  const stateDir = brandStateDir(host.brandRoot);
+  const hostObservations = observations === undefined ? readHostObservations({ stateDir }) : observations;
+  const observedVersions = sessionHostVersions(hostObservations);
+  const detectedHostVersion = hostVersion === undefined ? observedVersions[0] ?? null : hostVersion;
+  checks.push(sessionHostCheck(observedVersions, hostObservations));
+  const refusalRecord = contractRecord === undefined ? await readHostContract(host) : contractRecord;
   const hostContract = contractStatus({
-    record: contractRecord === undefined ? await readHostContract(host) : contractRecord,
+    record: refusalRecord,
     version: detectedHostVersion,
   });
   const hostContractStatus = hostContract.state === 'verified'
     ? 'ok'
     : hostContract.state === 'ignored' ? 'fail' : 'warn';
   checks.push(check('hostContract', hostContractStatus, hostContract.message));
-  const stateDir = brandStateDir(host.brandRoot);
   const witness = handbackWitnessStatus({
     record: handbackWitnessRecord === undefined ? readHandbackWitness({ stateDir }) : handbackWitnessRecord,
     hostVersion: detectedHostVersion,
     stateDir,
   });
   checks.push(check('handbackWitness', ['seen', 'unobserved'].includes(witness.state) ? 'ok' : 'warn', witness.message));
+  const dispatcherRecord = dispatcherContractRecord === undefined ? readDispatcherContract({ stateDir }) : dispatcherContractRecord;
   checks.push(...dispatcherContractChecks({
-    record: dispatcherContractRecord === undefined ? readDispatcherContract({ stateDir }) : dispatcherContractRecord,
+    record: dispatcherRecord,
     version: detectedHostVersion,
     stateDir,
   }));
+  for (const version of observedVersions.filter((item) => item !== detectedHostVersion)) {
+    checks.push(otherHostCheck({ version, contractRecord: refusalRecord, dispatcherRecord }));
+  }
   const retention = retentionCheck(host);
   checks.push(retention);
   const conventions = await conventionsCheck(host);
@@ -163,7 +174,8 @@ export async function diagnose({
     exitCode: !record || recordBroken || missingFiles.length || agents.status === 'fail' || rules.status === 'fail'
       || hostContractStatus === 'fail' || retention.status === 'fail' || conventions.status === 'fail'
       || projectRuns.status === 'fail'
-      || checks.some((item) => /^(hook|dispatcherContract):/.test(item.key) && item.status === 'fail') ? 1 : 0,
+      || checks.some((item) => /^(hook|dispatcherContract):/.test(item.key) && item.status === 'fail')
+      || checks.some((item) => item.key.startsWith('otherHost:') && item.status === 'fail') ? 1 : 0,
     checks,
     record,
     missingFiles,

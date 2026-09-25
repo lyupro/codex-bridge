@@ -25,7 +25,10 @@ import {
 } from './settings-merge.mjs';
 import { addRulesOwner, readRulesRegistry } from './rules-owners.mjs';
 import { addPermissionRules, inspectPermissions } from './permissions.mjs';
-import { contractStatus, detectHostVersion, readHostContract } from './host-contract.mjs';
+import { contractStatus, readHostContract } from './host-contract.mjs';
+import { readHostObservations } from '../src/home/lib/host-observations.mjs';
+import { brandStateDir } from '../src/home/lib/brand-home.mjs';
+import { sessionHostVersions } from './session-hosts.mjs';
 import { readRunConfig, retentionNotice } from '../src/home/lib/run-config.mjs';
 
 const WARNING = '\u001b[33m';
@@ -109,14 +112,22 @@ async function installInRun({
   env = process.env,
   contractRecord,
   hostVersion,
+  observations,
 } = {}) {
   // Validate the shared registry before writes; package removal on a broken registry left the host without its watchdog.
   await readRulesRegistry(host);
   const configuredRetentionLine = retentionLine(host);
-  const hostContract = contractStatus({
+  const hostObservations = observations === undefined
+    ? readHostObservations({ stateDir: brandStateDir(host.brandRoot) }) : observations;
+  const observedVersion = sessionHostVersions(hostObservations)[0] ?? null;
+  const currentHostVersion = hostVersion === undefined ? observedVersion : hostVersion;
+  let hostContract = contractStatus({
     record: contractRecord === undefined ? await readHostContract(host) : contractRecord,
-    version: hostVersion === undefined ? detectHostVersion() : hostVersion,
+    version: currentHostVersion,
   });
+  const noObservedHostMessage = currentHostVersion === null
+    ? 'Host contracts are judged once a session has run a shell command; then run codex-bridge doctor.' : null;
+  if (noObservedHostMessage) hostContract = { ...hostContract, message: noObservedHostMessage };
   const plan = await buildInstallPlan(host, packageRoot);
   const rule = { ...rulesPlan(host, packageRoot), processing: 'copy' };
   const currentPackage = await packageInfo(packageRoot);
