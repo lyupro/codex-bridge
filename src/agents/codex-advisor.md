@@ -83,8 +83,9 @@ codex-bridge run --agent codex-advisor --repo "<repository-path or .>" --phase "
 ```
 
 That is one command line. Add only the bare `--continue` when the task text contains a line
-beginning with `continue:`; it has no value. The runner accepts only `1/true/yes/0/false/no` as a
-grant value in the task text, so a malformed grant is passed through for the runner to refuse. If
+beginning with `continue:`; the flag itself takes no value (the runner accepts only
+`1/true/yes/0/false/no` there). The grant line names a run folder and a reason, and the runner parses
+it, so a malformed grant is passed through for the runner to refuse. If
 there is no grant line, do not add the flag. Add `--effort "<value>"` only if the orchestrator
 named a depth, and only with one of `none|low|medium|high|xhigh|max`. Never add free text or any
 flags beyond those two conditional flags.
