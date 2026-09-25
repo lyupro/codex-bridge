@@ -6,12 +6,11 @@ const outside = (module, sink, count, reason) => ({ module, sink, count, kind: '
 const migrating = (module, sink, count, reason) => ({ module, sink, count, kind: 'home-migration', reason });
 
 export const HOME_WRITE_INVENTORY = Object.freeze([
-  migrating('cli/copy.mjs', 'mkdir', 1, 'install-image, config, and conventions targets; Plan_65 B9 manifest/copy and B10 install seeds.'),
-  migrating('cli/copy.mjs', 'rename', 1, 'Publishes install-image, config, and conventions artifacts; Plan_65 B9 manifest/copy and B10 install seeds.'),
-  migrating('cli/copy.mjs', 'rm', 1, 'Removes a failed install-image or seed temporary file; Plan_65 B9 manifest/copy and B10 install seeds.'),
-  migrating('cli/copy.mjs', 'writeFile', 1, 'Writes install-image and seed temporary files; Plan_65 B9 manifest/copy and B10 install seeds.'),
+  outside('cli/copy.mjs', 'mkdir', 1, 'Raw route of the planned-file copier, taken only after writer.assertOutside proves the target is beyond the home (Claude host files, Codex rules).'),
+  outside('cli/copy.mjs', 'rename', 1, 'Raw route of the planned-file copier, taken only after writer.assertOutside proves the target is beyond the home (Claude host files, Codex rules).'),
+  outside('cli/copy.mjs', 'rm', 1, 'Raw route of the planned-file copier, taken only after writer.assertOutside proves the target is beyond the home (Claude host files, Codex rules).'),
+  outside('cli/copy.mjs', 'writeFile', 1, 'Raw route of the planned-file copier, taken only after writer.assertOutside proves the target is beyond the home (Claude host files, Codex rules).'),
   migrating('cli/install.mjs', 'copyFile', 1, 'config and conventions seed artifacts; Plan_65 B10 install seeds.'),
-  migrating('cli/install.mjs', 'copyPlannedFile', 3, 'install-image, config, and conventions artifacts; Plan_65 B9 manifest/copy and B10 install seeds.'),
   migrating('cli/install.mjs', 'mkdir', 1, 'config and conventions seed artifacts; Plan_65 B10 install seeds.'),
   outside('cli/install.mjs', 'rm', 1, 'Removes a migrated legacy seed under the host agents directory.'),
   outside('cli/probe-contract.mjs', 'mkdir', 1, 'Creates the throwaway probe rig root.'),

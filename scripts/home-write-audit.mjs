@@ -15,7 +15,7 @@ const FILESYSTEM_WRITES = [
   'createWriteStream', 'symlink', 'symlinkSync', 'link', 'linkSync', 'truncate', 'truncateSync',
   'utimes', 'utimesSync',
 ];
-const GENERIC_WRITES = ['writeJsonAtomic', 'withFileLock', 'copyPlannedFile'];
+const GENERIC_WRITES = ['writeJsonAtomic', 'withFileLock'];
 const ADAPTER_MODULE = 'src/home/lib/home-write.mjs';
 
 function modulePaths(repositoryRoot) {

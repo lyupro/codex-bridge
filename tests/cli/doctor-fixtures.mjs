@@ -16,7 +16,7 @@ import {
   recordTarget,
   writeInstallRecord,
 } from '../../cli/manifest.mjs';
-import { copyPlannedFile } from '../../cli/copy.mjs';
+import { copyPlannedFile, planHomeWriter } from '../../cli/copy.mjs';
 
 export const ownPackage = { name: '@lyupro/codex-bridge', version: '0.1.0' };
 export const codexProbe = () => ({ available: true, value: 'codex-cli 1.2.3' });
@@ -47,7 +47,8 @@ export async function installedFixture(t) {
     await fs.mkdir(path.dirname(target), { recursive: true });
     await fs.writeFile(target, file.root === 'brand' ? 'process.exitCode = 0;\n' : file.path);
   }
-  for (const item of agentPlan) await copyPlannedFile(item, host.brandRoot);
+  const { writer, idFor } = planHomeWriter(host.brandRoot, agentPlan);
+  for (const item of agentPlan) await copyPlannedFile(item, host.brandRoot, { writer, id: idFor(item) });
   const record = {
     ...ownPackage,
     installedAt: '2026-08-02T10:00:00.000Z',

@@ -14,7 +14,7 @@ import {
   seedPlan,
   writeInstallRecord,
 } from './manifest.mjs';
-import { copyPlannedFile, targetMatches } from './copy.mjs';
+import { copyPlannedFile, planHomeWriter, targetMatches } from './copy.mjs';
 import { hookTargets, recordHasHooks } from './hook-targets.mjs';
 import { fingerprintFor, INSTALL_METHOD_COPY, INSTALL_METHOD_KEY } from './install-record.mjs';
 import {
@@ -129,6 +129,7 @@ async function installInRun({
     ? 'Host contracts are judged once a session has run a shell command; then run codex-bridge doctor.' : null;
   if (noObservedHostMessage) hostContract = { ...hostContract, message: noObservedHostMessage };
   const plan = await buildInstallPlan(host, packageRoot);
+  const { writer, idFor: copyId } = planHomeWriter(host.brandRoot, plan);
   const rule = { ...rulesPlan(host, packageRoot), processing: 'copy' };
   const currentPackage = await packageInfo(packageRoot);
   const record = await readInstallRecord(host);
@@ -218,14 +219,18 @@ async function installInRun({
   // failure at that step left a fully installed host absent from the registry, and the next
   // uninstall elsewhere would then delete the rules out from under it.
   await addRulesOwner(host);
-  for (const { item } of changedFiles) await copyPlannedFile(item, host.brandRoot);
-  if (changedRule) await copyPlannedFile(rule, host.brandRoot);
+  for (const { item } of changedFiles) {
+    await copyPlannedFile(item, host.brandRoot, { writer, id: copyId(item) });
+  }
+  if (changedRule) await copyPlannedFile(rule, host.brandRoot, { writer, id: copyId(rule) });
   // Seeded files are written once and then belong to the operator: an existing one is left
   // exactly as it is, including under --force, because --force is about our files, not theirs.
   for (const seed of seedPlan(host, packageRoot)) {
     if (!(await targetExists(seed.target))) {
       await migrateLegacySeed(host, seed);
-      if (!(await targetExists(seed.target))) await copyPlannedFile(seed, host.brandRoot);
+      if (!(await targetExists(seed.target))) {
+        await copyPlannedFile(seed, host.brandRoot, { writer, id: copyId(seed) });
+      }
     }
   }
   const hookResults = [];
