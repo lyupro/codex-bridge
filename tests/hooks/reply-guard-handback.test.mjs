@@ -169,6 +169,7 @@ test('an unreceipted tool call alarms once, while complete receipts stay silent'
     const first = outputOf(runGuard(root, bridgeHome, transcriptPath, 'Delivered answer.'));
     assert.match(first.systemMessage, /used Bash outside the dispatcher gate/);
     assert.equal(readHandbackWitness({ stateDir }).alarms.length, 1);
+    assert.equal(readHandbackWitness({ stateDir }).alarms[0].hostVersion, null);
     assert.equal(readDispatcherState({ stateDir, sessionId: SESSION_ID, agentId: AGENT_ID }).auditAlarmed, true);
 
     assert.equal(outputOf(runGuard(root, bridgeHome, transcriptPath, 'Delivered answer.')), null);

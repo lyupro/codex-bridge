@@ -19,7 +19,7 @@ test('doctor reports an unobserved witness as ok', async (t) => {
 test('doctor warns after a recorded dispatcher alarm', async (t) => {
   const { host } = await installedFixture(t);
   await recordHandbackWitness({
-    stateDir: brandStateDir(host.brandRoot), kind: 'alarm', sdkVersion: '0.3.281',
+    stateDir: brandStateDir(host.brandRoot), kind: 'alarm', hostVersion: '2.1.281',
     detail: 'dispatcher bypassed gate', now: new Date('2026-09-24T10:00:00.000Z'),
   });
   const result = await diagnose({ host, codexProbe, currentPackage: ownPackage, hostVersion: '2.1.282' });

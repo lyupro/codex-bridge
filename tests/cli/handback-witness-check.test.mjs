@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { handbackWitnessStatus } from '../../cli/handback-witness-check.mjs';
 
-const seen = { lastSeen: { sdkVersion: '0.3.281', at: '2026-09-24T10:00:00.000Z' }, alarms: [] };
+const seen = { lastSeen: { '2.1.281': '2026-09-24T10:00:00.000Z' }, alarms: [] };
 const stateDir = 'C:/brand/state';
 
 test('corrupt witness identifies the file to delete', () => {
@@ -27,16 +27,16 @@ test('missing observation is unobserved', () => {
   assert.match(result.message, /only when a dispatcher runs in an interactive session/);
 });
 
-test('patch mismatch is stale, while an unparsable host skips comparison', () => {
+test('different host is stale, including neighboring and unrelated patch numbers', () => {
   const stale = handbackWitnessStatus({ record: seen, hostVersion: '2.1.282', stateDir });
   assert.equal(stale.state, 'stale');
-  assert.match(stale.message, /SDK 0\.3\.281.*2026-09-24.*host 2\.1\.282/);
-  assert.match(stale.message, /run any dispatcher once in an interactive session/);
-  assert.equal(handbackWitnessStatus({ record: seen, hostVersion: 'unknown', stateDir }).state, 'seen');
+  assert.match(stale.message, /host 2\.1\.281 at 2026-09-24.*not yet on host 2\.1\.282/);
+  assert.match(stale.message, /recorded the next time a dispatcher runs/);
+  assert.equal(handbackWitnessStatus({ record: { lastSeen: { '9.9.281': '2026-09-24T10:00:00.000Z' }, alarms: [] }, hostVersion: '2.1.281', stateDir }).state, 'stale');
 });
 
-test('matching patch is seen', () => {
+test('exact host version is seen', () => {
   const result = handbackWitnessStatus({ record: seen, hostVersion: '2.1.281', stateDir });
   assert.equal(result.state, 'seen');
-  assert.match(result.message, /last seen on SDK 0\.3\.281 \(host 2\.1\.281\)/i);
+  assert.equal(result.message, 'Handback contract last seen on host 2.1.281 at 2026-09-24T10:00:00.000Z.');
 });

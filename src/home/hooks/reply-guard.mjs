@@ -22,6 +22,7 @@
  * argument about EXTERNAL run state cannot be argued away by the model and ends the turn
  * with `continue: false` instead of a silent pass. See MAX_FORM_BLOCKS / MAX_STATE_BLOCKS.
  * In the handback era, SubagentHandback delivers the caller-visible answer before SubagentStop.
+ * Alarms name the host by its transcript version: on 2026-09-25 the SDK variable proved inherited.
  * Plan_62 makes this hook yield after delivery and audit every transcript tool call against gate receipts.
  *
  * Input is JSON on stdin. The fields used here (`agent_type`, `last_assistant_message`)
@@ -37,7 +38,7 @@ import { decideDispatcherStop, transcriptToolUses } from '../lib/dispatcher-stop
 import { recognizeHostRefusal } from '../lib/host-refusal.mjs';
 import { readJsonFileSync } from '../lib/json-file.mjs';
 import { readDispatcherState, updateDispatcherState } from '../lib/dispatcher-state.mjs';
-import { hostSdkVersion, recordHandbackWitness } from '../lib/handback-witness.mjs';
+import { recordHandbackWitness, witnessHostVersion } from '../lib/handback-witness.mjs';
 import { runLiveness } from '../lib/meta/run-liveness.mjs';
 import { resolveProjectRunsDir } from '../lib/runner/project-dir.mjs';
 import { runsRoot } from '../lib/runner/runs-root.mjs';
@@ -126,7 +127,7 @@ if (typeof input.agent_id === 'string' && input.agent_id.length > 0
     await recordHandbackWitness({
       stateDir: BRAND_STATE_DIR,
       kind: 'alarm',
-      sdkVersion: hostSdkVersion(),
+      hostVersion: await witnessHostVersion(input),
       detail: `host omitted agent_type for agent ${input.agent_id}`,
     });
   } catch {
@@ -163,7 +164,7 @@ try {
       await recordHandbackWitness({
         stateDir: BRAND_STATE_DIR,
         kind: 'alarm',
-        sdkVersion: hostSdkVersion(),
+        hostVersion: await witnessHostVersion(input),
         detail: `${input.agent_type} ${input.agent_id}: ${names} outside the dispatcher gate`,
       });
     }

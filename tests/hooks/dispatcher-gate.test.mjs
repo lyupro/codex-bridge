@@ -18,7 +18,7 @@ function runGate(root, payload) {
   return spawnSync(process.execPath, [GATE], {
     input: JSON.stringify(payload),
     encoding: 'utf8',
-    env: { ...process.env, CODEX_BRIDGE_HOME: path.join(root, 'home') },
+    env: { ...process.env, CODEX_BRIDGE_HOME: path.join(root, 'home'), CLAUDE_AGENT_SDK_VERSION: '0.3.999' },
   });
 }
 
@@ -140,6 +140,16 @@ test('honest runner output replaces handback with the final failure verdict', as
   assert.equal(final.updatedInput.message, 'FAIL — boom');
   const witness = await readHandbackWitness({ stateDir: path.join(root, 'home', 'state') });
   assert.ok(witness.lastSeen);
+});
+
+test('handback sighting records transcript host version instead of inherited SDK version', async (t) => {
+  const root = await fixture(t);
+  const identity = await addTranscript(root);
+  await fs.writeFile(identity.transcript_path, `${JSON.stringify({ version: '9.8.7' })}\n`);
+  outcome(root, dispatcherPayload(identity, 'SubagentHandback', { message: 'OK' }));
+  const witness = await readHandbackWitness({ stateDir: path.join(root, 'home', 'state') });
+  assert.equal(typeof witness.lastSeen['9.8.7'], 'string');
+  assert.equal(witness.lastSeen['0.3.999'], undefined);
 });
 
 test('main-session and unregistered agent payloads are ignored', async (t) => {

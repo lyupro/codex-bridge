@@ -17,7 +17,7 @@ import {
   readDispatcherState,
   updateDispatcherState,
 } from '../lib/dispatcher-state.mjs';
-import { hostSdkVersion, recordHandbackWitness } from '../lib/handback-witness.mjs';
+import { recordHandbackWitness, witnessHostVersion } from '../lib/handback-witness.mjs';
 import { observeSessionHost } from '../lib/host-observations.mjs';
 
 function emit(decision, toolInput) {
@@ -100,7 +100,7 @@ async function main() {
         await recordHandbackWitness({
           stateDir: BRAND_STATE_DIR,
           kind: 'seen',
-          sdkVersion: hostSdkVersion(),
+          hostVersion: await witnessHostVersion(payload),
         });
       } catch {}
       try {

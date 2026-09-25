@@ -32,6 +32,7 @@ async function assertAlarm(root, payload, agentId) {
   assert.deepEqual(JSON.parse(result.stdout), { systemMessage: MESSAGE });
   const witness = JSON.parse(await fs.readFile(path.join(result.stateDir, 'handback-witness.json'), 'utf8'));
   assert.equal(witness.alarms.length, 1);
+  assert.equal(witness.alarms[0].hostVersion, null);
   assert.equal(witness.alarms[0].detail, `host omitted agent_type for agent ${agentId}`);
 }
 
