@@ -2,9 +2,21 @@
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { writeJsonAtomic } from './atomic-json.mjs';
+import { writeHomeJsonAtomic } from './atomic-json.mjs';
 import { parseJsonText } from './json-file.mjs';
-import { withFileLock } from './file-lock.mjs';
+import { withHomeFileLock } from './file-lock.mjs';
+import { createHomeWriter } from './home-write.mjs';
+
+const ARTIFACT = 'dispatcher-state';
+
+/**
+ * Plan_65 B5: every write goes through the registry id so purge accounts for records, locks and
+ * temporaries alike. `stateDir` is `brandStateDir(root)`, so its parent is the home root the
+ * registry paths are relative to; a stateDir anywhere else is refused by the registry, not guessed.
+ */
+function homeWriter(stateDir) {
+  return createHomeWriter({ root: path.dirname(path.resolve(stateDir)) });
+}
 
 function assertIdentity(sessionId, agentId) {
   if (typeof sessionId !== 'string' || sessionId.length === 0
@@ -55,7 +67,8 @@ export async function updateDispatcherState(ids, mutate) {
   if (typeof mutate !== 'function') throw new TypeError('mutate must be a function');
   const file = dispatcherStatePath(ids);
   const { sessionId, agentId } = ids;
-  return withFileLock(`${file}.lock`, async () => {
+  const writer = homeWriter(ids.stateDir);
+  return withHomeFileLock(writer, ARTIFACT, `${file}.lock`, async () => {
     let current = readDispatcherState(ids);
     if (current === null) {
       current = { sessionId, agentId, createdAt: timestamp(clockValue(ids)) };
@@ -71,7 +84,7 @@ export async function updateDispatcherState(ids, mutate) {
       agentId,
       updatedAt: timestamp(clockValue(ids)),
     };
-    writeJsonAtomic(file, record);
+    writeHomeJsonAtomic(writer, ARTIFACT, file, record);
     return record;
   }, { description: 'dispatcher state' });
 }
@@ -86,11 +99,19 @@ export function pruneDispatcherStates({ stateDir, olderThanMs = 7 * 24 * 3600 * 
     throw error;
   }
 
+  const writer = homeWriter(stateDir);
   const cutoff = now - olderThanMs;
   let removed = 0;
   for (const entry of entries) {
     if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
     const file = path.join(directory, entry.name);
+    // Only the registry's 32-hex records are ours to prune; any other name here is kept (Plan_65 D3).
+    try {
+      writer.assertArtifact(ARTIFACT, file);
+    } catch (error) {
+      if (error.code === 'EHOMEREGISTRY') continue;
+      throw error;
+    }
     let old;
     try {
       old = fs.statSync(file).mtimeMs < cutoff;
@@ -99,13 +120,14 @@ export function pruneDispatcherStates({ stateDir, olderThanMs = 7 * 24 * 3600 * 
       throw error;
     }
     if (!old) continue;
-    try {
-      fs.unlinkSync(file);
-      removed += 1;
-    } catch (error) {
-      if (error.code !== 'ENOENT') throw error;
+    for (const target of [file, `${file}.lock`]) {
+      try {
+        writer.unlinkSync(ARTIFACT, target);
+        if (target === file) removed += 1;
+      } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+      }
     }
-    fs.rmSync(`${file}.lock`, { force: true });
   }
   return removed;
 }
