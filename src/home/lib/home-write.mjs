@@ -86,6 +86,14 @@ function recursiveOptions(options) {
   return { ...options, recursive: true };
 }
 
+/**
+ * The state modules receive `stateDir`, which is always `brandStateDir(root)` (Plan_62 D14), so the
+ * home root is its parent. A stateDir anywhere else is refused by the registry, not guessed.
+ */
+export function stateDirWriter(stateDir) {
+  return createHomeWriter({ root: path.dirname(path.resolve(stateDir)) });
+}
+
 export function createHomeWriter({ root, imageMembers } = {}) {
   const homeRoot = path.resolve(root);
   const declaredImageMembers = Object.freeze([...(imageMembers ?? [])]);

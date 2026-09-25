@@ -1,8 +1,9 @@
 /** Records session host versions after the 2026-09-25 PATH host identity incident. */
 import fs from 'node:fs';
 import path from 'node:path';
-import { writeJsonAtomic } from './atomic-json.mjs';
-import { withFileLock } from './file-lock.mjs';
+import { writeHomeJsonAtomic } from './atomic-json.mjs';
+import { withHomeFileLock } from './file-lock.mjs';
+import { stateDirWriter } from './home-write.mjs';
 import { parseJsonText } from './json-file.mjs';
 import { transcriptHostVersion } from './host-version.mjs';
 
@@ -37,7 +38,9 @@ export async function observeSessionHost({
   if (readHostObservations({ stateDir }).sessions[sessionId]) return { recorded: false };
   const version = await readVersion(transcriptPath);
   if (version === null) return { recorded: false };
-  return withFileLock(`${file}.lock`, async () => {
+  // Plan_65 B6: the observations, their lock and temporaries are the registered host-observations artifact.
+  const writer = stateDirWriter(stateDir);
+  return withHomeFileLock(writer, 'host-observations', `${file}.lock`, async () => {
     const current = readHostObservations({ stateDir });
     if (current.corrupt) throw new Error(`Cannot update corrupt host observations: ${file}`);
     if (current.sessions[sessionId]) return { recorded: false };
@@ -51,7 +54,7 @@ export async function observeSessionHost({
     sessions[sessionId] = { version, at };
     const existing = hosts[version];
     hosts[version] = { firstSeen: existing?.firstSeen || at, lastSeen: at };
-    writeJsonAtomic(file, { hosts, sessions });
+    writeHomeJsonAtomic(writer, 'host-observations', file, { hosts, sessions });
     return { recorded: true };
   }, { description: 'host observations' });
 }

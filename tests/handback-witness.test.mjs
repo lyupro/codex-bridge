@@ -9,7 +9,9 @@ import {
 } from '../src/home/lib/handback-witness.mjs';
 
 test('seen records the most recent intercepted handback', async () => {
-  await withTempTree('handback-witness-seen-', async (stateDir) => {
+  await withTempTree('handback-witness-seen-', async (tree) => {
+    const stateDir = path.join(tree, 'state');
+    fs.mkdirSync(stateDir);
     const witness = await recordHandbackWitness({
       stateDir,
       kind: 'seen',
@@ -25,7 +27,9 @@ test('seen records the most recent intercepted handback', async () => {
 });
 
 test('alarms append and retain only the newest twenty entries', async () => {
-  await withTempTree('handback-witness-alarm-', async (stateDir) => {
+  await withTempTree('handback-witness-alarm-', async (tree) => {
+    const stateDir = path.join(tree, 'state');
+    fs.mkdirSync(stateDir);
     for (let index = 0; index < 21; index += 1) {
       await recordHandbackWitness({
         stateDir,
@@ -44,14 +48,18 @@ test('alarms append and retain only the newest twenty entries', async () => {
 });
 
 test('unknown witness kinds throw before writing', async () => {
-  await withTempTree('handback-witness-kind-', async (stateDir) => {
+  await withTempTree('handback-witness-kind-', async (tree) => {
+    const stateDir = path.join(tree, 'state');
+    fs.mkdirSync(stateDir);
     await assert.rejects(recordHandbackWitness({ stateDir, kind: 'unknown', hostVersion: null }), TypeError);
     assert.deepEqual(readHandbackWitness({ stateDir }), { lastSeen: {}, alarms: [] });
   });
 });
 
 test('witness reads distinguish absent records from corrupt JSON', async () => {
-  await withTempTree('handback-witness-corrupt-', async (stateDir) => {
+  await withTempTree('handback-witness-corrupt-', async (tree) => {
+    const stateDir = path.join(tree, 'state');
+    fs.mkdirSync(stateDir);
     assert.deepEqual(readHandbackWitness({ stateDir }), { lastSeen: {}, alarms: [] });
     fs.writeFileSync(path.join(stateDir, 'handback-witness.json'), '{bad json');
     assert.deepEqual(readHandbackWitness({ stateDir }), { corrupt: true });
@@ -59,7 +67,9 @@ test('witness reads distinguish absent records from corrupt JSON', async () => {
 });
 
 test('legacy SDK witness becomes no host sighting and preserves alarms', async () => {
-  await withTempTree('handback-witness-legacy-', async (stateDir) => {
+  await withTempTree('handback-witness-legacy-', async (tree) => {
+    const stateDir = path.join(tree, 'state');
+    fs.mkdirSync(stateDir);
     fs.writeFileSync(path.join(stateDir, 'handback-witness.json'), JSON.stringify({
       lastSeen: { sdkVersion: '0.3.281', at: '2026-09-24T10:00:00.000Z' },
       alarms: [{ sdkVersion: '0.3.281', at: '2026-09-24T10:01:00.000Z', detail: 'old alarm' }],

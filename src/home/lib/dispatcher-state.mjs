@@ -5,18 +5,11 @@ import path from 'node:path';
 import { writeHomeJsonAtomic } from './atomic-json.mjs';
 import { parseJsonText } from './json-file.mjs';
 import { withHomeFileLock } from './file-lock.mjs';
-import { createHomeWriter } from './home-write.mjs';
+import { stateDirWriter } from './home-write.mjs';
 
+// Plan_65 B5: every write goes through the registry id so purge accounts for records, locks and
+// temporaries alike.
 const ARTIFACT = 'dispatcher-state';
-
-/**
- * Plan_65 B5: every write goes through the registry id so purge accounts for records, locks and
- * temporaries alike. `stateDir` is `brandStateDir(root)`, so its parent is the home root the
- * registry paths are relative to; a stateDir anywhere else is refused by the registry, not guessed.
- */
-function homeWriter(stateDir) {
-  return createHomeWriter({ root: path.dirname(path.resolve(stateDir)) });
-}
 
 function assertIdentity(sessionId, agentId) {
   if (typeof sessionId !== 'string' || sessionId.length === 0
@@ -67,7 +60,7 @@ export async function updateDispatcherState(ids, mutate) {
   if (typeof mutate !== 'function') throw new TypeError('mutate must be a function');
   const file = dispatcherStatePath(ids);
   const { sessionId, agentId } = ids;
-  const writer = homeWriter(ids.stateDir);
+  const writer = stateDirWriter(ids.stateDir);
   return withHomeFileLock(writer, ARTIFACT, `${file}.lock`, async () => {
     let current = readDispatcherState(ids);
     if (current === null) {
@@ -99,7 +92,7 @@ export function pruneDispatcherStates({ stateDir, olderThanMs = 7 * 24 * 3600 * 
     throw error;
   }
 
-  const writer = homeWriter(stateDir);
+  const writer = stateDirWriter(stateDir);
   const cutoff = now - olderThanMs;
   let removed = 0;
   for (const entry of entries) {

@@ -1,9 +1,10 @@
 /** Records the 2026-09-17..24 handback break; 2026-09-25 proved SDK env is inherited, so identify hosts from transcripts. */
 import fs from 'node:fs';
 import path from 'node:path';
-import { writeJsonAtomic } from './atomic-json.mjs';
+import { writeHomeJsonAtomic } from './atomic-json.mjs';
 import { parseJsonText } from './json-file.mjs';
-import { withFileLock } from './file-lock.mjs';
+import { withHomeFileLock } from './file-lock.mjs';
+import { stateDirWriter } from './home-write.mjs';
 import { transcriptHostVersion } from './host-version.mjs';
 
 export const WITNESS_FILE = 'handback-witness.json';
@@ -57,14 +58,16 @@ export async function recordHandbackWitness({ stateDir, kind, hostVersion, detai
     throw new TypeError('hostVersion must be a string or null');
   }
   const file = path.join(stateDir, WITNESS_FILE);
-  return withFileLock(`${file}.lock`, async () => {
+  // Plan_65 B6: the witness, its lock and temporaries are the registered handback-witness artifact.
+  const writer = stateDirWriter(stateDir);
+  return withHomeFileLock(writer, 'handback-witness', `${file}.lock`, async () => {
     const current = readHandbackWitness({ stateDir });
     if (current.corrupt) throw new Error(`Cannot update corrupt handback witness: ${file}`);
     const at = timestamp(now);
     const record = kind === 'seen'
       ? { ...current, lastSeen: hostVersion === null ? current.lastSeen : { ...current.lastSeen, [hostVersion]: at } }
       : { ...current, alarms: [...current.alarms, { hostVersion, at, detail }].slice(-20) };
-    writeJsonAtomic(file, record);
+    writeHomeJsonAtomic(writer, 'handback-witness', file, record);
     return record;
   }, { description: 'handback witness' });
 }
