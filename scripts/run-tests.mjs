@@ -12,6 +12,9 @@
  * straight into the operator's real `~/.lyupro/.codex-bridge/`, where the stray config then stood
  * in the way of the very migration the release was about. Roots live in one list here so a third
  * one cannot be added without this file being the place it is declared.
+ *
+ * Plan_62 D22 requires package-home writes to remain removable by artifact id. Plan_65 B1b runs
+ * the write audit here so the suite cannot forget to enforce the boundary before creating roots.
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -19,12 +22,23 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { ISOLATED_ROOTS } from './isolated-roots.mjs';
+import { auditWrites } from './home-write-audit.mjs';
+import { HOME_WRITE_INVENTORY } from './home-write-inventory.mjs';
 import { readmeText, suiteCountMismatch } from './suite-count.mjs';
 
 // One pattern only: on 2026-09-25 three files passed as three arguments ran just the first, and a
 // verification reported green for two files it never touched. Refuse before any root is created.
 if (process.argv.length > 3) {
   console.error('run-tests: takes ONE pattern; pass a glob such as "tests/cli/{doctor,install}.test.mjs"');
+  process.exit(2);
+}
+
+const repositoryRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
+const { violations } = auditWrites({ repositoryRoot, inventory: HOME_WRITE_INVENTORY });
+if (violations.length) {
+  for (const { module, sink, problem } of violations) {
+    process.stderr.write(`run-tests: home-write audit: ${module} ${sink} — ${problem}\n`);
+  }
   process.exit(2);
 }
 
@@ -40,7 +54,6 @@ const wholeSuite = !process.argv[2];
 const tapFile = wholeSuite
   ? path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'codex-bridge-test-summary-')), 'summary.tap')
   : null;
-const repositoryRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 
 // The spec reporter is named explicitly because the second reporter would otherwise replace it,
 // and the operator would lose the live output this command exists to show.
