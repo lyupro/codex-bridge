@@ -574,29 +574,53 @@ Every guard above refuses work with `permissionDecision: "deny"`, and the siblin
 object stopped being honoured between hosts 2.1.119 and 2.1.231 without printing anything. The
 suite proves a hook returned a refusal; it cannot prove the host applied it.
 
-`codex-bridge doctor` therefore carries a `hostContract` line reporting what is known on this
-machine: never probed, probed on another host version, refusals ignored (which names the guards it
-makes inert and exits non-zero), verified, or a host whose version cannot be read.
+`codex-bridge doctor` therefore carries a `hostContract` line reporting what is known for the host
+that actually ran the session, and a `sessionHost` line identifying that host. Both `doctor` and
+`install` judge the newest host version observed in a session transcript. The 2026-09-25 incident
+showed why: sessions ran in VS Code extension 2.1.282 while `claude` on `PATH` was 2.1.281, so
+judging every contract against `PATH` tested the wrong host. The extension sets
+`CLAUDE_CODE_EXECPATH` and `CLAUDE_AGENT_SDK_VERSION`, and every descendant `claude` inherits them;
+neither value identifies the session host. Its transcript entry's `version` is the host identity.
+The dispatcher gate is registered on every shell call and records that version once per session in
+`state/host-observations.json`; session observations are kept for 7 days and host versions for 30.
+`doctor` prints one `otherHost:<version>` line for each other observed version (`ok`, `warn` with
+the probe command, or `fail` with exit 1). With no observed session, `doctor` and `install` say so
+instead of reading `PATH`. The `hostContract` line reports never probed, probed on another host
+version, refusals ignored (which names the guards it makes inert and exits non-zero), verified, or
+a host whose version cannot be read.
+
+`.host-contract.json` and `state/dispatcher-contract.json` keep one verdict per host version. A
+measurement of an executable reporting version V applies to every host of version V; older
+single-version files are read as verdicts for their own versions only.
 
 Doctor also reports `handbackWitness` and four dispatcher contract lines:
 `dispatcherContract:agentIdentity`, `dispatcherContract:shellStdout`,
 `dispatcherContract:shellFailure`, and `dispatcherContract:agentTranscript`. Verified contracts
 are `ok`; never probed, another host version, and unknown host version are `warn`. A measured
-change is `fail` and exits 1. An unreadable record produces one warning naming its file.
+change is `fail` and exits 1. An unreadable record produces one warning naming its file. Handback
+sightings and alarms carry the transcript version, and a sighting matches only that exact version;
+an older SDK-based record is treated as no sighting while retaining its alarms. If a subagent stop
+has an `agent_id` but no `agent_type`, the reply guard records a versioned alarm and tells the
+session that the dispatcher gate cannot recognise dispatchers.
 
-`codex-bridge doctor --probe-contract` performs the measurement. It builds a throwaway rig outside
-the repository, registers one temporary hook there refusing one marker command, runs the real host
+`codex-bridge doctor --probe-contract` performs the measurement. By default it targets the newest
+observed host version; `CLAUDE_CODE_EXECPATH` and `claude` on `PATH` are candidates only when their
+own `--version` matches it. Use `--probe-executable <path>` to name an executable explicitly;
+`--host` selects the Claude Code configuration, not the probe executable. The command prints
+`probe: target <version> at <executable> (<source>)`. It builds a throwaway rig outside the
+repository, registers one temporary hook there refusing one marker command, runs the target host
 inside the rig with only the tool under test allowed and with settings read from the project alone,
 and judges by whether the marker file appeared. The verdict is written next to the installation and
-bound to the host version, because the host is what updates underneath an installation.
+bound to the host version, because the host is what updates underneath an installation. A host that
+completes the run but writes a different version into its transcript records nothing.
 
 The probe takes up to two minutes and one host session with a short subagent, spent from the
 operator's Claude quota, so it never runs on its own: not from
 `doctor` without the flag, not from `install`, not from the suite. A run that could not measure —
-no host on `PATH`, a crash, a timeout, a hook that never fired — records nothing and exits `2`; an
-absent marker counts as a refusal only when the hook fired and the host survived to the end. The
-same host run measures the four dispatcher contracts; `state/dispatcher-contract.json` is written
-only when the host completed the run.
+no executable matching the target version, a crash, a timeout, a hook that never fired — records
+nothing and exits `2`; an absent marker counts as a refusal only when the hook fired and the host
+survived to the end. The same host run measures the four dispatcher contracts;
+`state/dispatcher-contract.json` is written only when the host completed the run.
 
 ## Installation into another Claude Code configuration
 
@@ -608,7 +632,7 @@ the host. `package.json`, required by npm outside that image, is the one documen
 | Root | What lives there |
 | --- | --- |
 | `~/.lyupro/.codex-bridge/` | runner and its modules (`lib/`), guards (`hooks/`), `config.json`, `conventions.md`, installation record `.installed.json` |
-| `~/.lyupro/.codex-bridge/state/` | Per-dispatcher state (pruned after 7 days), `handback-witness.json`, `dispatcher-contract.json`, `reply-guard-tries.json`, and `diagnostics/*.last.json`; `update` removes diagnostics formerly under `~/.claude/logs/` |
+| `~/.lyupro/.codex-bridge/state/` | Per-dispatcher state (pruned after 7 days), `host-observations.json` (sessions kept 7 days, hosts 30), `handback-witness.json`, `dispatcher-contract.json`, `reply-guard-tries.json`, and `diagnostics/*.last.json`; `update` removes diagnostics formerly under `~/.claude/logs/` |
 | `~/.claude/agents/codex-bridge/` | four agent definitions—Claude Code reads them only from here |
 | `~/.claude/commands/codex-bridge/` | two command files: `/codex-bridge:env` and `/codex-bridge:usage` |
 | `~/.codex/rules/` | Codex CLI rules file; the directory is not ours |
