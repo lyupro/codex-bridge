@@ -118,6 +118,25 @@ try {
   // Diagnostics are a convenience, never a reason to fail the turn.
 }
 
+// A host that stops sending agent_type would let every dispatcher past the gate and this
+// audit without a word (Plan_66 D2 (c)); say so instead of passing silently.
+if (typeof input.agent_id === 'string' && input.agent_id.length > 0
+  && !(typeof input.agent_type === 'string' && input.agent_type.length > 0)) {
+  try {
+    await recordHandbackWitness({
+      stateDir: BRAND_STATE_DIR,
+      kind: 'alarm',
+      sdkVersion: hostSdkVersion(),
+      detail: `host omitted agent_type for agent ${input.agent_id}`,
+    });
+  } catch {
+    // Plan_66 H2: the 2026-09-17..24 handback break showed host contract loss must alarm, but never block work.
+  }
+  process.stdout.write(JSON.stringify({
+    systemMessage: 'codex-bridge: the host did not report agent_type for a subagent — the dispatcher gate cannot recognise dispatchers, so their answers are unchecked; run codex-bridge doctor.',
+  }));
+  process.exit(0);
+}
 // Only the Codex dispatchers have this contract. Every other agent is none of our
 // business — an earlier version inferred the agent from transcript text and blocked an
 // unrelated one, which cost a re-answer for nothing.
