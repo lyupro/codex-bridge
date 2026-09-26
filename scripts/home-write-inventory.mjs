@@ -3,7 +3,6 @@
  * Home entries name their registered artifact and the Plan_65 order that removes the exception.
  */
 const outside = (module, sink, count, reason) => ({ module, sink, count, kind: 'outside-home', reason });
-const migrating = (module, sink, count, reason) => ({ module, sink, count, kind: 'home-migration', reason });
 
 export const HOME_WRITE_INVENTORY = Object.freeze([
   outside('cli/copy.mjs', 'mkdir', 1, 'Raw route of the planned-file copier, taken only after writer.assertOutside proves the target is beyond the home (Claude host files, Codex rules).'),
@@ -20,21 +19,17 @@ export const HOME_WRITE_INVENTORY = Object.freeze([
   outside('cli/remove-layout.mjs', 'rmdir', 1, 'Removes empty host agents or commands directories after uninstall.'),
   outside('cli/rules-owners.mjs', 'rename', 1, 'Publishes the shared host rules ownership registry.'),
   outside('cli/rules-owners.mjs', 'rm', 2, 'Removes a failed temporary copy or the host rules ownership registry.'),
-  outside('cli/rules-owners.mjs', 'withFileLock', 1, 'Locks the shared registry under the host Codex rules directory.'),
+  outside('cli/rules-owners.mjs', 'withOutsideFileLock', 1, 'Locks the shared registry under the host Codex rules directory.'),
   outside('cli/rules-owners.mjs', 'writeFile', 1, 'Writes a temporary shared host rules ownership registry.'),
   outside('cli/settings-merge.mjs', 'mkdir', 1, 'Creates the host settings.json parent directory.'),
   outside('cli/settings-merge.mjs', 'rename', 1, 'Atomically publishes the host settings.json update.'),
   outside('cli/settings-merge.mjs', 'rm', 1, 'Removes a failed temporary host settings.json update.'),
   outside('cli/settings-merge.mjs', 'writeFile', 2, 'Writes the host settings.json backup and temporary replacement.'),
   outside('cli/record-removal.mjs', 'rm', 1, 'Raw removal taken only after writer.assertOutside proves the target is beyond the home (Claude host files, Codex rules, legacy records, logs and migrated seeds).'),
-  migrating('src/home/lib/atomic-json.mjs', 'mkdirSync', 1, 'Atomic JSON home artifacts including config, dispatcher-contract, dispatcher-state, handback-witness, and host-observations; Plan_65 B2 atomic-json/file-lock.'),
-  migrating('src/home/lib/atomic-json.mjs', 'renameSync', 1, 'Atomic JSON home artifacts including config, dispatcher-contract, dispatcher-state, handback-witness, and host-observations; Plan_65 B2 atomic-json/file-lock.'),
-  migrating('src/home/lib/atomic-json.mjs', 'unlinkSync', 1, 'Atomic temporary files for config, dispatcher-contract, dispatcher-state, handback-witness, and host-observations; Plan_65 B2 atomic-json/file-lock.'),
-  migrating('src/home/lib/atomic-json.mjs', 'writeFileSync', 1, 'Atomic JSON home artifacts including config, dispatcher-contract, dispatcher-state, handback-witness, and host-observations; Plan_65 B2 atomic-json/file-lock.'),
   outside('src/home/lib/config-edit.mjs', 'rmdir', 1, 'Removes empty ancestors of the home root that this edit created, above the home.'),
-  migrating('src/home/lib/file-lock.mjs', 'mkdir', 1, 'Parent directories for home artifact locks including dispatcher-state and handback-witness; Plan_65 B2 atomic-json/file-lock.'),
-  migrating('src/home/lib/file-lock.mjs', 'open', 1, 'Creates a home artifact lock with the exclusive wx flag; Plan_65 B2 atomic-json/file-lock.'),
-  migrating('src/home/lib/file-lock.mjs', 'rm', 1, 'Removes stale or completed home artifact locks; Plan_65 B2 atomic-json/file-lock.'),
+  outside('src/home/lib/file-lock.mjs', 'mkdir', 1, 'Raw route of the lock, taken only after writer.assertOutside proves the lock is beyond the home (Codex rules registry).'),
+  outside('src/home/lib/file-lock.mjs', 'open', 1, 'Raw route of the lock, taken only after writer.assertOutside proves the lock is beyond the home (Codex rules registry).'),
+  outside('src/home/lib/file-lock.mjs', 'rm', 1, 'Raw route of the lock, taken only after writer.assertOutside proves the lock is beyond the home (Codex rules registry).'),
   outside('src/home/lib/heartbeat.mjs', 'writeFileSync', 1, 'Heartbeat stamp inside a run folder under the runs root.'),
   outside('src/home/lib/host-version.mjs', 'open', 1, 'Read-only open of a run transcript tail with the r flag.'),
   outside('src/home/lib/meta/run-state.mjs', 'writeFileSync', 3, 'Writes status.json and meta.json inside run folders under the runs root.'),

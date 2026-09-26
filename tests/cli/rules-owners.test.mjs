@@ -17,6 +17,7 @@ test('concurrent owner registrations retain every owner', async (t) => {
   const codexRulesDir = path.join(root, 'codex-home', 'rules');
   const hosts = ['first-host', 'second-host'].map((name) => ({
     root: path.join(root, name),
+    brandRoot: path.join(root, 'brand'),
     codexRulesDir,
   }));
 
@@ -31,7 +32,7 @@ test('a lock left behind by a dead process does not block the next owner', async
   const root = makeTempTree('bridge-rules-stale-');
   t.after(() => removeTempTree(root));
   const codexRulesDir = path.join(root, 'codex-home', 'rules');
-  const host = { root: path.join(root, 'host'), codexRulesDir };
+  const host = { root: path.join(root, 'host'), brandRoot: path.join(root, 'brand'), codexRulesDir };
 
   const lockPath = path.join(codexRulesDir, '.codex-bridge-rules.json.lock');
   await fs.mkdir(codexRulesDir, { recursive: true });
@@ -61,7 +62,7 @@ test('a lock a live process is holding is waited for, not stolen', async (t) => 
   const root = makeTempTree('bridge-rules-live-lock-');
   t.after(() => removeTempTree(root));
   const codexRulesDir = path.join(root, 'codex-home', 'rules');
-  const host = { root: path.join(root, 'host'), codexRulesDir };
+  const host = { root: path.join(root, 'host'), brandRoot: path.join(root, 'brand'), codexRulesDir };
 
   const lockPath = path.join(codexRulesDir, '.codex-bridge-rules.json.lock');
   await fs.mkdir(codexRulesDir, { recursive: true });

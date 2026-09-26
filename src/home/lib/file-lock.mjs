@@ -63,9 +63,10 @@ async function acquireFileLock(lockPath, { retries, delayMs, staleMs, descriptio
   );
 }
 
-export async function withFileLock(lockPath, action, {
+export async function withOutsideFileLock(writer, lockPath, action, {
   retries = 200, delayMs = 5, staleMs = 30_000, description = 'file',
 } = {}) {
+  writer.assertOutside(lockPath);
   const remove = (target) => fs.rm(target, { force: true });
   const lock = await acquireFileLock(lockPath, { retries, delayMs, staleMs, description }, {
     mkdir(directory, options) { return fs.mkdir(directory, options); },

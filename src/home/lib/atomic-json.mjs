@@ -6,7 +6,6 @@
  * (`config-edit.mjs` keeps its own compare-and-swap publish for that reason).
  */
 import { randomUUID } from 'node:crypto';
-import fs from 'node:fs';
 import path from 'node:path';
 
 function removeIfPresent(remove, temporary) {
@@ -26,15 +25,6 @@ function publishJsonAtomic(file, record, operations) {
   } finally {
     removeIfPresent(operations.unlink, temporary);
   }
-}
-
-export function writeJsonAtomic(file, record) {
-  return publishJsonAtomic(file, record, {
-    mkdir(directory, options) { return fs.mkdirSync(directory, options); },
-    write(temporary, contents, options) { return fs.writeFileSync(temporary, contents, options); },
-    rename(temporary, target) { return fs.renameSync(temporary, target); },
-    unlink(temporary) { return fs.unlinkSync(temporary); },
-  });
 }
 
 export function writeHomeJsonAtomic(writer, id, file, record) {

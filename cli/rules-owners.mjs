@@ -4,7 +4,8 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { normalizeRepoPath } from '../src/home/lib/runner/project-dir.mjs';
 import { readJsonFile } from '../src/home/lib/json-file.mjs';
-import { withFileLock } from '../src/home/lib/file-lock.mjs';
+import { withOutsideFileLock } from '../src/home/lib/file-lock.mjs';
+import { createHomeWriter } from '../src/home/lib/home-write.mjs';
 export { isLockTaken } from '../src/home/lib/file-lock.mjs';
 
 export const RULES_REGISTRY_NAME = '.codex-bridge-rules.json';
@@ -76,7 +77,8 @@ function registryLockPath(host) {
 }
 
 async function withRegistryLock(host, action) {
-  return withFileLock(registryLockPath(host), action, { description: 'rules ownership registry' });
+  const writer = createHomeWriter({ root: host.brandRoot });
+  return withOutsideFileLock(writer, registryLockPath(host), action, { description: 'rules ownership registry' });
 }
 
 export async function readRulesRegistry(host) {

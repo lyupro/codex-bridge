@@ -142,9 +142,9 @@ test('a filesystem write function reference without a call fails closed', async 
 
 test('generic caller-path sinks are accounted too', async () => {
   const { violations } = await auditFixture({
-    'src/generic-write.mjs': 'writeJsonAtomic(file, value);',
+    'src/generic-write.mjs': 'withOutsideFileLock(lockPath, action);',
   });
-  assert.ok(violations.some(({ sink }) => sink === 'writeJsonAtomic'));
+  assert.ok(violations.some(({ sink }) => sink === 'withOutsideFileLock'));
 });
 
 test('the home-write adapter is exempt', async () => {

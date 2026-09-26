@@ -4,14 +4,22 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHomeWriter } from '../src/home/lib/home-write.mjs';
-import { withFileLock, withHomeFileLock, isLockTaken } from '../src/home/lib/file-lock.mjs';
+import { withOutsideFileLock, withHomeFileLock, isLockTaken } from '../src/home/lib/file-lock.mjs';
 import { isLockTaken as registryIsLockTaken } from '../cli/rules-owners.mjs';
 import { makeTempTree, removeTempTree } from './temp-tree.mjs';
 
 function fixture(t) {
-  const root = makeTempTree('file-lock-');
-  t.after(() => removeTempTree(root));
-  return path.join(root, 'resource.lock');
+  const outsideRoot = makeTempTree('file-lock-outside-');
+  const homeRoot = makeTempTree('file-lock-home-');
+  t.after(() => {
+    removeTempTree(outsideRoot);
+    removeTempTree(homeRoot);
+  });
+  return {
+    lockPath: path.join(outsideRoot, 'resource.lock'),
+    homeRoot,
+    writer: createHomeWriter({ root: homeRoot }),
+  };
 }
 
 function homeFixture(t) {
@@ -22,13 +30,13 @@ function homeFixture(t) {
 }
 
 test('acquisition excludes a second caller until the first releases', { timeout: 2000 }, async (t) => {
-  const lockPath = fixture(t);
+  const { lockPath, writer } = fixture(t);
   let enter, release, attempted;
   const entered = new Promise((resolve) => { enter = resolve; });
   const held = new Promise((resolve) => { release = resolve; });
   const waiting = new Promise((resolve) => { attempted = resolve; });
   const order = [];
-  const first = withFileLock(lockPath, async () => {
+  const first = withOutsideFileLock(writer, lockPath, async () => {
     order.push('first entered');
     enter();
     await held;
@@ -41,7 +49,7 @@ test('acquisition excludes a second caller until the first releases', { timeout:
     try { return await open(...args); }
     catch (error) { attempted(); throw error; }
   });
-  const second = withFileLock(lockPath, () => {
+  const second = withOutsideFileLock(writer, lockPath, () => {
     order.push('second entered');
     return 'second result';
   }, { retries: 50, delayMs: 1 });
@@ -59,11 +67,11 @@ test('acquisition excludes a second caller until the first releases', { timeout:
 });
 
 test('a lock older than the configured stale window is dropped and acquired', async (t) => {
-  const lockPath = fixture(t);
+  const { lockPath, writer } = fixture(t);
   await fs.writeFile(lockPath, 'abandoned');
   const old = new Date(Date.now() - 1000);
   await fs.utimes(lockPath, old, old);
-  const result = await withFileLock(lockPath, async () => {
+  const result = await withOutsideFileLock(writer, lockPath, async () => {
     assert.equal(await fs.readFile(lockPath, 'utf8'), '');
     return 'recovered';
   }, { retries: 3, delayMs: 1, staleMs: 100 });
@@ -72,10 +80,10 @@ test('a lock older than the configured stale window is dropped and acquired', as
 });
 
 test('timeout names the lock path and last code without removing a live lock', async (t) => {
-  const lockPath = fixture(t);
+  const { lockPath, writer } = fixture(t);
   await fs.writeFile(lockPath, 'live');
   let called = false;
-  await assert.rejects(withFileLock(lockPath, () => { called = true; }, {
+  await assert.rejects(withOutsideFileLock(writer, lockPath, () => { called = true; }, {
     retries: 3, delayMs: 1,
   }), (error) => {
     assert.ok(error.message.includes(lockPath));
@@ -90,11 +98,11 @@ test('timeout names the lock path and last code without removing a live lock', a
 
 test('Windows busy codes retry and the timeout reports the last failure', async (t) => {
   // The 2026-08-11 incident must stay covered without depending on a lucky Windows delete race.
-  const lockPath = fixture(t);
+  const { lockPath, writer } = fixture(t);
   const errors = ['EEXIST', 'EPERM', 'EBUSY'].map((code) => Object.assign(new Error(code), { code }));
   let attempts = 0;
   t.mock.method(fs, 'open', async () => { throw errors[attempts++]; });
-  await assert.rejects(withFileLock(lockPath, () => assert.fail('a busy lock cannot run the action'), {
+  await assert.rejects(withOutsideFileLock(writer, lockPath, () => assert.fail('a busy lock cannot run the action'), {
     retries: 3, delayMs: 1,
   }), (error) => {
     assert.ok(error.message.includes(lockPath));
@@ -107,35 +115,46 @@ test('Windows busy codes retry and the timeout reports the last failure', async 
 });
 
 test('a real acquisition failure is propagated without retrying or running the action', async (t) => {
-  const lockPath = fixture(t);
+  const { lockPath, writer } = fixture(t);
   const error = Object.assign(new Error('disk full'), { code: 'ENOSPC' });
   let attempts = 0;
   t.mock.method(fs, 'open', async () => { attempts += 1; throw error; });
-  await assert.rejects(withFileLock(lockPath, () => assert.fail('acquisition failed'), {
+  await assert.rejects(withOutsideFileLock(writer, lockPath, () => assert.fail('acquisition failed'), {
     retries: 3, delayMs: 1,
   }), (actual) => actual === error);
   assert.equal(attempts, 1);
 });
 
 test('an action failure closes the handle and removes the lock before propagating', async (t) => {
-  const lockPath = fixture(t);
+  const { lockPath, writer } = fixture(t);
   const open = fs.open;
   let handle;
   t.mock.method(fs, 'open', async (...args) => { handle = await open(...args); return handle; });
   const error = new Error('action failed');
   for (const action of [() => { throw error; }, async () => { throw error; }]) {
-    await assert.rejects(withFileLock(lockPath, action), (actual) => actual === error);
+    await assert.rejects(withOutsideFileLock(writer, lockPath, action), (actual) => actual === error);
     assert.equal(handle.fd, -1);
     await assert.rejects(fs.stat(lockPath), { code: 'ENOENT' });
   }
-  assert.equal(await withFileLock(lockPath, () => 'next caller'), 'next caller');
+  assert.equal(await withOutsideFileLock(writer, lockPath, () => 'next caller'), 'next caller');
   assert.equal(handle.fd, -1);
 });
 
 test('acquisition creates missing parents as the registry lock did', async (t) => {
-  const lockPath = path.join(path.dirname(fixture(t)), 'new', 'nested', 'resource.lock');
-  await withFileLock(lockPath, () => fs.stat(lockPath));
+  const { lockPath: baseLockPath, writer } = fixture(t);
+  const lockPath = path.join(path.dirname(baseLockPath), 'new', 'nested', 'resource.lock');
+  await withOutsideFileLock(writer, lockPath, () => fs.stat(lockPath));
   await assert.rejects(fs.stat(lockPath), { code: 'ENOENT' });
+});
+
+test('the outside lock rejects a path inside the writer home before creating its parent', async (t) => {
+  const { homeRoot, writer } = fixture(t);
+  const lockPath = path.join(homeRoot, 'new', 'nested', 'resource.lock');
+  await assert.rejects(
+    withOutsideFileLock(writer, lockPath, () => assert.fail('an in-home lock must not run')),
+    { code: 'EHOMEREGISTRY' },
+  );
+  await assert.rejects(fs.stat(path.join(homeRoot, 'new')), { code: 'ENOENT' });
 });
 
 test('the home lock serializes callers and removes its registered lock', { timeout: 2000 }, async (t) => {

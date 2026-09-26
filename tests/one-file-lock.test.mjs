@@ -122,8 +122,8 @@ test('the guard permits readers, temporary writers, shared callers, and the desi
     "fs.openSync(lockPath, 'w');",
     "await fs.open(temporary, 'wx');",
     "await fs.open('config.json.lock.tmp', 'wx');",
-    "const target = `${file}.lock`; await withFileLock(target, action);",
-    "withFileLock(`${file}.lock`, async () => { await fs.open(temporary, 'wx'); });",
+    "const target = `${file}.lock`; await withOutsideFileLock(writer, target, action);",
+    "withOutsideFileLock(writer, `${file}.lock`, async () => { await fs.open(temporary, 'wx'); });",
     "// fs.open(lockPath, 'wx');\nexport const value = 1;",
     "/* fs.open('config.json.lock', 'wx'); */ fs.open(temporary, 'wx');",
   ]) {
