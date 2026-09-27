@@ -24,6 +24,7 @@ import {
   mergeHook,
   withSettingsRun,
 } from './settings-merge.mjs';
+import { withLifecycle } from './lifecycle-transaction.mjs';
 import { addRulesOwner, readRulesRegistry } from './rules-owners.mjs';
 import { addPermissionRules, inspectPermissions } from './permissions.mjs';
 import { contractStatus, readHostContract } from './host-contract.mjs';
@@ -291,5 +292,11 @@ async function installInRun({
 export async function install(options = {}) {
   const host = options?.host;
   if (!host?.settingsPath) return installInRun(options);
-  return withSettingsRun(host.settingsPath, () => installInRun(options));
+  if (options.dryRun === true) return withSettingsRun(host.settingsPath, () => installInRun(options));
+  return withLifecycle(
+    host,
+    'install',
+    () => withSettingsRun(host.settingsPath, () => installInRun(options)),
+    { ticket: options.lifecycleTicket, waitMs: options.lifecycleWaitMs, createHome: true },
+  );
 }

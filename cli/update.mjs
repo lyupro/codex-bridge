@@ -25,6 +25,7 @@ import {
   removeHook,
   withSettingsRun,
 } from './settings-merge.mjs';
+import { withLifecycle } from './lifecycle-transaction.mjs';
 import { addRulesOwner, readRulesRegistry } from './rules-owners.mjs';
 import { removeEmptyLayout } from './remove-layout.mjs';
 import { recordHomeWriter, removeOutside, removeRecordedFile } from './record-removal.mjs';
@@ -154,7 +155,7 @@ function previousHooks(host, record, targets) {
   });
 }
 
-async function updateInRun({ host, dryRun = false, force = false, packageRoot, env = process.env } = {}) {
+async function updateInRun({ host, dryRun = false, force = false, packageRoot, env = process.env, lifecycleTicket } = {}) {
   await readRulesRegistry(host);
   const record = await readInstallRecord(host);
   if (!record) {
@@ -269,7 +270,7 @@ async function updateInRun({ host, dryRun = false, force = false, packageRoot, e
   for (const { spec, hook } of oldHooks) {
     await removeHook(host.settingsPath, spec, { createdGroup: hook.createdGroup === true });
   }
-  const installed = await install({ host, force: true, packageRoot, env });
+  const installed = await install({ host, force: true, packageRoot, env, lifecycleTicket });
   if (installed.exitCode !== 0) return installed;
   await retireLegacyLayout(host, writer);
   const legacyLogOutput = await retireLegacyGuardLogs(host, writer);
@@ -283,5 +284,12 @@ async function updateInRun({ host, dryRun = false, force = false, packageRoot, e
 export async function update(options = {}) {
   const host = options?.host;
   if (!host?.settingsPath) return updateInRun(options);
-  return withSettingsRun(host.settingsPath, () => updateInRun(options));
+  // A dry run only reads; like install's, it must not wait on or create anything.
+  if (options.dryRun === true) return withSettingsRun(host.settingsPath, () => updateInRun(options));
+  return withLifecycle(
+    host,
+    'update',
+    (ticket) => withSettingsRun(host.settingsPath, () => updateInRun({ ...options, lifecycleTicket: ticket })),
+    { ticket: options.lifecycleTicket, waitMs: options.lifecycleWaitMs },
+  );
 }

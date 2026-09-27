@@ -16,6 +16,7 @@ import {
   removeHook,
   withSettingsRun,
 } from './settings-merge.mjs';
+import { withLifecycle } from './lifecycle-transaction.mjs';
 import { readRulesRegistry, removeRulesOwner, remainingRulesOwners } from './rules-owners.mjs';
 import { removeEmpty, removeEmptyLayout } from './remove-layout.mjs';
 import { recordHomeWriter, removeOutside, removeRecordedFile } from './record-removal.mjs';
@@ -164,5 +165,12 @@ async function uninstallInRun({ host, dryRun = false } = {}) {
 export async function uninstall(options = {}) {
   const host = options?.host;
   if (!host?.settingsPath) return uninstallInRun(options);
-  return withSettingsRun(host.settingsPath, () => uninstallInRun(options));
+  // A dry run only reads; like install's, it must not wait on or create anything.
+  if (options.dryRun === true) return withSettingsRun(host.settingsPath, () => uninstallInRun(options));
+  return withLifecycle(
+    host,
+    'uninstall',
+    () => withSettingsRun(host.settingsPath, () => uninstallInRun(options)),
+    { ticket: options.lifecycleTicket, waitMs: options.lifecycleWaitMs },
+  );
 }
