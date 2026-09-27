@@ -224,6 +224,14 @@ test('a partial file leaves the unnamed key at its default', () => {
   assert.deepEqual(readRunConfig(file), { ...DEFAULTS, plugins: true });
 });
 
+test('a config that exists but cannot be read stops the run instead of falling back', () => {
+  // A directory where the file should be is the portable stand-in for EACCES: both used to
+  // return defaults silently, because any error code was taken to mean the file was absent.
+  const file = tempFile();
+  fs.mkdirSync(file);
+  assert.throws(() => readRunConfig(file), /cannot be read \(EISDIR\)/);
+});
+
 test('malformed JSON stops the run instead of falling back', () => {
   const file = tempFile('{"hooks": tru');
   assert.throws(() => readRunConfig(file), /cannot be parsed as JSON/);

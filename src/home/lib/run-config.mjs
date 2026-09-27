@@ -53,7 +53,16 @@ export function readRunConfig(file = CONFIG_PATH) {
   try {
     parsed = readJsonFileSync(file);
   } catch (err) {
-    if (err.code) return { ...DEFAULTS };
+    // Only a missing file means "no config". Every error code used to mean that, so a config the
+    // run could not open (EACCES, EISDIR, EPERM) ran every role on default models with nobody told
+    // (Plan_69 stage 0) — the one reader of an operator file that treated failure as absence.
+    if (err.code === 'ENOENT') return { ...DEFAULTS };
+    if (err.code) {
+      throw new Error(
+        `${file} cannot be read (${err.code}). Fix its permissions or type, or delete it — without it, ` +
+          'the default mode applies: hooks and plugins are disabled.',
+      );
+    }
     throw new Error(
       `${file} cannot be parsed as JSON (${err.cause?.message || err.message}). Fix or delete the file — without it, ` +
         'the default mode applies: hooks and plugins are disabled.',
