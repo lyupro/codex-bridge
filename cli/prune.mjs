@@ -1,8 +1,7 @@
 /** Confirms, executes, and reports the destructive actions in a prune plan. */
 import fs from 'node:fs';
-import path from 'node:path';
 import readline from 'node:readline/promises';
-import { normalizePath } from '../src/home/hooks/live-runs.mjs';
+import { inspectSegments } from './link-segments.mjs';
 import { parsePruneArgs } from './prune-args.mjs';
 import { prunePlan } from './prune-plan.mjs';
 import { recursiveSize } from './runs-inventory.mjs';
@@ -125,41 +124,6 @@ function accepted(answer) {
   return answer === true || /^(y|yes)$/i.test(String(answer ?? '').trim());
 }
 
-// The package compares paths through one function, and this guard is the last thing standing
-// between a bug and rm -r. Raw string comparison is case-sensitive: a runs root spelled
-// `C:\Users\...` against a target resolved as `c:\users\...` would put every target "outside the
-// root", and the deletion would fail with a reason that names the wrong problem.
-function targetInsideRoot(target, root) {
-  const normalizedRoot = normalizePath(root);
-  const normalizedTarget = normalizePath(target);
-  if (!normalizedRoot || !normalizedTarget) return false;
-  return normalizedTarget !== normalizedRoot && normalizedTarget.startsWith(`${normalizedRoot}/`);
-}
-
-/**
- * Refuses a target reached through a link. Independent review found that lexical containment alone
- * is satisfiable: replace `<root>/<project>` with a junction to an external directory and a target
- * that still spells out as inside the root deletes what is outside it. The package deliberately
- * does not resolve paths (`realpath` returns `\\?\` and UNC forms on Windows and creates a new
- * class of mismatch), so the check is the cheap half instead: every segment from the root down to
- * the target must be a real directory, verified with lstat right before deletion.
- */
-function linkedSegment(target, root) {
-  const normalizedRoot = normalizePath(root);
-  let current = path.resolve(target);
-  while (normalizePath(current) !== normalizedRoot) {
-    try {
-      if (fs.lstatSync(current).isSymbolicLink()) return current;
-    } catch {
-      return null; // Already gone: rmSync will report it honestly.
-    }
-    const parent = path.dirname(current);
-    if (parent === current) return null;
-    current = parent;
-  }
-  return null;
-}
-
 function currentTargetBytes(target, strategy) {
   if (strategy === 'purge') {
     // The inventory's recursive measurement is the same accounting used by projects and keeps
@@ -196,21 +160,30 @@ function bytesAfterRemoval(values) {
     : null;
 }
 
+/**
+ * Uses the shared top-down check before deletion: the old leaf-up walk inspected descendants under
+ * a link, and its catch treated every lstat error as a clear path.
+ */
 async function execute(plan, options) {
   const removed = [];
   const sizes = [];
   const failed = [];
   for (const action of plan.actions) {
     for (const target of action.targets) {
-      if (!targetInsideRoot(target, plan.root)) {
+      const inspection = inspectSegments(target, plan.root);
+      if (inspection.kind === 'outside') {
         failed.push({ target, error: 'target is outside the configured runs root' });
         continue;
       }
-      const linked = linkedSegment(target, plan.root);
-      if (linked) {
-        failed.push({ target, error: `refusing to delete through a link: ${linked}` });
+      if (inspection.kind === 'link') {
+        failed.push({ target, error: `refusing to delete through a link: ${inspection.at}` });
         continue;
       }
+      if (inspection.kind === 'error') {
+        failed.push({ target, error: `cannot inspect ${inspection.at} (${inspection.code}); nothing deleted` });
+        continue;
+      }
+      // `missing` goes on: rmSync reports the vanished target honestly, as it always did.
       const bytes = currentTargetBytes(target, action.strategy);
       try {
         fs.rmSync(target, { recursive: action.strategy === 'purge', force: false });

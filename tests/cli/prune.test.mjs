@@ -59,6 +59,28 @@ test('single-run purge removes the entire run folder', async (t) => {
   assert.match(result.output, new RegExp(dir.replaceAll('\\', '\\\\')));
 });
 
+test('purge refuses a project junction installed before execution', async (t) => {
+  const tree = fixture(t);
+  const root = path.join(tree, 'runs');
+  const outside = path.join(tree, 'outside');
+  fs.mkdirSync(root);
+  makeRun(root, 'alpha', 'manual-run');
+  const run = makeRun(outside, 'alpha', 'manual-run');
+  const project = path.join(root, 'alpha');
+  const movedProject = path.join(tree, 'planned-alpha');
+  const outsideProject = path.join(outside, 'alpha');
+
+  const result = await prune(['alpha', 'manual-run', '--purge', '--force'], options(root, () => {
+    fs.renameSync(project, movedProject);
+    fs.symlinkSync(outsideProject, project, 'junction');
+    return true;
+  }));
+
+  assert.equal(result.exitCode, 1);
+  assert.ok(result.output.includes(`refusing to delete through a link: ${project}`));
+  for (const name of [...TRANSPORT, ...KEEP]) assert.equal(fs.existsSync(path.join(run, name)), true, name);
+});
+
 test('whole-project gentle prune visits every old run and leaves project folders', async (t) => {
   const root = fixture(t);
   const first = makeRun(root, 'alpha', '2026-07-01_090000_first');
