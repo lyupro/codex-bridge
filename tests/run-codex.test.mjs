@@ -285,11 +285,14 @@ test('all runner modes request the structured JSON event stream', () => {
  * A repository that physically contains the run folders, with homedir() pointed at the
  * fixture for as long as `body` runs. Git is cut off from the operator's own config too, so
  * the fixture answers for itself instead of for whatever ~/.gitconfig happens to exclude.
+ * The runs root override is lifted as well: these cases are about the location derived from
+ * homedir(), and the suite runner now always sets one (Plan_65 B12).
  */
 function withHomeRepo(body) {
   const home = makeTempTree('codex-home-');
-  const keys = ['HOME', 'USERPROFILE', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_SYSTEM'];
+  const keys = ['HOME', 'USERPROFILE', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_SYSTEM', 'CODEX_RUNS_ROOT'];
   const saved = keys.map((key) => [key, process.env[key]]);
+  delete process.env.CODEX_RUNS_ROOT;
   process.env.HOME = home;
   process.env.USERPROFILE = home;
   process.env.GIT_CONFIG_GLOBAL = path.join(home, 'no-such-gitconfig');

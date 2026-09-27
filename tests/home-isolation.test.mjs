@@ -11,11 +11,13 @@ const HOW = 'run the suite with `npm test`, which gives it throwaway roots of it
  * The real directory each variable would point at if the suite ran without isolation. Both are
  * proven: `~/.codex` collected a rules file on 2026-08-03, and `~/.lyupro/.codex-bridge` collected
  * a config, conventions and an obsolete-file fixture on 2026-08-11 — where the stray config then
- * blocked the seeded-file migration it was supposed to be testing.
+ * blocked the seeded-file migration it was supposed to be testing. The runs root is guarded before
+ * an incident (Plan_65 B12): the purge liveness checks must not read the operator's live runs.
  */
 const REAL_ROOTS = {
   CODEX_HOME: path.join(os.homedir(), '.codex'),
   CODEX_BRIDGE_HOME: path.join(os.homedir(), '.lyupro', '.codex-bridge'),
+  CODEX_RUNS_ROOT: path.join(os.homedir(), '.claude', 'codex-runs'),
 };
 
 test('every isolated root is declared with the real directory it stands in for', () => {
