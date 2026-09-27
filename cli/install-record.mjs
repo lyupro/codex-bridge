@@ -310,11 +310,22 @@ export async function writeInstallRecord(host, record, { homeHadImage } = {}) {
   await publishInstallRecord(host, next);
 }
 
+/**
+ * Reads a parsed record as format 2, migrating a format-1 one in memory with `host` as its only
+ * owner and an incomplete inventory (D6). Uninstall decides and records from this one view, so the
+ * dry run and the real run cannot migrate differently; an unknown format throws.
+ */
+export function asFormat2(parsed, host) {
+  return isFormat2(parsed) ? parsed : withOwner(parsed, host, normalizeInstallRecord(parsed));
+}
+
 /** Removes one host from the shared record so uninstall can decide what the inventory permits. */
 export async function removeInstallOwner(host) {
   const parsed = await readAt(installRecordPath(host));
-  if (!isFormat2(parsed)) return null;
-  const next = withoutOwner(parsed, host);
+  if (parsed === null) return null;
+  const record2 = asFormat2(parsed, host);
+  const next = withoutOwner(record2, host);
+  if (next === record2) return next;
   await publishInstallRecord(host, next);
   return next;
 }

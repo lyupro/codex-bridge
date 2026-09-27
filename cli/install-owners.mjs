@@ -92,6 +92,20 @@ export function ownerView(record2, host) {
   return view;
 }
 
+/** Decides whether the departing owner may remove the shared image using only inventory facts. */
+export function imageRemoval(record2, host) {
+  validateFormat2(record2);
+  const key = normalizeRepoPath(host.root);
+  const isOwner = Object.hasOwn(record2.owners, key);
+  const remaining = Object.keys(record2.owners).length - Number(isOwner);
+  if (remaining > 0) return { removeImage: false, reason: 'other-owners', remaining };
+  if (record2.legacy !== undefined || record2.inventory !== 'complete') {
+    return { removeImage: false, reason: 'incomplete-inventory' };
+  }
+  if (isOwner) return { removeImage: true };
+  return { removeImage: false, reason: 'incomplete-inventory' };
+}
+
 /** Removes one host from the shared inventory while preserving its image and inventory facts. */
 export function withoutOwner(record2, host) {
   validateFormat2(record2);

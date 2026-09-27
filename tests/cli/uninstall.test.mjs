@@ -173,7 +173,8 @@ test('uninstall accepts a legacy record without rules metadata', async (t) => {
   const rulesPath = legacy.rules.path;
   delete legacy.rules;
   await fs.writeFile(recordPath, `${JSON.stringify(legacy, null, 2)}\n`);
-  assert.equal((await uninstall({ host })).exitCode, 0);
+  // D6 keeps format-1 images because their complete owner inventory cannot be proven.
+  assert.equal((await uninstall({ host })).exitCode, 1);
   assert.equal(await fs.readFile(rulesPath, 'utf8'), await fs.readFile('src/rules/codex-bridge.rules', 'utf8'));
 });
 
@@ -227,4 +228,82 @@ test('uninstall without a record is nonzero and dry-run uninstall changes nothin
   assert.deepEqual((await fs.readdir(installed.host.brandRoot)).sort(), ['config.json', 'conventions.md']);
   await assert.rejects(() => fs.access(installed.host.agentsDir), { code: 'ENOENT' });
   await assert.rejects(() => fs.access(installed.host.commandsDir), { code: 'ENOENT' });
+});
+
+test('uninstall removes the shared image only after the last complete owner leaves', async (t) => {
+  const root = makeTempTree('bridge-shared-image-');
+  t.after(() => removeTempTree(root));
+  const sharedBrandRoot = path.join(root, 'shared-brand');
+  const codexHome = path.join(root, 'codex-home');
+  const first = resolveHost({
+    host: path.join(root, 'first-host'), codexHome, brandRoot: sharedBrandRoot,
+  });
+  const second = resolveHost({
+    host: path.join(root, 'second-host'), codexHome, brandRoot: sharedBrandRoot,
+  });
+  await install({ host: first });
+  await install({ host: second });
+  const recordPath = installRecordPath(first);
+  const rawRecord = JSON.parse(await fs.readFile(recordPath, 'utf8'));
+  assert.equal(rawRecord.inventory, 'complete');
+  assert.equal(Object.keys(rawRecord.owners).length, 2);
+  const imageFiles = (await readInstallRecord(first)).files.filter((file) => file.root === 'brand');
+  const beforeDryRun = await fs.readFile(recordPath);
+
+  const dryRun = await uninstall({ host: first, dryRun: true });
+  assert.equal(dryRun.exitCode, 0);
+  assert.match(dryRun.output, /Would leave the shared image in .* because 1 other owner remains\./);
+  assert.deepEqual(await fs.readFile(recordPath), beforeDryRun);
+
+  const firstResult = await uninstall({ host: first });
+  assert.equal(firstResult.exitCode, 0);
+  assert.match(firstResult.output, /Left the shared image in .* because 1 other owner remains\./);
+  assert.equal(await readInstallRecord(first), null);
+  assert.ok(await readInstallRecord(second));
+  for (const file of imageFiles) await fs.access(recordTarget(second, file));
+
+  assert.equal((await uninstall({ host: second })).exitCode, 0);
+  for (const file of imageFiles) {
+    await assert.rejects(() => fs.access(recordTarget(second, file)), { code: 'ENOENT' });
+  }
+  await assert.rejects(() => fs.access(recordPath), { code: 'ENOENT' });
+});
+
+test('format-1 uninstall keeps the image and an empty incomplete record for repeated removal', async (t) => {
+  const { host } = await fixture(t);
+  await install({ host });
+  const recordPath = installRecordPath(host);
+  await fs.writeFile(recordPath, `${JSON.stringify(await formatOneRecord(host), null, 2)}\n`);
+  const imageFiles = (await readInstallRecord(host)).files.filter((file) => file.root === 'brand');
+
+  const result = await uninstall({ host });
+  assert.equal(result.exitCode, 1);
+  assert.match(result.output, /Left the shared image in .* because the installation inventory is incomplete: other installations may use this home\./);
+  for (const file of imageFiles) await fs.access(recordTarget(host, file));
+  const firstRecordBytes = await fs.readFile(recordPath);
+  const migrated = JSON.parse(firstRecordBytes);
+  assert.equal(migrated.format, 2);
+  assert.deepEqual(migrated.owners, {});
+  assert.equal(migrated.inventory, 'incomplete');
+  assert.ok(migrated.legacy);
+
+  const repeated = await uninstall({ host });
+  assert.equal(repeated.exitCode, 1);
+  assert.match(repeated.output, /Left the shared image/);
+  assert.doesNotMatch(repeated.output, /not installed/);
+  assert.deepEqual(await fs.readFile(recordPath), firstRecordBytes);
+  for (const file of imageFiles) await fs.access(recordTarget(host, file));
+});
+
+test('format-1 dry-run keeps the shared image decision and record bytes', async (t) => {
+  const { host } = await fixture(t);
+  await install({ host });
+  const recordPath = installRecordPath(host);
+  await fs.writeFile(recordPath, `${JSON.stringify(await formatOneRecord(host), null, 2)}\n`);
+  const before = await fs.readFile(recordPath);
+
+  const dryRun = await uninstall({ host, dryRun: true });
+  assert.equal(dryRun.exitCode, 1);
+  assert.match(dryRun.output, /Would leave the shared image in .* because the installation inventory is incomplete: other installations may use this home\./);
+  assert.deepEqual(await fs.readFile(recordPath), before);
 });

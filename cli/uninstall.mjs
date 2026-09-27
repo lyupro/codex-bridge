@@ -8,6 +8,8 @@ import {
   readInstallRecord,
   recordTarget,
 } from './manifest.mjs';
+import { imageRemoval } from './install-owners.mjs';
+import { asFormat2, readInstallRecordFile, removeInstallOwner } from './install-record.mjs';
 import { removePermissionRules } from './permissions.mjs';
 import { hostContractPath } from './host-contract.mjs';
 import { brandStateDir } from '../src/home/lib/brand-home.mjs';
@@ -47,6 +49,22 @@ function displayFile(file) {
   return `${file.root}/${file.path}`;
 }
 
+// Plan_65 D6: uninstalling one host removed the shared image from under every other host of the
+// home. Only a record at the old per-host path (no home record at all) keeps the old behavior.
+function imageDecision(rawRecord, host) {
+  if (rawRecord === null) return { removeImage: true };
+  return imageRemoval(asFormat2(rawRecord, host), host);
+}
+
+function imageDispositionLine(host, decision, dryRun) {
+  if (decision.removeImage) return null;
+  const verb = dryRun ? 'Would leave' : 'Left';
+  if (decision.reason === 'other-owners') {
+    return `${verb} the shared image in ${host.brandRoot} because ${remainingOwnersText(decision.remaining)}.`;
+  }
+  return `${verb} the shared image in ${host.brandRoot} because the installation inventory is incomplete: other installations may use this home.`;
+}
+
 function hookRemovalSpec(host, hook) {
   const definition = definitionForRecordedHook(hook);
   const target = recordTarget(host, hook);
@@ -71,15 +89,20 @@ async function uninstallInRun({ host, dryRun = false } = {}) {
   }
   const permissionResult = await removePermissionRules(host.settingsPath, { dryRun });
   const permissionLine = permissionOutput(host, permissionResult.removed, dryRun);
+  const rawRecord = await readInstallRecordFile(host);
   const record = await readInstallRecord(host);
   const preservation = preservationText(host);
   if (!record) {
     return { exitCode: 1, output: `${permissionLine}\ncodex-bridge is not installed.\n${preservation}` };
   }
+  const decision = imageDecision(rawRecord, host);
+  const filesToRemove = record.files.filter((file) => decision.removeImage || file.root !== 'brand');
   const writer = recordHomeWriter(host, record.files);
 
   if (dryRun) {
-    const lines = [permissionLine, ...record.files.map((file) => `Would remove ${displayFile(file)}`)];
+    const lines = [permissionLine, ...filesToRemove.map((file) => `Would remove ${displayFile(file)}`)];
+    const imageLine = imageDispositionLine(host, decision, true);
+    if (imageLine) lines.push(imageLine);
     if (record.rules) {
       if (registryError) {
         lines.push(`Would leave ${record.rules.path} because the rules ownership registry is invalid; ownership is unknown.`);
@@ -104,9 +127,14 @@ async function uninstallInRun({ host, dryRun = false } = {}) {
       const definition = definitionForRecordedHook(hook);
       lines.push(`Would remove the ${hook.event} hook ${definition.name} for matcher ${definition.matcher}.`);
     }
-    lines.push('Would remove the installation record from the brand root.');
+    lines.push(decision.removeImage
+      ? 'Would remove the installation record from the brand root.'
+      : 'Would update the installation record to remove this host.');
     lines.push(preservation);
-    return { exitCode: 0, output: lines.join('\n') };
+    return {
+      exitCode: decision.reason === 'incomplete-inventory' ? 1 : 0,
+      output: lines.join('\n'),
+    };
   }
 
   for (const hook of record.hooks) {
@@ -142,23 +170,29 @@ async function uninstallInRun({ host, dryRun = false } = {}) {
       }
     }
   }
-  for (const file of record.files) {
+  for (const file of filesToRemove) {
     await removeRecordedFile(host, writer, file);
   }
   await removeEmpty(host.commandsDir);
-  try {
-    await writer.unlink('install-record', installRecordPath(host));
-  } catch (err) {
-    if (err.code !== 'ENOENT') throw err;
+  if (decision.removeImage) {
+    try {
+      await writer.unlink('install-record', installRecordPath(host));
+    } catch (err) {
+      if (err.code !== 'ENOENT') throw err;
+    }
+  } else {
+    await removeInstallOwner(host);
   }
   await removeOutside(writer, legacyInstallRecordPath(host));
   await removeEmpty(host.agentsDir);
   await removeEmptyLayout(host.legacyAgentsDir);
   await removeEmptyLayout(host.legacyCommandsDir);
-  await removeEmpty(host.brandRoot);
+  if (decision.removeImage) await removeEmpty(host.brandRoot);
+  const imageLine = imageDispositionLine(host, decision, false);
   return {
-    exitCode: 0,
-    output: ['Uninstalled codex-bridge.', permissionLine, ...rulesOutput, preservation].join('\n'),
+    exitCode: decision.reason === 'incomplete-inventory' ? 1 : 0,
+    output: ['Uninstalled codex-bridge.', permissionLine, ...rulesOutput, imageLine, preservation]
+      .filter(Boolean).join('\n'),
   };
 }
 

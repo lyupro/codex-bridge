@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { normalizeRepoPath } from '../../src/home/lib/runner/project-dir.mjs';
-import { isFormat2, ownerView, validateFormat2, withOwner, withoutOwner } from '../../cli/install-owners.mjs';
+import { imageRemoval, isFormat2, ownerView, validateFormat2, withOwner, withoutOwner } from '../../cli/install-owners.mjs';
 
 const brandFiles = [
   { root: 'brand', path: 'hooks/reply-guard.mjs' },
@@ -161,4 +161,31 @@ test('format-2 validation rejects unknown formats, invalid inventory, and mismat
   const [key] = Object.keys(mismatched.owners);
   mismatched.owners[key].root = '/repos/other/.claude';
   assert.throws(() => validateFormat2(mismatched), /normalize to its key/);
+});
+
+test('imageRemoval requires the departing host to be the last owner of a complete inventory', () => {
+  const firstHost = host('/repos/first/.claude');
+  const secondHost = host('/repos/second/.claude');
+  const complete = withOwner(null, firstHost, record('first'), { homeHadImage: false });
+  assert.deepEqual(imageRemoval(complete, firstHost), { removeImage: true });
+
+  const shared = withOwner(complete, secondHost, record('second'));
+  assert.deepEqual(imageRemoval(shared, firstHost), {
+    removeImage: false, reason: 'other-owners', remaining: 1,
+  });
+
+  const incomplete = withOwner(null, firstHost, record('first'), { homeHadImage: true });
+  assert.deepEqual(imageRemoval(incomplete, firstHost), {
+    removeImage: false, reason: 'incomplete-inventory',
+  });
+  const incompleteShared = withOwner(incomplete, secondHost, record('second'));
+  assert.deepEqual(imageRemoval(incompleteShared, firstHost), {
+    removeImage: false, reason: 'other-owners', remaining: 1,
+  });
+  assert.deepEqual(imageRemoval(withoutOwner(incompleteShared, firstHost), secondHost), {
+    removeImage: false, reason: 'incomplete-inventory',
+  });
+  assert.deepEqual(imageRemoval({ ...complete, legacy: record('legacy') }, firstHost), {
+    removeImage: false, reason: 'incomplete-inventory',
+  });
 });
