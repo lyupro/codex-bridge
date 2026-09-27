@@ -91,6 +91,17 @@ export function ownerView(record2, host) {
   if (owner.rules !== undefined) view.rules = owner.rules;
   return view;
 }
+
+/** Removes one host from the shared inventory while preserving its image and inventory facts. */
+export function withoutOwner(record2, host) {
+  validateFormat2(record2);
+  const key = normalizeRepoPath(host.root);
+  if (!Object.hasOwn(record2.owners, key)) return record2;
+  const owners = { ...record2.owners };
+  delete owners[key];
+  return validateFormat2({ ...record2, owners });
+}
+
 export function withOwner(existing, host, record1, options) {
   validateInstallRecord(record1);
   const key = normalizeRepoPath(host.root);
@@ -162,7 +173,9 @@ export function validateFormat2(parsed) {
     throw new Error('installation record inventory must be complete or incomplete');
   }
   if (!isObject(parsed.owners)) throw new Error('installation record owners must be an object');
-  if (Object.keys(parsed.owners).length === 0) throw new Error('installation record owners must not be empty');
+  if (Object.keys(parsed.owners).length === 0 && parsed.inventory !== 'incomplete') {
+    throw new Error('installation record with no owners must have an incomplete inventory');
+  }
   validatePartition(parsed.image, 'brand', 'image');
 
   for (const [key, owner] of Object.entries(parsed.owners)) {

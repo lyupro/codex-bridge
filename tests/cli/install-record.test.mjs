@@ -11,6 +11,7 @@ import {
   legacyInstallRecordPath,
   normalizeInstallRecord,
   readInstallRecord,
+  removeInstallOwner,
   readInstallRecordFile,
   recordTarget,
   writeInstallRecord,
@@ -175,6 +176,48 @@ test('two Claude hosts sharing one brand home retain their own record views', as
   assert.deepEqual((await fs.readdir(brandRoot)).filter((name) => name.endsWith('.tmp')), []);
 });
 
+test('a fresh image inventory stays complete as another host joins', async (t) => {
+  const root = makeTempTree('bridge-fresh-shared-record-');
+  t.after(() => removeTempTree(root));
+  const brandRoot = path.join(root, 'brand');
+  const first = resolveHost({ host: path.join(root, 'host-a'), brandRoot });
+  const second = resolveHost({ host: path.join(root, 'host-b'), brandRoot });
+
+  await writeInstallRecord(first, hostRecord('host-a'), { homeHadImage: false });
+  assert.equal((await readInstallRecordFile(first)).inventory, 'complete');
+  await fs.mkdir(path.join(brandRoot, 'lib'), { recursive: true });
+  await writeInstallRecord(second, hostRecord('host-b'));
+
+  const stored = await readInstallRecordFile(first);
+  assert.equal(stored.inventory, 'complete');
+  assert.equal(Object.keys(stored.owners).length, 2);
+});
+
+test('a pre-existing image without a record starts with incomplete inventory', async (t) => {
+  const host = await fixture(t);
+  await fs.mkdir(path.join(host.brandRoot, 'lib'), { recursive: true });
+  await writeInstallRecord(host, hostRecord('existing-image'), { homeHadImage: true });
+
+  assert.equal((await readInstallRecordFile(host)).inventory, 'incomplete');
+});
+
+test('removeInstallOwner preserves the other host view and publishes without a temp file', async (t) => {
+  const root = makeTempTree('bridge-remove-owner-');
+  t.after(() => removeTempTree(root));
+  const brandRoot = path.join(root, 'brand');
+  const first = resolveHost({ host: path.join(root, 'host-a'), brandRoot });
+  const second = resolveHost({ host: path.join(root, 'host-b'), brandRoot });
+
+  await writeInstallRecord(first, hostRecord('host-a'), { homeHadImage: false });
+  await writeInstallRecord(second, hostRecord('host-b'));
+
+  const removed = await removeInstallOwner(first);
+  assert.equal(Object.keys(removed.owners).length, 1);
+  assert.equal(Object.values(removed.owners)[0].root, second.root);
+  assert.equal(await readInstallRecord(first), null);
+  assert.deepEqual((await readInstallRecord(second)).hooks, hostRecord('host-b').hooks);
+  assert.deepEqual((await fs.readdir(brandRoot)).filter((name) => name.endsWith('.tmp')), []);
+});
 test('a format-1 record at the shared path is still read as a host view', async (t) => {
   const host = await fixture(t);
   const legacy = hostRecord('format-one');

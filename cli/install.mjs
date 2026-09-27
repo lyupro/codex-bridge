@@ -118,6 +118,7 @@ async function installInRun({
   hostVersion,
   observations,
 } = {}) {
+  const homeHadImage = await targetExists(path.join(host.brandRoot, 'lib'));
   // Validate the shared registry before writes; package removal on a broken registry left the host without its watchdog.
   await readRulesRegistry(host);
   const configuredRetentionLine = retentionLine(host);
@@ -275,7 +276,7 @@ async function installInRun({
     fingerprints,
     rules: { path: rule.target, fingerprint: await fileFingerprint(rule.target) },
     hooks,
-  });
+  }, { homeHadImage });
   return {
     exitCode: 0,
     output: contractOutput(

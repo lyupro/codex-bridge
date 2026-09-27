@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { normalizeRepoPath } from '../../src/home/lib/runner/project-dir.mjs';
-import { isFormat2, ownerView, validateFormat2, withOwner } from '../../cli/install-owners.mjs';
+import { isFormat2, ownerView, validateFormat2, withOwner, withoutOwner } from '../../cli/install-owners.mjs';
 
 const brandFiles = [
   { root: 'brand', path: 'hooks/reply-guard.mjs' },
@@ -101,6 +101,46 @@ test('owner keys use normalized repository paths and Windows case variants share
   }
 });
 
+test('withoutOwner removes exactly one owner and preserves shared record data', () => {
+  const firstHost = host('/repos/first/.claude');
+  const secondHost = host('/repos/second/.claude');
+  const initial = withOwner(null, firstHost, record(), { homeHadImage: false });
+  const shared = withOwner(initial, secondHost, record('second'));
+  const withLegacy = { ...shared, legacy: record('legacy') };
+  const next = withoutOwner(withLegacy, firstHost);
+  const secondKey = normalizeRepoPath(secondHost.root);
+
+  assert.deepEqual(Object.keys(next.owners), [secondKey]);
+  assert.deepEqual(next.owners[secondKey], withLegacy.owners[secondKey]);
+  assert.deepEqual(next.image, withLegacy.image);
+  assert.equal(next.inventory, withLegacy.inventory);
+  assert.deepEqual(next.legacy, withLegacy.legacy);
+  assert.equal(next.name, withLegacy.name);
+  assert.equal(next.mode, withLegacy.mode);
+});
+
+test('withoutOwner leaves an incomplete inventory with no owners valid', () => {
+  const target = host('/repos/only/.claude');
+  const initial = withOwner(null, target, record());
+  const next = withoutOwner(initial, target);
+
+  assert.deepEqual(next.owners, {});
+  assert.equal(next.inventory, 'incomplete');
+  assert.equal(validateFormat2(next), next);
+});
+
+test('format 2 rejects an empty owner set when inventory is complete', () => {
+  const initial = withOwner(null, host('/repos/only/.claude'), record(), { homeHadImage: false });
+  assert.throws(
+    () => validateFormat2({ ...initial, owners: {} }),
+    /no owners must have an incomplete inventory/,
+  );
+});
+
+test('withoutOwner returns the original record when the host is not an owner', () => {
+  const initial = withOwner(null, host('/repos/owner/.claude'), record());
+  assert.strictEqual(withoutOwner(initial, host('/repos/not-owner/.claude')), initial);
+});
 test('format-2 validation rejects unknown formats, invalid inventory, and mismatched owner roots', () => {
   const valid = withOwner(null, host('/repos/alpha/.claude'), record());
   assert.equal(isFormat2(valid), true);

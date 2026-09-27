@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { createHomeWriter } from '../src/home/lib/home-write.mjs';
 import { readJsonFile } from '../src/home/lib/json-file.mjs';
 import { HOOK_DEFINITIONS } from '../src/home/lib/hook-definitions.mjs';
-import { isFormat2, ownerView, validateFormat2, withOwner } from './install-owners.mjs';
+import { isFormat2, ownerView, validateFormat2, withOwner, withoutOwner } from './install-owners.mjs';
 
 /**
  * The record's own spelling of the field saying how the package was installed, and its one value.
@@ -287,6 +287,17 @@ export async function readInstallRecordFile(host) {
   return readAt(installRecordPath(host));
 }
 
+async function publishInstallRecord(host, next) {
+  const target = installRecordPath(host);
+  const writer = createHomeWriter({ root: host.brandRoot });
+  const temporary = `${target}.${randomUUID()}.tmp`;
+  writer.assertArtifact('install-record', target);
+  writer.assertArtifact('install-record', temporary);
+  await writer.mkdir('install-record', path.dirname(target), { recursive: true });
+  await writer.writeFile('install-record', temporary, `${JSON.stringify(next, null, 2)}\n`);
+  await writer.rename('install-record', temporary, target);
+}
+
 /**
  * Publishes the record whole through a temporary and a rename: a direct write left a half-written
  * record for every host sharing the home if the process died mid-write (advice A3, risk r3).
@@ -295,15 +306,17 @@ export async function readInstallRecordFile(host) {
  */
 export async function writeInstallRecord(host, record, { homeHadImage } = {}) {
   const normalized = normalizeInstallRecord(record);
-  const target = installRecordPath(host);
-  const writer = createHomeWriter({ root: host.brandRoot });
-  const next = withOwner(await readAt(target), host, normalized, { homeHadImage });
-  const temporary = `${target}.${randomUUID()}.tmp`;
-  writer.assertArtifact('install-record', target);
-  writer.assertArtifact('install-record', temporary);
-  await writer.mkdir('install-record', path.dirname(target), { recursive: true });
-  await writer.writeFile('install-record', temporary, `${JSON.stringify(next, null, 2)}\n`);
-  await writer.rename('install-record', temporary, target);
+  const next = withOwner(await readAt(installRecordPath(host)), host, normalized, { homeHadImage });
+  await publishInstallRecord(host, next);
+}
+
+/** Removes one host from the shared record so uninstall can decide what the inventory permits. */
+export async function removeInstallOwner(host) {
+  const parsed = await readAt(installRecordPath(host));
+  if (!isFormat2(parsed)) return null;
+  const next = withoutOwner(parsed, host);
+  await publishInstallRecord(host, next);
+  return next;
 }
 
 export function fingerprintFor(record, file) {
