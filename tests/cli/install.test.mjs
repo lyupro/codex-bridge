@@ -20,7 +20,7 @@ import { RULES_REGISTRY_NAME } from '../../cli/rules-owners.mjs';
 import { uninstall } from '../../cli/uninstall.mjs';
 import { update } from '../../cli/update.mjs';
 import { normalizeRepoPath } from '../../src/home/lib/runner/project-dir.mjs';
-import { allFiles, fixture } from './host-fixture.mjs';
+import { allFiles, fixture, formatOneRecord } from './host-fixture.mjs';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 
 async function backups(host) {
@@ -195,7 +195,7 @@ test('install upgrades a legacy record with host fingerprints', async (t) => {
   await install({ host });
   const recordPath = installRecordPath(host);
   const legacyPath = legacyInstallRecordPath(host);
-  const legacy = JSON.parse(await fs.readFile(recordPath, 'utf8'));
+  const legacy = await formatOneRecord(host);
   delete legacy.fingerprints;
   await fs.rm(recordPath);
   await fs.mkdir(path.dirname(legacyPath), { recursive: true });

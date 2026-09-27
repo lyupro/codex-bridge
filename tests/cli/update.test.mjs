@@ -19,6 +19,7 @@ import { targetMatches } from '../../cli/copy.mjs';
 import { update } from '../../cli/update.mjs';
 
 import { fixture, installOutdated, PACKAGE, packageFixture, ROOT, SOURCE } from './update-fixtures.mjs';
+import { formatOneRecord } from './host-fixture.mjs';
 
 test('update without an installation record refuses and recommends install', async (t) => {
   const { host } = await fixture(t);
@@ -243,7 +244,7 @@ test('a record without fingerprints treats differing files as modified and expla
   await install({ host });
   const changed = (await buildInstallPlan(host))[0];
   const recordPath = installRecordPath(host);
-  const legacy = JSON.parse(await fs.readFile(recordPath, 'utf8'));
+  const legacy = await formatOneRecord(host);
   delete legacy.fingerprints;
   await fs.writeFile(recordPath, `${JSON.stringify(legacy, null, 2)}\n`);
   await fs.writeFile(changed.target, 'legacy difference\n');
@@ -298,7 +299,7 @@ test('a record that claims a run artifact is refused, not obeyed', async (t) => 
   await fs.mkdir(path.dirname(artifact), { recursive: true });
   await fs.writeFile(artifact, 'keep\n');
   const recordPath = installRecordPath(host);
-  const record = JSON.parse(await fs.readFile(recordPath, 'utf8'));
+  const record = await formatOneRecord(host);
   record.files.push({ root: 'claude', path: 'codex-runs/run.json' });
   record.fingerprints.claude['codex-runs/run.json'] = await fileFingerprint(artifact);
   await fs.writeFile(recordPath, `${JSON.stringify(record, null, 2)}\n`);

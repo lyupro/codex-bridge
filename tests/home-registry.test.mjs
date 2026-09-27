@@ -68,7 +68,11 @@ test('install image paths only classify when supplied by the caller', () => {
 
 test('the lifecycle lock is declared under the install record artifact', () => {
   assert.deepEqual(classifyHomePath('.installed.json.lock'), { id: 'install-record', role: 'lock' });
-  assert.deepEqual(homeArtifact('install-record').sides, ['lock']);
+  assert.deepEqual(
+    classifyHomePath(sidePath('.installed.json', 'atomic-temporary')),
+    { id: 'install-record', role: 'atomic-temporary' },
+  );
+  assert.deepEqual(homeArtifact('install-record').sides, ['lock', 'atomic-temporary']);
 });
 
 test('dispatcher family and unsafe relative paths reject near misses', () => {

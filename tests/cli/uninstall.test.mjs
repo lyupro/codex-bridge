@@ -18,7 +18,7 @@ import {
 } from '../../cli/rules-owners.mjs';
 import { uninstall } from '../../cli/uninstall.mjs';
 import { normalizeRepoPath } from '../../src/home/lib/runner/project-dir.mjs';
-import { allFiles, fixture } from './host-fixture.mjs';
+import { allFiles, fixture, formatOneRecord } from './host-fixture.mjs';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 
 test('a missing registry is distinct from an empty owner list', () => {
@@ -169,7 +169,7 @@ test('uninstall accepts a legacy record without rules metadata', async (t) => {
   const { host } = await fixture(t);
   await install({ host });
   const recordPath = installRecordPath(host);
-  const legacy = JSON.parse(await fs.readFile(recordPath, 'utf8'));
+  const legacy = await formatOneRecord(host);
   const rulesPath = legacy.rules.path;
   delete legacy.rules;
   await fs.writeFile(recordPath, `${JSON.stringify(legacy, null, 2)}\n`);

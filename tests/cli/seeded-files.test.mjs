@@ -9,6 +9,7 @@ import { install } from '../../cli/install.mjs';
 import { uninstall } from '../../cli/uninstall.mjs';
 import { update } from '../../cli/update.mjs';
 import { installRecordPath, readInstallRecord, seedPlan } from '../../cli/manifest.mjs';
+import { formatOneRecord } from './host-fixture.mjs';
 
 async function fixture(t) {
   const root = makeTempTree('bridge-seed-');
@@ -81,7 +82,7 @@ test('a record from before seeding does not make update delete the config', asyn
   const [seed] = seedPlan(host);
   await fs.writeFile(seed.target, CONFIGURED);
   const recordPath = installRecordPath(host);
-  const legacy = JSON.parse(await fs.readFile(recordPath, 'utf8'));
+  const legacy = await formatOneRecord(host);
   const relative = path.relative(host.brandRoot, seed.target).split(path.sep).join('/');
   legacy.files.push({ root: 'brand', path: relative });
   legacy.fingerprints.brand[relative] = 'a'.repeat(64);

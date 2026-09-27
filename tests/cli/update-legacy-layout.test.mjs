@@ -8,6 +8,7 @@ import { resolveHost } from '../../cli/hosts.mjs';
 import { install } from '../../cli/install.mjs';
 import { update } from '../../cli/update.mjs';
 import { installRecordPath, legacyInstallRecordPath } from '../../cli/manifest.mjs';
+import { formatOneRecord } from './host-fixture.mjs';
 
 async function fixture(t) {
   const root = makeTempTree('bridge-legacy-');
@@ -68,7 +69,7 @@ test('the dry run names the registrations it would take away', async (t) => {
   const host = await fixture(t);
   await install({ host });
   const recordPath = installRecordPath(host);
-  const record = JSON.parse(await fs.readFile(recordPath, 'utf8'));
+  const record = await formatOneRecord(host);
   // A hook entry is only valid when the record's file list names the same path, so both move.
   const moved = new Map(record.hooks.map((hook) => [
     `${hook.root}:${hook.path}`,

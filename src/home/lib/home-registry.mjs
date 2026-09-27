@@ -34,7 +34,7 @@ const entries = [
     removal: 'install-owned',
     consequence: 'The installation record is lost and uninstall can no longer identify installed files.',
     primary: ['.installed.json'],
-    sides: ['lock'],
+    sides: ['lock', 'atomic-temporary'],
   },
   {
     id: 'config',

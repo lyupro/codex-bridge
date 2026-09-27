@@ -1,8 +1,10 @@
 /** Reads, validates, and writes the installation record shared by installer commands. */
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { createHomeWriter } from '../src/home/lib/home-write.mjs';
 import { readJsonFile } from '../src/home/lib/json-file.mjs';
 import { HOOK_DEFINITIONS } from '../src/home/lib/hook-definitions.mjs';
+import { isFormat2, ownerView, validateFormat2, withOwner } from './install-owners.mjs';
 
 /**
  * The record's own spelling of the field saying how the package was installed, and its one value.
@@ -265,19 +267,43 @@ export function legacyInstallRecordPath(host) {
 }
 
 export async function readInstallRecord(host) {
-  const parsed = await readAt(installRecordPath(host));
-  const legacy = parsed === null ? await readAt(legacyInstallRecordPath(host)) : null;
-  if (parsed === null && legacy === null) return null;
-  return withoutSeededFiles(host, normalizeInstallRecord(parsed ?? legacy));
+  const parsed = await readInstallRecordFile(host);
+  if (parsed !== null) {
+    if (isFormat2(parsed)) {
+      validateFormat2(parsed);
+      const owned = ownerView(parsed, host);
+      const view = owned === null
+        ? (parsed.legacy === undefined ? null : normalizeInstallRecord(parsed.legacy))
+        : owned;
+      return view === null ? null : withoutSeededFiles(host, normalizeInstallRecord(view));
+    }
+    return withoutSeededFiles(host, normalizeInstallRecord(parsed));
+  }
+  const legacy = await readAt(legacyInstallRecordPath(host));
+  return legacy === null ? null : withoutSeededFiles(host, normalizeInstallRecord(legacy));
 }
 
-export async function writeInstallRecord(host, record) {
+export async function readInstallRecordFile(host) {
+  return readAt(installRecordPath(host));
+}
+
+/**
+ * Publishes the record whole through a temporary and a rename: a direct write left a half-written
+ * record for every host sharing the home if the process died mid-write (advice A3, risk r3).
+ * `homeHadImage: false` is the caller's proof that no earlier installation used this home; without
+ * it a new record starts with an incomplete inventory (D6).
+ */
+export async function writeInstallRecord(host, record, { homeHadImage } = {}) {
   const normalized = normalizeInstallRecord(record);
   const target = installRecordPath(host);
   const writer = createHomeWriter({ root: host.brandRoot });
+  const next = withOwner(await readAt(target), host, normalized, { homeHadImage });
+  const temporary = `${target}.${randomUUID()}.tmp`;
   writer.assertArtifact('install-record', target);
+  writer.assertArtifact('install-record', temporary);
   await writer.mkdir('install-record', path.dirname(target), { recursive: true });
-  await writer.writeFile('install-record', target, `${JSON.stringify(normalized, null, 2)}\n`);
+  await writer.writeFile('install-record', temporary, `${JSON.stringify(next, null, 2)}\n`);
+  await writer.rename('install-record', temporary, target);
 }
 
 export function fingerprintFor(record, file) {

@@ -11,6 +11,7 @@ import {
   legacyInstallRecordPath,
   normalizeInstallRecord,
   readInstallRecord,
+  readInstallRecordFile,
   recordTarget,
   writeInstallRecord,
 } from '../../cli/install-record.mjs';
@@ -62,7 +63,12 @@ test('write and read keep both installation roots and nested fingerprints', asyn
 
   assert.equal(installRecordPath(host), path.join(host.brandRoot, INSTALL_RECORD_NAME));
   await fs.access(installRecordPath(host));
-  assert.deepEqual(await readInstallRecord(host), normalizeInstallRecord(record()));
+  const expected = normalizeInstallRecord(record());
+  expected.files = [
+    ...expected.files.filter((file) => file.root === 'brand'),
+    ...expected.files.filter((file) => file.root === 'claude'),
+  ];
+  assert.deepEqual(await readInstallRecord(host), expected);
   assert.equal(recordTarget(host, files[0]), path.join(host.root, files[0].path));
   assert.equal(recordTarget(host, files[1]), path.join(host.brandRoot, files[1].path));
   await assert.rejects(() => fs.access(legacyInstallRecordPath(host)), { code: 'ENOENT' });
@@ -114,6 +120,99 @@ test('read migrates an old single-root record and singular hook to normalized en
     brandInstallRecordPath: path.join(host.brandRoot, 'missing-record.json'),
   });
   assert.equal(fallback.version, '0.0.9');
+});
+
+function hostRecord(label) {
+  const ownerPath = 'agents/' + label + '/reply-guard.mjs';
+  const base = record();
+  return record({
+    files: [
+      { root: 'claude', path: ownerPath },
+      ...base.files.filter((file) => file.root === 'brand'),
+    ],
+    fingerprints: {
+      claude: { [ownerPath]: 'd'.repeat(64) },
+      brand: base.fingerprints.brand,
+    },
+    hooks: [{
+      event: 'SubagentStop',
+      root: 'claude',
+      path: ownerPath,
+      command: 'codex-bridge hook reply-guard',
+    }],
+  });
+}
+
+test('two Claude hosts sharing one brand home retain their own record views', async (t) => {
+  const root = makeTempTree('bridge-shared-record-');
+  t.after(() => removeTempTree(root));
+  const brandRoot = path.join(root, 'brand');
+  const first = resolveHost({
+    host: path.join(root, 'host-a'),
+    codexHome: path.join(root, 'codex-home'),
+    brandRoot,
+  });
+  const second = resolveHost({
+    host: path.join(root, 'host-b'),
+    codexHome: path.join(root, 'codex-home'),
+    brandRoot,
+  });
+
+  await writeInstallRecord(first, hostRecord('host-a'));
+  await writeInstallRecord(second, hostRecord('host-b'));
+
+  const stored = await readInstallRecordFile(first);
+  assert.equal(stored.format, 2);
+  assert.equal(Object.keys(stored.owners).length, 2);
+  const firstView = await readInstallRecord(first);
+  const secondView = await readInstallRecord(second);
+  assert.deepEqual(firstView.hooks, hostRecord('host-a').hooks);
+  assert.deepEqual(secondView.hooks, hostRecord('host-b').hooks);
+  assert.equal(firstView.files.at(-1).path, 'agents/host-a/reply-guard.mjs');
+  assert.equal(secondView.files.at(-1).path, 'agents/host-b/reply-guard.mjs');
+  assert.deepEqual(firstView.files.map((file) => file.root), ['brand', 'brand', 'claude']);
+  assert.deepEqual(secondView.files.map((file) => file.root), ['brand', 'brand', 'claude']);
+  assert.deepEqual((await fs.readdir(brandRoot)).filter((name) => name.endsWith('.tmp')), []);
+});
+
+test('a format-1 record at the shared path is still read as a host view', async (t) => {
+  const host = await fixture(t);
+  const legacy = hostRecord('format-one');
+  await fs.mkdir(path.dirname(installRecordPath(host)), { recursive: true });
+  await fs.writeFile(installRecordPath(host), JSON.stringify(legacy, null, 2) + '\n');
+
+  assert.deepEqual(await readInstallRecord(host), normalizeInstallRecord(legacy));
+});
+
+test('a format-2 non-owner can still read the migrated format-1 view', async (t) => {
+  const root = makeTempTree('bridge-record-fallback-');
+  t.after(() => removeTempTree(root));
+  const brandRoot = path.join(root, 'brand');
+  const first = resolveHost({ host: path.join(root, 'host-a'), brandRoot });
+  const second = resolveHost({ host: path.join(root, 'host-b'), brandRoot });
+  const legacy = hostRecord('legacy-owner');
+  await fs.mkdir(path.dirname(installRecordPath(first)), { recursive: true });
+  await fs.writeFile(installRecordPath(first), JSON.stringify(legacy, null, 2) + '\n');
+
+  await writeInstallRecord(second, hostRecord('new-owner'));
+
+  const legacyView = await readInstallRecord(first);
+  assert.deepEqual(legacyView.hooks, legacy.hooks);
+  assert.equal(legacyView.files.find((file) => file.root === 'claude').path, 'agents/legacy-owner/reply-guard.mjs');
+});
+
+test('an adapter refusal leaves the existing install record intact', async (t) => {
+  const host = await fixture(t);
+  await writeInstallRecord(host, record());
+  const target = installRecordPath(host);
+  const before = await fs.readFile(target, 'utf8');
+  const wrongLayout = {
+    ...host,
+    brandInstallRecordPath: path.join(host.brandRoot, 'not-declared', 'record.json'),
+  };
+
+  await assert.rejects(() => writeInstallRecord(wrongLayout, record()), { code: 'EHOMEREGISTRY' });
+  assert.equal(await fs.readFile(target, 'utf8'), before);
 });
 
 test('record validation refuses codex-runs entries before any migration can remove them', async () => {

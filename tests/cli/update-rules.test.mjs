@@ -10,6 +10,7 @@ import { install } from '../../cli/install.mjs';
 import { fileFingerprint, installRecordPath, readInstallRecord, rulesPlan } from '../../cli/manifest.mjs';
 import { targetMatches } from '../../cli/copy.mjs';
 import { update } from '../../cli/update.mjs';
+import { formatOneRecord } from './host-fixture.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..', '..');
@@ -82,7 +83,7 @@ test('a legacy record without rules adds and records the current rules', async (
   await install({ host });
   const rule = rulesPlan(host);
   const recordPath = installRecordPath(host);
-  const legacy = JSON.parse(await fs.readFile(recordPath, 'utf8'));
+  const legacy = await formatOneRecord(host);
   delete legacy.rules;
   await fs.writeFile(recordPath, `${JSON.stringify(legacy, null, 2)}\n`);
   await fs.writeFile(rule.target, 'unrecorded legacy rules\n');
