@@ -73,6 +73,22 @@ test('accepts both phases, leaves unused options alone and does not mutate input
   assert.equal(fs.readFileSync(path.join(repoRoot, 'src/entry.mjs'), 'utf8'), files['src/entry.mjs']);
 });
 
+test('Plan_68 D6 rejects C0 and lone-surrogate advisor text by field', () => {
+  const value = input();
+  value.result.recommendation.text = 'Broken\u0000 recommendation';
+  value.result.why[0] = 'Broken\uD800 explanation';
+  const verdict = judgeAdvice(value);
+  assert.equal(verdict.ok, false);
+  assert.ok(verdict.reasons.some((reason) => reason.includes('recommendation.text') && reason.includes('U+0000')));
+  assert.ok(verdict.reasons.some((reason) => reason.includes('why[0]') && reason.includes('U+D800')));
+});
+
+test('Plan_68 D6 allows tab, LF, and CR in multiline advisor text', () => {
+  const value = input();
+  value.result.recommendation.text = 'A recommendation\twith a line break\nand another line\r\n';
+  passes(value);
+});
+
 // D3 is one definition over the whole answer, not a list of prose fields that new fields miss.
 for (const [field, make, change] of [
   ['question_defect', input, (result) => { result.question_defect = 'The question ignores src/entry.mjs:99.'; }],

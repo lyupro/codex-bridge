@@ -169,6 +169,22 @@ function checkCitations({ phase, result, task, repoRoot, scopeResult }, reasons)
   }
 }
 
+// Plan_68 D6: on 2026-09-27 an advise answer cut by the schema ended in U+0000 and passed as OK.
+// This is integrity, not completeness: a cut that ends on a whole character is not detectable here,
+// which is why the cause — the hidden length cap — was removed from the schema instead.
+const CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/;
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+const codePoint = (char) => `U+${char.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0')}`;
+
+function integrityProblems(result, reasons) {
+  for (const { field, value } of strings(result)) {
+    const control = value.match(CONTROL)?.[0];
+    const surrogate = value.match(LONE_SURROGATE)?.[0];
+    if (control) reasons.push(`integrity ${field}: remove control character ${codePoint(control)}.`);
+    else if (surrogate) reasons.push(`integrity ${field}: remove lone surrogate ${codePoint(surrogate)}.`);
+  }
+}
+
 export function judgeAdvice({ phase, result, task, repoRoot, commandsRun, language, scopeResult }) {
   if (phase !== 'scope' && phase !== 'advise') throw new RangeError('phase must be "scope" or "advise".');
   if (!Number.isInteger(commandsRun) || commandsRun < 0) {
@@ -180,6 +196,7 @@ export function judgeAdvice({ phase, result, task, repoRoot, commandsRun, langua
     throw new TypeError('result and a parsed advisor task are required.');
   }
   const reasons = [];
+  integrityProblems(result, reasons);
   if (commandsRun === 0) reasons.push('D4 commandsRun 0: inspect repository evidence before answering.');
   if (phase === 'scope') {
     if (!result.taken_on_trust.length) {

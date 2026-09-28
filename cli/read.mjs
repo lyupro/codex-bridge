@@ -1,12 +1,13 @@
 /** Renders a run's structured Codex transport as a readable event-by-event report. */
 import { readEvents } from '../src/home/lib/meta/events.mjs';
+import { safeSlice } from '../src/home/lib/meta/paths.mjs';
 import { runsRoot } from '../src/home/lib/runner/runs-root.mjs';
 import { resolveRunFolder } from './run-lookup.mjs';
 
 const result = (exitCode, output) => ({ exitCode, output });
 const record = (value) => value && typeof value === 'object' && !Array.isArray(value);
 
-const inline = (value, max = 300) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
+const inline = (value, max = 300) => safeSlice(String(value ?? '').replace(/\s+/g, ' ').trim(), max);
 
 function compactJson(value, max = 300) {
   let text;

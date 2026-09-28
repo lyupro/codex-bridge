@@ -5,6 +5,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { safeSlice } from './paths.mjs';
 
 /**
  * Quota exhaustion, and nothing else that merely says "limit". A bare `limit` also appears in
@@ -16,7 +17,7 @@ const LIMIT_RE = /rate[\s_-]*limit|usage[\s_-]*limit|quota|too many requests|\b4
 const record = (value) => value && typeof value === 'object' && !Array.isArray(value);
 
 const compact = (value, max = 300) =>
-  String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
+  safeSlice(String(value ?? '').replace(/\s+/g, ' ').trim(), max);
 
 /**
  * A broken final line is expected when the runner is stopped while Codex is writing.

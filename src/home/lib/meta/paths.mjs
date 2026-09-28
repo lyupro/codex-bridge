@@ -9,13 +9,23 @@
 import fs from 'node:fs';
 import { readJsonFileSync } from '../json-file.mjs';
 
+/**
+ * `slice` counts UTF-16 units and can leave half of an emoji or a rare CJK character at the cut;
+ * a lone surrogate in a reply is the same kind of broken text Plan_68 D6 refuses from the model.
+ */
+export const safeSlice = (value, max) => {
+  const text = String(value ?? '').toWellFormed();
+  const result = text.slice(0, max);
+  return result.isWellFormed() ? result : result.slice(0, -1);
+};
+
 /** One line, no newlines, bounded length — a five-line reply must stay five lines. */
 export const line = (value, max = 200) => {
   const text = String(value ?? '').replace(/\s+/g, ' ').trim();
   if (text.length <= max) return text;
 
   const ellipsis = '...';
-  if (max <= ellipsis.length) return text.slice(0, Math.max(0, max));
+  if (max <= ellipsis.length) return safeSlice(text, Math.max(0, max));
 
   const contentLimit = max - ellipsis.length;
   const boundary = text.lastIndexOf(' ', contentLimit);
@@ -24,11 +34,11 @@ export const line = (value, max = 200) => {
   // where a word ended. Dropping a trailing number here as well cost `All 298 12345678 rest`
   // its 298 — a number that fitted whole — because the digit test compared the limit rather
   // than the point the text was actually cut at.
-  if (boundary > 0) return `${text.slice(0, boundary)}${ellipsis}`;
+  if (boundary > 0) return `${safeSlice(text, boundary)}${ellipsis}`;
 
   // No space to retreat to: the limit lands inside a single long word. Only here can the cut
   // land mid-number, so only here is a partial number dropped.
-  return `${text.slice(0, contentLimit).replace(/\d+$/, '')}${ellipsis}`;
+  return `${safeSlice(text, contentLimit).replace(/\d+$/, '')}${ellipsis}`;
 };
 
 export const readText = (file) => {

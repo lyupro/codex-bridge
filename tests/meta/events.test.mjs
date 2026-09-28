@@ -60,6 +60,18 @@ test('exposes the last model content error and falls back to item text', () => {
   assert.equal(readEvents(dir).content_error, 'last complaint');
 });
 
+test('Plan_68 D6 keeps compact emoji and no-space CJK error cuts well-formed', () => {
+  for (const message of [`${'x'.repeat(299)}😀${'😀'.repeat(4)}`, '漢'.repeat(320)]) {
+    const dir = makeRun({ events: [
+      { type: 'turn.started' },
+      { type: 'item.completed', item: { type: 'error', message } },
+    ] });
+    const result = readEvents(dir).content_error;
+    assert.ok(result.isWellFormed());
+    assert.ok(result.length <= 300);
+  }
+});
+
 // codex-cli 0.146.0 reports its own deprecated-config warning as an item error before the turn
 // opens. Reading it as the model's complaint made "`[features].codex_hooks` is deprecated" the
 // stated reason a run failed — the verdict naming something other than what happened.

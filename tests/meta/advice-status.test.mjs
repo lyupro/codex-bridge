@@ -66,6 +66,21 @@ test('advise can cite a path requested by phase 1', () => {
   assert.equal(adviceGap(dir, result, events()), null);
 });
 
+test('Plan_68 D6 keeps contractReason cuts well-formed for emoji and no-space CJK', () => {
+  const tree = fixture();
+  const dir = runFolder(tree, 'advise', 'advise', { scope: { run: 'scope', ...validScope() } });
+  const reasonPrefix = 'advice contract broken (1): D5 rejected[0].option_id "';
+  for (const character of ['😀', '漢']) {
+    const fillerLength = 196 - reasonPrefix.length;
+    const result = validAdvice();
+    result.rejected = [{ option_id: `${'x'.repeat(fillerLength)}${character}${character.repeat(10)}`, reason: 'Not applicable.' }];
+    const message = adviceGap(dir, result, events());
+    assert.ok(message.isWellFormed());
+    assert.ok(message.length <= 200);
+    assert.ok(message.endsWith('...'));
+  }
+});
+
 // Plan_59 D22: the judge reads only the advise run's own snapshot; the scope folder is never created.
 test('advise passes with no scope run folder on disk', () => {
   const tree = fixture();

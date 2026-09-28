@@ -62,6 +62,20 @@ test('read renders structural service events on one line', (t) => {
   assert.match(result.output, /^item\.started[^\r\n]*Item: agent_message$/m);
 });
 
+test('Plan_68 D6 keeps inline emoji and no-space CJK cuts well-formed', (t) => {
+  for (const text of [`${'x'.repeat(299)}😀${'😀'.repeat(4)}`, '漢'.repeat(320)]) {
+    const data = fixture(t);
+    const dir = runDir(data);
+    writeEvents(dir, `${JSON.stringify({
+      type: 'item.completed', item: { type: 'future_item', text },
+    })}\n`);
+
+    const result = read({ run: path.basename(dir), cwd: data.project, runsRootPath: data.runsRoot });
+    assert.equal(result.exitCode, 0);
+    assert.ok(result.output.isWellFormed());
+    assert.ok(result.output.includes(text.slice(0, 290)));
+  }
+});
 test('read keeps an unknown event type with its full compact JSON tail', (t) => {
   const data = fixture(t);
   const dir = runDir(data);

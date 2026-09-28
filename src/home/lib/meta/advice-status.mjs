@@ -3,11 +3,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { DEFAULTS } from '../run-config.mjs';
 import { judgeAdvice } from './advice-verdict.mjs';
-import { readJson } from './paths.mjs';
+import { readJson, safeSlice } from './paths.mjs';
 
 function contractReason(reasons) {
   const message = `advice contract broken (${reasons.length}): ${reasons.slice(0, 2).join('; ')}`;
-  return message.length <= 200 ? message : `${message.slice(0, 197)}...`;
+  return message.length <= 200 ? message : `${safeSlice(message, 197)}...`;
 }
 
 export function adviceGap(runDir, result, eventData) {

@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { makeTempTree } from '../temp-tree.mjs';
-import { globToRegExp, expandDeclared, line, readJson } from '../../src/home/lib/meta/paths.mjs';
+import { globToRegExp, expandDeclared, line, readJson, safeSlice } from '../../src/home/lib/meta/paths.mjs';
 
 // --- line -------------------------------------------------------------------------
 
@@ -42,6 +42,16 @@ test('line handles long words, no spaces, tiny limits, and empty values', () => 
   assert.equal(line('', 10), '');
   assert.equal(line(null, 10), '');
   assert.equal(line(undefined, 10), '');
+});
+
+test('Plan_68 D6 keeps odd-limit emoji and no-space CJK line cuts well-formed', () => {
+  for (const value of [`x${'😀'.repeat(8)}`, '漢'.repeat(12)]) {
+    const result = line(value, 9);
+    assert.ok(result.isWellFormed());
+    assert.ok(result.length <= 9);
+  }
+  assert.ok(line('😀x', 1).isWellFormed());
+  assert.ok(safeSlice(`x${'😀'.repeat(3)}`, 2).isWellFormed());
 });
 
 // --- readJson ---------------------------------------------------------------------
