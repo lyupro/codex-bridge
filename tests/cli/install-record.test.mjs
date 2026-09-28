@@ -253,7 +253,7 @@ test('a format-1 record at the shared path is still read as a host view', async 
   assert.deepEqual(await readInstallRecord(host), normalizeInstallRecord(legacy));
 });
 
-test('a format-2 non-owner can still read the migrated format-1 view', async (t) => {
+test('a format-2 non-owner has no view even when the record keeps legacy', async (t) => {
   const root = makeTempTree('bridge-record-fallback-');
   t.after(() => removeTempTree(root));
   const brandRoot = path.join(root, 'brand');
@@ -265,9 +265,7 @@ test('a format-2 non-owner can still read the migrated format-1 view', async (t)
 
   await writeInstallRecord(second, hostRecord('new-owner'));
 
-  const legacyView = await readInstallRecord(first);
-  assert.deepEqual(legacyView.hooks, legacy.hooks);
-  assert.equal(legacyView.files.find((file) => file.root === 'claude').path, 'agents/legacy-owner/reply-guard.mjs');
+  assert.equal(await readInstallRecord(first), null);
 });
 
 test('an adapter refusal leaves the existing install record intact', async (t) => {

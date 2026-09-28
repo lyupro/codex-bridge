@@ -272,16 +272,18 @@ export function legacyInstallRecordPath(host) {
   return path.join(host.legacyAgentsDir, LEGACY_INSTALL_RECORD_NAME);
 }
 
+/**
+ * Reads the view owned by this host. Plan_65 D10 item 5: format-2 legacy only marks an
+ * incomplete inventory; it is never another host's view, enrollment template, fingerprint base,
+ * or source of createdGroup. Format-1 and older per-host records remain readable for migration.
+ */
 export async function readInstallRecord(host) {
   const parsed = await readInstallRecordFile(host);
   if (parsed !== null) {
     if (isFormat2(parsed)) {
       validateFormat2(parsed);
       const owned = ownerView(parsed, host);
-      const view = owned === null
-        ? (parsed.legacy === undefined ? null : normalizeInstallRecord(parsed.legacy))
-        : owned;
-      return view === null ? null : withoutSeededFiles(host, normalizeInstallRecord(view));
+      return owned === null ? null : withoutSeededFiles(host, normalizeInstallRecord(owned));
     }
     return withoutSeededFiles(host, normalizeInstallRecord(parsed));
   }

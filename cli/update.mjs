@@ -30,6 +30,7 @@ import { addRulesOwner, readRulesRegistry } from './rules-owners.mjs';
 import { removeEmptyLayout } from './remove-layout.mjs';
 import { recordHomeWriter, removeOutside, removeRecordedFile } from './record-removal.mjs';
 import { askTransition, detectTransition, transitionOutcome } from './inventory-transition.mjs';
+import { hasPackageMarks, inspectHost } from './host-inspection.mjs';
 
 const LEGACY_GUARD_LOG_FILES = [
   'codex-reply-guard.blocked.json',
@@ -171,7 +172,29 @@ async function updateInRun({
   await readRulesRegistry(host);
   const record = await readInstallRecord(host);
   if (!record) {
-    return { exitCode: 1, output: 'codex-bridge is not installed. Run codex-bridge install first.' };
+    // Plan_65 D10 item 6: a host that carries our files or hooks but has no row (legacy is nobody's view
+    // since H5) is recorded by what is actually there. Install owns that — conflicts for edited files, the
+    // transition question — and update has changed nothing yet, so the question still precedes any change.
+    const inspection = await inspectHost(host);
+    if (!hasPackageMarks(inspection)) {
+      return { exitCode: 1, output: 'codex-bridge is not installed. Run codex-bridge install first.' };
+    }
+    const installed = await install({
+      host,
+      dryRun,
+      force,
+      packageRoot,
+      env,
+      lifecycleTicket,
+      isTTY,
+      prompt,
+      stdin,
+      promptOutput,
+    });
+    return {
+      exitCode: installed.exitCode,
+      output: `No installation record names ${host.root}; recording what is installed.\n${installed.output}`,
+    };
   }
   const writer = recordHomeWriter(host, record.files);
 
