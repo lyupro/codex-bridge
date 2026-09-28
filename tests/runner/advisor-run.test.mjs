@@ -238,7 +238,7 @@ test('both prompt phases preserve the read boundary, independent evidence and la
 
 test('scope predicts before reading and advise uses each required decision lens', () => {
   const scope = INSTRUCTIONS['codex-advisor']({ phase: 'scope' });
-  for (const text of ['BEFORE reading in depth', '3-5 predicted_risks with ids r1..r5',
+  for (const text of ['BEFORE reading in depth', 'predicted_risks with ids r1..r5', '- predicted_risks: 3-5 items',
     'first, then read', 'sufficient', 'missing_paths (concrete repository paths',
     'taken_on_trust', 'never empty']) assert.ok(scope.includes(text), text);
   const advise = INSTRUCTIONS['codex-advisor']({ phase: 'advise' });

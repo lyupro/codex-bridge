@@ -4,9 +4,35 @@
  * These are data, not comments: the wording IS the contract a run is graded against, and
  * every rule in it was added by an incident. Keyed by agent name, next to the matching
  * schema in schemas.mjs — one lookup picks both halves of an agent's strategy.
+ * Plan_68 D6 renders array bounds from schemas after recommendation truncations on 2026-09-27
+ * (`…cli/install.mjs:` + U+0000) and 2026-09-28 (`…(docs/plans/Plan_` + `恋`).
  */
 import { DEFAULTS } from '../run-config.mjs';
 import { RUN_ENV } from './run-env.mjs';
+import { advisorSchema, schemaFor } from './schemas.mjs';
+
+function boundedArrayRules(schema, path = '') {
+  if (schema.type === 'object') {
+    return Object.entries(schema.properties ?? {}).flatMap(([name, child]) =>
+      boundedArrayRules(child, path ? `${path}.${name}` : name));
+  }
+  if (schema.type !== 'array') return [];
+
+  const { minItems, maxItems } = schema;
+  const quantity = minItems !== undefined && maxItems !== undefined
+    ? `${minItems}-${maxItems}`
+    : minItems !== undefined ? `at least ${minItems}` : `at most ${maxItems}`;
+  const noun = (maxItems ?? minItems) === 1 ? 'item' : 'items';
+  const ownRule = minItems === undefined && maxItems === undefined
+    ? [] : [`- ${path}: ${quantity} ${noun}`];
+  return [...ownRule, ...boundedArrayRules(schema.items, `${path}[]`)];
+}
+
+function renderArrayBounds(schema) {
+  const rules = boundedArrayRules(schema);
+  return rules.length ? `Output-schema array bounds:\n${rules.join('\n')}` : '';
+}
+
 const BODIES = {
   // Plan_59 D3-D5/D7/D10: independent design advice needs explicit lenses and a risk ledger.
   'codex-advisor': (opts) => {
@@ -27,12 +53,13 @@ Rules for both phases:
   an opinion, not advice. Agreeing is fine when your own checks support it.
 ${opts.phase === 'scope' ? `
 Scope phase:
-- BEFORE reading in depth, name 3-5 predicted_risks with ids r1..r5: where this design most likely
+- BEFORE reading in depth, name predicted_risks with ids r1..r5: where this design most likely
   breaks. Record those predictions first, then read; do not replace them with hindsight.
 - Answer sufficient, missing_paths (concrete repository paths you still need), and taken_on_trust
   (facts accepted from the task without checking, never empty), together with predicted_risks.
 ` : `
 Advise phase:
+- Give a concise, complete recommendation that can stand on its own.
 - Settle every predicted risk listed under \`## Scope phase results\` in risk_outcomes with its
   risk_id, an outcome of confirmed or refuted, a \`note\` explaining it, and evidence.
 - Give ONE recommendation by task option_id, or none-of-these with a described unlisted_option.
@@ -142,5 +169,11 @@ const languageRule = () =>
   `${RUN_ENV?.answerLanguage || DEFAULTS.answerLanguage}, whatever language the task is written in.`;
 
 export const INSTRUCTIONS = Object.fromEntries(
-  Object.entries(BODIES).map(([agent, body]) => [agent, (...args) => `${body(...args)}\n${languageRule()}`]),
+  Object.entries(BODIES).map(([agent, body]) => [agent, (...args) => {
+    const opts = args[0] ?? {};
+    const instructions = body(...args);
+    const schema = agent === 'codex-advisor' ? advisorSchema(opts.phase) : schemaFor(agent);
+    const bounds = renderArrayBounds(schema);
+    return `${instructions}\n${languageRule()}${bounds ? `\n\n${bounds}` : ''}`;
+  }]),
 );

@@ -1,7 +1,12 @@
-/** Guards the advisor answer schemas handed to Codex as --output-schema (Plan_59 D3-D5, D10). */
+/**
+ * Guards the advisor answer schemas handed to Codex as --output-schema (Plan_59 D3-D5, D10).
+ * Plan_68 D6: Codex silently truncated recommendations at a cap the prompt never named, on
+ * 2026-09-27 (`…cli/install.mjs:` + U+0000) and 2026-09-28 (`…(docs/plans/Plan_` + `恋`).
+ */
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { advisorSchema, EVIDENCE_LOCATION, PHASE_SCHEMAS, SCHEMAS, schemaFor } from '../../src/home/lib/runner/schemas.mjs';
+import { INSTRUCTIONS } from '../../src/home/lib/runner/prompts.mjs';
 import { validAdvice, validScope } from '../meta/advisor-fixtures.mjs';
 
 const sample = (phase) => (phase === 'advise' ? validAdvice() : validScope());
@@ -40,6 +45,36 @@ function* requiredPaths(schema, value, prefix = []) {
   }
 }
 
+function* schemaNodes(schema, path = '$') {
+  yield [schema, path];
+  if (schema.type === 'object') {
+    for (const [name, child] of Object.entries(schema.properties ?? {})) yield* schemaNodes(child, `${path}.${name}`);
+  } else if (schema.type === 'array') {
+    yield* schemaNodes(schema.items, `${path}[]`);
+  }
+}
+
+// The expected line is built from the schema's numbers here, not by the renderer under test.
+function* boundedArrays(schema, path = '') {
+  if (schema.type === 'object') {
+    for (const [name, child] of Object.entries(schema.properties ?? {})) {
+      yield* boundedArrays(child, path ? `${path}.${name}` : name);
+    }
+  } else if (schema.type === 'array') {
+    if (schema.minItems !== undefined || schema.maxItems !== undefined) {
+      yield { path, numbers: [schema.minItems, schema.maxItems].filter((n) => n !== undefined) };
+    }
+    yield* boundedArrays(schema.items, `${path}[]`);
+  }
+}
+
+function renderedInstructions(agent, phase) {
+  if (agent === 'codex-advisor') return INSTRUCTIONS[agent]({ phase });
+  if (agent === 'codex-review') {
+    return INSTRUCTIONS[agent]({}, { label: 'test scope', diffCommand: 'git diff', files: [] });
+  }
+  return INSTRUCTIONS[agent]({});
+}
 test('advisor schemas are selected by phase while execution schemas retain their static map', () => {
   assert.deepEqual(Object.keys(SCHEMAS), ['codex-scout', 'codex-build', 'codex-review']);
   for (const phase of ['scope', 'advise']) {
@@ -51,6 +86,31 @@ test('advisor schemas are selected by phase while execution schemas retain their
   for (const [agent, schema] of Object.entries(SCHEMAS)) assert.equal(schemaFor(agent, 'default'), schema);
 });
 
+test('schemas have no hidden string length caps and every array bound is rendered from its schema', () => {
+  const schemas = [
+    ...Object.entries(SCHEMAS).map(([agent, schema]) => ({ agent, schema })),
+    ...Object.entries(PHASE_SCHEMAS.advisor).map(([phase, schema]) => ({ agent: 'codex-advisor', phase, schema })),
+  ];
+  for (const { agent, phase, schema } of schemas) {
+    for (const [node, path] of schemaNodes(schema)) {
+      const stringSchema = node.type === 'string' || (Array.isArray(node.type) && node.type.includes('string'));
+      if (stringSchema) {
+        assert.equal(Object.hasOwn(node, 'maxLength'), false, `${agent}${phase ? `/${phase}` : ''} ${path}`);
+        if (node.pattern) {
+          assert.equal(/\{\d+(?:,\d*)?\}/.test(node.pattern), false,
+            `${agent}${phase ? `/${phase}` : ''} ${path} pattern bounds string length`);
+        }
+      }
+    }
+    const prompt = renderedInstructions(agent, phase);
+    const lines = prompt.split('\n');
+    for (const { path, numbers } of boundedArrays(schema)) {
+      const line = lines.find((candidate) => candidate.startsWith(`- ${path}: `));
+      assert.ok(line, `${agent}${phase ? `/${phase}` : ''} prompt omits the bound of ${path}`);
+      for (const n of numbers) assert.match(line, new RegExp(`\\b${n}\\b`), `${path} bound ${n} in "${line}"`);
+    }
+  }
+});
 test('every schema object has all properties required, disallows extras and has no defaults', () => {
   function inspect(schema) {
     assert.equal(Object.hasOwn(schema, 'default'), false);
@@ -129,7 +189,6 @@ for (const [name, change] of [
   ['empty checks', (r) => { r.independent_checks = []; }],
   ['empty independent-check evidence', (r) => { r.independent_checks[0].evidence = []; }],
   ['empty risk-outcome evidence', (r) => { r.risk_outcomes[0].evidence = []; }],
-  ['long recommendation', (r) => { r.recommendation.text = 'x'.repeat(301); }],
   ...['\n', '\r', '\u2028', '\u2029'].flatMap((newline) => [
     ['multiline recommendation', (r) => { r.recommendation.text = `First${newline}Second`; }],
     ['trailing line terminator', (r) => { r.recommendation.text = `First${newline}`; }],
@@ -150,9 +209,9 @@ for (const [name, change] of [
   });
 }
 
-test('schema length boundaries, all confidence values and scope types are enforced', () => {
+test('schema minimum boundaries, unrestricted recommendation length, confidence values and scope types are enforced', () => {
   const value = validAdvice();
-  value.recommendation.text = 'x'.repeat(300);
+  value.recommendation.text = 'x'.repeat(2000);
   value.strongest_counterargument = 'x'.repeat(80);
   value.pre_mortem[0].scenario = 'x'.repeat(30);
   value.pre_mortem[0].early_check.target = 'xxx';

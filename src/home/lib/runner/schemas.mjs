@@ -1,6 +1,8 @@
 /**
  * The shape each agent's answer must have, one JSON schema per agent.
  * Plan_59 D10 adds alternatives, rated assumptions, risk outcomes, pre-mortems and open questions.
+ * Plan_68 D6 removes recommendation.text's hidden character cap after the 2026-09-27
+ * `…cli/install.mjs:` + U+0000 and 2026-09-28 `…(docs/plans/Plan_` + `恋` truncation incidents.
  *
  * Handed to `codex exec --output-schema`, so a run that answers in the wrong shape is
  * rejected by Codex itself rather than discovered later by write-meta.mjs. Keyed by agent
@@ -222,7 +224,7 @@ export const PHASE_SCHEMAS = {
           required: ['option_id', 'text'],
           properties: {
             option_id: { type: 'string' },
-            text: { type: 'string', maxLength: 300, pattern: '^[^\\r\\n\\u2028\\u2029]*$' },
+            text: { type: 'string', pattern: '^[^\\r\\n\\u2028\\u2029]*$' },
           },
         },
         unlisted_option: { type: 'string' },
