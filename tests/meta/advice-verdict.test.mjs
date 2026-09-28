@@ -18,6 +18,7 @@ const files = {
   'src-extra/hidden.mjs': 'outside the declared directory\n',
   'docs/guide.md': 'first\r\nsecond\r\nthird\r\n',
   'README': 'first\rsecond',
+  'Makefile': 'build:\n',
 };
 for (const [file, content] of Object.entries(files)) {
   const absolute = path.join(repoRoot, file);
@@ -255,6 +256,38 @@ test('D3 supports Unicode paths and quoted paths with spaces', () => {
   passes(value);
   value.result.why[1] = 'Read "src/with space.mjs:2".';
   fails(value, 'why[1]', 'src/with space.mjs:2');
+});
+test('D3 treats prose tokens without a repository citation path as ordinary text', () => {
+  for (const token of [
+    '00:05', '23:59', '12:30', '3:1', 'localhost:8080', 'api.example.com:443',
+    'UTC+03:00', '2026-09-28T00:05', 'protocol:1', 'nope.py:3',
+  ]) {
+    const value = input();
+    value.result.why[0] = token;
+    passes(value);
+    value.result.why[0] = `\`${token}\``;
+    passes(value);
+  }
+});
+test('D3 keeps prose citations strict for paths and existing root files', () => {
+  for (const address of [
+    'src/nope.mjs:3', 'src/entry.mjs:4', 'docs/guide.md:1', 'Makefile:1',
+  ]) {
+    const value = input();
+    value.result.why[0] = address;
+    fails(value, 'why[0]', address);
+  }
+
+  const outOfRangeRootFile = input();
+  outOfRangeRootFile.task.paths = ['src', 'README'];
+  outOfRangeRootFile.result.why[0] = 'README:3';
+  fails(outOfRangeRootFile, 'why[0]', 'README:3');
+
+  const value = input();
+  value.task.paths = ['src', 'README'];
+  value.result.why[0] = 'README:1';
+  value.result.why[1] = 'src/entry.mjs:1';
+  passes(value);
 });
 test('D3 scope missing_paths authorizes exact files or directories only in scope', () => {
   for (const missing of ['docs/guide.md', 'docs']) {

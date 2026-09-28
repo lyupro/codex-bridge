@@ -79,6 +79,9 @@ the first matching branch determines the status. The order is therefore part of 
     still `OK` when its required explanation and evidence are valid: it asks the orchestrator to provide
     the missing paths. `LIMIT` means the quota is exhausted and calls for the opposite reaction, so
     insufficient scope must never be classified as `LIMIT`.
+    In prose, an address counts as a citation when its left side (before the final line suffix) contains
+    `/` or `\`, or names an existing file directly in the repository root; it must still resolve inside
+    task scope and within a valid line range. Other `word:number` text is ordinary prose.
 13. **Build edits outside scope.** `environmentPaths` are subtracted from the tree delta first, then the
     remaining paths are compared with `scope.txt`. This check ranks above report matching: a report can
     name one allowed file while concealing several extra ones.

@@ -76,6 +76,16 @@ function* addressesIn(value, root) {
   }
 }
 
+// Plan_68 D7: `<anything>:<digits>` is not evidence of intent. On 2026-09-28 the prose "so 00:05 under
+// yesterday's log" failed a complete advise run as file `00`, line 5 — a lost pass of the quota. A left side
+// with a directory is always a claim and stays strict; a bare name is one only when that root file exists,
+// so times, ratios and host:port pass while package.json and Makefile keep the read boundary. No extension
+// test: `api.example.com:443` would fail as a file. The accepted cost — an invented bare name is not caught.
+function isCitationInProse(address, root) {
+  const file = address.match(/^(.+):\d+(?:-\d+)?$/)?.[1];
+  return file !== undefined && (/[\\/]/.test(file) || entryInRepo(root, file)?.isFile === true);
+}
+
 function citationProblem(file, start, end, root, allowed) {
   if (typeof file !== 'string' || !file) return 'use a repository-relative path:line or path:line-line address';
   const entry = entryInRepo(root, file);
@@ -126,7 +136,9 @@ function checkCitations({ phase, result, task, repoRoot, scopeResult }, reasons)
   // Structured evidence and the free-text early_check.target are handled separately below.
   for (const { field, value } of strings(result)) {
     if (/(?:^|\.)evidence(?:\[|\.|$)|\.early_check\.target$/.test(field)) continue;
-    for (const address of addressesIn(value, root)) checkAddress(field, address);
+    for (const address of addressesIn(value, root)) {
+      if (isCitationInProse(address, root)) checkAddress(field, address);
+    }
   }
   const checkEvidence = (field, evidence) => {
     for (const [index, location] of evidence.entries()) checkLocation(`${field}[${index}]`, location);
