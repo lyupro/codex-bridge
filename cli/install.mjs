@@ -32,6 +32,7 @@ import { readHostObservations } from '../src/home/lib/host-observations.mjs';
 import { brandStateDir } from '../src/home/lib/brand-home.mjs';
 import { sessionHostVersions } from './session-hosts.mjs';
 import { readRunConfig, retentionNotice } from '../src/home/lib/run-config.mjs';
+import { askTransition, detectTransition, transitionOutcome } from './inventory-transition.mjs';
 
 const WARNING = '\u001b[33m';
 const RESET = '\u001b[0m';
@@ -108,17 +109,22 @@ async function migrateLegacySeed(host, seed, writer, id) {
   await removeOutside(writer, legacy);
 }
 
-async function installInRun({
-  host,
-  dryRun = false,
-  force = false,
-  packageRoot,
-  env = process.env,
-  contractRecord,
-  hostVersion,
-  observations,
-} = {}) {
-  const homeHadImage = await targetExists(path.join(host.brandRoot, 'lib'));
+async function installInRun(options = {}) {
+  const {
+    host,
+    dryRun = false,
+    force = false,
+    packageRoot,
+    env = process.env,
+    contractRecord,
+    hostVersion,
+    observations,
+    inventoryTransition,
+  } = options;
+  const transitionState = inventoryTransition === undefined
+    ? await detectTransition(host) : inventoryTransition;
+  const { transition, homeHadImage, inventory: suppliedInventory } = transitionState;
+  let inventory = suppliedInventory;
   // Validate the shared registry before writes; package removal on a broken registry left the host without its watchdog.
   await readRulesRegistry(host);
   const configuredRetentionLine = retentionLine(host);
@@ -173,12 +179,19 @@ async function installInRun({
     };
   }
 
+  if (inventoryTransition === undefined && transition && !dryRun) {
+    inventory = await askTransition(host, options);
+    if (inventory === 'cancel') {
+      return { exitCode: 130, output: 'Cancelled; nothing was changed.' };
+    }
+  }
+
   const changedFiles = states.filter((state) => !state.matches);
   const changedRule = !ruleState.matches;
   const sameRecord = recordMatchesPackage(record, plan, currentPackage,
     new Map(states.map((state) => [recordFileKey(state.item), state.fingerprint])),
     { path: rule.target, fingerprint: ruleState.fingerprint });
-  if (!changedFiles.length && !changedRule && inspectedHooks.every((state) => state.current)
+  if (!transition && !changedFiles.length && !changedRule && inspectedHooks.every((state) => state.current)
     && recordHasHooks(record, targets) && sameRecord) {
     if (!dryRun) {
       await addRulesOwner(host);
@@ -216,6 +229,7 @@ async function installInRun({
           ? `${definition.event} hook is already registered (${registration.form} command).`
         : `Would register ${definition.event} hook ${definition.name} for matcher ${definition.matcher} with ${registration.form} command.`);
     });
+    if (transition) lines.push(`A real run would ask whether this host is the only one using ${host.brandRoot}.`);
     lines.push('Would write installation record in the brand root.');
     return { exitCode: 0, output: contractOutput(hostContract, retentionOutput(configuredRetentionLine, lines.join('\n'))) };
   }
@@ -276,7 +290,8 @@ async function installInRun({
     fingerprints,
     rules: { path: rule.target, fingerprint: await fileFingerprint(rule.target) },
     hooks,
-  }, { homeHadImage });
+  }, { homeHadImage, inventory });
+  const transitionLine = transition ? `\n${transitionOutcome(host, inventory)}` : '';
   return {
     exitCode: 0,
     output: contractOutput(
@@ -284,7 +299,7 @@ async function installInRun({
       retentionOutput(
         configuredRetentionLine,
         `Installed ${plan.length} files and the Codex rules file, and registered ${hookSummary(targets)}.`
-          + `\n${permissionOutput(permissionResult, host.settingsPath)}`,
+          + `\n${permissionOutput(permissionResult, host.settingsPath)}${transitionLine}`,
       ),
     ),
   };

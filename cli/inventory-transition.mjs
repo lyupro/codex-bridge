@@ -54,3 +54,9 @@ export async function askTransition(host, options) {
   if (answer === 'no') return 'incomplete';
   return 'cancel';
 }
+/** What the operator is told after a transition: which answer was recorded and what it keeps. */
+export function transitionOutcome(host, inventory) {
+  return inventory === 'complete'
+    ? `Recorded this host as the only one using ${host.brandRoot}.`
+    : 'The inventory stays incomplete: the shared image is kept until an uninstall confirms no other host uses it.';
+}
