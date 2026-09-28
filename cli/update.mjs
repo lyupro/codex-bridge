@@ -29,6 +29,7 @@ import { withLifecycle } from './lifecycle-transaction.mjs';
 import { addRulesOwner, readRulesRegistry } from './rules-owners.mjs';
 import { removeEmptyLayout } from './remove-layout.mjs';
 import { recordHomeWriter, removeOutside, removeRecordedFile } from './record-removal.mjs';
+import { askTransition, detectTransition, transitionOutcome } from './inventory-transition.mjs';
 
 const LEGACY_GUARD_LOG_FILES = [
   'codex-reply-guard.blocked.json',
@@ -155,7 +156,18 @@ function previousHooks(host, record, targets) {
   });
 }
 
-async function updateInRun({ host, dryRun = false, force = false, packageRoot, env = process.env, lifecycleTicket } = {}) {
+async function updateInRun({
+  host,
+  dryRun = false,
+  force = false,
+  packageRoot,
+  env = process.env,
+  lifecycleTicket,
+  isTTY,
+  prompt,
+  stdin,
+  promptOutput,
+} = {}) {
   await readRulesRegistry(host);
   const record = await readInstallRecord(host);
   if (!record) {
@@ -213,6 +225,17 @@ async function updateInRun({ host, dryRun = false, force = false, packageRoot, e
     return { exitCode: 1, output: conflictOutput(conflicts, legacy, dryRun) };
   }
 
+  // Plan_65 D9: ask before the first change (orphans, hooks, the legacy layout) and hand install the one
+  // answer: after that cleanup the nested run could neither ask honestly nor recount homeHadImage.
+  const { transition, homeHadImage } = await detectTransition(host);
+  let inventory;
+  if (transition && !dryRun) {
+    inventory = await askTransition(host, { isTTY, prompt, stdin, promptOutput });
+    if (inventory === 'cancel') {
+      return { exitCode: 130, output: 'Cancelled; nothing was changed.' };
+    }
+  }
+
   const currentPackage = await packageInfo(packageRoot);
   // The 2026-09-07, 0.6.0 install incident hid which package's files update actually compared.
   const resolved = packageRoot ? sourceAt(packageRoot) : packageSource();
@@ -235,7 +258,8 @@ async function updateInRun({ host, dryRun = false, force = false, packageRoot, e
   const recordCurrent = recordMatchesPackage(record, plan, currentPackage,
     new Map(plannedStates.map((state) => [recordFileKey(state.item), state.fingerprint])),
     { path: rule.target, fingerprint: ruleState.fingerprint });
-  const changed = states.some((state) => state.status !== 'up-to-date') || oldHooks.length > 0;
+  // Plan_65 D9: a format-1 migration remains work when every installed file is current.
+  const changed = transition || states.some((state) => state.status !== 'up-to-date') || oldHooks.length > 0;
   if (!changed && inspectedHooks.every(({ state }) => state.current)
     && recordHasHooks(record, targets) && recordCurrent) {
     const legacyLogOutput = await retireLegacyGuardLogs(host, writer, { dryRun });
@@ -258,6 +282,7 @@ async function updateInRun({ host, dryRun = false, force = false, packageRoot, e
     return {
       exitCode: 0,
       output: [`Would update codex-bridge with ${source}.${mismatch}`,
+        ...(transition ? [`A real run would ask whether this host is the only one using ${host.brandRoot}.`] : []),
         dryRunOutput(states, inspectedHooks, legacy, oldHooks), legacyLogOutput]
         .filter(Boolean).join('\n'),
     };
@@ -270,13 +295,25 @@ async function updateInRun({ host, dryRun = false, force = false, packageRoot, e
   for (const { spec, hook } of oldHooks) {
     await removeHook(host.settingsPath, spec, { createdGroup: hook.createdGroup === true });
   }
-  const installed = await install({ host, force: true, packageRoot, env, lifecycleTicket });
+  const installed = await install({
+    host,
+    force: true,
+    packageRoot,
+    env,
+    lifecycleTicket,
+    isTTY,
+    prompt,
+    stdin,
+    promptOutput,
+    inventoryTransition: { transition, homeHadImage, inventory },
+  });
   if (installed.exitCode !== 0) return installed;
   await retireLegacyLayout(host, writer);
   const legacyLogOutput = await retireLegacyGuardLogs(host, writer);
+  const outcome = transition ? transitionOutcome(host, inventory) : null;
   return {
     exitCode: 0,
-    output: [`${appliedOutput(states)}\nSource: ${source}${mismatch}`, legacyLogOutput]
+    output: [`${appliedOutput(states)}\nSource: ${source}${mismatch}`, outcome, legacyLogOutput]
       .filter(Boolean).join('\n'),
   };
 }
