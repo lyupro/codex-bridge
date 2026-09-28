@@ -30,18 +30,22 @@ export async function detectTransition(host) {
   };
 }
 
-export function transitionQuestion(host, candidates) {
+// The uninstall questions (cli/inventory-removal.mjs) show the same hint: one rendering, one wording.
+export function registryHintLines(host, candidates) {
   const owner = normalizedRulesOwner(host);
   const otherCandidates = candidates.filter((root) => root !== owner);
-  const candidateRoots = otherCandidates.length
-    ? otherCandidates.map((root) => `  ${root}`).join('\n')
-    : '  none found';
+  return [
+    'Codex rules registry host roots are a hint only; they may be stale or belong to another home:',
+    ...(otherCandidates.length ? otherCandidates.map((root) => `  ${root}`) : ['  none found']),
+  ];
+}
+
+export function transitionQuestion(host, candidates) {
   return [
     `Home: ${host.brandRoot}`,
     `Known owners: none yet besides this host (${host.root}).`,
     'The old installation record did not name every host that used this home.',
-    'Codex rules registry host roots are a hint only; they may be stale or belong to another home:',
-    candidateRoots,
+    ...registryHintLines(host, candidates),
     `Is ${host.root} the only host using this home?`,
   ].join('\n');
 }
