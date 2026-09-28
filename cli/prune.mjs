@@ -1,10 +1,10 @@
 /** Confirms, executes, and reports the destructive actions in a prune plan. */
 import fs from 'node:fs';
-import readline from 'node:readline/promises';
 import { inspectSegments } from './link-segments.mjs';
 import { parsePruneArgs } from './prune-args.mjs';
 import { prunePlan } from './prune-plan.mjs';
 import { recursiveSize } from './runs-inventory.mjs';
+import { askYesNo, isInteractive } from './terminal-question.mjs';
 
 function formatBytes(bytes) {
   if (!Number.isFinite(bytes)) return 'unknown';
@@ -101,29 +101,6 @@ function result(exitCode, text) {
   return { exitCode, output: text };
 }
 
-// One spelling only. A guard that answers to several option names is a guard with several ways
-// to be switched off by accident.
-function tty(options) {
-  if (options.isTTY !== undefined) return Boolean(options.isTTY);
-  return Boolean((options.stdin || process.stdin).isTTY);
-}
-
-async function defaultPrompt(question, options = {}) {
-  const input = options.stdin || process.stdin;
-  const outputStream = options.promptOutput || process.stderr;
-  const interfaceHandle = readline.createInterface({ input, output: outputStream });
-  try {
-    const answer = await interfaceHandle.question(`${question} [y/N] `);
-    return /^(y|yes)$/i.test(answer.trim());
-  } finally {
-    interfaceHandle.close();
-  }
-}
-
-function accepted(answer) {
-  return answer === true || /^(y|yes)$/i.test(String(answer ?? '').trim());
-}
-
 function currentTargetBytes(target, strategy) {
   if (strategy === 'purge') {
     // The inventory's recursive measurement is the same accounting used by projects and keeps
@@ -138,18 +115,21 @@ function currentTargetBytes(target, strategy) {
 }
 
 async function confirmAll(plan, args, options) {
-  const prompt = options.prompt || defaultPrompt;
   for (const action of plan.actions) {
     const question = action.strategy === 'purge'
       ? `Delete folder ${action.path}?`
       : `Delete archived transport from ${action.project}/${action.run}?\n  ${action.targets.join('\n  ')}`;
-    let answer;
+    let outcome;
     try {
-      answer = await prompt(question, action, options);
+      const prompt = options.prompt;
+      outcome = await askYesNo(question, {
+        ...options,
+        prompt: prompt ? (text) => prompt(text, action, options) : undefined,
+      });
     } catch (err) {
       return { error: `codex-bridge prune: confirmation failed: ${err.message}` };
     }
-    if (!accepted(answer)) return { declined: true };
+    if (outcome !== 'yes') return { declined: true };
   }
   return { declined: false };
 }
@@ -226,7 +206,7 @@ export async function prune(argv = [], options = {}) {
     const payload = { status: 'completed', ...basePayload(plan), removed: [], bytesFreed: 0, failed: [] };
     return result(0, output(payload, args.json));
   }
-  if (!tty(options)) {
+  if (!isInteractive(options)) {
     const message = 'No TTY: refusing deletion because deletion is an operator action; no files were changed.';
     const payload = { status: 'refused', ...basePayload(plan), error: message, removed: [], bytesFreed: 0 };
     return result(1, output(payload, args.json));
@@ -247,5 +227,3 @@ export async function prune(argv = [], options = {}) {
     ? output(executed.payload, true)
     : reportLines(executed.payload, executed.payload.status));
 }
-
-export { defaultPrompt };
