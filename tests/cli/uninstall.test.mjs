@@ -77,16 +77,14 @@ test('uninstall leaves shared rules for another owner and removes them for the l
   await assert.rejects(() => fs.access(rulesRegistryPath(second)), { code: 'ENOENT' });
 });
 
-// Most hooks are PreToolUse, so a lookup by event alone names the order gate for all of them. The
-// live dry-run of 2026-08-09 announced matcher Agent|Task for the worktree lock and the prune guard —
-// the one line an operator reads to see what a removal will touch. Plan_62 then put two PostToolUse
-// hooks on the same shell matcher, so the matcher alone no longer tells them apart: the name does.
-test('dry-run uninstall names each hook by its own name and matcher', async (t) => {
+// Plan_65 D10 switched this dry run to inspected host hooks. Their identity is reported by name,
+// independently of matcher data from the installation record.
+test('dry-run uninstall names each inspected hook by its own name', async (t) => {
   const { host } = await fixture(t);
   await install({ host });
   const dryRun = await uninstall({ host, dryRun: true });
   for (const definition of HOOK_DEFINITIONS) {
-    const line = `Would remove the ${definition.event} hook ${definition.name} for matcher ${definition.matcher}.`;
+    const line = `Would remove the ${definition.event} hook ${definition.name}`;
     assert.equal(
       dryRun.output.split('\n').filter((entry) => entry === line).length,
       1,

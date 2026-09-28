@@ -37,26 +37,15 @@ function createdGroups(owner, host, hooks) {
   return created;
 }
 
-export async function removeHostSide(host, inspection, { owner = null, dryRun = false } = {}) {
-  const lines = [];
-  const writer = dryRun ? null : recordHomeWriter(host, []);
-  for (const file of inspection.files) {
-    if (file.disposition === 'remove') {
-      if (!dryRun) {
-        await removeOutside(writer, file.target);
-        await removeEmptyParents(file.target, claudeBoundary(host, file.target));
-      }
-      lines.push(`${dryRun ? 'Would remove' : 'Removed'} ${file.relativeToHost}`);
-    } else {
-      lines.push(`Left ${file.relativeToHost} (${file.reason})`);
-    }
-  }
-
+// Hooks go first and files only once the host is detached. Removing files ahead of a failed hook
+// took the old per-host installation record with them (acceptance of H3b, 2026-09-28): the host kept
+// hooks into an image that no longer had any inventory, so no later uninstall could remove it. Either
+// the host is detached, or its files are exactly as they were and a repeat run finishes the job.
+async function removeOwnHooks(host, inspection, owner, dryRun, lines) {
   if (inspection.settingsError != null) {
     lines.push(`Left the hooks in ${host.settingsPath}: ${inspection.settingsError}`);
-    return { lines, detached: false };
+    return false;
   }
-
   let detached = true;
   const created = createdGroups(owner, host, inspection.hooks);
   for (const hook of inspection.hooks) {
@@ -76,6 +65,26 @@ export async function removeHostSide(host, inspection, { owner = null, dryRun = 
     } catch (error) {
       detached = false;
       lines.push(`Failed to remove the ${hook.event} hook ${identity}: ${error?.message ?? String(error)}`);
+    }
+  }
+  return detached;
+}
+
+export async function removeHostSide(host, inspection, { owner = null, dryRun = false } = {}) {
+  const lines = [];
+  const detached = await removeOwnHooks(host, inspection, owner, dryRun, lines);
+  const writer = dryRun ? null : recordHomeWriter(host, []);
+  for (const file of inspection.files) {
+    if (file.disposition !== 'remove') {
+      lines.push(`Left ${file.relativeToHost} (${file.reason})`);
+    } else if (!detached) {
+      lines.push(`${dryRun ? 'Would leave' : 'Left'} ${file.relativeToHost} (this host's hooks could not be removed)`);
+    } else {
+      if (!dryRun) {
+        await removeOutside(writer, file.target);
+        await removeEmptyParents(file.target, claudeBoundary(host, file.target));
+      }
+      lines.push(`${dryRun ? 'Would remove' : 'Removed'} ${file.relativeToHost}`);
     }
   }
   return { lines, detached };

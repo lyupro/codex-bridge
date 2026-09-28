@@ -110,8 +110,11 @@ test('does not write unparseable settings and reports the host as not detached',
   const result = await removeHostSide(host, inspection);
   assert.equal(result.detached, false);
   assert.ok(result.lines.includes('Left the hooks in ' + host.settingsPath + ': ' + inspection.settingsError));
+  // A host that stays attached keeps its files, the old per-host record among them: it may be the
+  // only inventory of the image its hooks still point to.
+  assert.ok(removable.length > 0);
   for (const file of removable) {
-    await assert.rejects(fs.access(file.target), { code: 'ENOENT' });
+    await assert.doesNotReject(fs.access(file.target));
   }
   assert.deepEqual(await fs.readFile(host.settingsPath), originalSettings);
 });
