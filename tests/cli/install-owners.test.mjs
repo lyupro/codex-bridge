@@ -58,6 +58,23 @@ test('format-1 migration preserves the old record and registers only the migrati
   assert.equal(migrated.owners[key].root, '/repos/new/.claude');
 });
 
+test('an explicit complete inventory removes legacy data for each starting format', () => {
+  const target = host('/repos/confirmed/.claude');
+  const fresh = withOwner(null, target, record(), { inventory: 'complete' });
+  assert.equal(fresh.inventory, 'complete');
+  assert.equal(Object.hasOwn(fresh, 'legacy'), false);
+
+  const format1 = record('old');
+  const migrated = withOwner(format1, target, record('confirmed'), { inventory: 'complete' });
+  assert.equal(migrated.inventory, 'complete');
+  assert.equal(Object.hasOwn(migrated, 'legacy'), false);
+
+  const format2 = withOwner(format1, target, record('prior'));
+  const confirmed = withOwner(format2, target, record('confirmed-again'), { inventory: 'complete' });
+  assert.equal(confirmed.inventory, 'complete');
+  assert.equal(Object.hasOwn(confirmed, 'legacy'), false);
+});
+
 test('format 2 retains other owners and replaces only the writing host', () => {
   const firstHost = host('/repos/first/.claude', 'project');
   const secondHost = host('/repos/second/.claude', 'user');

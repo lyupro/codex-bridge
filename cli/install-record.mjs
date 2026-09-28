@@ -303,10 +303,12 @@ async function publishInstallRecord(host, next) {
  * record for every host sharing the home if the process died mid-write (advice A3, risk r3).
  * `homeHadImage: false` is the caller's proof that no earlier installation used this home; without
  * it a new record starts with an incomplete inventory (D6).
+ * inventory: 'complete' records the operator's D9 confirmation and drops a migrated legacy record
+ * in the same publish.
  */
-export async function writeInstallRecord(host, record, { homeHadImage } = {}) {
+export async function writeInstallRecord(host, record, { homeHadImage, inventory } = {}) {
   const normalized = normalizeInstallRecord(record);
-  const next = withOwner(await readAt(installRecordPath(host)), host, normalized, { homeHadImage });
+  const next = withOwner(await readAt(installRecordPath(host)), host, normalized, { homeHadImage, inventory });
   await publishInstallRecord(host, next);
 }
 

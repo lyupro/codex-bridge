@@ -201,6 +201,32 @@ test('a pre-existing image without a record starts with incomplete inventory', a
   assert.equal((await readInstallRecordFile(host)).inventory, 'incomplete');
 });
 
+test('a complete transition answer publishes without the migrated legacy record', async (t) => {
+  const host = await fixture(t);
+  const legacy = record();
+  await fs.mkdir(path.dirname(installRecordPath(host)), { recursive: true });
+  await fs.writeFile(installRecordPath(host), JSON.stringify(legacy, null, 2) + '\n');
+
+  await writeInstallRecord(host, record({ version: '0.2.0' }), { inventory: 'complete' });
+
+  const stored = await readInstallRecordFile(host);
+  assert.equal(stored.inventory, 'complete');
+  assert.equal(Object.hasOwn(stored, 'legacy'), false);
+});
+
+test('format-1 migration without a complete answer keeps its legacy record and incomplete inventory', async (t) => {
+  const host = await fixture(t);
+  const legacy = record();
+  await fs.mkdir(path.dirname(installRecordPath(host)), { recursive: true });
+  await fs.writeFile(installRecordPath(host), JSON.stringify(legacy, null, 2) + '\n');
+
+  await writeInstallRecord(host, record({ version: '0.2.0' }));
+
+  const stored = await readInstallRecordFile(host);
+  assert.equal(stored.inventory, 'incomplete');
+  assert.deepEqual(stored.legacy, normalizeInstallRecord(legacy));
+});
+
 test('removeInstallOwner preserves the other host view and publishes without a temp file', async (t) => {
   const root = makeTempTree('bridge-remove-owner-');
   t.after(() => removeTempTree(root));

@@ -130,7 +130,7 @@ export function withOwner(existing, host, record1, options) {
       name: record1.name,
       [INSTALL_METHOD_KEY]: record1[INSTALL_METHOD_KEY],
       image,
-      inventory: confirmedNoPriorImage ? 'complete' : 'incomplete',
+      inventory: options?.inventory === 'complete' || confirmedNoPriorImage ? 'complete' : 'incomplete',
       owners: { [key]: owner },
     };
     return validateFormat2(created);
@@ -155,8 +155,12 @@ export function withOwner(existing, host, record1, options) {
     };
   }
 
+  // D9: the operator's "this host is the only one" answers what the legacy record could not tell,
+  // so the old record goes in the same publish instead of lingering as a second opinion.
+  const { legacy: _answered, ...withoutLegacy } = previous;
+  const base = options?.inventory === 'complete' ? { ...withoutLegacy, inventory: 'complete' } : previous;
   const next = {
-    ...previous,
+    ...base,
     name: record1.name,
     [INSTALL_METHOD_KEY]: record1[INSTALL_METHOD_KEY],
     image,

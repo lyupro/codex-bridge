@@ -1,0 +1,56 @@
+/**
+ * D9: The inventory becomes incomplete in one transition known before any write; ask then and
+ * store nothing about a refusal.
+ */
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { askYesNo, isInteractive } from './terminal-question.mjs';
+import { isFormat2 } from './install-owners.mjs';
+import { readInstallRecordFile } from './install-record.mjs';
+import { normalizedRulesOwner, readRulesRegistry } from './rules-owners.mjs';
+
+async function exists(target) {
+  try {
+    await fs.access(target);
+    return true;
+  } catch (err) {
+    if (err.code === 'ENOENT') return false;
+    throw err;
+  }
+}
+
+export async function detectTransition(host) {
+  const [record, homeHadImage] = await Promise.all([
+    readInstallRecordFile(host),
+    exists(path.join(host.brandRoot, 'lib')),
+  ]);
+  return {
+    transition: (record !== null && !isFormat2(record)) || (record === null && homeHadImage),
+    homeHadImage,
+  };
+}
+
+export function transitionQuestion(host, candidates) {
+  const owner = normalizedRulesOwner(host);
+  const otherCandidates = candidates.filter((root) => root !== owner);
+  const candidateRoots = otherCandidates.length
+    ? otherCandidates.map((root) => `  ${root}`).join('\n')
+    : '  none found';
+  return [
+    `Home: ${host.brandRoot}`,
+    `Known owners: none yet besides this host (${host.root}).`,
+    'The old installation record did not name every host that used this home.',
+    'Codex rules registry host roots are a hint only; they may be stale or belong to another home:',
+    candidateRoots,
+    `Is ${host.root} the only host using this home?`,
+  ].join('\n');
+}
+
+export async function askTransition(host, options) {
+  if (!isInteractive(options)) return 'incomplete';
+  const candidates = options.candidates ?? (await readRulesRegistry(host))?.owners ?? [];
+  const answer = await askYesNo(transitionQuestion(host, candidates), options);
+  if (answer === 'yes') return 'complete';
+  if (answer === 'no') return 'incomplete';
+  return 'cancel';
+}
