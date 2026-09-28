@@ -22,7 +22,8 @@ import { withSettingsRun } from './settings-merge.mjs';
 import { withLifecycle } from './lifecycle-transaction.mjs';
 import { readRulesRegistry, removeRulesOwner, remainingRulesOwners } from './rules-owners.mjs';
 import { removeEmpty, removeEmptyLayout } from './remove-layout.mjs';
-import { recordHomeWriter, removeOutside, removeRecordedFile } from './record-removal.mjs';
+import { recordHomeWriter, removeOutside } from './record-removal.mjs';
+import { removeImageFiles } from './image-removal.mjs';
 
 function remainingOwnersText(count) {
   return `${count} other owner${count === 1 ? '' : 's'} ${count === 1 ? 'remains' : 'remain'}`;
@@ -44,6 +45,14 @@ async function removePermissions(host, inspection, dryRun) {
   return permissionOutput(host, removed, dryRun);
 }
 
+// A real uninstall removes ~90 image files; one line per file buried the few that were kept
+// (Plan_65 H7). The dry run still lists every file, since there the list is the point.
+function realImageLines(host, lines) {
+  const removed = lines.filter((line) => line.startsWith('Removed '));
+  const kept = lines.filter((line) => !line.startsWith('Removed '));
+  return removed.length ? [`Removed ${removed.length} image file(s) from ${host.brandRoot}.`, ...kept] : kept;
+}
+
 function stillAttachedLine(host) {
   return `Did not finish uninstalling codex-bridge: ${host.root} still has its hooks; fix ${host.settingsPath} and run uninstall again.`;
 }
@@ -58,10 +67,6 @@ function preservationText(host) {
     + `${brandStateDir(host.brandRoot)} (dispatcher state, guard counters, the handback witness, the host `
     + 'observations, dispatcher contract verdicts, and hook diagnostics that hold the full hook input). Delete them by '
     + 'hand for a complete removal.';
-}
-
-function displayFile(file) {
-  return `${file.root}/${file.path}`;
 }
 
 // Plan_65 D6: uninstalling one host removed the shared image from under every other host of the
@@ -113,11 +118,18 @@ async function uninstallOrphan(options, format2, inspection, registry) {
   await removeEmptyLayout(host.legacyCommandsDir);
 
   let imageLine;
+  let imageLines = [];
   let hint = null;
   if (answer === 'remove' && hostSide.detached) {
     const members = imageMembers(format2, host);
+    const removed = await removeImageFiles(
+      host,
+      members,
+      { brand: format2.image.fingerprints?.brand },
+      { packageRoot: options.packageRoot },
+    );
+    imageLines = realImageLines(host, removed.lines);
     const writer = recordHomeWriter(host, members);
-    for (const file of members) await removeRecordedFile(host, writer, file);
     try {
       await writer.unlink('install-record', installRecordPath(host));
     } catch (err) {
@@ -139,7 +151,7 @@ async function uninstallOrphan(options, format2, inspection, registry) {
       : `No codex-bridge files or hooks were found in ${host.root}.`;
   return {
     exitCode: answer === 'remove' && hostSide.detached ? 0 : 1,
-    output: [heading, permissionLine, ...hostSide.lines, imageLine, hint, preservation]
+    output: [heading, permissionLine, ...hostSide.lines, ...imageLines, imageLine, hint, preservation]
       .filter(Boolean).join('\n'),
   };
 }
@@ -191,8 +203,13 @@ async function uninstallInRun(options = {}) {
 
   if (dryRun) {
     const hostSide = await removeHostSide(host, inspection, { owner, dryRun: true });
-    const lines = [permissionLine, ...hostSide.lines,
-      ...(hostSide.detached ? imageFiles.map((file) => `Would remove ${displayFile(file)}`) : [])];
+    const imageRemoval = decision.removeImage && hostSide.detached
+      ? await removeImageFiles(host, imageFiles, record.fingerprints, {
+        dryRun: true,
+        packageRoot: options.packageRoot,
+      })
+      : { lines: [] };
+    const lines = [permissionLine, ...hostSide.lines, ...imageRemoval.lines];
     const blockedImageLine = decision.removeImage && !hostSide.detached
       ? `Would leave the shared image in ${host.brandRoot} because this host's hooks could not be removed.`
       : null;
@@ -247,6 +264,7 @@ async function uninstallInRun(options = {}) {
     }
   }
   const rulesOutput = [];
+  let imageLines = [];
   if (detachedRecord?.rules) {
     if (registryError) {
       rulesOutput.push(`Left ${record.rules.path} because the rules ownership registry is invalid; ownership is unknown.`);
@@ -267,7 +285,10 @@ async function uninstallInRun(options = {}) {
     }
   }
   if (decision.removeImage && hostSide.detached) {
-    for (const file of imageFiles) await removeRecordedFile(host, writer, file);
+    const imageRemoval = await removeImageFiles(host, imageFiles, record.fingerprints, {
+      packageRoot: options.packageRoot,
+    });
+    imageLines = realImageLines(host, imageRemoval.lines);
   }
   await removeEmpty(host.commandsDir);
   if (decision.removeImage && hostSide.detached && record) {
@@ -297,7 +318,7 @@ async function uninstallInRun(options = {}) {
     : null;
   return {
     exitCode: decision.reason === 'incomplete-inventory' || !hostSide.detached ? 1 : 0,
-    output: [heading, permissionLine, ...hostSide.lines, ...rulesOutput, imageLine, keptRecordLine, lastOwnerHint,
+    output: [heading, permissionLine, ...hostSide.lines, ...rulesOutput, ...imageLines, imageLine, keptRecordLine, lastOwnerHint,
       preservation].filter(Boolean).join('\n'),
   };
 }
