@@ -10,8 +10,10 @@ import {
 } from './manifest.mjs';
 import { imageRemoval } from './install-owners.mjs';
 import { asFormat2, readInstallRecordFile, removeInstallOwner } from './install-record.mjs';
+import { normalizeRepoPath } from '../src/home/lib/runner/project-dir.mjs';
 import { removePermissionRules } from './permissions.mjs';
 import { hostContractPath } from './host-contract.mjs';
+import { askRemoval, removalHint } from './inventory-removal.mjs';
 import { brandStateDir } from '../src/home/lib/brand-home.mjs';
 import {
   commandFor,
@@ -78,7 +80,8 @@ function hookRemovalSpec(host, hook) {
   };
 }
 
-async function uninstallInRun({ host, dryRun = false } = {}) {
+async function uninstallInRun(options = {}) {
+  const { host, dryRun = false } = options;
   // Preflight before removing the hook: package removal on a broken registry left the host without its watchdog.
   let registry = null;
   let registryError = null;
@@ -87,15 +90,26 @@ async function uninstallInRun({ host, dryRun = false } = {}) {
   } catch (err) {
     registryError = err;
   }
-  const permissionResult = await removePermissionRules(host.settingsPath, { dryRun });
-  const permissionLine = permissionOutput(host, permissionResult.removed, dryRun);
+  // Plan_65 D9: the question precedes the first change, so the record is read before the permission rules go;
+  // a cancel then leaves the host exactly as it was.
   const rawRecord = await readInstallRecordFile(host);
   const record = await readInstallRecord(host);
+  let decision = imageDecision(rawRecord, host);
+  const lastKnownOwner = decision.reason === 'incomplete-inventory'
+    && Object.hasOwn(asFormat2(rawRecord, host).owners, normalizeRepoPath(host.root));
+  let lastOwnerHint = null;
+  if (lastKnownOwner && !dryRun) {
+    const answer = await askRemoval(host, 'last-owner', options);
+    if (answer === 'cancel') return { exitCode: 130, output: 'Cancelled; nothing was changed.' };
+    if (answer === 'remove') decision = { removeImage: true };
+    else lastOwnerHint = removalHint(host);
+  }
+  const permissionResult = await removePermissionRules(host.settingsPath, { dryRun });
+  const permissionLine = permissionOutput(host, permissionResult.removed, dryRun);
   const preservation = preservationText(host);
   if (!record) {
     return { exitCode: 1, output: `${permissionLine}\ncodex-bridge is not installed.\n${preservation}` };
   }
-  const decision = imageDecision(rawRecord, host);
   const filesToRemove = record.files.filter((file) => decision.removeImage || file.root !== 'brand');
   const writer = recordHomeWriter(host, record.files);
 
@@ -103,6 +117,7 @@ async function uninstallInRun({ host, dryRun = false } = {}) {
     const lines = [permissionLine, ...filesToRemove.map((file) => `Would remove ${displayFile(file)}`)];
     const imageLine = imageDispositionLine(host, decision, true);
     if (imageLine) lines.push(imageLine);
+    if (lastKnownOwner) lines.push(`A real run would ask whether ${host.root} is the last host using ${host.brandRoot}.`);
     if (record.rules) {
       if (registryError) {
         lines.push(`Would leave ${record.rules.path} because the rules ownership registry is invalid; ownership is unknown.`);
@@ -191,7 +206,7 @@ async function uninstallInRun({ host, dryRun = false } = {}) {
   const imageLine = imageDispositionLine(host, decision, false);
   return {
     exitCode: decision.reason === 'incomplete-inventory' ? 1 : 0,
-    output: ['Uninstalled codex-bridge.', permissionLine, ...rulesOutput, imageLine, preservation]
+    output: ['Uninstalled codex-bridge.', permissionLine, ...rulesOutput, imageLine, lastOwnerHint, preservation]
       .filter(Boolean).join('\n'),
   };
 }
