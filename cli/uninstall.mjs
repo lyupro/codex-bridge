@@ -10,7 +10,7 @@ import {
   readInstallRecord,
 } from './manifest.mjs';
 import { imageRemoval } from './install-owners.mjs';
-import { asFormat2, readInstallRecordFile, removeInstallOwner } from './install-record.mjs';
+import { asFormat2, imageMembers, readInstallRecordFile, removeInstallOwner } from './install-record.mjs';
 import { normalizeRepoPath } from '../src/home/lib/runner/project-dir.mjs';
 import { removePermissionRules } from './permissions.mjs';
 import { hostContractPath } from './host-contract.mjs';
@@ -32,6 +32,20 @@ function permissionOutput(host, removed, dryRun) {
   const verb = dryRun ? 'Would remove' : 'Removed';
   const plural = removed === 1 ? 'string' : 'strings';
   return `${verb} ${removed} permission rule ${plural} from ${host.settingsPath}.`;
+}
+
+// Permission strings live in the same settings.json as the hooks; an unreadable file is left untouched
+// and named rather than rewritten, like the hooks themselves (Plan_65 D10 item 4).
+async function removePermissions(host, inspection, dryRun) {
+  if (inspection.settingsError !== null) {
+    return `Left permission rules in ${host.settingsPath} because settings could not be read: ${inspection.settingsError}`;
+  }
+  const { removed } = await removePermissionRules(host.settingsPath, { dryRun });
+  return permissionOutput(host, removed, dryRun);
+}
+
+function stillAttachedLine(host) {
+  return `Did not finish uninstalling codex-bridge: ${host.root} still has its hooks; fix ${host.settingsPath} and run uninstall again.`;
 }
 
 // Plan_62 D22: uninstall removes only recorded files, and the message used to name only runs and
@@ -69,6 +83,67 @@ function imageDispositionLine(host, decision, dryRun) {
   return `${verb} the shared image in ${host.brandRoot} because the installation inventory is incomplete: other installations may use this home.`;
 }
 
+// Plan_65 D9 item 3 as amended by D10 item 4: after the last known owner answered "no", a repeat uninstall
+// of ANY host of the home promised a question and printed "not installed" instead. The branch decides from
+// the raw record and the inspection only — `legacy` is nobody's host view (D10 item 5) — removes the named
+// host's side either way, and removes the image only on "yes" for a detached host.
+async function uninstallOrphan(options, format2, inspection, registry) {
+  const { host, dryRun = false } = options;
+  const preservation = preservationText(host);
+  const promptOptions = { ...options, candidates: options.candidates ?? registry?.owners ?? [] };
+  if (dryRun) {
+    const permissionLine = await removePermissions(host, inspection, true);
+    const hostSide = await removeHostSide(host, inspection, { owner: null, dryRun: true });
+    return {
+      exitCode: 1,
+      output: [permissionLine, ...hostSide.lines,
+        `A real run would ask whether to remove the shared image of ${host.brandRoot}: no host is recorded as using it.`,
+        preservation].join('\n'),
+    };
+  }
+
+  const answer = await askRemoval(host, 'orphan', promptOptions);
+  if (answer === 'cancel') return { exitCode: 130, output: 'Cancelled; nothing was changed.' };
+
+  const permissionLine = await removePermissions(host, inspection, false);
+  const hostSide = await removeHostSide(host, inspection, { owner: null });
+  await removeEmpty(host.commandsDir);
+  await removeEmpty(host.agentsDir);
+  await removeEmptyLayout(host.legacyAgentsDir);
+  await removeEmptyLayout(host.legacyCommandsDir);
+
+  let imageLine;
+  let hint = null;
+  if (answer === 'remove' && hostSide.detached) {
+    const members = imageMembers(format2, host);
+    const writer = recordHomeWriter(host, members);
+    for (const file of members) await removeRecordedFile(host, writer, file);
+    try {
+      await writer.unlink('install-record', installRecordPath(host));
+    } catch (err) {
+      if (err.code !== 'ENOENT') throw err;
+    }
+    await removeEmpty(host.brandRoot);
+    imageLine = `Removed the shared image and the installation record of ${host.brandRoot}.`;
+  } else if (answer === 'remove') {
+    imageLine = `Left the shared image in ${host.brandRoot} because this host's hooks could not be removed.`;
+  } else {
+    imageLine = `Left the shared image in ${host.brandRoot} because no host is recorded as using it and the inventory is incomplete.`;
+    hint = removalHint(host);
+  }
+
+  const hasMarks = hasPackageMarks(inspection);
+  const heading = !hostSide.detached
+    ? stillAttachedLine(host)
+    : hasMarks ? 'Uninstalled codex-bridge.'
+      : `No codex-bridge files or hooks were found in ${host.root}.`;
+  return {
+    exitCode: answer === 'remove' && hostSide.detached ? 0 : 1,
+    output: [heading, permissionLine, ...hostSide.lines, imageLine, hint, preservation]
+      .filter(Boolean).join('\n'),
+  };
+}
+
 async function uninstallInRun(options = {}) {
   const { host, dryRun = false } = options;
   // Preflight before removing the hook: package removal on a broken registry left the host without its watchdog.
@@ -82,12 +157,15 @@ async function uninstallInRun(options = {}) {
   // Plan_65 D9: the question precedes the first change, so the record is read before the permission rules go;
   // a cancel then leaves the host exactly as it was.
   const rawRecord = await readInstallRecordFile(host);
-  const record = await readInstallRecord(host);
   const ownerKey = normalizeRepoPath(host.root);
   const format2 = rawRecord === null ? null : asFormat2(rawRecord, host);
+  const orphaned = format2 !== null && Object.keys(format2.owners).length === 0;
   const owner = format2?.owners[ownerKey] ?? null;
   // Plan_65 D10: inspect marks and content before permission edits or any other host mutation.
   const inspection = await inspectHost(host, { owner });
+  if (orphaned) return uninstallOrphan(options, format2, inspection, registry);
+
+  const record = await readInstallRecord(host);
   let decision = rawRecord === null
     ? (record ? { removeImage: true } : { removeImage: false, reason: 'no-record' })
     : imageDecision(rawRecord, host);
@@ -101,12 +179,7 @@ async function uninstallInRun(options = {}) {
     if (answer === 'remove') decision = { removeImage: true };
     else lastOwnerHint = removalHint(host);
   }
-  const permissionResult = inspection.settingsError === null
-    ? await removePermissionRules(host.settingsPath, { dryRun })
-    : { removed: 0 };
-  const permissionLine = inspection.settingsError === null
-    ? permissionOutput(host, permissionResult.removed, dryRun)
-    : `Left permission rules in ${host.settingsPath} because settings could not be read: ${inspection.settingsError}`;
+  const permissionLine = await removePermissions(host, inspection, dryRun);
   const preservation = preservationText(host);
   const hostMarks = hasPackageMarks(inspection);
   if (!record && !hostMarks) {
@@ -218,7 +291,7 @@ async function uninstallInRun(options = {}) {
     ? imageDispositionLine(host, decision, false) : null);
   const heading = hostSide.detached
     ? 'Uninstalled codex-bridge.'
-    : `Did not finish uninstalling codex-bridge: ${host.root} still has its hooks; fix ${host.settingsPath} and run uninstall again.`;
+    : stillAttachedLine(host);
   const keptRecordLine = record && !hostSide.detached
     ? `Kept ${host.root} in the installation record because its hooks could not be removed.`
     : null;

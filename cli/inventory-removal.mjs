@@ -28,7 +28,7 @@ export function orphanQuestion(host, candidates) {
     `Home: ${host.brandRoot}`,
     'No host is recorded as using this home, and the inventory is incomplete.',
     ...registryHintLines(host, candidates),
-    `Remove the shared image and the installation record of this home? The settings of ${host.root} are not touched; ${KEPT_DATA}`,
+    `Remove the shared image and the installation record of this home? The package's files and hooks in ${host.root} are removed either way; ${KEPT_DATA}`,
   ].join('\n');
 }
 

@@ -146,14 +146,15 @@ test('dry-run reports the pending last-owner question without prompting or chang
   assert.deepEqual(await fs.readFile(state.recordPath), recordBefore);
 });
 
-test('an already empty owner set does not ask the last-owner question', async (t) => {
+test('an already empty owner set asks the orphan question and can remove the image', async (t) => {
   const state = await formatOneFixture(t);
   await uninstall({ host: state.host, isTTY: false });
   const prompt = countingPrompt('yes');
 
   const result = await uninstall({ host: state.host, isTTY: true, prompt });
 
-  assert.equal(prompt.calls, 0);
-  assert.equal(result.exitCode, 1);
+  assert.equal(prompt.calls, 1);
+  assert.equal(result.exitCode, 0);
   assert.doesNotMatch(result.output, /would ask whether/);
+  await assert.rejects(() => fs.access(state.recordPath), { code: 'ENOENT' });
 });

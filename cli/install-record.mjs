@@ -246,6 +246,12 @@ function withoutSeededFiles(host, record) {
   return record;
 }
 
+// Plan_65 H4 removes image files while preserving the seeded operator data through the shared filter.
+export function imageMembers(record2, host) {
+  const image = withoutSeededFiles(host, { files: [...record2.image.files] });
+  return image.files;
+}
+
 async function readAt(recordPath) {
   try {
     return await readJsonFile(recordPath);

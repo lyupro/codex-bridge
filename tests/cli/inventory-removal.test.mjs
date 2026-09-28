@@ -60,7 +60,7 @@ test('orphan question names the home, host settings, and other registry roots', 
   assert.equal(question.split('\n')[0], `Home: ${host.brandRoot}`);
   assert.ok(question.includes('No host is recorded as using this home, and the inventory is incomplete.'));
   assertHintShowsOnly(question, otherRoot, ownRoot);
-  assert.ok(question.includes(`The settings of ${host.root} are not touched;`));
+  assert.ok(question.includes(`The package's files and hooks in ${host.root} are removed either way;`));
   assert.ok(question.endsWith('config.json, conventions.md and run data stay.'));
 });
 
