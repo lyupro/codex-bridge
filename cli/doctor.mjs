@@ -4,9 +4,11 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { packageSource } from './package-source.mjs';
 import { readInstallRecord, packageInfo } from './manifest.mjs';
-import { recordTarget } from './install-record.mjs';
+import { readInstallRecordFile, recordTarget } from './install-record.mjs';
 import { runsRoot } from '../src/home/lib/runner/runs-root.mjs';
 import { check, renderDoctor } from './doctor-format.mjs';
+import { homeOwnersCheck, hostSideCheck, ownerEntry } from './doctor-host-side.mjs';
+import { inspectHost } from './host-inspection.mjs';
 import {
   agentsCheck,
   conventionsCheck,
@@ -108,6 +110,19 @@ export async function diagnose({
     checks.push(check('installation', 'fail', `broken record: ${err.message}`));
   }
 
+  let rawRecord = null;
+  let rawRecordError = null;
+  try {
+    rawRecord = await readInstallRecordFile(host);
+  } catch (err) {
+    rawRecordError = err;
+  }
+  // The owner row goes into the inspection so "kept by uninstall" names exactly what uninstall would keep.
+  const inspection = await inspectHost(host, { owner: ownerEntry(rawRecord, host) });
+  checks.push(hostSideCheck(host, inspection));
+  checks.push(rawRecordError
+    ? check('home owners', 'fail', `broken record: ${rawRecordError.message}`)
+    : await homeOwnersCheck(host, rawRecord, inspection));
   const missingFiles = [];
   if (record) {
     for (const file of record.files) {

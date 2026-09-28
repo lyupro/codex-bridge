@@ -30,7 +30,7 @@ test('install file count agrees with doctor files check', async (t) => {
   const installed = await install({ host });
   const result = await diagnose({ host, codexProbe, currentPackage: ownPackage });
   const installedFiles = installed.output.match(/Installed (\d+) files and the Codex rules file/);
-  const filesLine = renderDoctor(result).split('\n').find((line) => line.includes('files:'));
+  const filesLine = renderDoctor(result).split('\n').find((line) => line.startsWith('[ok] files:'));
   assert.ok(installedFiles);
   assert.ok(filesLine);
   assert.match(filesLine, new RegExp(`${installedFiles[1]} installed file\\(s\\) present`));
