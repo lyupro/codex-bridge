@@ -18,6 +18,7 @@ import { copyPlannedFile, planHomeWriter, targetMatches } from './copy.mjs';
 import { removeOutside } from './record-removal.mjs';
 import { hookTargets, recordHasHooks } from './hook-targets.mjs';
 import { fingerprintFor } from './install-record.mjs';
+import { syncOtherOwners } from './owner-sync-apply.mjs';
 import { ownerRecord } from './owner-record.mjs';
 import {
   commandFor,
@@ -110,6 +111,14 @@ async function migrateLegacySeed(host, seed, writer, id) {
   await removeOutside(writer, legacy);
 }
 
+async function ownerSyncOutput(host, { packageRoot, env, dryRun }, output) {
+  const { complete, lines } = await syncOtherOwners(host, { packageRoot, env, dryRun });
+  return {
+    exitCode: complete ? 0 : 1,
+    output: lines.length ? `${output}\n${lines.join('\n')}` : output,
+  };
+}
+
 async function installInRun(options = {}) {
   const {
     host,
@@ -199,21 +208,16 @@ async function installInRun(options = {}) {
       // Read, never write: this branch's whole claim is that there is nothing to do, and a
       // sentence about permission rules must not be paid for by quietly restoring one.
       const permissionResult = await inspectPermissions(host.settingsPath);
-      return {
-        exitCode: 0,
-        output: contractOutput(
-          hostContract,
-          retentionOutput(
-            configuredRetentionLine,
-            `codex-bridge is already installed; nothing to do.\n${permissionOutput(permissionResult, host.settingsPath)}`,
-          ),
+      return ownerSyncOutput(host, { packageRoot, env, dryRun }, contractOutput(
+        hostContract,
+        retentionOutput(
+          configuredRetentionLine,
+          `codex-bridge is already installed; nothing to do.\n${permissionOutput(permissionResult, host.settingsPath)}`,
         ),
-      };
+      ));
     }
-    return {
-      exitCode: 0,
-      output: contractOutput(hostContract, retentionOutput(configuredRetentionLine, 'codex-bridge is already installed; nothing to do.')),
-    };
+    return ownerSyncOutput(host, { packageRoot, env, dryRun },
+      contractOutput(hostContract, retentionOutput(configuredRetentionLine, 'codex-bridge is already installed; nothing to do.')));
   }
 
   if (dryRun) {
@@ -232,7 +236,8 @@ async function installInRun(options = {}) {
     });
     if (transition) lines.push(`A real run would ask whether this host is the only one using ${host.brandRoot}.`);
     lines.push('Would write installation record in the brand root.');
-    return { exitCode: 0, output: contractOutput(hostContract, retentionOutput(configuredRetentionLine, lines.join('\n'))) };
+    return ownerSyncOutput(host, { packageRoot, env, dryRun },
+      contractOutput(hostContract, retentionOutput(configuredRetentionLine, lines.join('\n'))));
   }
 
   // Claim ownership of the shared rules file before writing anything. Claiming it last meant a
@@ -267,17 +272,14 @@ async function installInRun(options = {}) {
   const row = await ownerRecord({ plan, rule, targets, hookResults, prior: record, currentPackage });
   await writeInstallRecord(host, row, { homeHadImage, inventory });
   const transitionLine = transition ? `\n${transitionOutcome(host, inventory)}` : '';
-  return {
-    exitCode: 0,
-    output: contractOutput(
-      hostContract,
-      retentionOutput(
-        configuredRetentionLine,
-        `Installed ${plan.length} files and the Codex rules file, and registered ${hookSummary(targets)}.`
-          + `\n${permissionOutput(permissionResult, host.settingsPath)}${transitionLine}`,
-      ),
+  return ownerSyncOutput(host, { packageRoot, env, dryRun }, contractOutput(
+    hostContract,
+    retentionOutput(
+      configuredRetentionLine,
+      `Installed ${plan.length} files and the Codex rules file, and registered ${hookSummary(targets)}.`
+        + `\n${permissionOutput(permissionResult, host.settingsPath)}${transitionLine}`,
     ),
-  };
+  ));
 }
 
 export async function install(options = {}) {

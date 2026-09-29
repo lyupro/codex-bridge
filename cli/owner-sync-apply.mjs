@@ -11,7 +11,7 @@ import { copyPlannedFile, planHomeWriter } from './copy.mjs';
 import { readInstallRecordFile, writeInstallRecord } from './install-record.mjs';
 import { ownerView } from './install-owners.mjs';
 import { ownerRecord } from './owner-record.mjs';
-import { ownerHost, ownerSyncLines, planOwner } from './owner-sync.mjs';
+import { ownerHost, ownerSyncLines, planOwner, planOwnerSync } from './owner-sync.mjs';
 import { mergeHook } from './settings-merge.mjs';
 
 async function applyOwner(owner, initiator, { packageRoot, env }) {
@@ -71,6 +71,20 @@ export async function applyOwnerSync(plan, initiator, { packageRoot, env } = {})
     }
   }
   return { owners, complete: owners.every(({ status }) => status === 'in-sync' || status === 'updated') };
+}
+
+/**
+ * One entrance for every command that replaced the image: install and update both call it, so neither
+ * can sync the other owners differently. A dry run only plans; it never counts as incomplete.
+ */
+export async function syncOtherOwners(initiator, { packageRoot, env, dryRun = false } = {}) {
+  const record = await readInstallRecordFile(initiator);
+  if (record?.format !== 2) return { complete: true, lines: [] };
+  const plan = await planOwnerSync(record, initiator, { packageRoot, env });
+  if (dryRun) return { complete: true, lines: ownerSyncLines(plan) };
+  // Plan_65 D7: the initiator's force never authorizes another owner's edits.
+  const result = await applyOwnerSync(plan, initiator, { packageRoot, env });
+  return { complete: result.complete, lines: ownerApplyLines(result) };
 }
 
 export function ownerApplyLines(result) {
