@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { packageSource, sourceAt, checkoutAt } from './package-source.mjs';
 import { install } from './install.mjs';
+import { syncOtherOwners } from './owner-sync-apply.mjs';
 import {
   buildInstallPlan,
   fileFingerprint,
@@ -294,19 +295,21 @@ async function updateInRun({
       // it on this path costs nothing when there is nothing left to retire.
       await retireLegacyLayout(host, writer);
     }
+    const ownerSync = await syncOtherOwners(host, { packageRoot, env, dryRun });
     return {
-      exitCode: 0,
-      output: [`codex-bridge is up to date with ${source}${mismatch}`, legacyLogOutput]
+      exitCode: ownerSync.complete ? 0 : 1,
+      output: [`codex-bridge is up to date with ${source}${mismatch}`, legacyLogOutput, ...ownerSync.lines]
         .filter(Boolean).join('\n'),
     };
   }
   if (dryRun) {
     const legacyLogOutput = await retireLegacyGuardLogs(host, writer, { dryRun: true });
+    const ownerSync = await syncOtherOwners(host, { packageRoot, env, dryRun });
     return {
       exitCode: 0,
       output: [`Would update codex-bridge with ${source}.${mismatch}`,
         ...(transition ? [`A real run would ask whether this host is the only one using ${host.brandRoot}.`] : []),
-        dryRunOutput(states, inspectedHooks, legacy, oldHooks), legacyLogOutput]
+        dryRunOutput(states, inspectedHooks, legacy, oldHooks), legacyLogOutput, ...ownerSync.lines]
         .filter(Boolean).join('\n'),
     };
   }
@@ -330,13 +333,15 @@ async function updateInRun({
     promptOutput,
     inventoryTransition: { transition, homeHadImage, inventory },
   });
-  if (installed.exitCode !== 0) return installed;
+  // Plan_65 D7: another owner left behind must not prevent this host's retirement and summary.
+  if (installed.exitCode !== 0 && installed.ownerSync?.complete !== false) return installed;
   await retireLegacyLayout(host, writer);
   const legacyLogOutput = await retireLegacyGuardLogs(host, writer);
   const outcome = transition ? transitionOutcome(host, inventory) : null;
   return {
-    exitCode: 0,
-    output: [`${appliedOutput(states)}\nSource: ${source}${mismatch}`, outcome, legacyLogOutput]
+    exitCode: installed.exitCode,
+    output: [`${appliedOutput(states)}\nSource: ${source}${mismatch}`, outcome, legacyLogOutput,
+      ...installed.ownerSync.lines]
       .filter(Boolean).join('\n'),
   };
 }

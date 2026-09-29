@@ -112,10 +112,12 @@ async function migrateLegacySeed(host, seed, writer, id) {
 }
 
 async function ownerSyncOutput(host, { packageRoot, env, dryRun }, output) {
-  const { complete, lines } = await syncOtherOwners(host, { packageRoot, env, dryRun });
+  const ownerSync = await syncOtherOwners(host, { packageRoot, env, dryRun });
+  // Update reads ownerSync to tell "another owner lags" from "this host failed" (Plan_65 B13e2d).
   return {
-    exitCode: complete ? 0 : 1,
-    output: lines.length ? `${output}\n${lines.join('\n')}` : output,
+    exitCode: ownerSync.complete ? 0 : 1,
+    output: ownerSync.lines.length ? `${output}\n${ownerSync.lines.join('\n')}` : output,
+    ownerSync,
   };
 }
 
