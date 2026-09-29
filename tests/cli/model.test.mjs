@@ -160,8 +160,8 @@ test('dispatcher forwards model arguments and returns the command exit code', as
   });
   assert.equal(exitCode, 2);
   assert.deepEqual(messages, ['codex-bridge model: unexpected argument "extra".']);
-  assert.match(HELP, /^  codex-bridge model \[list\]$/m);
-  assert.match(HELP, /^  model\s+Show machine-wide model profiles or list the live catalogue$/m);
+  assert.match(HELP, /^  codex-bridge model$/m);
+  assert.match(HELP, /^  model\s+Show, set or list the models delegated roles run on$/m);
 });
 
 test('speed is a registered action and the dispatcher returns its missing-role refusal', async () => {

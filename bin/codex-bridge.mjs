@@ -1,89 +1,33 @@
 #!/usr/bin/env node
-/** Dispatches codex-bridge CLI arguments to focused command modules. */
-import { diagnose, renderDoctor } from '../cli/doctor.mjs';
-import { probeContract } from '../cli/probe-contract.mjs';
-import { resolveProbeTarget } from '../cli/probe-target.mjs';
-import { brandStateDir } from '../src/home/lib/brand-home.mjs';
+/** Dispatches codex-bridge CLI arguments through the command registry (Plan_71 D1). */
 import { isInvokedDirectly } from '../cli/invoked-directly.mjs';
-import { hook } from '../cli/hook.mjs';
-import { resolveHost } from '../cli/hosts.mjs';
-import { install } from '../cli/install.mjs';
-import { model } from '../cli/model.mjs';
-import { projects } from '../cli/projects.mjs';
-import { read } from '../cli/read.mjs';
-import { runCodex } from '../cli/run-launcher.mjs';
 import { packageInfo } from '../cli/manifest.mjs';
-import { permissions } from '../cli/permissions.mjs';
-import { prune } from '../cli/prune.mjs';
-import { stop } from '../cli/stop.mjs';
-import { unlock } from '../cli/unlock.mjs';
-import { uninstall } from '../cli/uninstall.mjs';
-import { update } from '../cli/update.mjs';
+import { COMMANDS } from '../cli/command-registry.mjs';
+import { helpRequest, renderCommandHelp } from '../cli/command-help.mjs';
 
-export const HELP = `codex-bridge — Claude Code dispatchers for Codex
+export { commandOptions } from '../cli/command-registry.mjs';
 
-Usage:
-  codex-bridge install [--scope user|project] [--host <path>] [--dry-run] [--force]
-  codex-bridge update [--scope user|project] [--host <path>] [--dry-run] [--force]
-  codex-bridge permissions [add|remove] [--scope user|project] [--host <path>]
-  codex-bridge uninstall [--scope user|project] [--host <path>] [--dry-run]
-  codex-bridge doctor [--scope user|project] [--host <path>] [--probe-contract] [--probe-executable <path>]
-  codex-bridge run <runner options> --task-file <path>
-  codex-bridge model [list]
-  codex-bridge projects [<name>] [--json]
-  codex-bridge prune <project> [<run>] [--purge] [--older-than <age>] [-f] [--json]
-  codex-bridge prune --all-projects [--older-than <age>] [-f] [--json]
-  codex-bridge unlock [<project>|--all]
-  codex-bridge read <run>
-  codex-bridge stop <run>
-  codex-bridge hook <name>
-  codexb <same command forms as codex-bridge>
-  codex-bridge --help
-  codex-bridge --version
-
-Commands:
-  install   Install codex-bridge into the selected Claude Code host
-  update    Update a recorded codex-bridge installation
-  permissions Show, add, or remove optional shell permission rules
-  uninstall Remove installed files while preserving run artifacts
-  doctor    Diagnose the selected Claude Code host (--probe-contract measures on a live host)
-  run       Start or attach to a delegated Codex run
-  model     Show machine-wide model profiles or list the live catalogue
-  projects  List projects or runs from the run store
-  prune     Remove archived transport, or purge selected run folders
-  unlock    Close running records whose runner is gone
-  read      Render a run's structured event stream
-  stop      Stop a running Codex run and record FAIL
-
-Hook dispatch:
-  codex-bridge hook <name>  Dispatch a registered guard with stdin unchanged`;
-
-const HOOK_COMMAND = 'hook';
-
-export function commandOptions(command, argv) {
-  const options = {};
-  const booleanFlags = command === 'install' || command === 'update' ? new Set(['--dry-run', '--force'])
-    : command === 'uninstall' ? new Set(['--dry-run'])
-      : command === 'doctor' ? new Set(['--probe-contract']) : new Set();
-  const flagNames = new Map([
-    ['--dry-run', 'dryRun'],
-    ['--force', 'force'],
-    ['--probe-contract', 'probeContract'],
-  ]);
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
-    if (booleanFlags.has(arg)) {
-      options[flagNames.get(arg)] = true;
-      continue;
-    }
-    if (arg !== '--scope' && arg !== '--host' && !(command === 'doctor' && arg === '--probe-executable')) throw new Error(`unknown ${command} option "${arg}"`);
-    const value = argv[index + 1];
-    if (!value || value.startsWith('-')) throw new Error(`${arg} requires a value`);
-    options[arg === '--scope' ? 'scope' : arg === '--host' ? 'host' : 'probeExecutable'] = value;
-    index += 1;
-  }
-  return options;
-}
+const publicCommands = COMMANDS.filter((entry) => entry.section === 'public');
+const commandWidth = Math.max(...publicCommands.map((entry) => entry.name.length));
+export const HELP = [
+  'codex-bridge — Claude Code dispatchers for Codex',
+  '',
+  'Usage:',
+  ...publicCommands.flatMap((entry) => [entry, ...Object.values(entry.actions ?? {})]
+    .flatMap((section) => section.usage.map((line) => `  ${line}`))),
+  '  codexb <same command forms as codex-bridge>',
+  '  codex-bridge --help',
+  '  codex-bridge --version',
+  '',
+  'Commands:',
+  ...publicCommands.map((entry) => `  ${entry.name.padEnd(commandWidth)}  ${entry.summary}`),
+  '',
+  'Hook dispatch:',
+  ...COMMANDS.filter((entry) => entry.section === 'machine')
+    .flatMap((entry) => entry.usage.map((line) => `  ${line}  ${entry.summary}`)),
+  '',
+  'Run codex-bridge <command> -h for one command.',
+].join('\n');
 
 export async function main(argv, io = console) {
   const [command, ...rest] = argv;
@@ -95,103 +39,17 @@ export async function main(argv, io = console) {
     io.log((await packageInfo()).version);
     return 0;
   }
-  if (command === 'run') return runCodex(rest);
-  if (command === 'doctor') {
-    const options = commandOptions(command, rest);
-    if (options.probeExecutable && !options.probeContract) throw new Error('--probe-executable requires --probe-contract');
-    const host = resolveHost(options);
-    // The probe runs BEFORE the diagnosis so the `hostContract` line below carries the verdict just
-    // measured. Printing the diagnosis first and the measurement after would answer one question
-    // twice in one output, with the older answer on top (Plan_52 D25).
-    let probe = null;
-    if (options.probeContract) {
-      const target = resolveProbeTarget({ stateDir: brandStateDir(host.brandRoot), executable: options.probeExecutable });
-      if (!target.error) io.log(`probe: target ${target.version} at ${target.executable} (${target.source})`);
-      probe = await probeContract({ host, target });
-      io.log(`probe: ${probe.message}`);
-      for (const [name, verdict] of Object.entries(probe.dispatcher ?? {})) {
-        io.log(`probe: ${name} ${verdict.result} — ${verdict.detail}`);
-      }
-    }
-    const result = await diagnose({ host });
-    io.log(renderDoctor(result));
-    // An inconclusive probe wrote nothing and measured nothing; exiting 0 would let a failed
-    // measurement pass silently in a script (Plan_52 D26).
-    return probe && probe.state === 'inconclusive' ? 2 : result.exitCode;
-  }
-  if (command === 'stop') {
-    if (rest.length !== 1) {
-      io.error('codex-bridge stop requires exactly one run folder (full path or bare name).');
-      return 2;
-    }
-    const result = await stop({ run: rest[0] });
-    io.log(result.output);
-    return result.exitCode;
-  }
-  if (command === HOOK_COMMAND) return hook(rest, io);
-  if (command === 'read') {
-    if (rest.length !== 1) {
-      io.error('codex-bridge read requires exactly one run folder (full path or bare name).');
-      return 2;
-    }
-    const result = read({ run: rest[0] });
-    io.log(result.output);
-    return result.exitCode;
-  }
-  if (command === 'projects') {
-    const result = projects(rest);
-    io.log(result.output);
-    return result.exitCode;
-  }
-  if (command === 'model') {
-    const result = await model(rest);
-    io.log(result.output);
-    return result.exitCode;
-  }
-  if (command === 'prune') {
-    const result = await prune(rest);
-    io.log(result.output);
-    return result.exitCode;
-  }
-  if (command === 'sweep') {
-    io.error('codex-bridge sweep was renamed to codex-bridge unlock; use the new command.');
+  const entry = COMMANDS.find((candidate) => candidate.name === command);
+  if (!entry) {
+    io.error(`codex-bridge: unknown command "${command}"\nRun codex-bridge --help for usage.`);
     return 2;
   }
-  if (command === 'unlock') {
-    const result = unlock(rest);
-    io.log(result.output);
-    return result.exitCode;
+  const asked = helpRequest(rest, Object.keys(entry.actions ?? {}));
+  if (asked && entry.section !== 'renamed') {
+    io.log(renderCommandHelp(entry, asked.action));
+    return 0;
   }
-  if (command === 'permissions') {
-    let action;
-    let optionArgs = rest;
-    if (rest[0] && !rest[0].startsWith('-')) {
-      action = rest[0];
-      optionArgs = rest.slice(1);
-    }
-    if (action && !['add', 'remove'].includes(action)) {
-      throw new Error(`unknown permissions action "${action}"`);
-    }
-    const options = commandOptions(command, optionArgs);
-    const host = resolveHost(options);
-    const result = await permissions({ host, action });
-    io.log(result.output);
-    return result.exitCode;
-  }
-  if (command === 'install' || command === 'update' || command === 'uninstall') {
-    const options = commandOptions(command, rest);
-    const host = resolveHost(options);
-    const handlers = {
-      install: () => install({ host, dryRun: options.dryRun, force: options.force }),
-      update: () => update({ host, dryRun: options.dryRun, force: options.force }),
-      uninstall: () => uninstall({ host, dryRun: options.dryRun }),
-    };
-    const result = await handlers[command]();
-    io.log(result.output);
-    return result.exitCode;
-  }
-  io.error(`codex-bridge: unknown command "${command}"\nRun codex-bridge --help for usage.`);
-  return 2;
+  return entry.handler(rest, io);
 }
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
