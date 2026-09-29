@@ -17,7 +17,8 @@ import {
 import { copyPlannedFile, planHomeWriter, targetMatches } from './copy.mjs';
 import { removeOutside } from './record-removal.mjs';
 import { hookTargets, recordHasHooks } from './hook-targets.mjs';
-import { fingerprintFor, INSTALL_METHOD_COPY, INSTALL_METHOD_KEY } from './install-record.mjs';
+import { fingerprintFor } from './install-record.mjs';
+import { ownerRecord } from './owner-record.mjs';
 import {
   commandFor,
   inspectHook,
@@ -263,34 +264,8 @@ async function installInRun(options = {}) {
   const permissionResult = dryRun
     ? { dryRun: true, added: 0, present: 0, total: 0 }
     : await addPermissionRules(host.settingsPath);
-  const fingerprints = {};
-  for (const item of plan) {
-    fingerprints[item.root] ??= {};
-    fingerprints[item.root][item.relativeToRoot] = await fileFingerprint(item.target);
-  }
-  const hooks = targets.map(({ definition, relative, registration }, index) => {
-    const prior = record?.hooks?.find((hook) => hook.event === definition.event
-      && hook.root === 'brand' && hook.path === relative);
-    const createdGroup = hookResults[index].createdGroup || prior?.createdGroup === true;
-    const command = registration.command;
-    return {
-      event: definition.event,
-      root: 'brand',
-      path: relative,
-      command,
-      form: command.startsWith('codex-bridge hook ') ? 'short' : 'path',
-      ...(createdGroup ? { createdGroup: true } : {}),
-    };
-  });
-  await writeInstallRecord(host, {
-    ...currentPackage,
-    installedAt: new Date().toISOString(),
-    [INSTALL_METHOD_KEY]: INSTALL_METHOD_COPY,
-    files: plan.map((item) => ({ root: item.root, path: item.relativeToRoot })),
-    fingerprints,
-    rules: { path: rule.target, fingerprint: await fileFingerprint(rule.target) },
-    hooks,
-  }, { homeHadImage, inventory });
+  const row = await ownerRecord({ plan, rule, targets, hookResults, prior: record, currentPackage });
+  await writeInstallRecord(host, row, { homeHadImage, inventory });
   const transitionLine = transition ? `\n${transitionOutcome(host, inventory)}` : '';
   return {
     exitCode: 0,
