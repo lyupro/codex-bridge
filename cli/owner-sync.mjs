@@ -40,15 +40,20 @@ async function fileState(item, host, view) {
   return { item, state: 'conflict', reason: 'changed' };
 }
 
-async function planOwner(record2, owner, initiator, { packageRoot, env }) {
-  const entry = { root: owner.root, scope: owner.scope, version: owner.version, files: [], hooks: [] };
-  const host = resolveHost({
+/** The owner's host seen from the initiator: same home and Codex home, the owner's own root and scope. */
+export function ownerHost(owner, initiator) {
+  return resolveHost({
     host: owner.root,
     scope: owner.scope,
     brandRoot: initiator.brandRoot,
     // A resolved host has no codexHome field; it keeps the Codex home only as `<home>/rules`.
     codexHome: path.dirname(initiator.codexRulesDir),
   });
+}
+
+export async function planOwner(record2, owner, initiator, { packageRoot, env }) {
+  const entry = { root: owner.root, scope: owner.scope, version: owner.version, files: [], hooks: [] };
+  const host = ownerHost(owner, initiator);
   try {
     if (!(await fs.stat(host.root)).isDirectory()) {
       return { ...entry, status: 'unreachable', reason: 'ENOTDIR' };
