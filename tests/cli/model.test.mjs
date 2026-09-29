@@ -159,7 +159,7 @@ test('dispatcher forwards model arguments and returns the command exit code', as
     log: (message) => messages.push(message), error: () => assert.fail('unexpected dispatcher error'),
   });
   assert.equal(exitCode, 2);
-  assert.deepEqual(messages, ['codex-bridge model: unexpected argument "extra".']);
+  assert.deepEqual(messages, ['codex-bridge model: unexpected argument "extra".\nRun codex-bridge model -h for usage.']);
   assert.match(HELP, /^  codex-bridge model$/m);
   assert.match(HELP, /^  model\s+Show, set or list the models delegated roles run on$/m);
 });

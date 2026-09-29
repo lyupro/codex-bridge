@@ -8,6 +8,7 @@ import { editModelProfile } from './model-set.mjs';
 import { editModelSpeed } from './model-speed.mjs';
 import { readCodexUserTier } from './codex-user-config.mjs';
 import { renderTable } from './table.mjs';
+import { withCommandHelp } from './command-help.mjs';
 
 const PROFILE_COLUMNS = ['role', 'model', 'effort', 'speed', 'source']
   .map((key) => ({ key, header: key, fixed: true }));
@@ -43,10 +44,10 @@ export async function model(argv = [], options = {}) {
   }
   if (action === 'speed') return editModelSpeed(optionArgs, options);
   if (action && action !== 'list') {
-    return { exitCode: 2, output: `codex-bridge model: unknown action "${action}". Use model, model list, model set, model unset or model speed.` };
+    return { exitCode: 2, output: withCommandHelp('model', `codex-bridge model: unknown action "${action}". Use model, model list, model set, model unset or model speed.`) };
   }
   if (optionArgs.length) {
-    return { exitCode: 2, output: `codex-bridge model: unexpected argument "${optionArgs[0]}".` };
+    return { exitCode: 2, output: withCommandHelp('model', `codex-bridge model: unexpected argument "${optionArgs[0]}".`) };
   }
 
   try {
@@ -75,7 +76,8 @@ export async function model(argv = [], options = {}) {
     return {
       exitCode: 0,
       output: `${renderTable(PROFILE_COLUMNS, rows, options.terminalWidth)}\n\nConfig file: ${configPath}\n`
-        + 'Machine-wide: shared by every project on this machine, not per-project.',
+        + 'Machine-wide: shared by every project on this machine, not per-project.\n'
+        + 'Set: codex-bridge model set <role> <model> [effort] · catalogue: codex-bridge model list',
     };
   } catch (error) {
     const subject = action === 'list' ? 'live catalogue unavailable; refusing to list models' : 'cannot read profile';

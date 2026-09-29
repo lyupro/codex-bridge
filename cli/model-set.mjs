@@ -5,6 +5,7 @@ import { ROLES, validateRunConfig } from '../src/home/lib/config-validate.mjs';
 import { readJsonFileSync } from '../src/home/lib/json-file.mjs';
 import { editRunConfig } from '../src/home/lib/config-edit.mjs';
 import { fetchCatalogue, parseCatalogue } from './model-catalogue.mjs';
+import { withCommandHelp } from './command-help.mjs';
 
 const failure = (exitCode, message) => ({ exitCode, output: `codex-bridge model: ${message}` });
 const refusal = (message) => Object.assign(new Error(message), { exitCode: 2 });
@@ -17,14 +18,14 @@ function parseChanges(args) {
     let value = argument;
     if (argument.startsWith('-')) {
       if (argument !== '--model' && argument !== '--effort') {
-        throw new Error(`unexpected argument "${argument}".`);
+        throw new Error(withCommandHelp('model set', `unexpected argument "${argument}".`));
       }
       field = argument.slice(2);
       value = args[++index];
       if (value === undefined || value.startsWith('-')) throw new Error(`missing value for ${argument}.`);
     } else {
       field = ['model', 'effort'].find((key) => changes[key] === undefined);
-      if (!field) throw new Error(`unexpected argument "${argument}".`);
+      if (!field) throw new Error(withCommandHelp('model set', `unexpected argument "${argument}".`));
     }
     if (changes[field] !== undefined) throw new Error(`${field} was supplied more than once.`);
     if (!value || /\s/.test(value)) {
@@ -65,7 +66,7 @@ export async function editModelProfile(action, argv, options) {
   }
   let changes;
   try {
-    if (action === 'unset' && args.length) throw new Error(`unexpected argument "${args[0]}".`);
+    if (action === 'unset' && args.length) throw new Error(withCommandHelp('model unset', `unexpected argument "${args[0]}".`));
     if (action === 'set') changes = parseChanges(args);
   } catch (error) {
     return failure(2, error.message);
