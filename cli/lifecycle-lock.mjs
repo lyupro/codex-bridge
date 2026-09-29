@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Serializes install, update and uninstall of one shared package home, which several Claude Code
  * hosts may use at once (Plan_65 D5).
  *

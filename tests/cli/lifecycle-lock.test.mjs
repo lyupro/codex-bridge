@@ -1,4 +1,4 @@
-﻿/** Contract tests for kernel-released lifecycle locks and the declared file fallback. */
+/** Contract tests for kernel-released lifecycle locks and the declared file fallback. */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
