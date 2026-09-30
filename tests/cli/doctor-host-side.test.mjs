@@ -4,8 +4,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { diagnose } from '../../cli/doctor.mjs';
-import { homeOwnersCheck, hostSideCheck } from '../../cli/doctor-host-side.mjs';
+import { homeOwnersCheck, hostSideCheck, ownersInSyncCheck } from '../../cli/doctor-host-side.mjs';
 import { install } from '../../cli/install.mjs';
+import { imageFingerprint } from '../../cli/install-owners.mjs';
 import { installRecordPath } from '../../cli/install-record.mjs';
 import { buildInstallPlan, fileFingerprint } from '../../cli/manifest.mjs';
 import { resolveHost } from '../../cli/hosts.mjs';
@@ -148,6 +149,98 @@ test('home owners warns with an install hint for marks without an owner row', as
   });
   assert.equal(result.status, 'warn');
   assert.equal(result.value, `recorded: none; inventory incomplete: an old record did not name every host; ${host.root} has package files or hooks but is not recorded: run codex-bridge install --host "${host.root}"`);
+});
+
+function syncRecord() {
+  const image = { version: '2.0.0', fingerprints: { brand: { 'lib/image.mjs': 'current' } } };
+  const owners = Object.fromEntries(['C:/host one', 'C:/host two'].map((root) => [root, {
+    root, version: image.version, imageFingerprint: imageFingerprint(image),
+  }]));
+  return { format: 2, inventory: 'complete', image, owners };
+}
+
+const verificationNote = '(recorded verification; host files and reachability not inspected)';
+
+test('owners in sync makes no owner claim without a format 2 record', () => {
+  for (const record of [null, { format: 1, owners: { 'C:/old host': { root: 'C:/old host' } } }]) {
+    assert.deepEqual(ownersInSyncCheck(record), {
+      key: 'owners in sync', status: 'ok', value: 'no format-2 record; nothing to compare',
+    });
+  }
+});
+
+test('owners in sync warns when no owners are recorded', () => {
+  assert.deepEqual(ownersInSyncCheck({ format: 2, inventory: 'complete', owners: {} }), {
+    key: 'owners in sync', status: 'warn', value: 'no recorded owners',
+  });
+});
+
+test('owners in sync accepts both current stamps without inspecting hosts or changing the record', () => {
+  const record = syncRecord();
+  const before = structuredClone(record);
+  assert.deepEqual(ownersInSyncCheck(record), {
+    key: 'owners in sync', status: 'ok',
+    value: `all 2 owner(s) verified against the current image ${verificationNote}`,
+  });
+  assert.deepEqual(record, before);
+});
+
+test('owners in sync names only the older stamp even when its version matches', () => {
+  const record = syncRecord();
+  record.owners['C:/host one'].imageFingerprint = imageFingerprint({
+    version: record.image.version, fingerprints: { brand: { 'lib/image.mjs': 'older' } },
+  });
+  assert.deepEqual(ownersInSyncCheck(record), {
+    key: 'owners in sync', status: 'warn',
+    value: `C:/host one (verified against an earlier image of 2.0.0): run codex-bridge update --host "C:/host one" ${verificationNote}`,
+  });
+});
+
+test('owners in sync uses the image stamp before the recorded version', () => {
+  const record = syncRecord();
+  record.owners['C:/host one'].version = '1.0.0';
+  assert.equal(ownersInSyncCheck(record).status, 'ok');
+});
+
+test('owners in sync groups equal-version owners without stamps into one warning', () => {
+  const record = syncRecord();
+  for (const owner of Object.values(record.owners)) delete owner.imageFingerprint;
+  assert.deepEqual(ownersInSyncCheck(record), {
+    key: 'owners in sync', status: 'warn',
+    value: `not yet verified by image fingerprint: C:/host one, C:/host two ${verificationNote}`,
+  });
+});
+
+test('owners in sync asks an unstamped older-version owner to update', () => {
+  const record = syncRecord();
+  delete record.owners['C:/host one'].imageFingerprint;
+  record.owners['C:/host one'].version = '1.0.0';
+  assert.deepEqual(ownersInSyncCheck(record), {
+    key: 'owners in sync', status: 'warn',
+    value: `C:/host one (recorded 1.0.0, image 2.0.0): run codex-bridge update --host "C:/host one" ${verificationNote}`,
+  });
+});
+
+test('owners in sync never marks an incomplete or legacy inventory healthy', () => {
+  for (const inventory of [{ inventory: 'incomplete' }, { inventory: undefined }, { legacy: {} }]) {
+    const record = { ...syncRecord(), ...inventory };
+    assert.deepEqual(ownersInSyncCheck(record), {
+      key: 'owners in sync', status: 'warn', value: `inventory incomplete ${verificationNote}`,
+    });
+  }
+  assert.equal(ownersInSyncCheck({ format: 2, owners: {} }).value,
+    'no recorded owners; inventory incomplete');
+});
+
+test('owners in sync joins lagging, unstamped and incomplete inventory warnings', () => {
+  const record = syncRecord();
+  record.inventory = 'incomplete';
+  record.owners['C:/host one'].imageFingerprint = 'older stamp';
+  delete record.owners['C:/host two'].imageFingerprint;
+  assert.deepEqual(ownersInSyncCheck(record), {
+    key: 'owners in sync', status: 'warn',
+    value: `C:/host one (verified against an earlier image of 2.0.0): run codex-bridge update --host "C:/host one"; not yet verified by image fingerprint: C:/host two; inventory incomplete ${verificationNote}`,
+  });
 });
 
 test('doctor reports host marks and recorded owners after a real install', async (t) => {

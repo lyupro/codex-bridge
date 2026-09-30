@@ -25,6 +25,24 @@ test('empty host reports not installed and exits nonzero', async (t) => {
   assert.match(renderDoctor(result), /installation: not installed/);
 });
 
+// Plan_65 D11 item 3: keep recorded sync next to ownership so a lagging host remains visible.
+test('doctor renders owners in sync directly after home owners', async (t) => {
+  const { host } = await installedFixture(t);
+  const result = await diagnose({ host, codexProbe, currentPackage: ownPackage });
+  const lines = renderDoctor(result).split('\n');
+  const ownersIndex = lines.findIndex((line) => line.includes('home owners:'));
+  assert.ok(ownersIndex >= 0);
+  assert.match(lines[ownersIndex + 1], /owners in sync:/);
+});
+
+test('doctor reports a broken owner record without an owners in sync claim', async (t) => {
+  const { host } = await installedFixture(t);
+  await fs.writeFile(path.join(host.brandRoot, '.installed.json'), '{ broken');
+  const result = await diagnose({ host, codexProbe, currentPackage: ownPackage });
+  assert.equal(result.checks.find((item) => item.key === 'home owners').status, 'fail');
+  assert.equal(result.checks.some((item) => item.key === 'owners in sync'), false);
+});
+
 test('install file count agrees with doctor files check', async (t) => {
   const host = await hostFixture(t);
   const installed = await install({ host });

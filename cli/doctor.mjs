@@ -7,7 +7,7 @@ import { readInstallRecord, packageInfo } from './manifest.mjs';
 import { readInstallRecordFile, recordTarget } from './install-record.mjs';
 import { runsRoot } from '../src/home/lib/runner/runs-root.mjs';
 import { check, renderDoctor } from './doctor-format.mjs';
-import { homeOwnersCheck, hostSideCheck, ownerEntry } from './doctor-host-side.mjs';
+import { homeOwnersCheck, hostSideCheck, ownerEntry, ownersInSyncCheck } from './doctor-host-side.mjs';
 import { inspectHost } from './host-inspection.mjs';
 import {
   agentsCheck,
@@ -123,6 +123,7 @@ export async function diagnose({
   checks.push(rawRecordError
     ? check('home owners', 'fail', `broken record: ${rawRecordError.message}`)
     : await homeOwnersCheck(host, rawRecord, inspection));
+  if (rawRecordError === null) checks.push(ownersInSyncCheck(rawRecord));
   const missingFiles = [];
   if (record) {
     for (const file of record.files) {

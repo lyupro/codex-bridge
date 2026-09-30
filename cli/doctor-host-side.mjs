@@ -3,13 +3,14 @@
  * comes from its marks, while WHO uses the home comes only from its owner rows. A single
  * "installation: not installed" line hid a host that plainly carried our agents and hooks, and it
  * never said which hosts the home record names or whether its inventory is complete.
+ * Owners in sync keeps lagging hosts visible because install/update named them only once (Plan_65 D11 item 3).
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { normalizeRepoPath } from '../src/home/lib/runner/project-dir.mjs';
 import { check } from './doctor-format.mjs';
 import { hasPackageMarks } from './host-inspection.mjs';
-import { isFormat2 } from './install-owners.mjs';
+import { imageFingerprint, isFormat2 } from './install-owners.mjs';
 
 // Format 1 is not migrated here: asFormat2 would record this host as the owner, and doctor only reads.
 export function ownerEntry(rawRecord, host) {
@@ -70,4 +71,40 @@ export async function homeOwnersCheck(host, rawRecord, inspection) {
       : []),
   ];
   return check('home owners', inventoryComplete && !unrecordedMarks ? 'ok' : 'warn', parts.join('; '));
+}
+
+export function ownersInSyncCheck(rawRecord) {
+  if (rawRecord === null || !isFormat2(rawRecord)) {
+    return check('owners in sync', 'ok', 'no format-2 record; nothing to compare');
+  }
+
+  const owners = Object.values(rawRecord.owners);
+  const inventoryComplete = rawRecord.inventory === 'complete' && rawRecord.legacy === undefined;
+  if (!owners.length) {
+    return check('owners in sync', 'warn',
+      `no recorded owners${inventoryComplete ? '' : '; inventory incomplete'}`);
+  }
+
+  const fingerprint = imageFingerprint(rawRecord.image);
+  const parts = [];
+  const unstamped = [];
+  for (const owner of owners) {
+    if (owner.imageFingerprint != null) {
+      if (owner.imageFingerprint === fingerprint) continue;
+    } else if (owner.version === rawRecord.image.version) {
+      unstamped.push(owner.root);
+      continue;
+    }
+    // The same version on both sides is the clone case the stamp exists for; say so instead of "0.6.9, image 0.6.9".
+    const why = owner.version === rawRecord.image.version
+      ? `verified against an earlier image of ${owner.version}`
+      : `recorded ${owner.version}, image ${rawRecord.image.version}`;
+    parts.push(`${owner.root} (${why}): run codex-bridge update --host "${owner.root}"`);
+  }
+  if (unstamped.length) parts.push(`not yet verified by image fingerprint: ${unstamped.join(', ')}`);
+  if (!inventoryComplete) parts.push('inventory incomplete');
+  const warning = parts.length > 0;
+  if (!warning) parts.push(`all ${owners.length} owner(s) verified against the current image`);
+  return check('owners in sync', warning ? 'warn' : 'ok',
+    `${parts.join('; ')} (recorded verification; host files and reachability not inspected)`);
 }
