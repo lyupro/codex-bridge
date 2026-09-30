@@ -9,6 +9,7 @@
  * only the migrating host as owner and the inventory marked incomplete (D6): it never recorded who
  * else used the home, and the last writer is not proof of being the only one.
  */
+import { createHash } from 'node:crypto';
 import { normalizeRepoPath } from '../src/home/lib/runner/project-dir.mjs';
 import {
   fileEntry,
@@ -21,6 +22,14 @@ const isObject = (value) => Boolean(value) && typeof value === 'object' && !Arra
 
 export function isFormat2(parsed) {
   return isObject(parsed) && parsed.format === 2;
+}
+
+export function imageFingerprint(image) {
+  const brand = image.fingerprints?.brand;
+  if (brand === undefined) return null;
+  const canonical = Object.keys(brand).sort()
+    .map((path) => `${path}\0${brand[path]}\n`).join('');
+  return createHash('sha256').update(canonical).digest('hex');
 }
 
 function filesFor(record, root) {
@@ -121,6 +130,8 @@ export function withOwner(existing, host, record1, options) {
   const key = normalizeRepoPath(host.root);
   const image = imageFrom(record1);
   const owner = ownerFrom(record1, host);
+  const fingerprint = imageFingerprint(image);
+  if (fingerprint !== null) owner.imageFingerprint = fingerprint;
 
   if (existing === null) {
     // Only an explicit false proves no earlier installation used this home; unknown is incomplete.
@@ -205,6 +216,10 @@ export function validateFormat2(parsed) {
     }
     if (typeof owner.scope !== 'string' || !owner.scope) {
       throw new Error(`installation record owner ${key} has invalid scope`);
+    }
+    if (Object.hasOwn(owner, 'imageFingerprint')
+      && (typeof owner.imageFingerprint !== 'string' || !/^[a-f0-9]{64}$/.test(owner.imageFingerprint))) {
+      throw new Error(`installation record owner ${key} has invalid imageFingerprint`);
     }
     validatePartition(owner, 'claude', `owner ${key}`);
     const view = ownerView(parsed, { root: owner.root });

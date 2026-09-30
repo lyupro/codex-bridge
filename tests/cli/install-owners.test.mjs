@@ -1,8 +1,9 @@
 /** Verifies format-2 ownership without filesystem access. */
+import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { normalizeRepoPath } from '../../src/home/lib/runner/project-dir.mjs';
-import { imageRemoval, isFormat2, ownerView, validateFormat2, withOwner, withoutOwner } from '../../cli/install-owners.mjs';
+import { imageFingerprint, imageRemoval, isFormat2, ownerView, validateFormat2, withOwner, withoutOwner } from '../../cli/install-owners.mjs';
 
 const brandFiles = [
   { root: 'brand', path: 'hooks/reply-guard.mjs' },
@@ -205,4 +206,51 @@ test('imageRemoval requires the departing host to be the last owner of a complet
   assert.deepEqual(imageRemoval({ ...complete, legacy: record('legacy') }, firstHost), {
     removeImage: false, reason: 'incomplete-inventory',
   });
+});
+
+test('image fingerprints use sorted brand paths and change with same-version image bytes', () => {
+  const image = { fingerprints: { brand: { 'b.mjs': 'b'.repeat(64), 'a.mjs': 'a'.repeat(64) } } };
+  const reordered = { fingerprints: { brand: { 'a.mjs': 'a'.repeat(64), 'b.mjs': 'b'.repeat(64) } } };
+  const canonical = `a.mjs\0${'a'.repeat(64)}\nb.mjs\0${'b'.repeat(64)}\n`;
+  const expected = createHash('sha256').update(canonical).digest('hex');
+  assert.equal(imageFingerprint(image), expected);
+  assert.equal(imageFingerprint(reordered), expected);
+  reordered.fingerprints.brand['b.mjs'] = 'c'.repeat(64);
+  assert.notEqual(imageFingerprint(reordered), expected);
+  assert.equal(imageFingerprint({}), null);
+  assert.equal(imageFingerprint({ fingerprints: { claude: {} } }), null);
+});
+
+test('withOwner stamps only the publishing owner and ownerView keeps its format-1 shape', () => {
+  const a = host('/repos/a/.claude');
+  const b = host('/repos/b/.claude');
+  const initial = withOwner(null, a, record());
+  const aKey = normalizeRepoPath(a.root);
+  const bKey = normalizeRepoPath(b.root);
+  const priorStamp = initial.owners[aKey].imageFingerprint;
+  assert.equal(priorStamp, imageFingerprint(initial.image));
+  const nextRecord = record('b');
+  nextRecord.fingerprints.brand['lib/runner.mjs'] = 'd'.repeat(64);
+  const published = withOwner(initial, b, nextRecord);
+  assert.equal(published.owners[bKey].imageFingerprint, imageFingerprint(published.image));
+  assert.notEqual(published.owners[bKey].imageFingerprint, priorStamp);
+  assert.deepEqual(published.owners[aKey], initial.owners[aKey]);
+  assert.equal(Object.hasOwn(ownerView(published, b), 'imageFingerprint'), false);
+  const unstamped = withOwner(null, b, record('b', { fingerprints: undefined }));
+  assert.equal(Object.hasOwn(unstamped.owners[bKey], 'imageFingerprint'), false);
+});
+
+test('owner stamps require exactly 64 lowercase hex characters, while absent stamps remain valid', () => {
+  const target = host('/repos/alpha/.claude');
+  const valid = withOwner(null, target, record());
+  const key = normalizeRepoPath(target.root);
+  for (const stamp of ['g'.repeat(64), 'a'.repeat(63), 'a'.repeat(65), 'a'.repeat(64) + '\n', 'A'.repeat(64), null, 123, undefined]) {
+    const invalid = structuredClone(valid);
+    invalid.owners[key].imageFingerprint = stamp;
+    assert.throws(() => validateFormat2(invalid), {
+      message: `installation record owner ${key} has invalid imageFingerprint`,
+    });
+  }
+  delete valid.owners[key].imageFingerprint;
+  assert.equal(validateFormat2(valid), valid);
 });

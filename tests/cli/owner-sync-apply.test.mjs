@@ -1,4 +1,4 @@
-/** Verifies D7 applies only eligible owners' files and hooks before advancing their record rows. */
+/** Verifies D7 host updates and B13f4 image stamps advance rows only after verification. */
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -9,6 +9,7 @@ import { resolveHost } from '../../cli/hosts.mjs';
 import { install } from '../../cli/install.mjs';
 import { buildInstallPlan, fileFingerprint, PACKAGE_ROOT } from '../../cli/manifest.mjs';
 import { readInstallRecordFile } from '../../cli/install-record.mjs';
+import { imageFingerprint } from '../../cli/install-owners.mjs';
 import { hookTargets } from '../../cli/hook-targets.mjs';
 import { plannedContent } from '../../cli/copy.mjs';
 import { ownerSyncLines, planOwnerSync } from '../../cli/owner-sync.mjs';
@@ -83,6 +84,7 @@ test('old recorded bytes update and verify before B advances; inventory and A st
   await oldAgent(f);
   f.record.inventory = 'incomplete';
   f.record.owners[key(f.b)].scope = 'project';
+  f.record.owners[key(f.b)].imageFingerprint = '0'.repeat(64);
   await saveRecord(f);
   const aBefore = rowBytes(f.record, f.a);
   const inventoryBefore = JSON.stringify(f.record.inventory);
@@ -95,6 +97,7 @@ test('old recorded bytes update and verify before B advances; inventory and A st
   assert.deepEqual(await fs.readFile(f.agent.target), await plannedContent(f.agent, f.b.brandRoot));
   assert.equal(record.owners[key(f.b)].fingerprints.claude[f.agent.relativeToRoot], await fileFingerprint(f.agent.target));
   assert.equal(record.owners[key(f.b)].version, record.image.version);
+  assert.equal(record.owners[key(f.b)].imageFingerprint, imageFingerprint(record.image));
   assert.equal(record.owners[key(f.b)].scope, 'project');
   assert.deepEqual(record.owners[key(f.b)].hooks, hooksBefore);
   assert.equal(replanned.owners[0].status, 'in-sync');
@@ -307,4 +310,49 @@ test('ownerApplyLines formats each terminal status and reuses planner conflict/u
     ...ownerSyncLines({ owners: [conflict, unreachable] }),
   ]);
   assert.deepEqual(ownerApplyLines({ owners: [{ root: 'A', status: 'in-sync' }] }), []);
+});
+
+test('in-sync owners with missing or stale stamps re-verify without changing files, then stop writing', async (t) => {
+  for (const stamp of [undefined, '0'.repeat(64)]) {
+    const f = await fixture(t);
+    const row = f.record.owners[key(f.b)];
+    if (stamp === undefined) delete row.imageFingerprint;
+    else row.imageFingerprint = stamp;
+    row.installedAt = '2026-01-01T00:00:00.000Z';
+    await saveRecord(f);
+    const before = await snapshot(f.b.root);
+    const aBefore = rowBytes(f.record, f.a);
+    const plan = await planOwnerSync(f.record, f.a, { env });
+    assert.equal(plan.owners[0].status, 'in-sync');
+    const result = await applyOwnerSync(plan, f.a, { env });
+    const record = await readInstallRecordFile(f.a);
+    assert.deepEqual(result, { owners: [{ root: f.b.root, status: 'in-sync' }], complete: true });
+    assert.deepEqual(ownerApplyLines(result), []);
+    assert.equal(record.owners[key(f.b)].imageFingerprint, imageFingerprint(record.image));
+    assert.notEqual(record.owners[key(f.b)].installedAt, row.installedAt);
+    assert.equal(rowBytes(record, f.a), aBefore);
+    assert.deepEqual(await snapshot(f.b.root), before);
+    const stamped = await snapshot(f.dir);
+    const second = await applyOwnerSync(await planOwnerSync(record, f.a, { env }), f.a, { env });
+    const after = await readInstallRecordFile(f.a);
+    assert.deepEqual(second, result);
+    assert.equal(after.owners[key(f.b)].installedAt, record.owners[key(f.b)].installedAt);
+    assert.equal(rowBytes(after, f.b), rowBytes(record, f.b));
+    assert.deepEqual(await snapshot(f.dir), stamped);
+  }
+});
+
+test('an in-sync owner lost before stamping fails without advancing its row', async (t) => {
+  const f = await fixture(t);
+  delete f.record.owners[key(f.b)].imageFingerprint;
+  await saveRecord(f);
+  const plan = await planOwnerSync(f.record, f.a, { env });
+  assert.equal(plan.owners[0].status, 'in-sync');
+  await fs.rename(f.b.root, `${f.b.root}-away`);
+  const before = await fs.readFile(f.a.brandInstallRecordPath);
+  const result = await applyOwnerSync(plan, f.a, { env });
+  assert.equal(result.complete, false);
+  assert.equal(result.owners[0].status, 'failed');
+  assert.match(result.owners[0].reason, /ENOENT/);
+  assert.deepEqual(await fs.readFile(f.a.brandInstallRecordPath), before);
 });
