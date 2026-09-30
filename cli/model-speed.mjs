@@ -5,12 +5,19 @@ import { ROLES, validateRunConfig } from '../src/home/lib/config-validate.mjs';
 import { editRunConfig } from '../src/home/lib/config-edit.mjs';
 import { fetchCatalogue, parseCatalogue } from './model-catalogue.mjs';
 import { describe, readProfiles } from './model-set.mjs';
+import { withCommandHelp } from './command-help.mjs';
 
 const failure = (exitCode, message) => ({ exitCode, output: `codex-bridge model: ${message}` });
 const refusal = (message) => Object.assign(new Error(message), { exitCode: 2 });
+const unexpected = (argument) => {
+  const result = failure(2, `unexpected argument "${argument}".`);
+  return { ...result, output: withCommandHelp('model speed', result.output) };
+};
 
 export async function editModelSpeed(argv, options) {
   const [role, speed, confirmation, ...extra] = argv;
+  const dashArgument = argv.find((arg) => typeof arg === 'string' && arg.startsWith('-'));
+  if (dashArgument !== undefined) return unexpected(dashArgument);
   if (!ROLES.includes(role)) {
     return failure(2, `${role ? `unknown role "${role}"` : 'role is required'}. Allowed roles: ${ROLES.join(', ')}.`);
   }
@@ -18,9 +25,9 @@ export async function editModelSpeed(argv, options) {
     return failure(2, 'speed requires a tier identifier: a non-empty single word with no whitespace, or unset.');
   }
   if (confirmation !== undefined && (speed === 'unset' || confirmation !== 'confirm')) {
-    return failure(2, `unexpected argument "${confirmation}".`);
+    return unexpected(confirmation);
   }
-  if (extra.length) return failure(2, `unexpected argument "${extra[0]}".`);
+  if (extra.length) return unexpected(extra[0]);
 
   try {
     const configPath = path.resolve(options.configPath ?? CONFIG_PATH);

@@ -35,11 +35,12 @@ function unchanged({ root, configPath, source }) {
 
 test('speed refuses missing and unknown roles with every allowed role before fetching', async (t) => {
   const data = fixture(t, {});
-  for (const args of [[], ['unknown-role'], ['unknown-role', 'unset']]) {
+  for (const args of [[], ['unknown-role'], ['unknown-role', 'unset'], ['nosuchrole', 'fast']]) {
     const result = await model(['speed', ...args], { ...data, fetchCatalogue: noFetch });
     assert.equal(result.exitCode, 2);
     assert.match(result.output, /^codex-bridge model: (role is required|unknown role)/);
     assert.ok(result.output.includes(`Allowed roles: ${roles.join(', ')}.`));
+    assert.doesNotMatch(result.output, /Run codex-bridge .* -h for usage\./);
     unchanged(data);
   }
 });
@@ -52,6 +53,42 @@ test('speed requires a single tier word and accepts only the explicit confirm su
     const result = await model(['speed', 'build', ...args], { ...data, fetchCatalogue: noFetch });
     assert.equal(result.exitCode, 2, JSON.stringify(args));
     assert.match(result.output, /single word|unexpected argument/);
+    unchanged(data);
+  }
+});
+
+test('speed refuses the first dash argument before role checks, config access and fetching', async (t) => {
+  const data = fixture(t, {});
+  let fetchCalls = 0;
+  const options = {
+    get configPath() { assert.fail('dash arguments must not access config'); },
+    fetchCatalogue: () => { fetchCalls += 1; throw new Error('must not fetch'); },
+  };
+  const cases = [
+    [['build', '--fast'], '--fast'],
+    [['build', '-h'], '-h'],
+    [['--x'], '--x'],
+    [['nosuchrole', '--first', '--second'], '--first'],
+    [['build', 'fast', '--confirm'], '--confirm'],
+    [['build', 'fast', 'confirm', '--extra'], '--extra'],
+  ];
+  for (const [args, unexpected] of cases) {
+    const result = await model(['speed', ...args], options);
+    assert.equal(result.exitCode, 2);
+    assert.equal(result.output, `codex-bridge model: unexpected argument "${unexpected}".\nRun codex-bridge model speed -h for usage.`);
+    assert.equal(result.output.split('\n').at(-1), 'Run codex-bridge model speed -h for usage.');
+    assert.equal(fetchCalls, 0);
+    unchanged(data);
+  }
+});
+
+test('speed confirmation and extra argument refusals end with the speed help pointer', async (t) => {
+  const data = fixture(t, {});
+  for (const args of [['unset', 'extra'], ['fast', 'nope'], ['fast', 'confirm', 'extra']]) {
+    const result = await model(['speed', 'build', ...args], { ...data, fetchCatalogue: noFetch });
+    assert.equal(result.exitCode, 2);
+    assert.equal(result.output, `codex-bridge model: unexpected argument "${args.at(-1)}".\nRun codex-bridge model speed -h for usage.`);
+    assert.equal(result.output.split('\n').at(-1), 'Run codex-bridge model speed -h for usage.');
     unchanged(data);
   }
 });
