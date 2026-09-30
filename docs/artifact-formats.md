@@ -125,6 +125,54 @@ also contains runner-generated instructions and is the full prompt sent to Codex
 | `paths` | Parsed list entries from `## Paths`; citations are judged against these paths and the applicable `missing_paths`. |
 | `scope` | `advise` phase only: `{ run, predicted_risks, missing_paths }`, a snapshot of the continued `scope` run's `result.json` taken once, before the run folder exists. The `## Scope phase results` section of `task.md` is rendered from it and the verdict reads it; neither goes back to the scope run's folder. A scope result that cannot be carried is refused before any quota is spent. |
 
+## `state-before.txt` and `state-after.txt`
+
+The worktree snapshot a build run is judged by. The launcher writes `state-before.txt` before Codex
+starts and the worker writes `state-after.txt` after it ends; the verdict, `meta.json#environment_changes`
+and the worktree witness compare the two. One module owns the format:
+`src/home/lib/meta/snapshot-format.mjs`.
+
+Version 2 (Plan_73), written since 2026-10-01:
+
+```text
+# codex-bridge-state-v2
+3	1	"src/changed.mjs"
+-	-	"assets/logo.png"
+U	42:<sha256 hex>	"areas/новый.md"
+U	missing	"vanished.txt"
+U	unreadable	"locked.db"
+```
+
+- The first line is the header, present even for a clean tree, so a clean tree is never confused with
+  a missing or failed read.
+- Every row has exactly three tab-separated fields: two state fields and the path as a JSON string.
+  The path is the name git gave with `-z`, byte-exact: Cyrillic, tabs, newlines, quotes, backslashes
+  and edge spaces survive, and nothing is trimmed.
+- Tracked rows carry `git diff HEAD --numstat --no-renames` counters (`-	-` for binary files). A
+  rename is a deletion plus an addition, two real paths.
+- Untracked rows carry `U` and `<bytes>:<sha256>` of the content, so an edit that keeps the size is a
+  change. `missing` — the file vanished between listing and reading; `unreadable` — it could not be
+  read (on Windows, a file held by another process).
+- The text ends with exactly one newline; an empty interior row is damage.
+
+Version 1 (unversioned) is what older packages wrote: rows `<added>	<deleted>	<path>` and
+`U	<bytes>	<path>`, names taken from git's quoted text output. It is still read, with blank rows
+skipped as the old reader did, but a name git had quoted (starting with `"`) is refused as
+`legacy-quoted-name`: its original spelling is already lost.
+
+The version is decided by the first line alone, never by what the rows look like. Two snapshots of
+different versions are never compared (Plan_73 D5): a run started before an update and judged after
+it gets `FAIL` with `worktree snapshots cannot be compared (incompatible-versions)`, and the witness
+stays silent for it. Restart such a run. A missing or damaged snapshot is `FAIL` as well, never a clean
+tree.
+
+## `git-before.txt`, `git-after.txt` and `diff.stat`
+
+Human-readable only: `git status --porcelain` before and after the run and `git diff --stat` after it,
+written with `-c core.quotepath=false` so a person sees real names. No code parses them — the verdict
+reads the snapshots above — and they may still quote or abbreviate unusual names. Do not build a
+consumer on them.
+
 ## File relationships
 
 - `status.json` answers “is the process running, and how did it end?”
