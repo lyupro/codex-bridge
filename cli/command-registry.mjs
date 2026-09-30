@@ -219,11 +219,11 @@ export const COMMANDS = [
   },
   {
     name: 'unlock',
-    summary: 'Close running records whose runner is gone',
-    usage: ['codex-bridge unlock [<project>|--all]'],
+    summary: 'Close running records whose runner is gone, or show the lifecycle lock',
+    usage: ['codex-bridge unlock [<project>|--all]', 'codex-bridge unlock --lifecycle'],
     section: 'public',
     async handler(argv, io) {
-      const result = unlock(argv);
+      const result = await unlock(argv);
       io.log(result.output);
       return result.exitCode;
     },

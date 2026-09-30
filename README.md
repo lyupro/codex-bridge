@@ -135,7 +135,7 @@ Transport files from runs at least **30 days** old are pruned automatically when
 | `model [list\|set\|unset\|speed]` | Show the model, effort, pinned speed tier and provenance of each role, with the config path; `model list` prints the live catalogue from Codex, hidden models included and marked; `model set <role> <model> [effort]` checks the pair and any retained speed tier against that model's catalogue entry, and `model unset <role>` removes the profile. `model speed <role> <tier>` previews a live accelerated tier and its quoted cost description; repeat with trailing `confirm` to pin it. `model speed <role> unset` removes only speed, without confirmation. The profile is machine-wide, shared by every project on this machine. |
 | `projects [<name>] [--json]` | List projects or runs in the run store. |
 | `prune <project> [<run>] [--purge] [--older-than <age>] [-f] [--json]`<br>`prune --all-projects [--older-than <age>] [-f] [--json]` | Plan or perform operator-confirmed cleanup, for one project or across the whole run store. |
-| `unlock [<project>\|--all]` | Close records whose runner is gone. |
+| `unlock [<project>\|--all]`<br>`unlock --lifecycle` | Close records whose runner is gone, or show who holds the lock that serializes install, update and uninstall of this home. |
 | `read <run>` | Render a run's structured event stream. |
 | `stop <run>` | Stop a run and record a `FAIL` verdict. |
 
