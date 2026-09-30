@@ -15,6 +15,11 @@
  *
  * Plan_62 D22 requires package-home writes to remain removable by artifact id. Plan_65 B1b runs
  * the write audit here so the suite cannot forget to enforce the boundary before creating roots.
+ *
+ * On 2026-09-24 a PowerShell started with empty LOCALAPPDATA left
+ * Microsoft/Windows/PowerShell/ModuleAnalysisCache in the repository root during a suite run.
+ * Git cannot witness ignored entries, so filesystem snapshots name every new direct entry and
+ * fail the run without deleting it; another process may have created it while the suite ran.
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -25,6 +30,7 @@ import { ISOLATED_ROOTS } from './isolated-roots.mjs';
 import { auditWrites } from './home-write-audit.mjs';
 import { HOME_WRITE_INVENTORY } from './home-write-inventory.mjs';
 import { readmeText, suiteCountMismatch } from './suite-count.mjs';
+import { snapshotRoot, addedEntries } from './root-guard/root-entries.mjs';
 
 // One pattern only: on 2026-09-25 three files passed as three arguments ran just the first, and a
 // verification reported green for two files it never touched. Refuse before any root is created.
@@ -63,11 +69,17 @@ const reporters = tapFile
   : [];
 
 try {
+  const before = snapshotRoot(repositoryRoot);
   const result = spawnSync(process.execPath, ['--test', ...reporters, pattern], {
     stdio: 'inherit',
     env: { ...process.env, ...Object.fromEntries(created), CODEX_BRIDGE_TEST_TMP: testTmpRoot },
   });
+  const additions = addedEntries(before, snapshotRoot(repositoryRoot));
   process.exitCode = result.status ?? 1;
+  for (const name of additions) {
+    process.stderr.write(`run-tests: the suite left ${name} in the repository root (or something else created it while the suite ran)\n`);
+  }
+  if (additions.length && process.exitCode === 0) process.exitCode = 1;
   if (tapFile && process.exitCode === 0) {
     let tap = null;
     try {
