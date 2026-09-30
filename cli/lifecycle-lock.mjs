@@ -24,6 +24,7 @@ import net from 'node:net';
 import path from 'node:path';
 import { createHomeWriter } from '../src/home/lib/home-write.mjs';
 import { parseJsonText } from '../src/home/lib/json-file.mjs';
+import { processIdentity } from '../src/home/lib/process-identity.mjs';
 
 const ARTIFACT_ID = 'install-record';
 const LOCK_NAME = '.installed.json.lock';
@@ -52,6 +53,23 @@ function statIdentity(homeRoot) {
     if (error && error.code !== 'ENOENT') throw error;
     return null;
   }
+}
+
+export function lifecycleLockStrategy(platform = process.platform) {
+  if (platform === 'win32') return 'named-pipe';
+  return platform === 'linux' ? 'abstract-socket' : 'file';
+}
+
+function lockAddress(homeRoot, digest, platform) {
+  const strategy = lifecycleLockStrategy(platform);
+  if (strategy === 'named-pipe') return { strategy, address: `\\\\.\\pipe\\codex-bridge-lifecycle-${digest}` };
+  if (strategy === 'abstract-socket') return { strategy, address: `\0codex-bridge-lifecycle-${digest}` };
+  return { strategy, address: path.join(homeRoot, LOCK_NAME) };
+}
+
+export function lifecycleLockAddress(homeRoot, { platform = process.platform } = {}) {
+  const digest = statIdentity(homeRoot);
+  return digest === null ? null : lockAddress(homeRoot, digest, platform);
 }
 
 async function prepareHome(homeRoot) {
@@ -122,19 +140,45 @@ async function selfCheck(server, address, createServer) {
   throw new Error(`lifecycle lock self-check failed: ${detail}`);
 }
 
+export async function tryHoldSocket(address, createServer = net.createServer) {
+  const server = createServer((socket) => socket.destroy());
+  try {
+    await listen(server, address);
+    await selfCheck(server, address, createServer);
+    let releasePromise;
+    return () => (releasePromise ??= closeServer(server));
+  } catch (error) {
+    await closeQuietly(server);
+    if (error?.code === 'EADDRINUSE') return 'in-use';
+    throw error;
+  }
+}
+
 function validHolder(value) {
-  return value && Number.isInteger(value.pid)
+  return value && Number.isInteger(value.pid) && value.pid > 0
     && typeof value.command === 'string' && value.command.length > 0
     && typeof value.hostRoot === 'string' && value.hostRoot.length > 0
     && typeof value.acquiredAt === 'string' && value.acquiredAt.length > 0
     && typeof value.token === 'string' && value.token.length > 0;
 }
 
-function parseHolder(line) {
+export function parseHolder(line) {
   try {
     const holder = parseJsonText('<lifecycle lock holder>', line);
     return validHolder(holder) ? holder : null;
   } catch { return null; }
+}
+
+export function holderLiveness(holder, options = {}) {
+  // A14: acquisition is a run-style timestamp, not the holder process's exact start time.
+  return processIdentity({
+    pid: holder.pid,
+    started_at: holder.acquiredAt,
+    ignoreHeartbeat: true,
+    kill: options.kill,
+    probe: options.probe,
+    now: options.now,
+  });
 }
 
 function busyMessage(homeRoot, holder, hint = '') {
@@ -277,12 +321,10 @@ export async function acquireLifecycleLock(homeRoot, {
   };
 
   if (platform === 'win32' || platform === 'linux') {
-    const address = platform === 'win32'
-      ? `\\\\.\\pipe\\codex-bridge-lifecycle-${digest}`
-      : `\0codex-bridge-lifecycle-${digest}`;
+    const { address, strategy } = lockAddress(homeRoot, digest, platform);
     return acquireSocketLock(homeRoot, holder, {
       address,
-      strategy: platform === 'win32' ? 'named-pipe' : 'abstract-socket',
+      strategy,
       waitMs,
       retryMs,
       answerTimeoutMs,

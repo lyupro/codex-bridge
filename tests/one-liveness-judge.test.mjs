@@ -10,7 +10,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const JUDGE = 'src/home/lib/meta/run-liveness.mjs';
+const JUDGES = new Map([
+  ['src/home/lib/meta/run-liveness.mjs', 'Judge recorded runs through their run record.'],
+  ['cli/lifecycle-lock.mjs', 'Judge lifecycle lock holders through their own holder record (Plan_65 A14).'],
+]);
 const DEFINITION = 'src/home/lib/process-identity.mjs';
 const IDENTITY_APIS = ['processIdentity', 'probeProcessStart'];
 const PID_POLLERS = new Map([
@@ -60,7 +63,7 @@ function forbiddenImport(file, tokens) {
       // Inspect imported names, not their local aliases, including multiline import lists.
       if (at !== index + 1 && !['{', ','].includes(tokens[at - 1])) continue;
       const name = unquote(tokens[at]);
-      if (IDENTITY_APIS.includes(name) && file !== JUDGE) return true;
+      if (IDENTITY_APIS.includes(name) && !JUDGES.has(file)) return true;
       if (name === 'processAlive' && !PID_POLLERS.has(file)) return true;
     }
   }
@@ -99,7 +102,7 @@ function offenders(files) {
 
 function assertOneJudge(files) {
   const found = offenders(files);
-  assert.deepEqual(found, [], `Recorded-run liveness must use ${JUDGE}; only approved exit pollers may import processAlive. Offenders: ${found.join(', ')}`);
+  assert.deepEqual(found, [], `Record liveness must use its owner judge: ${[...JUDGES.keys()].join(' or ')}; only approved exit pollers may import processAlive. Offenders: ${found.join(', ')}`);
 }
 
 const sources = ['src', 'cli'].flatMap((directory) => sourceFiles(path.join(root, directory)))
@@ -110,7 +113,7 @@ const sources = ['src', 'cli'].flatMap((directory) => sourceFiles(path.join(root
 
 test('src and cli use one liveness judge and only approved pid pollers', () => {
   for (const directory of ['src', 'cli']) assert.ok(sources.some(({ file }) => file.startsWith(`${directory}/`)));
-  for (const file of [JUDGE, DEFINITION, ...PID_POLLERS.keys()]) {
+  for (const file of [...JUDGES.keys(), DEFINITION, ...PID_POLLERS.keys()]) {
     assert.ok(sources.some((source) => source.file === file), `${file} must exist`);
   }
   assertOneJudge(sources);
@@ -133,7 +136,7 @@ test('the guard rejects planted identity imports outside the judge', () => {
 });
 
 test('the guard restricts processAlive imports to the two documented pollers', () => {
-  for (const file of ['cli/projects.mjs', 'src/home/lib/new-reader.mjs', JUDGE]) {
+  for (const file of ['cli/projects.mjs', 'src/home/lib/new-reader.mjs', ...JUDGES.keys()]) {
     for (const source of [
       "import { processAlive } from '../src/home/lib/process-identity.mjs';",
       "import { processAlive as poll } from './process-identity.mjs';",
@@ -146,7 +149,7 @@ test('the guard restricts processAlive imports to the two documented pollers', (
 
 // Review 2026-09-17 (D28): a facade re-export was invisible to an import-only scan.
 test('re-exports of the identity module are rejected everywhere, the judge included', () => {
-  for (const file of ['cli/new-reader.mjs', 'src/home/lib/identity-facade.mjs', JUDGE, ...PID_POLLERS.keys()]) {
+  for (const file of ['cli/new-reader.mjs', 'src/home/lib/identity-facade.mjs', ...JUDGES.keys(), ...PID_POLLERS.keys()]) {
     for (const source of [
       "export { processIdentity as judge } from './process-identity.mjs';",
       "export { processAlive } from '../src/home/lib/process-identity.mjs';",
@@ -167,7 +170,7 @@ test('re-exports of the identity module are rejected everywhere, the judge inclu
 });
 
 test('whole-module imports cannot bypass the judge or poller boundaries', () => {
-  for (const file of ['cli/new-reader.mjs', JUDGE, ...PID_POLLERS.keys()]) {
+  for (const file of ['cli/new-reader.mjs', ...JUDGES.keys(), ...PID_POLLERS.keys()]) {
     for (const source of [
       "import * as identity from '../src/home/lib/process-identity.mjs';",
       "const identity = await import('../src/home/lib/process-identity.mjs');",
@@ -179,7 +182,7 @@ test('whole-module imports cannot bypass the judge or poller boundaries', () => 
 });
 
 test('the guard rejects pid-first wrapper declarations in every source file', () => {
-  for (const file of ['cli/new-reader.mjs', JUDGE, DEFINITION, ...PID_POLLERS.keys()]) {
+  for (const file of ['cli/new-reader.mjs', ...JUDGES.keys(), DEFINITION, ...PID_POLLERS.keys()]) {
     for (const source of [
       'export const isPidAlive = (pid) => true;',
       'const pidAlive = (pid, runDir) => true;',
@@ -199,10 +202,11 @@ test('the guard rejects pid-first wrapper declarations in every source file', ()
 });
 
 test('the guard permits the judge, definition and documented pollers', () => {
-  for (const file of [JUDGE, DEFINITION]) {
+  for (const file of [...JUDGES.keys(), DEFINITION]) {
     assertOneJudge([{ file, source: "import { processIdentity } from '../src/home/lib/process-identity.mjs';" }]);
     assertOneJudge([{ file, source: "import { probeProcessStart as probe } from '../process-identity.mjs';" }]);
   }
+  for (const reason of JUDGES.values()) assert.ok(reason);
   for (const [file, reason] of PID_POLLERS) {
     assert.ok(reason);
     assertOneJudge([{ file, source: "import { processAlive } from '../process-identity.mjs';" }]);

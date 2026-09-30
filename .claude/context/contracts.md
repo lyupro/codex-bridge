@@ -146,7 +146,10 @@ here. Nothing was reworded on the way out.
   refusal is added without a side and a reason. Why: on 2026-09-19 the busy refusal created its folder
   first, and in `~/.claude`, where run folders sit inside the worktree, the live writer's witness spent
   every tool call ordering the orchestrator to revert a directory the tool itself had made.
-- **Whether a recorded run is still live is decided in one module**,
+- **Whether a recorded process is still live is decided by the module that owns its record — a run by
+  `src/home/lib/meta/run-liveness.mjs`, a lifecycle lock holder by `holderLiveness` in
+  `cli/lifecycle-lock.mjs` (Plan_65 D11: its record is `acquiredAt`, read as `started_at` with the heartbeat
+  ignored, never as `process_started_at`), and nobody else.** For runs,
   `src/home/lib/meta/run-liveness.mjs`. `runLiveness({ runDir, status })` requires the run folder and
   the record and returns the identity, the heartbeat age, the fail-open `processMayBeAlive` and the
   state closing the run would write (`running`, `unverified`, `abandoned`, `finished`);
