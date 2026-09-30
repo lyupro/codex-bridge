@@ -1,4 +1,4 @@
-/** Plan_65 D11/A14: the lifecycle command observes ownership without clearing locks or run records. */
+/** Plan_65 D11/A14: lifecycle inspection preserves ownership; explicit clearing removes only dead locks. */
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
@@ -7,6 +7,7 @@ import test from 'node:test';
 import { COMMANDS } from '../../cli/command-registry.mjs';
 import { acquireLifecycleLock } from '../../cli/lifecycle-lock.mjs';
 import { unlock } from '../../cli/unlock.mjs';
+import { createHomeWriter } from '../../src/home/lib/home-write.mjs';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 
 const socketOnly = {
@@ -167,7 +168,7 @@ test('a holder arriving after refusal is reported without inventing its identity
   assert.doesNotMatch(result.output, /Holder process:|--clear/);
 });
 
-for (const argument of ['alpha', '--all', '--lifecycle', '--clear', '--unknown', '-h']) {
+for (const argument of ['alpha', '--all', '--lifecycle', '--unknown', '-h']) {
   test(`lifecycle rejects unexpected argument ${argument} before inspection`, async (t) => {
     const homeRoot = path.join(home(t), 'missing');
     const result = await unlock(['--lifecycle', argument], {
@@ -197,7 +198,7 @@ test('the registry awaits lifecycle inspection and uses the shared brand home re
   });
   process.env.CODEX_BRIDGE_HOME = homeRoot;
   const entry = COMMANDS.find((candidate) => candidate.name === 'unlock');
-  assert.deepEqual(entry.usage, ['codex-bridge unlock [<project>|--all]', 'codex-bridge unlock --lifecycle']);
+  assert.deepEqual(entry.usage, ['codex-bridge unlock [<project>|--all]', 'codex-bridge unlock --lifecycle [--clear]']);
   assert.equal(entry.summary, 'Close running records whose runner is gone, or show the lifecycle lock');
   const output = [];
   const exitCode = await entry.handler(['--lifecycle'], { log: (message) => output.push(message) });
@@ -206,4 +207,134 @@ test('the registry awaits lifecycle inspection and uses the shared brand home re
   assertHeader(output[0], homeRoot, socketOnly.skip === false ? socketStrategy : 'file');
   assert.ok(output[0].includes(`no package home at ${homeRoot}; nothing to inspect.`));
   assert.equal(fs.existsSync(homeRoot), false);
+});
+
+test('clear removes a dead holder and reports its command, host and pid', async (t) => {
+  const homeRoot = home(t);
+  const record = holder(homeRoot);
+  const lockPath = path.join(homeRoot, '.installed.json.lock');
+  fs.writeFileSync(lockPath, JSON.stringify(record) + '\n');
+  const result = await unlock(['--lifecycle', '--clear'], {
+    homeRoot,
+    inspect: { createConnection: () => assert.fail('clear must not inspect a socket') },
+    clear: { platform: 'darwin', identity: { kill: () => { throw Object.assign(new Error('dead'), { code: 'ESRCH' }); } } },
+  });
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.output,
+    `Lifecycle lock of ${homeRoot} (file), clearing:\nRemoved the lock left by ${record.command} for ${record.hostRoot}, pid ${record.pid} (dead).
+The next install, update or uninstall may take it.`);
+  assert.equal(fs.existsSync(lockPath), false);
+  assert.equal(fs.existsSync(`${lockPath}.clear`), false);
+});
+
+test('clear refuses an alive holder with its identity and manual delete instruction', async (t) => {
+  const homeRoot = home(t);
+  const record = holder(homeRoot);
+  const lockPath = path.join(homeRoot, '.installed.json.lock');
+  const content = Buffer.from(JSON.stringify(record) + '\n');
+  fs.writeFileSync(lockPath, content);
+  const result = await unlock(['--lifecycle', '--clear'], {
+    homeRoot,
+    clear: {
+      platform: 'darwin',
+      identity: { kill: () => {}, probe: () => Date.parse(record.acquiredAt) - 86_400_000 },
+    },
+  });
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.output,
+    `Lifecycle lock of ${homeRoot} (file), clearing:\nRefused: the holder process is alive. Nothing was removed.\nheld by ${record.command} for ${record.hostRoot}, pid ${record.pid}, since ${record.acquiredAt}.\nIf you are sure no install, update or uninstall is running, delete ${lockPath} yourself.`);
+  assert.deepEqual(fs.readFileSync(lockPath), content);
+});
+
+test('clear reports a kernel-managed Windows lock without creating anything', async (t) => {
+  const homeRoot = home(t);
+  const result = await unlock(['--lifecycle', '--clear'], { homeRoot, clear: { platform: 'win32' } });
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.output,
+    `Lifecycle lock of ${homeRoot} (named-pipe), clearing:\nKernel-managed lock; nothing to clear.
+Run codex-bridge unlock --lifecycle to see its holder.`);
+  assert.deepEqual(fs.readdirSync(homeRoot), []);
+});
+
+test('clear reports a free file lock', async (t) => {
+  const homeRoot = home(t);
+  const result = await unlock(['--lifecycle', '--clear'], { homeRoot, clear: { platform: 'darwin' } });
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.output, `Lifecycle lock of ${homeRoot} (file), clearing:\nNothing to clear; the lock is free.`);
+  assert.deepEqual(fs.readdirSync(homeRoot), []);
+});
+
+test('clear reports a missing home without creating it', async (t) => {
+  const homeRoot = path.join(home(t), 'missing');
+  const result = await unlock(['--lifecycle', '--clear'], { homeRoot, clear: { platform: 'darwin' } });
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.output,
+    `Lifecycle lock of ${homeRoot} (file), clearing:\ncodex-bridge unlock --lifecycle: no package home at ${homeRoot}; nothing to inspect.`);
+  assert.equal(fs.existsSync(homeRoot), false);
+});
+
+test('clear reports an occupied gate and preserves it', async (t) => {
+  const homeRoot = home(t);
+  const gatePath = path.join(homeRoot, '.installed.json.lock.clear');
+  fs.writeFileSync(gatePath, 'crashed clearer');
+  const result = await unlock(['--lifecycle', '--clear'], { homeRoot, clear: { platform: 'darwin' } });
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.output,
+    `Lifecycle lock of ${homeRoot} (file), clearing:\nAnother clear is in progress or crashed: ${gatePath}.
+If none is running, delete that file yourself.`);
+  assert.equal(fs.readFileSync(gatePath, 'utf8'), 'crashed clearer');
+});
+
+test('clear refuses an unreadable holder with the manual delete instruction', async (t) => {
+  const homeRoot = home(t);
+  const lockPath = path.join(homeRoot, '.installed.json.lock');
+  fs.writeFileSync(lockPath, '');
+  const result = await unlock(['--lifecycle', '--clear'], { homeRoot, clear: { platform: 'darwin' } });
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.output,
+    `Lifecycle lock of ${homeRoot} (file), clearing:\nRefused: holder record is unreadable or incomplete. Nothing was removed.\nIf you are sure no install, update or uninstall is running, delete ${lockPath} yourself.`);
+});
+
+test('a leftover gate changes a successful clear exit to failure and names the gate', async (t) => {
+  const homeRoot = home(t);
+  const record = holder(homeRoot);
+  const lockPath = path.join(homeRoot, '.installed.json.lock');
+  const gatePath = `${lockPath}.clear`;
+  fs.writeFileSync(lockPath, JSON.stringify(record) + '\n');
+  const writer = createHomeWriter({ root: homeRoot });
+  const result = await unlock(['--lifecycle', '--clear'], {
+    homeRoot,
+    clear: {
+      platform: 'darwin',
+      identity: { kill: () => { throw Object.assign(new Error('dead'), { code: 'ESRCH' }); } },
+      writer: {
+        ...writer,
+        unlink: (id, target) => {
+          if (target === gatePath) throw Object.assign(new Error('gate denied'), { code: 'EACCES' });
+          return writer.unlink(id, target);
+        },
+      },
+    },
+  });
+  assert.equal(result.exitCode, 1);
+  assert.ok(result.output.includes('Removed the lock left by '));
+  assert.ok(result.output.includes(`Could not remove the clear gate: ${gatePath}.`));
+  assert.equal(fs.existsSync(lockPath), false);
+  assert.equal(fs.existsSync(gatePath), true);
+});
+
+test('duplicate clear is rejected with help before touching the home', async (t) => {
+  const homeRoot = path.join(home(t), 'missing');
+  const result = await unlock(['--lifecycle', '--clear', '--clear'], { homeRoot });
+  assert.equal(result.exitCode, 2);
+  assert.equal(result.output,
+    'codex-bridge unlock --lifecycle: unexpected argument "--clear".\nRun codex-bridge unlock -h for usage.');
+  assert.equal(fs.existsSync(homeRoot), false);
+});
+
+test('a refusal names the first argument past --lifecycle --clear', async (t) => {
+  const homeRoot = path.join(home(t), 'missing');
+  const result = await unlock(['--lifecycle', '--clear', 'extra'], { homeRoot });
+  assert.equal(result.exitCode, 2);
+  assert.equal(result.output.split('\n')[0], 'codex-bridge unlock --lifecycle: unexpected argument "extra".');
 });

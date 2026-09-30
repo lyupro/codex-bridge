@@ -10,7 +10,7 @@ import {
   homeArtifact,
 } from '../src/home/lib/home-registry.mjs';
 
-const SIDE_NAMES = ['lock', 'atomic-temporary', 'dot-temporary', 'copy-temporary', 'pid-temporary'];
+const SIDE_NAMES = ['lock', 'clear-gate', 'atomic-temporary', 'dot-temporary', 'copy-temporary', 'pid-temporary'];
 
 function samples(entry) {
   if (entry.id === 'install-image') return ['image/hooks/guard.mjs'];
@@ -24,6 +24,7 @@ function sidePath(primaryPath, side) {
   const uuid = randomUUID();
   let sideName;
   if (side === 'lock') sideName = `${name}.lock`;
+  if (side === 'clear-gate') sideName = `${name}.lock.clear`;
   if (side === 'atomic-temporary') sideName = `${name}.${uuid}.tmp`;
   if (side === 'dot-temporary' || side === 'copy-temporary') sideName = `.${name}.${uuid}.tmp`;
   if (side === 'pid-temporary') sideName = `${name}.42.${uuid}.tmp`;
@@ -68,11 +69,12 @@ test('install image paths only classify when supplied by the caller', () => {
 
 test('the lifecycle lock is declared under the install record artifact', () => {
   assert.deepEqual(classifyHomePath('.installed.json.lock'), { id: 'install-record', role: 'lock' });
+  assert.deepEqual(classifyHomePath('.installed.json.lock.clear'), { id: 'install-record', role: 'clear-gate' });
   assert.deepEqual(
     classifyHomePath(sidePath('.installed.json', 'atomic-temporary')),
     { id: 'install-record', role: 'atomic-temporary' },
   );
-  assert.deepEqual(homeArtifact('install-record').sides, ['lock', 'atomic-temporary']);
+  assert.deepEqual(homeArtifact('install-record').sides, ['lock', 'clear-gate', 'atomic-temporary']);
 });
 
 test('dispatcher family and unsafe relative paths reject near misses', () => {

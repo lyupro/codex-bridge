@@ -15,6 +15,7 @@ const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12
 // Plan_62 D22 requires side files to be as explicit as their owning artifacts.
 const SIDE_SPELLINGS = Object.freeze({
   lock: /^(.+)\.lock$/,
+  'clear-gate': /^(.+)\.lock\.clear$/,
   'atomic-temporary': new RegExp(`^(.+)\\.${UUID}\\.tmp$`),
   'dot-temporary': new RegExp(`^\\.(.+)\\.${UUID}\\.tmp$`),
   'copy-temporary': new RegExp(`^\\.(.+)\\.${UUID}\\.tmp$`),
@@ -34,7 +35,7 @@ const entries = [
     removal: 'install-owned',
     consequence: 'The installation record is lost and uninstall can no longer identify installed files.',
     primary: ['.installed.json'],
-    sides: ['lock', 'atomic-temporary'],
+    sides: ['lock', 'clear-gate', 'atomic-temporary'],
   },
   {
     id: 'config',
