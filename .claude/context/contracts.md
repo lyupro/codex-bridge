@@ -118,13 +118,25 @@ here. Nothing was reworded on the way out.
 - **One instrument answers "what changed in this worktree", and hooks never ask git directly.**
   `worktreeSnapshot()` in `src/home/lib/runner/git-state.mjs` is it: the run-folder prefix removed,
   gitignored paths absent by construction, `--no-renames` so every row is a real path rather than the
-  token `old => new` that matches no scope pattern. Readers compose it the same way — `changedPaths`,
-  `splitRunChanges`, `outOfScope` — so the live witness and the final verdict cannot reach different
-  answers about the same tree. `tests/hooks/tree-reader.test.mjs` fails any hook that spells
+  token `old => new` that matches no scope pattern. Readers compose it the same way — `compareSnapshots`
+  (the verdict through `runSnapshotChanges`), `splitRunChanges`, `outOfScope` — so the live witness and
+  the final verdict cannot reach different answers about the same tree. `tests/hooks/tree-reader.test.mjs` fails any hook that spells
   `status --porcelain`, `ls-files -o` or `--numstat` in an argument list. Why: the witness kept its own
   porcelain reading and on 2026-09-19 ordered the orchestrator, on every tool call, to revert the run's
   own folder; the same blindness covered environment writes and gitignored notes, and the rename token
   would have failed an honest build for moving a file inside its scope.
+- **A file name from git is taken only from `src/home/lib/runner/git-paths.mjs`, which spells every
+  path-listing command whole, runs it with `-z` and decodes strictly.** Callers get arrays of exact
+  names and never compose `ls-files`, `--name-only`, `--numstat`, `--porcelain` or `--stat` themselves;
+  `tests/git-path-listing-guard.test.mjs` fails on any such literal elsewhere in `src`, `cli` or `bin`,
+  except the three human-readable artifacts written with `core.quotepath=false` (`git-before.txt`,
+  `git-after.txt`, `diff.stat`), which nothing parses. Names are exact: no trim, no quote stripping, no
+  separator rewrite; a name that is not UTF-8 is refused, never replaced. The worktree snapshot is
+  versioned (`src/home/lib/meta/snapshot-format.mjs`, `docs/artifact-formats.md`): the version comes
+  from the header line only, and two snapshots of different versions are never compared — the verdict
+  fails, the witness stays silent. Why: git quotes any non-ASCII name in its text output, and on
+  2026-09-30 five callers that split that text themselves refused a vault's existing Cyrillic files at
+  scope check, judged an honest in-scope edit out of scope and recorded a new Cyrillic file as size 0.
 - **A service directory is defined once, `SERVICE_RE` in `src/home/lib/meta/paths.mjs`, and both the
   preflight scope check and the verdict import it.** The verdict fails every change under `.git/`,
   `.claude/`, `.codex/`, `.omx/`, `.omc/` and `node_modules/` whatever the scope says, except paths

@@ -49,10 +49,14 @@ export function numstatRows(repoRoot) {
   });
 }
 
-export function nameOnlyPaths(repoRoot, args) {
-  // The caller supplies the command, so the owner still guarantees the one rule it exists for.
-  if (!args.includes('-z')) throw new TypeError('nameOnlyPaths requires -z in its git arguments');
-  return pathRecords(repoRoot, args);
+// The owner spells each command whole: a caller that composes path-listing arguments itself is what
+// tests/git-path-listing-guard.test.mjs exists to catch.
+export function diffNames(repoRoot, range) {
+  return pathRecords(repoRoot, ['diff', '--name-only', '-z', range]);
+}
+
+export function commitNames(repoRoot, sha) {
+  return pathRecords(repoRoot, ['show', '--name-only', '--format=', '-z', sha]);
 }
 
 export function porcelainPaths(repoRoot) {

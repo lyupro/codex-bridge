@@ -12,7 +12,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { runsRoot } from './runs-root.mjs';
-import { listUntrackedPaths, numstatRows, nameOnlyPaths, porcelainPaths } from './git-paths.mjs';
+import { commitNames, diffNames, listUntrackedPaths, numstatRows, porcelainPaths } from './git-paths.mjs';
 import { encodeSnapshot } from '../meta/snapshot-format.mjs';
 
 export const MAX_LOG = 256 * 1024 * 1024;
@@ -134,7 +134,7 @@ export function reviewScope(repo, changeset) {
     return {
       label: `branch changes against base ${base}`,
       diffCommand: `git diff ${base}...HEAD`,
-      files: nameOnlyPaths(repo, ['diff', '--name-only', '-z', `${base}...HEAD`]) ?? [],
+      files: diffNames(repo, `${base}...HEAD`) ?? [],
     };
   }
   if (changeset.startsWith('commit:')) {
@@ -142,7 +142,7 @@ export function reviewScope(repo, changeset) {
     return {
       label: `commit ${sha}`,
       diffCommand: `git show ${sha}`,
-      files: nameOnlyPaths(repo, ['show', '--name-only', '--format=', '-z', sha]) ?? [],
+      files: commitNames(repo, sha) ?? [],
     };
   }
   return {

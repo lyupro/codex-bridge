@@ -6,7 +6,7 @@ import { syncBuiltinESMExports } from 'node:module';
 import fs from 'node:fs';
 import path from 'node:path';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
-import { listRepositoryPaths, listUntrackedPaths, numstatRows, nameOnlyPaths, porcelainPaths } from '../../src/home/lib/runner/git-paths.mjs';
+import { listRepositoryPaths, listUntrackedPaths, numstatRows, diffNames, commitNames, porcelainPaths } from '../../src/home/lib/runner/git-paths.mjs';
 import { validateScope } from '../../src/home/lib/runner/scope-check.mjs';
 
 function fixture(t, suffix) {
@@ -150,8 +150,8 @@ test('name-only listing preserves Cyrillic names for diff ranges and show commit
   git('add', '--', name);
   commit();
   const sha = git('rev-parse', 'HEAD').trim();
-  assert.deepEqual(nameOnlyPaths(repo, ['diff', '--name-only', '-z', 'HEAD~1..HEAD']), [name]);
-  assert.deepEqual(nameOnlyPaths(repo, ['show', '--name-only', '-z', '--format=', sha]), [name]);
+  assert.deepEqual(diffNames(repo, 'HEAD~1..HEAD'), [name]);
+  assert.deepEqual(commitNames(repo, sha), [name]);
 });
 
 test('porcelain listing includes both exact Cyrillic names of a staged rename', (t) => {
@@ -168,16 +168,16 @@ test('porcelain listing includes both exact Cyrillic names of a staged rename', 
 test('each added listing uses exact argv, Buffer output, windowsHide and no shell', (t) => {
   const names = ['\uFEFFfirst.md', ' имя-я.md ', 'a"b.md', 'UPPER.md', 'a\\b.md', 'a\nb\tc.md'];
   const diffArgs = ['diff', '--name-only', '-z', 'base..head'];
-  const showArgs = ['show', '--name-only', '-z', '--format=', 'sha'];
+  const showArgs = ['show', '--name-only', '--format=', '-z', 'sha'];
   const rows = names.map((name) => ({ added: '12', deleted: '0', path: name }));
   const cases = [
     { call: () => listUntrackedPaths('repository'), args: ['ls-files', '-z', '-o', '--exclude-standard'],
       output: `${names.join('\0')}\0`, expected: names },
     { call: () => numstatRows('repository'), args: ['diff', 'HEAD', '--numstat', '--no-renames', '-z'],
       output: `${names.map((name) => `12\t0\t${name}`).join('\0')}\0`, expected: rows },
-    { call: () => nameOnlyPaths('repository', diffArgs), args: diffArgs,
+    { call: () => diffNames('repository', 'base..head'), args: diffArgs,
       output: `${names.join('\0')}\0`, expected: names },
-    { call: () => nameOnlyPaths('repository', showArgs), args: showArgs,
+    { call: () => commitNames('repository', 'sha'), args: showArgs,
       output: `${names.join('\0')}\0`, expected: names },
     { call: () => porcelainPaths('repository'), args: ['status', '--porcelain', '-z'],
       output: `${names.map((name) => `?? ${name}`).join('\0')}\0`, expected: names },
@@ -195,8 +195,6 @@ test('each added listing uses exact argv, Buffer output, windowsHide and no shel
   });
   for (current of cases) assert.deepEqual(current.call(), current.expected);
   assert.equal(calls, cases.length);
-  assert.deepEqual(diffArgs, ['diff', '--name-only', '-z', 'base..head']);
-  assert.deepEqual(showArgs, ['show', '--name-only', '-z', '--format=', 'sha']);
 });
 
 test('porcelain consumes rename and copy sources in either status column, deduplicating in order', (t) => {
@@ -214,7 +212,7 @@ test('each added listing returns null when git fails or is absent, and [] for em
   mockGit(t, () => result);
   const calls = [
     () => listUntrackedPaths('repository'), () => numstatRows('repository'),
-    () => nameOnlyPaths('repository', ['diff', '--name-only', '-z', 'HEAD']),
+    () => diffNames('repository', 'HEAD'),
     () => porcelainPaths('repository'),
   ];
   for (result of [
@@ -232,7 +230,7 @@ test('each listing rejects invalid UTF-8 with the shared error code', (t) => {
   const calls = [
     () => listRepositoryPaths('repository'), () => listUntrackedPaths('repository'),
     () => numstatRows('repository'),
-    () => nameOnlyPaths('repository', ['diff', '--name-only', '-z', 'HEAD']),
+    () => diffNames('repository', 'HEAD'),
     () => porcelainPaths('repository'),
   ];
   for (const call of calls) {
@@ -245,7 +243,3 @@ test('each listing rejects invalid UTF-8 with the shared error code', (t) => {
   }
 });
 
-test('nameOnlyPaths refuses a caller command without -z before running git', (t) => {
-  mockGit(t, () => { throw new Error('git must not be called'); });
-  assert.throws(() => nameOnlyPaths('repository', ['diff', '--name-only', 'HEAD']), /requires -z/);
-});
