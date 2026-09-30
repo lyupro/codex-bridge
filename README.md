@@ -139,7 +139,9 @@ Transport files from runs at least **30 days** old are pruned automatically when
 | `read <run>` | Render a run's structured event stream. |
 | `stop <run>` | Stop a run and record a `FAIL` verdict. |
 
-Both `codex-bridge` and `codexb` invoke the same command. Run `codex-bridge --help` for exact forms.
+Both `codex-bridge` and `codexb` invoke the same command. Run `codex-bridge --help` for exact forms, or `-h` after
+any command or action for its own usage (`codex-bridge model -h`, `codex-bridge model set -h`); a refusal of an unknown
+option or an extra argument ends with that pointer.
 
 ### Development
 
