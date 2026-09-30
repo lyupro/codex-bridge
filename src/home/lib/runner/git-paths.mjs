@@ -5,10 +5,10 @@
  */
 import { spawnSync } from 'node:child_process';
 
-export function listRepositoryPaths(repoRoot) {
+function pathRecords(repoRoot, args) {
   const result = spawnSync(
     'git',
-    ['-C', repoRoot, 'ls-files', '-z', '--cached', '--others', '--exclude-standard'],
+    ['-C', repoRoot, ...args],
     { windowsHide: true, maxBuffer: 64 * 1024 * 1024 },
   );
   if (result.error || result.status !== 0) return null;
@@ -25,4 +25,46 @@ export function listRepositoryPaths(repoRoot) {
   const names = output.split('\0');
   if (names.at(-1) === '') names.pop();
   return names;
+}
+
+export function listRepositoryPaths(repoRoot) {
+  return pathRecords(repoRoot, ['ls-files', '-z', '--cached', '--others', '--exclude-standard']);
+}
+
+export function listUntrackedPaths(repoRoot) {
+  return pathRecords(repoRoot, ['ls-files', '-z', '-o', '--exclude-standard']);
+}
+
+export function numstatRows(repoRoot) {
+  const records = pathRecords(repoRoot, ['diff', 'HEAD', '--numstat', '--no-renames', '-z']);
+  if (records === null) return null;
+  return records.map((record) => {
+    const firstTab = record.indexOf('\t');
+    const secondTab = record.indexOf('\t', firstTab + 1);
+    return {
+      added: record.slice(0, firstTab),
+      deleted: record.slice(firstTab + 1, secondTab),
+      path: record.slice(secondTab + 1),
+    };
+  });
+}
+
+export function nameOnlyPaths(repoRoot, args) {
+  // The caller supplies the command, so the owner still guarantees the one rule it exists for.
+  if (!args.includes('-z')) throw new TypeError('nameOnlyPaths requires -z in its git arguments');
+  return pathRecords(repoRoot, args);
+}
+
+export function porcelainPaths(repoRoot) {
+  const records = pathRecords(repoRoot, ['status', '--porcelain', '-z']);
+  if (records === null) return null;
+  const names = new Set();
+  for (let index = 0; index < records.length; index += 1) {
+    const record = records[index];
+    names.add(record.slice(3));
+    if (record[0] === 'R' || record[1] === 'R' || record[0] === 'C' || record[1] === 'C') {
+      names.add(records[++index]);
+    }
+  }
+  return [...names];
 }
