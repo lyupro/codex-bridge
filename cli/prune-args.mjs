@@ -1,11 +1,16 @@
 /** Parses prune scopes and refuses combinations that could widen destructive reach. */
 import path from 'node:path';
+import { withCommandHelp } from './command-help.mjs';
 
 const DURATION = /^(\d+)([dh])$/;
 const DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 function error(message) {
   return { error: `codex-bridge prune: ${message}` };
+}
+
+function usageError(message) {
+  return { error: withCommandHelp('prune', error(message).error) };
 }
 
 function validCalendarDate(value) {
@@ -87,18 +92,18 @@ export function parsePruneArgs(argv = []) {
       olderThanExplicit = true;
       continue;
     }
-    if (arg.startsWith('-')) return error(`unknown option "${arg}"`);
+    if (arg.startsWith('-')) return usageError(`unknown option "${arg}"`);
     positional.push(arg);
   }
 
   if (allProjects && purge) {
-    return error('--all-projects cannot be combined with --purge; all-projects is gentle only');
+    return usageError('--all-projects cannot be combined with --purge; all-projects is gentle only');
   }
   if (allProjects && positional.length) {
-    return error('--all-projects does not accept a project or run name');
+    return usageError('--all-projects does not accept a project or run name');
   }
   if (!allProjects && (positional.length < 1 || positional.length > 2)) {
-    return error('expected <project>, optional <run>, or --all-projects');
+    return usageError('expected <project>, optional <run>, or --all-projects');
   }
 
   const projectName = positional[0] || null;

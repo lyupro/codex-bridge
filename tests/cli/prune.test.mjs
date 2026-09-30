@@ -211,3 +211,23 @@ test('--json returns a machine-readable plan and report', async (t) => {
   assert.equal(JSON.parse(forced.output).status, 'completed');
   assert.deepEqual(JSON.parse(forced.output).removed, TRANSPORT.map((name) => path.join(dir, name)));
 });
+
+test('usage refusal keeps prune help inside a single JSON error document', async (t) => {
+  const root = fixture(t);
+
+  const result = await prune(['alpha', '--bogus', '--json'], options(root));
+  const payload = JSON.parse(result.output);
+
+  assert.equal(result.exitCode, 2);
+  assert.equal(payload.status, 'error');
+  assert.equal(payload.error, 'codex-bridge prune: unknown option "--bogus"\nRun codex-bridge prune -h for usage.');
+});
+
+test('plain usage refusal ends with prune help', async (t) => {
+  const root = fixture(t);
+
+  const result = await prune(['alpha', '--bogus'], options(root));
+
+  assert.equal(result.exitCode, 2);
+  assert.equal(result.output.endsWith('Run codex-bridge prune -h for usage.'), true);
+});
