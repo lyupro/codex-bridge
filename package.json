@@ -41,7 +41,8 @@
   "scripts": {
     "dev:install": "node bin/codex-bridge.mjs update --force",
     "test": "node scripts/run-tests.mjs",
-    "check:size": "node scripts/check-file-size.mjs"
+    "check:size": "node scripts/check-file-size.mjs",
+    "check:open-work": "node scripts/open-work/check.mjs --strict"
   },
   "publishConfig": {
     "access": "public"
