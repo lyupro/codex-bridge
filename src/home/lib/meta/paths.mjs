@@ -3,11 +3,11 @@
  *
  * Two sides spell the same file differently — git prints repo-relative paths with forward
  * slashes, Codex writes whatever it likes — so nothing above this module compares a path
- * before it has been through here. This is also the only module that touches the
- * filesystem for reading artifacts: everything else receives text, JSON or a byte count from it.
+ * before it has been through here. Strict snapshot judgement belongs to run-snapshots.mjs.
  */
 import fs from 'node:fs';
 import { readJsonFileSync } from '../json-file.mjs';
+import { compareSnapshots, decodeSnapshot } from './snapshot-format.mjs';
 
 /**
  * `slice` counts UTF-16 units and can leave half of an emoji or a rare CJK character at the cut;
@@ -70,32 +70,22 @@ export const size = (file) => {
 };
 
 /**
- * Snapshot lines are `<added>\t<deleted>\t<path>` for tracked files and `U\t<bytes>\t<path>`
- * for untracked ones — see worktreeSnapshot() in runner/git-state.mjs. Path last, state first.
+ * Tolerant display reader for reply, run-state and write-meta; invalid snapshots display
+ * an empty Map. Strict judgement goes through run-snapshots.mjs.
  */
 export const snapshotMap = (text) => {
-  const map = new Map();
-  for (const row of text.split(/\r?\n/).filter(Boolean)) {
-    const parts = row.split('\t');
-    if (parts.length < 3) continue;
-    map.set(parts.slice(2).join('\t').trim(), `${parts[0]}\t${parts[1]}`);
-  }
-  return map;
+  const snapshot = decodeSnapshot(text);
+  return snapshot.ok ? snapshot.rows : new Map();
 };
 
 /**
- * Paths Codex actually touched, by content rather than by porcelain letter: a file that
- * was already ` M` stays ` M` after further edits, so status codes would report zero
- * work. Line counts (or size, for untracked files) do change.
+ * Tolerant display reader for reply, run-state and write-meta; invalid comparisons display
+ * no changes. Strict judgement goes through run-snapshots.mjs. Snapshot states measure
+ * edits even when a file's porcelain letter stays unchanged.
  */
 export const changedPaths = (before, after) => {
-  const was = snapshotMap(before);
-  const now = snapshotMap(after);
-  const paths = [];
-  for (const [file, state] of now) if (was.get(file) !== state) paths.push(file);
-  // A path that dropped out was touched too: Codex restored it to its committed state.
-  for (const file of was.keys()) if (!now.has(file)) paths.push(file);
-  return paths;
+  const comparison = compareSnapshots(before, after);
+  return comparison.ok ? comparison.changed : [];
 };
 
 /** Directories a delegated build has no business editing, whatever the task says. */

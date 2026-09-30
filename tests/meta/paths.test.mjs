@@ -8,7 +8,10 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { makeTempTree } from '../temp-tree.mjs';
-import { globToRegExp, expandDeclared, line, readJson, safeSlice } from '../../src/home/lib/meta/paths.mjs';
+import {
+  globToRegExp, expandDeclared, line, readJson, safeSlice, snapshotMap, changedPaths,
+} from '../../src/home/lib/meta/paths.mjs';
+import { encodeSnapshot } from '../../src/home/lib/meta/snapshot-format.mjs';
 
 // --- line -------------------------------------------------------------------------
 
@@ -128,4 +131,26 @@ test('an ordinary path comes back as itself', () => {
 test('nothing declared expands to nothing', () => {
   assert.deepEqual(expandDeclared(''), []);
   assert.deepEqual(expandDeclared(undefined), []);
+});
+
+test('tolerant snapshot display readers preserve exact v2 path spelling', () => {
+  const file = ' src/проверка\t.mjs ';
+  const before = encodeSnapshot([{ path: file, state: '1\t0' }]);
+  const after = encodeSnapshot([{ path: file, state: '2\t0' }]);
+  assert.deepEqual(snapshotMap(before), new Map([[file, '1\t0']]));
+  assert.deepEqual(changedPaths(before, after), [file]);
+  assert.deepEqual(changedPaths(after, encodeSnapshot([])), [file]);
+});
+
+test('tolerant snapshot display readers return empty values for refused data', () => {
+  const good = '1\t0\tsrc/a.mjs\n';
+  for (const bad of [null, 'broken\n', `${good}broken\n`, '1\t0\t"quoted.mjs"\n']) {
+    assert.deepEqual(snapshotMap(bad), new Map());
+    assert.deepEqual(changedPaths(bad, good), []);
+    assert.deepEqual(changedPaths(good, bad), []);
+  }
+  assert.deepEqual(changedPaths(good, encodeSnapshot([])), []);
+  assert.deepEqual(changedPaths(encodeSnapshot([]), good), []);
+  assert.deepEqual(snapshotMap(''), new Map());
+  assert.deepEqual(changedPaths('', good), ['src/a.mjs']);
 });

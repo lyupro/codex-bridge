@@ -15,7 +15,7 @@ import path from 'node:path';
 import { SHELL_TOOLS } from '../lib/hook-definitions.mjs';
 import { parseJsonText } from '../lib/json-file.mjs';
 import { splitRunChanges } from '../lib/meta/environment.mjs';
-import { changedPaths } from '../lib/meta/paths.mjs';
+import { compareSnapshots } from '../lib/meta/snapshot-format.mjs';
 import { outOfScope } from '../lib/meta/verdict.mjs';
 import { git, worktreeSnapshot } from '../lib/runner/git-state.mjs';
 import { runsRoot } from '../lib/runner/runs-root.mjs';
@@ -64,16 +64,16 @@ if (beforeText === null || scopeText === null) pass();
 
 let outside;
 try {
-  // changedPaths tolerates malformed rows; a hook must instead fail open on a damaged baseline.
-  if (beforeText.split(/\r?\n/).filter(Boolean).some((row) =>
-    !/^(?:\d+\t\d+|-\t-|U\t\d+)\t\S.*$/.test(row))) pass();
   const patterns = scopeText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   if (!patterns.length) pass();
   // The shared snapshot returns empty output on git errors; do not call that a restored tree.
   const repository = git(status.repo, ['rev-parse', '--is-inside-work-tree']);
   if (repository.error || repository.status !== 0 || repository.stdout?.trim() !== 'true') pass();
-  const current = worktreeSnapshot(status.repo);
-  const { work } = splitRunChanges(dir, changedPaths(beforeText, current));
+  // Plan_73 / 2026-09-30: a damaged or incompatible baseline proves neither a clean
+  // tree nor a stray edit. The advisory witness stays silent when the codec refuses it.
+  const comparison = compareSnapshots(beforeText, worktreeSnapshot(status.repo));
+  if (!comparison.ok) pass();
+  const { work } = splitRunChanges(dir, comparison.changed);
   outside = outOfScope(work, patterns);
 } catch {
   pass();
