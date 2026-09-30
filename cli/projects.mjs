@@ -1,4 +1,5 @@
 /** Implements the projects command. */
+import { withCommandHelp } from './command-help.mjs';
 import { listProjectRuns, listProjects } from './runs-inventory.mjs';
 import { renderTable } from './table.mjs';
 import { allLiveRuns } from '../src/home/hooks/live-runs.mjs';
@@ -69,11 +70,13 @@ function parseArgs(args) {
       json = true;
       continue;
     }
-    if (arg.startsWith('-')) return { error: `codex-bridge projects: unknown option "${arg}"` };
+    if (arg.startsWith('-')) {
+      return { error: withCommandHelp('projects', `codex-bridge projects: unknown option "${arg}"`) };
+    }
     positional.push(arg);
   }
   if (positional.length > 1) {
-    return { error: 'codex-bridge projects accepts at most one project name.' };
+    return { error: withCommandHelp('projects', 'codex-bridge projects accepts at most one project name.') };
   }
   return { json, projectName: positional[0] || null };
 }

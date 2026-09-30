@@ -134,6 +134,20 @@ test('projects reports the confirmed working-run count beside human tables', (t)
   assert.ok(result.output.includes(`1 run working right now; stop with ${STOP_COMMAND_TEMPLATE}`));
 });
 
+test('projects refuses unknown options with command help', () => {
+  const result = projects(['--bogus']);
+
+  assert.equal(result.exitCode, 2);
+  assert.equal(result.output, 'codex-bridge projects: unknown option "--bogus"\nRun codex-bridge projects -h for usage.');
+});
+
+test('projects refuses extra project names with command help', () => {
+  const result = projects(['a', 'b']);
+
+  assert.equal(result.exitCode, 2);
+  assert.equal(result.output, 'codex-bridge projects accepts at most one project name.\nRun codex-bridge projects -h for usage.');
+});
+
 test('unknown project names are refused with a non-zero exit code', (t) => {
   const root = fixture(t);
 
@@ -141,4 +155,5 @@ test('unknown project names are refused with a non-zero exit code', (t) => {
 
   assert.equal(result.exitCode, 1);
   assert.match(result.output, /unknown project "missing"/);
+  assert.doesNotMatch(result.output, /-h for usage/);
 });

@@ -29,6 +29,42 @@ function makeStaleHeartbeat(runDir) {
   fs.utimesSync(heartbeat, at, at);
 }
 
+test('unlock refuses unknown options with command help', () => {
+  const result = unlock(['--bogus']);
+
+  assert.equal(result.exitCode, 2);
+  assert.equal(result.output, 'codex-bridge unlock: unknown option "--bogus".\nRun codex-bridge unlock -h for usage.');
+});
+
+test('unlock refuses repeated --all with command help', () => {
+  const result = unlock(['--all', '--all']);
+
+  assert.equal(result.exitCode, 2);
+  assert.equal(result.output, 'codex-bridge unlock accepts --all only once.\nRun codex-bridge unlock -h for usage.');
+});
+
+test('unlock refuses --all with a project name with command help', () => {
+  const result = unlock(['--all', 'alpha']);
+
+  assert.equal(result.exitCode, 2);
+  assert.equal(result.output, 'codex-bridge unlock accepts either --all or one project name.\nRun codex-bridge unlock -h for usage.');
+});
+
+test('unlock refuses extra project names with command help', () => {
+  const result = unlock(['a', 'b']);
+
+  assert.equal(result.exitCode, 2);
+  assert.equal(result.output, 'codex-bridge unlock accepts at most one project name.\nRun codex-bridge unlock -h for usage.');
+});
+
+test('unlock refuses a non-bare project name without command help', () => {
+  const result = unlock(['../alpha']);
+
+  assert.equal(result.exitCode, 2);
+  assert.equal(result.output, 'codex-bridge unlock requires a bare project name.');
+  assert.doesNotMatch(result.output, /-h for usage/);
+});
+
 test('unlock closes a dead-pid running record and reports it', (t) => {
   const root = fixture(t);
   const run = '2026-08-06_204007_build';

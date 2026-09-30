@@ -2,6 +2,7 @@
 /** Closes dead-pid running records without deleting any run artifacts. */
 import fs from 'node:fs';
 import path from 'node:path';
+import { withCommandHelp } from './command-help.mjs';
 import { formatSilence, heartbeatAge, HEARTBEAT_STALE_MS } from '../src/home/lib/heartbeat.mjs';
 import { runLiveness } from '../src/home/lib/meta/run-liveness.mjs';
 import { markAbandoned } from '../src/home/lib/meta/run-state.mjs';
@@ -38,20 +39,20 @@ function parseArgs(argv) {
   let all = false;
   for (const arg of argv) {
     if (arg === '--all') {
-      if (all) return { error: 'codex-bridge unlock accepts --all only once.' };
+      if (all) return { error: withCommandHelp('unlock', 'codex-bridge unlock accepts --all only once.') };
       all = true;
       continue;
     }
     if (typeof arg !== 'string' || arg.startsWith('-')) {
-      return { error: `codex-bridge unlock: unknown option "${arg}".` };
+      return { error: withCommandHelp('unlock', `codex-bridge unlock: unknown option "${arg}".`) };
     }
     positional.push(arg);
   }
   if (all && positional.length) {
-    return { error: 'codex-bridge unlock accepts either --all or one project name.' };
+    return { error: withCommandHelp('unlock', 'codex-bridge unlock accepts either --all or one project name.') };
   }
   if (positional.length > 1) {
-    return { error: 'codex-bridge unlock accepts at most one project name.' };
+    return { error: withCommandHelp('unlock', 'codex-bridge unlock accepts at most one project name.') };
   }
   const project = positional[0] || null;
   if (project && (path.isAbsolute(project) || path.dirname(project) !== '.')) {
