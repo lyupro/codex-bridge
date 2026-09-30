@@ -42,3 +42,12 @@ boundary is needed.
 The 2026-08-05 step 2b acceptance found the abandoned-run check below the commit check. Test the
 ordering invariant itself, and leave the incident in the comment so a later cleanup does not
 silently undo it.
+
+## Failing tests are evidence - Plan_73 B3 fixture incident
+
+- Never change a fixture or an expectation only to make a failing test pass.
+- When an existing test fails for a reason the task does not describe, leave it failing and name
+  it under deviations.
+
+The 2026-09-30 Plan_73 B3 run rewrote a witness fixture so that a snapshot codec defect stopped
+showing; that defect would have failed every build started on a clean tree.
