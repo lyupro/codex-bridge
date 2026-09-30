@@ -5,6 +5,8 @@
  * and hid a new Cyrillic file. JSON names preserve exact spelling; mixed versions
  * must refuse comparison rather than repeat that incident.
  */
+import { parseJsonText } from '../json-file.mjs';
+
 export const SNAPSHOT_V2_HEADER = '# codex-bridge-state-v2';
 
 const STATE_RE = /^(?:\d+\t\d+|-\t-|U\t(?:\d+:[0-9a-fA-F]{64}|missing))$/;
@@ -47,12 +49,15 @@ export function decodeSnapshot(text) {
       state = `${fields[0]}\t${fields[1]}`;
       if (!validState(state)) return malformed(`${location} has an invalid v2 state.`);
       try {
-        path = JSON.parse(fields[2]);
+        path = parseJsonText(location, fields[2]);
       } catch {
         return malformed(`${location} has an invalid JSON path.`);
       }
       if (typeof path !== 'string') return malformed(`${location} path must be a JSON string.`);
     } else {
+      // The legacy launcher wrote `${snapshot}\n`, so a clean tree is the text "\n" and the old
+      // reader skipped blank rows. Refusing them failed every build that started on a clean tree.
+      if (line === '') continue;
       if (!LEGACY_ROW_RE.test(line)) return malformed(`${location} has an invalid legacy row.`);
       const fields = line.split('\t');
       state = `${fields[0]}\t${fields[1]}`;

@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { changedPaths } from '../../src/home/lib/meta/paths.mjs';
 import {
   SNAPSHOT_V2_HEADER,
   encodeSnapshot,
@@ -68,11 +67,24 @@ test('empty legacy text is clean, including a BOM-only file', () => {
   assert.deepEqual(decodeSnapshot('\uFEFF'), { ok: true, version: 1, rows: new Map() });
 });
 
-test('v1 comparisons retain changedPaths behavior, ordering, trimming and dropped paths', () => {
+test('a legacy clean tree as the old launcher wrote it ("\\n") is clean, not malformed', () => {
+  // launcher.mjs wrote `${snapshot}\n`; refusing the blank row failed every build started on a clean tree.
+  for (const text of ['\n', '\r\n', '1\t0\ta.md\n\n']) assert.equal(decodeSnapshot(text).ok, true, JSON.stringify(text));
+  assert.deepEqual(compareSnapshots('\n', '1\t0\ta.md\n'), { ok: true, changed: ['a.md'] });
+});
+
+test('v1 comparisons keep the legacy reader\'s ordering, trimming and dropped paths', () => {
+  // Expected lists are written out: changedPaths now delegates here, so comparing with it proves nothing.
   const before = '1\t0\tchanged\r\nU\t4\tnew\r\n-\t-\tbinary\r\n2\t1\tdropped\r\n1\t0\ttrimmed \r\n';
   const after = 'U\t4\tnew\n3\t0\tchanged\n-\t-\tbinary\n1\t0\ttrimmed\nU\t0\tadded\n';
-  for (const [left, right] of [[before, after], [after, before], [before, before], ['', after], [before, '']]) {
-    assert.deepEqual(compareSnapshots(left, right), { ok: true, changed: changedPaths(left, right) });
+  for (const [left, right, changed] of [
+    [before, after, ['changed', 'added', 'dropped']],
+    [after, before, ['changed', 'dropped', 'added']],
+    [before, before, []],
+    ['', after, ['new', 'changed', 'binary', 'trimmed', 'added']],
+    [before, '', ['changed', 'new', 'binary', 'dropped', 'trimmed']],
+  ]) {
+    assert.deepEqual(compareSnapshots(left, right), { ok: true, changed });
   }
   assert.deepEqual(decodeSnapshot('1\t0\ta\tb \n').rows, new Map([['a\tb', '1\t0']]));
 });
