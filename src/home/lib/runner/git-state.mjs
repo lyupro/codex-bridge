@@ -10,7 +10,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { runsRoot } from './runs-root.mjs';
+import { listUntrackedPaths, numstatRows, nameOnlyPaths, porcelainPaths } from './git-paths.mjs';
+import { encodeSnapshot } from '../meta/snapshot-format.mjs';
 
 export const MAX_LOG = 256 * 1024 * 1024;
 
@@ -32,38 +35,48 @@ export function runsPrefixInside(repo) {
 
 /**
  * State of the worktree in terms of actual content, not porcelain letters: line counts
- * per tracked file plus sizes of untracked ones. A porcelain code stays ` M` when Codex
+ * per tracked file plus content hashes of untracked ones. A porcelain code stays ` M` when Codex
  * edits an already-modified file, so comparing codes would report "0 files changed" for
  * a run that did real work.
  */
 export function worktreeSnapshot(repo) {
   const skip = runsPrefixInside(repo);
-  // The path is the third tab-separated field in both git outputs used here.
-  const mine = (line) => Boolean(skip) && (line.split('\t')[2] || '').startsWith(skip);
   // `--no-renames` because every reader of this snapshot compares paths against a scope: with
   // rename detection on, numstat prints one row spelled `old => new` (or `dir/{a => b}/file`),
   // which is not a path and matches no pattern — an in-scope rename would be judged a stray, and
   // the witness named that token at the orchestrator on 2026-09-20. Without it a rename is a
   // deletion plus an addition: two rows, both real paths, both judged on their own merits.
-  const tracked = (git(repo, ['diff', 'HEAD', '--numstat', '--no-renames']).stdout || '')
-    .split(/\r?\n/)
-    .filter((line) => line.trim() && !mine(line))
-    .join('\n')
-    .trim();
-  const untracked = (git(repo, ['ls-files', '-o', '--exclude-standard']).stdout || '')
-    .split(/\r?\n/)
-    .filter(Boolean)
+  // Plan_73 D4 preserves the existing git-failure meaning: no rows from that listing.
+  const tracked = (numstatRows(repo) ?? [])
+    .filter((row) => !(skip && row.path.startsWith(skip)))
+    .map((row) => ({ path: row.path, state: `${row.added}\t${row.deleted}` }));
+  const untracked = (listUntrackedPaths(repo) ?? [])
     .filter((file) => !(skip && `${file}/`.startsWith(skip)))
-    .map((file) => {
-      let bytes = 0;
-      try {
-        bytes = fs.statSync(path.join(repo, file)).size;
-      } catch {
-        // Vanished between listing and stat: size 0 still marks it as present.
-      }
-      return `U\t${bytes}\t${file}`;
-    });
-  return [tracked, untracked.join('\n')].filter(Boolean).join('\n');
+    .map((file) => ({ path: file, state: untrackedState(path.join(repo, file)) }));
+  return encodeSnapshot([...tracked, ...untracked]);
+}
+
+/**
+ * Size plus sha256 of an untracked file, read in chunks so a large one does not have to fit in
+ * memory. A file that vanished after listing is `missing`; one that cannot be read (on Windows a
+ * file held by another process) is `unreadable` rather than an exception that stops the run.
+ */
+function untrackedState(file) {
+  let fd;
+  try {
+    fd = fs.openSync(file, 'r');
+    const hash = createHash('sha256');
+    const chunk = Buffer.alloc(1024 * 1024);
+    let bytes = 0;
+    for (let read; (read = fs.readSync(fd, chunk, 0, chunk.length, null)) > 0; bytes += read) {
+      hash.update(chunk.subarray(0, read));
+    }
+    return `U\t${bytes}:${hash.digest('hex')}`;
+  } catch (error) {
+    return error.code === 'ENOENT' ? 'U\tmissing' : 'U\tunreadable';
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd);
+  }
 }
 
 /**
@@ -94,9 +107,7 @@ export function findFakeDone(repo) {
   const hits = (git(repo, ['diff', '-U0']).stdout || '')
     .split(/\r?\n/)
     .filter((l) => l.startsWith('+') && FAKE_DONE_RE.test(l));
-  for (const file of (git(repo, ['ls-files', '-o', '--exclude-standard']).stdout || '')
-    .split(/\r?\n/)
-    .filter(Boolean)
+  for (const file of (listUntrackedPaths(repo) ?? [])
     // Same reason as in worktreeSnapshot: inside ~/.claude the run folder is part of the
     // worktree, and task.md spells out the very words this scans for ("do not leave TODOs,
     // test.skip"). A run flagged itself for quoting its own instructions.
@@ -123,9 +134,7 @@ export function reviewScope(repo, changeset) {
     return {
       label: `branch changes against base ${base}`,
       diffCommand: `git diff ${base}...HEAD`,
-      files: (git(repo, ['diff', '--name-only', `${base}...HEAD`]).stdout || '')
-        .split(/\r?\n/)
-        .filter(Boolean),
+      files: nameOnlyPaths(repo, ['diff', '--name-only', '-z', `${base}...HEAD`]) ?? [],
     };
   }
   if (changeset.startsWith('commit:')) {
@@ -133,17 +142,12 @@ export function reviewScope(repo, changeset) {
     return {
       label: `commit ${sha}`,
       diffCommand: `git show ${sha}`,
-      files: (git(repo, ['show', '--name-only', '--format=', sha]).stdout || '')
-        .split(/\r?\n/)
-        .filter(Boolean),
+      files: nameOnlyPaths(repo, ['show', '--name-only', '--format=', '-z', sha]) ?? [],
     };
   }
   return {
     label: 'uncommitted changes (staged, unstaged, untracked)',
     diffCommand: 'git status --porcelain && git diff HEAD',
-    files: (git(repo, ['status', '--porcelain']).stdout || '')
-      .split(/\r?\n/)
-      .filter(Boolean)
-      .map((l) => l.slice(3).trim()),
+    files: porcelainPaths(repo) ?? [],
   };
 }

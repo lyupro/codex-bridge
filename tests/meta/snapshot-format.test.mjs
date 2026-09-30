@@ -52,7 +52,7 @@ test('header-only v2 is clean, while absent input is missing', () => {
 });
 
 test('all allowed v2 states round trip, including uppercase sha256 hex', () => {
-  const states = ['0\t0', '123\t456', '-\t-', `U\t42:${hashA}`, `U\t0:${hashB.toUpperCase()}`, 'U\tmissing'];
+  const states = ['0\t0', '123\t456', '-\t-', `U\t42:${hashA}`, `U\t0:${hashB.toUpperCase()}`, 'U\tmissing', 'U\tunreadable'];
   const rows = states.map((state, index) => ({ path: `file${index}`, state }));
   assert.deepEqual([...decodeSnapshot(encodeSnapshot(rows)).rows.values()], states);
 });

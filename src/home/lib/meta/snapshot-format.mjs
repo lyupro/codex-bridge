@@ -9,7 +9,8 @@ import { parseJsonText } from '../json-file.mjs';
 
 export const SNAPSHOT_V2_HEADER = '# codex-bridge-state-v2';
 
-const STATE_RE = /^(?:\d+\t\d+|-\t-|U\t(?:\d+:[0-9a-fA-F]{64}|missing))$/;
+// `unreadable`: listed but not readable (a Windows file held by another process gives EBUSY/EPERM).
+const STATE_RE = /^(?:\d+\t\d+|-\t-|U\t(?:\d+:[0-9a-fA-F]{64}|missing|unreadable))$/;
 const LEGACY_ROW_RE = /^(?:\d+\t\d+|-\t-|U\t\d+)\t\S.*$/;
 const validState = (state) => typeof state === 'string' && STATE_RE.exec(state)?.[0] === state;
 const malformed = (detail) => ({ ok: false, issue: 'malformed', detail });

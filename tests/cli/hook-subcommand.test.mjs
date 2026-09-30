@@ -6,6 +6,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { HOOK_DEFINITIONS } from '../../src/home/lib/hook-definitions.mjs';
+import { encodeSnapshot } from '../../src/home/lib/meta/snapshot-format.mjs';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
@@ -110,7 +111,9 @@ test('every definition name reaches its existing top-level guard', async (t) => 
       // The baseline the witness reads is the verdict's snapshot, not porcelain: since Plan_58 both
       // judge the tree with one instrument, and a fixture writing git-before.txt only proved that
       // the hook fails open.
-      await fs.writeFile(path.join(dir, 'state-before.txt'), '');
+      // A clean tree as the launcher writes it since Plan_73 B4b; a legacy '' against the v2 current
+      // snapshot is an incompatible pair, on which the witness stays silent by design (D5).
+      await fs.writeFile(path.join(dir, 'state-before.txt'), encodeSnapshot([]));
       await fs.writeFile(path.join(dir, 'scope.txt'), 'src/**\n');
       await fs.writeFile(path.join(repo, 'CHANGELOG.md'), 'changed by another hand\n');
       const result = run(['hook', definition.name], JSON.stringify({

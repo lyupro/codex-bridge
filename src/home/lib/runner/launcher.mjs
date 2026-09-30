@@ -327,8 +327,8 @@ export async function launcher(argv = process.argv.slice(2)) {
   if (opts.agent === 'codex-build') {
     fs.writeFileSync(path.join(runDir, 'head-before.txt'), `${isGitRepo ? headSha(repoRoot) : ''}\n`);
     fs.writeFileSync(path.join(runDir, 'branch-before.txt'), `${isGitRepo ? branchName(repoRoot) : ''}\n`);
-    fs.writeFileSync(path.join(runDir, 'git-before.txt'), git(repoRoot, ['status', '--porcelain']).stdout || '');
-    fs.writeFileSync(path.join(runDir, 'state-before.txt'), `${worktreeSnapshot(repoRoot)}\n`);
+    fs.writeFileSync(path.join(runDir, 'git-before.txt'), git(repoRoot, ['-c', 'core.quotepath=false', 'status', '--porcelain']).stdout || '');
+    fs.writeFileSync(path.join(runDir, 'state-before.txt'), worktreeSnapshot(repoRoot));
   }
 
   // The worker's entire order, on disk. Not passed as arguments: the launcher may be gone

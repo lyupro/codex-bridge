@@ -36,6 +36,7 @@ export const HOME_WRITE_INVENTORY = Object.freeze([
   outside('src/home/lib/run-codex.mjs', 'appendFileSync', 1, 'Appends a crash diagnostic to stderr.log inside a run folder.'),
   outside('src/home/lib/retention.mjs', 'fs-binding-escape', 1, 'The injected filesystem falls back to fs while cleaning run folders under the runs root, outside package home.'),
   outside('src/home/lib/retention.mjs', 'unlinkSync', 1, 'Removes transport files inside run folders under the runs root, outside package home.'),
+  outside('src/home/lib/runner/git-state.mjs', 'openSync', 1, 'Read-only open with the r flag, hashing an untracked file of the worked repository in chunks (Plan_73 B4b).'),
   outside('src/home/lib/runner/codex-cmd.mjs', 'createWriteStream', 2, 'Appends stderr.log and events.jsonl inside a run folder.'),
   outside('src/home/lib/runner/launcher.mjs', 'mkdirSync', 2, 'Creates project and run folders under the runs root.'),
   outside('src/home/lib/runner/launcher.mjs', 'writeFileSync', 11, 'Writes run prompt, environment, scope, schema, and launch evidence into a run folder.'),

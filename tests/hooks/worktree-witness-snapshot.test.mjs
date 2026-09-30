@@ -39,7 +39,7 @@ async function fixture(t, baseline) {
 function runWitness({ root, repo, runsRoot }, currentSnapshot) {
   const args = [];
   if (currentSnapshot !== undefined) {
-    // B4 owns the v2 writer. Simulate its output only at the snapshot boundary while
+    // Plan_73 version-refusal cases simulate output only at the snapshot boundary while
     // retaining the real git repository check, live-run lookup and hook execution.
     const replacement = dataModule(`
       export { git } from ${JSON.stringify(GIT_STATE_URL.href)};
@@ -83,15 +83,15 @@ test('a v2 baseline names a Cyrillic stray outside the scope exactly', async (t)
   assert.equal(reported, stray);
 });
 
-test('a v2 baseline with the current legacy writer stays silent', async (t) => {
+test('a v2 baseline with a legacy snapshot stays silent', async (t) => {
   const context = await fixture(t, encodeSnapshot([]));
   await fs.writeFile(path.join(context.repo, 'outside.txt'), 'real stray\n');
-  const result = runWitness(context);
+  const result = runWitness(context, 'U\t11\toutside.txt\n');
   assert.equal(result.status, 0, result.stderr);
   assert.equal(result.stdout, '');
 });
 
-test('a legacy baseline with a future v2 writer stays silent', async (t) => {
+test('a legacy baseline with the v2 writer stays silent', async (t) => {
   const context = await fixture(t, '');
   const result = runWitness(context, encodeSnapshot([{ path: 'outside.txt', state: '1\t0' }]));
   assert.equal(result.status, 0, result.stderr);

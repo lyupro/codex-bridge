@@ -10,6 +10,7 @@ import {
   SHELL_TOOL_MATCHER,
 } from '../../src/home/lib/hook-definitions.mjs';
 import { worktreeSnapshot } from '../../src/home/lib/runner/git-state.mjs';
+import { encodeSnapshot } from '../../src/home/lib/meta/snapshot-format.mjs';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
@@ -55,7 +56,7 @@ async function liveRun(runsRoot, repo, statusOverrides = {}) {
     process_started_at: performance.timeOrigin,
     ...statusOverrides,
   })}\n`);
-  await fs.writeFile(path.join(dir, 'state-before.txt'), `${before}\n`);
+  await fs.writeFile(path.join(dir, 'state-before.txt'), before);
   await fs.writeFile(path.join(dir, 'scope.txt'), 'src/**\n');
   return dir;
 }
@@ -215,13 +216,13 @@ test('gitignored working notes are not reported', async (t) => {
   assertPass(runWitness(root, runsRoot, repo));
 });
 
-// Porcelain stays ?? for an existing untracked file; the recorded byte count catches its edit.
+// Plan_73 D4: porcelain stays ?? and size may stay equal; the content hash catches the edit.
 test('an edit to an already untracked path is reported', async (t) => {
   const { root, repo, runsRoot } = await fixture(t);
   await fs.writeFile(path.join(repo, 'outside.txt'), 'before\n');
   await liveRun(runsRoot, repo);
   assertPass(runWitness(root, runsRoot, repo));
-  await fs.writeFile(path.join(repo, 'outside.txt'), 'orchestrator changed the file\n');
+  await fs.writeFile(path.join(repo, 'outside.txt'), 'after!\n');
   const result = runWitness(root, runsRoot, repo);
   assert.equal(result.status, 0);
   assert.match(JSON.parse(result.stdout).hookSpecificOutput.additionalContext, /outside\.txt/);
@@ -302,7 +303,7 @@ test('a rename that stays inside the scope is not reported', async (t) => {
 test('a path present only in state-before is reported as changed', async (t) => {
   const { root, repo, runsRoot } = await fixture(t);
   const runDir = await liveRun(runsRoot, repo);
-  await fs.writeFile(path.join(runDir, 'state-before.txt'), '1\t0\trestored.txt\n');
+  await fs.writeFile(path.join(runDir, 'state-before.txt'), encodeSnapshot([{ path: 'restored.txt', state: '1\t0' }]));
 
   const result = runWitness(root, runsRoot, repo);
   assert.equal(result.status, 0);
@@ -365,7 +366,7 @@ test('malformed and missing inputs pass silently', async (t) => {
 test('an unavailable repository passes silently', async (t) => {
   const { root, repo, runsRoot } = await fixture(t);
   const runDir = await liveRun(runsRoot, repo);
-  await fs.writeFile(path.join(runDir, 'state-before.txt'), '1\t0\trestored.txt\n');
+  await fs.writeFile(path.join(runDir, 'state-before.txt'), encodeSnapshot([{ path: 'restored.txt', state: '1\t0' }]));
   const statusFile = path.join(runDir, 'status.json');
   const status = JSON.parse(await fs.readFile(statusFile, 'utf8'));
   const missing = path.join(root, 'missing-repository');

@@ -55,9 +55,9 @@ export async function worker(runDir) {
   if (cfg.agent === 'codex-build') {
     fs.writeFileSync(path.join(runDir, 'head-after.txt'), `${cfg.is_git_repo ? headSha(repoRoot) : ''}\n`);
     fs.writeFileSync(path.join(runDir, 'branch-after.txt'), `${cfg.is_git_repo ? branchName(repoRoot) : ''}\n`);
-    fs.writeFileSync(path.join(runDir, 'git-after.txt'), git(repoRoot, ['status', '--porcelain']).stdout || '');
-    fs.writeFileSync(path.join(runDir, 'state-after.txt'), `${worktreeSnapshot(repoRoot)}\n`);
-    fs.writeFileSync(path.join(runDir, 'diff.stat'), git(repoRoot, ['diff', '--stat']).stdout || '');
+    fs.writeFileSync(path.join(runDir, 'git-after.txt'), git(repoRoot, ['-c', 'core.quotepath=false', 'status', '--porcelain']).stdout || '');
+    fs.writeFileSync(path.join(runDir, 'state-after.txt'), worktreeSnapshot(repoRoot));
+    fs.writeFileSync(path.join(runDir, 'diff.stat'), git(repoRoot, ['-c', 'core.quotepath=false', 'diff', '--stat']).stdout || '');
     fs.writeFileSync(path.join(runDir, 'flags.txt'), findFakeDone(repoRoot));
   }
 
