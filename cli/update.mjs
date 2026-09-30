@@ -19,7 +19,8 @@ import {
 } from './manifest.mjs';
 import { targetMatches } from './copy.mjs';
 import { hookTargets, recordHasHooks } from './hook-targets.mjs';
-import { definitionForRecordedHook, fileEntry, fingerprintFor } from './install-record.mjs';
+import { definitionForRecordedHook, fileEntry, fingerprintFor, readInstallRecordFile } from './install-record.mjs';
+import { ownImageStampCurrent } from './install-owners.mjs';
 import {
   commandFor,
   inspectHook,
@@ -172,6 +173,7 @@ async function updateInRun({
 } = {}) {
   await readRulesRegistry(host);
   const record = await readInstallRecord(host);
+  const rawRecord = await readInstallRecordFile(host);
   if (!record) {
     // Plan_65 D10 item 6: a host that carries our files or hooks but has no row (legacy is nobody's view
     // since H5) is recorded by what is actually there. Install owns that — conflicts for edited files, the
@@ -284,8 +286,9 @@ async function updateInRun({
     { path: rule.target, fingerprint: ruleState.fingerprint });
   // Plan_65 D9: a format-1 migration remains work when every installed file is current.
   const changed = transition || states.some((state) => state.status !== 'up-to-date') || oldHooks.length > 0;
+  // D11: the command doctor recommends must clear its warning about this host's image stamp.
   if (!changed && inspectedHooks.every(({ state }) => state.current)
-    && recordHasHooks(record, targets) && recordCurrent) {
+    && recordHasHooks(record, targets) && recordCurrent && ownImageStampCurrent(rawRecord, host)) {
     const legacyLogOutput = await retireLegacyGuardLogs(host, writer, { dryRun });
     if (!dryRun) {
       await addRulesOwner(host);

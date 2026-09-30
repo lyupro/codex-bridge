@@ -10,6 +10,7 @@ import { install } from '../../cli/install.mjs';
 import { update } from '../../cli/update.mjs';
 import { buildInstallPlan, fileFingerprint, PACKAGE_ROOT } from '../../cli/manifest.mjs';
 import { readInstallRecordFile } from '../../cli/install-record.mjs';
+import { imageFingerprint } from '../../cli/install-owners.mjs';
 import { plannedContent } from '../../cli/copy.mjs';
 
 const env = { PATH: '', CODEX_BRIDGE_CWD: PACKAGE_ROOT };
@@ -169,5 +170,33 @@ for (const current of [true, false]) {
     assert.equal(result.exitCode, 0);
     assert.ok(result.output.includes(`Left ${f.b.root} behind: ${f.agent.relativeToRoot} (changed)`));
     assert.deepEqual(await snapshot(f), before);
+  });
+}
+
+for (const stamp of ['aged', 'missing']) {
+  test(`update refreshes A's ${stamp} own image stamp without changing agent bytes`, async (t) => {
+    const f = await fixture(t);
+    const plan = await buildInstallPlan(f.a);
+    const agents = plan.filter((item) => item.root === 'claude' && item.target.startsWith(f.a.agentsDir + path.sep));
+    assert.ok(agents.length > 0);
+    const before = await Promise.all(agents.map((item) => fs.readFile(item.target)));
+    const owner = f.record.owners[key(f.a)];
+    if (stamp === 'aged') owner.imageFingerprint = 'a'.repeat(64);
+    else delete owner.imageFingerprint;
+    await fs.writeFile(f.a.brandInstallRecordPath, JSON.stringify(f.record, null, 2) + '\n');
+    const agedRecord = await readInstallRecordFile(f.a);
+    assert.equal(agedRecord.owners[key(f.a)].imageFingerprint, stamp === 'aged' ? 'a'.repeat(64) : undefined);
+    const result = await update({ host: f.a, env });
+    const record = await readInstallRecordFile(f.a);
+    assert.equal(result.exitCode, 0);
+    assert.ok(result.output.startsWith('Updated codex-bridge.'));
+    assert.equal(record.owners[key(f.a)].imageFingerprint, imageFingerprint(record.image));
+    assert.notEqual(record.owners[key(f.a)].imageFingerprint, null);
+    assert.deepEqual(await Promise.all(agents.map((item) => fs.readFile(item.target))), before);
+    const refreshed = await fs.readFile(f.a.brandInstallRecordPath);
+    const second = await update({ host: f.a, env });
+    assert.equal(second.exitCode, 0);
+    assert.ok(second.output.startsWith('codex-bridge is up to date with '));
+    assert.deepEqual(await fs.readFile(f.a.brandInstallRecordPath), refreshed);
   });
 }

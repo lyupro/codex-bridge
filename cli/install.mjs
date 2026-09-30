@@ -17,7 +17,8 @@ import {
 import { copyPlannedFile, planHomeWriter, targetMatches } from './copy.mjs';
 import { removeOutside } from './record-removal.mjs';
 import { hookTargets, recordHasHooks } from './hook-targets.mjs';
-import { fingerprintFor } from './install-record.mjs';
+import { fingerprintFor, readInstallRecordFile } from './install-record.mjs';
+import { ownImageStampCurrent } from './install-owners.mjs';
 import { syncOtherOwners } from './owner-sync-apply.mjs';
 import { ownerRecord } from './owner-record.mjs';
 import {
@@ -156,6 +157,7 @@ async function installInRun(options = {}) {
   const rule = { ...rulesPlan(host, packageRoot), processing: 'copy' };
   const currentPackage = await packageInfo(packageRoot);
   const record = await readInstallRecord(host);
+  const rawRecord = await readInstallRecordFile(host);
   const targets = hookTargets(host, env);
   for (const target of targets) {
     if (!plan.some((item) => item.root === 'brand' && item.relativeToRoot === target.relative)) {
@@ -203,8 +205,9 @@ async function installInRun(options = {}) {
   const sameRecord = recordMatchesPackage(record, plan, currentPackage,
     new Map(states.map((state) => [recordFileKey(state.item), state.fingerprint])),
     { path: rule.target, fingerprint: ruleState.fingerprint });
+  // D11: the command doctor recommends must clear its warning about this host's image stamp.
   if (!transition && !changedFiles.length && !changedRule && inspectedHooks.every((state) => state.current)
-    && recordHasHooks(record, targets) && sameRecord) {
+    && recordHasHooks(record, targets) && sameRecord && ownImageStampCurrent(rawRecord, host)) {
     if (!dryRun) {
       await addRulesOwner(host);
       // Read, never write: this branch's whole claim is that there is nothing to do, and a

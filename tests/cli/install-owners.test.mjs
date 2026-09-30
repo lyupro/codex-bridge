@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { normalizeRepoPath } from '../../src/home/lib/runner/project-dir.mjs';
-import { imageFingerprint, imageRemoval, isFormat2, ownerView, validateFormat2, withOwner, withoutOwner } from '../../cli/install-owners.mjs';
+import { imageFingerprint, imageRemoval, isFormat2, ownerView, ownImageStampCurrent, validateFormat2, withOwner, withoutOwner } from '../../cli/install-owners.mjs';
 
 const brandFiles = [
   { root: 'brand', path: 'hooks/reply-guard.mjs' },
@@ -253,4 +253,24 @@ test('owner stamps require exactly 64 lowercase hex characters, while absent sta
   }
   delete valid.owners[key].imageFingerprint;
   assert.equal(validateFormat2(valid), valid);
+});
+
+test('ownImageStampCurrent requires a format-2 owner verified against a fingerprinted image', () => {
+  const target = host('/repos/alpha/.claude');
+  const valid = withOwner(null, target, record());
+  const key = normalizeRepoPath(target.root);
+  assert.equal(ownImageStampCurrent(record(), target), false);
+  assert.equal(ownImageStampCurrent(null, target), false);
+  assert.equal(ownImageStampCurrent(valid, host('/repos/absent/.claude')), false);
+  assert.equal(ownImageStampCurrent(valid, host('/repos/alpha/./.claude')), true);
+  assert.equal(ownImageStampCurrent(valid, target), true);
+  valid.owners[key].imageFingerprint = 'a'.repeat(64);
+  assert.equal(ownImageStampCurrent(valid, target), false);
+  delete valid.owners[key].imageFingerprint;
+  assert.equal(ownImageStampCurrent(valid, target), false);
+  valid.owners[key].imageFingerprint = imageFingerprint(valid.image);
+  delete valid.image.fingerprints;
+  assert.equal(ownImageStampCurrent(valid, target), false);
+  valid.owners[key].imageFingerprint = null;
+  assert.equal(ownImageStampCurrent(valid, target), false);
 });

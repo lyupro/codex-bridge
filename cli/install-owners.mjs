@@ -32,6 +32,14 @@ export function imageFingerprint(image) {
   return createHash('sha256').update(canonical).digest('hex');
 }
 
+export function ownImageStampCurrent(rawRecord, host) {
+  if (!isFormat2(rawRecord)) return false;
+  const owner = rawRecord.owners?.[normalizeRepoPath(host.root)];
+  if (!owner) return false;
+  const fingerprint = imageFingerprint(rawRecord.image);
+  return fingerprint !== null && owner.imageFingerprint === fingerprint;
+}
+
 function filesFor(record, root) {
   return record.files.map(fileEntry).filter((file) => file.root === root)
     .map((file) => ({ root, path: file.path }));
