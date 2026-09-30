@@ -6,7 +6,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { listRepositoryPaths } from './git-paths.mjs';
 import { globToRegExp, normalizePath, SERVICE_RE } from '../meta/paths.mjs';
 
 // Directories a self-walk must never descend into. Only reached when the repository has no git:
@@ -25,6 +25,13 @@ function absolutePattern(pattern) {
 }
 
 function structuralRefusal(repoRoot, pattern) {
+  // Plan_73 D7: scope lists store one pattern per line; literal line breaks cannot round-trip.
+  if (/[\n\r]/.test(pattern)) {
+    return {
+      reason: 'contains a newline or carriage return',
+      action: 'use a glob instead of a literal path containing a line break',
+    };
+  }
   if (absolutePattern(pattern)) {
     return {
       reason: 'is an absolute or drive-qualified path',
@@ -87,21 +94,6 @@ function repositoryPath(repoRoot, absolutePath) {
   return normalizePath(relative);
 }
 
-/**
- * The repository's own answer to "which files are there": tracked plus new-but-uncommitted, minus
- * everything ignored. It is the same boundary the run is judged by afterwards, it costs one process
- * instead of a full walk, and it cannot wander into `.git` or a dependency tree.
- */
-function gitPaths(repoRoot) {
-  const result = spawnSync(
-    'git',
-    ['-C', repoRoot, 'ls-files', '--cached', '--others', '--exclude-standard'],
-    { encoding: 'utf8', windowsHide: true, maxBuffer: 64 * 1024 * 1024 },
-  );
-  if (result.error || result.status !== 0) return null;
-  return result.stdout.split('\n').map((line) => line.trim()).filter(Boolean);
-}
-
 /** Walks a directory that has no git, skipping dependency trees and anything unreadable. */
 function walkPaths(repoRoot) {
   const pending = [repoRoot];
@@ -129,9 +121,13 @@ function walkPaths(repoRoot) {
   return found;
 }
 
+/**
+ * Names come from git-paths.mjs so Plan_73's 2026-09-30 Cyrillic incident cannot recur through
+ * quoted git output or trimmed names. Its tracked-plus-untracked, non-ignored list costs one
+ * process instead of a walk and cannot wander into `.git` or a dependency tree.
+ */
 function matchingPaths(repoRoot, matchers) {
-  const candidates = gitPaths(repoRoot)?.map((relative) => normalizePath(relative))
-    ?? walkPaths(repoRoot);
+  const candidates = listRepositoryPaths(repoRoot) ?? walkPaths(repoRoot);
   const matched = new Set();
   for (const candidate of candidates) {
     for (const matcher of matchers) {
@@ -146,7 +142,10 @@ function matchingPaths(repoRoot, matchers) {
 
 function patternList(value, label) {
   if (!Array.isArray(value)) throw new TypeError(`${label} must be an array`);
-  return value.map((pattern) => String(pattern ?? '').trim());
+  return value.map((pattern) => {
+    const text = String(pattern ?? '');
+    return /[\n\r]/.test(text) ? text : text.trim();
+  });
 }
 
 /**
@@ -181,7 +180,17 @@ export function validateScope(repoRoot, patterns, scopeNewPatterns = []) {
     };
   }
 
-  const matched = matchingPaths(repoRoot, matchers);
+  let matched;
+  try {
+    matched = matchingPaths(repoRoot, matchers);
+  } catch (error) {
+    if (error.code !== 'ERR_GIT_PATH_NOT_UTF8') throw error;
+    return {
+      pattern: required[0],
+      reason: error.message,
+      action: 'rename the non-UTF-8 file using a UTF-8 file name and retry',
+    };
+  }
   const missing = matchers.find((matcher) => !matched.has(matcher.pattern));
   return missing ? noMatchRefusal(missing.pattern) : null;
 }

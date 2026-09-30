@@ -365,7 +365,7 @@ test('a scout scope is checked too: an impossible pattern never reaches Codex', 
 test('the file list comes from git, so an ignored path cannot satisfy a pattern', (t) => {
   const { repo } = repository(t, 'git-list');
   const git = (...args) => spawnSync('git', ['-C', repo, ...args], { encoding: 'utf8' });
-  git('init');
+  assert.equal(git('init').status, 0);
   fs.writeFileSync(path.join(repo, '.gitignore'), 'build/\n');
   fs.mkdirSync(path.join(repo, 'build'));
   fs.writeFileSync(path.join(repo, 'build', 'generated.mjs'), 'export default 2;\n');
