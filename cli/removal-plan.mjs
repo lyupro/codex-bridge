@@ -3,12 +3,25 @@
  *
  * Plan_65 D12 uses one plan for uninstall and purge: decisions precede any deletion,
  * so edited images and entries the inspection could not read stay visible to the caller.
+ * The record has its own operation because removing one owner can preserve the shared record.
  */
 import {
   HOME_ARTIFACTS,
+  HOME_DIRECTORIES,
   classifyHomePath,
   homeArtifact,
 } from '../src/home/lib/home-registry.mjs';
+
+const byRelative = (left, right) => (
+  left.relative < right.relative ? -1 : left.relative > right.relative ? 1 : 0
+);
+
+// The record changes only after the host is detached (cli/uninstall.mjs, hostSide.detached), so
+// every operation that changes it carries that dependency and nothing else does.
+function recordOutcome(operation, reason, blocked = false) {
+  const dependsOnDetach = operation === 'delete' || operation === 'remove-current-owner';
+  return { operation, reason, dependsOnDetach, blocked };
+}
 
 function metadata(relative, imageMembers) {
   const match = classifyHomePath(relative, { imageMembers });
@@ -105,8 +118,61 @@ export function planHomeFiles({ mode, inspection, imageMembers, imageEvidence, i
       add(relative, metadata(relative, imageMembers), ancestorDecision(relative, inspection));
     }
   }
-  const rows = [...rowsByPath.values()].sort((left, right) => (
-    left.relative < right.relative ? -1 : left.relative > right.relative ? 1 : 0
-  ));
+  const rows = [...rowsByPath.values()].sort(byRelative);
   return { rows, blocked: rows.some((row) => row.action === 'blocked') };
+}
+
+export function planRecordOperation({ mode, recordState, format2, ownerKey, imagePolicy }) {
+  if (mode !== 'uninstall' && mode !== 'purge') throw new TypeError(`Invalid removal mode: ${mode}`);
+  if (!['missing', 'corrupt', 'valid'].includes(recordState)) {
+    throw new TypeError(`Invalid installation record state: ${recordState}`);
+  }
+  if (recordState === 'missing') {
+    return recordOutcome('none', 'no installation record');
+  }
+  // D12 item 4: an unreadable record blocks removal rather than becoming an absent record.
+  if (recordState === 'corrupt') {
+    return recordOutcome('retain', 'unreadable installation record', true);
+  }
+  if (mode === 'purge' || imagePolicy.remove) {
+    return recordOutcome('delete', mode === 'purge' ? 'purge' : 'last owner');
+  }
+  if (Object.hasOwn(format2.owners, ownerKey)) {
+    return recordOutcome('remove-current-owner', imagePolicy.reason);
+  }
+  return recordOutcome('retain', 'not an owner of this home');
+}
+
+export function planHomeDirectories({ mode, inspection, imageMembers, imagePolicy }) {
+  if (inspection.root !== 'present') return [];
+  const decide = (relative) => {
+    if (mode === 'purge') return { relative, action: 'remove-if-empty', reason: 'purge' };
+    if (!imagePolicy.remove) return { relative, action: 'keep', reason: imagePolicy.reason };
+    const imageDirectory = relative === '' || (
+      !HOME_DIRECTORIES.includes(relative)
+      && imageMembers.some((member) => member.startsWith(`${relative}/`))
+    );
+    // D12 item 1: even image ancestors can only be removed once they are empty.
+    return imageDirectory
+      ? { relative, action: 'remove-if-empty', reason: 'image' }
+      : { relative, action: 'keep', reason: 'holds purge-only data' };
+  };
+  return [...inspection.directories.map((entry) => decide(entry.relative)), decide('')];
+}
+
+export function planHomeRemoval(facts) {
+  const files = planHomeFiles(facts);
+  const record = planRecordOperation(facts);
+  const directories = planHomeDirectories(facts);
+  const rowsByPath = new Map(files.rows.map((row) => [row.relative, row]));
+  for (const file of facts.inspection.files) {
+    if (file.id !== 'install-record' || file.role !== 'atomic-temporary' || rowsByPath.has(file.relative)) continue;
+    rowsByPath.set(file.relative, {
+      relative: file.relative, id: file.id, role: file.role, removal: file.removal,
+      action: record.operation === 'delete' ? 'remove' : 'keep',
+      reason: record.operation === 'delete' ? 'record deleted' : 'record in use',
+    });
+  }
+  const rows = [...rowsByPath.values()].sort(byRelative);
+  return { rows, directories, record, blocked: files.blocked || record.blocked };
 }

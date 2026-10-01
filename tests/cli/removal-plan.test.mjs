@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { planHomeFiles } from '../../cli/removal-plan.mjs';
+import { planHomeFiles, planRecordOperation, planHomeDirectories, planHomeRemoval } from '../../cli/removal-plan.mjs';
 
 const inspection = (facts = {}) => ({
   root: 'present', files: [], unknown: [], links: [], errors: [], directories: [], ...facts,
@@ -238,4 +238,114 @@ test('planning does not mutate gathered facts or policy and is repeatable', () =
   const first = planHomeFiles(input);
   assert.deepEqual(input, before);
   assert.deepEqual(planHomeFiles(input), first);
+});
+
+test('a missing record has no operation or detach dependency in either mode', () => {
+  assert.deepEqual(planRecordOperation({ mode: 'uninstall', recordState: 'missing' }), { operation: 'none', reason: 'no installation record', dependsOnDetach: false, blocked: false });
+  assert.deepEqual(planRecordOperation({ mode: 'purge', recordState: 'missing' }), { operation: 'none', reason: 'no installation record', dependsOnDetach: false, blocked: false });
+});
+
+test('a corrupt record is retained and blocks both modes even when image removal is allowed', () => {
+  assert.deepEqual(planRecordOperation({ mode: 'uninstall', recordState: 'corrupt', imagePolicy: { remove: true } }), { operation: 'retain', reason: 'unreadable installation record', dependsOnDetach: false, blocked: true });
+  assert.deepEqual(planRecordOperation({ mode: 'purge', recordState: 'corrupt', imagePolicy: { remove: true } }), { operation: 'retain', reason: 'unreadable installation record', dependsOnDetach: false, blocked: true });
+});
+
+test('purge deletes a valid record after detach regardless of the image policy or current ownership', () => {
+  assert.deepEqual(planRecordOperation({ mode: 'purge', recordState: 'valid', format2: { owners: { '/other': {} }, inventory: {} }, ownerKey: '/host', imagePolicy: { remove: false, reason: 'other owners' } }), { operation: 'delete', reason: 'purge', dependsOnDetach: true, blocked: false });
+});
+
+test('uninstall deletes the last-owner record after detach when image removal is allowed', () => {
+  assert.deepEqual(planRecordOperation({ mode: 'uninstall', recordState: 'valid', format2: { owners: { '/host': {} }, inventory: {} }, ownerKey: '/host', imagePolicy: { remove: true, reason: 'no owners' } }), { operation: 'delete', reason: 'last owner', dependsOnDetach: true, blocked: false });
+  assert.deepEqual(planRecordOperation({ mode: 'uninstall', recordState: 'valid', format2: { owners: {}, inventory: {} }, ownerKey: '/host', imagePolicy: { remove: true, reason: 'orphan image' } }), { operation: 'delete', reason: 'last owner', dependsOnDetach: true, blocked: false });
+});
+
+test('uninstall removes only the current owner after detach and preserves the policy reason', () => {
+  assert.deepEqual(planRecordOperation({ mode: 'uninstall', recordState: 'valid', format2: { owners: { '/host': {}, '/other': {} }, inventory: {} }, ownerKey: '/host', imagePolicy: { remove: false, reason: 'other owners' } }), { operation: 'remove-current-owner', reason: 'other owners', dependsOnDetach: true, blocked: false });
+  assert.deepEqual(planRecordOperation({ mode: 'uninstall', recordState: 'valid', format2: { owners: { '/host': {} }, inventory: {}, legacy: {} }, ownerKey: '/host', imagePolicy: { remove: false, reason: 'incomplete inventory' } }), { operation: 'remove-current-owner', reason: 'incomplete inventory', dependsOnDetach: true, blocked: false });
+});
+
+test('uninstall retains a record this host does not own without requiring detach', () => {
+  assert.deepEqual(planRecordOperation({ mode: 'uninstall', recordState: 'valid', format2: { owners: { '/other': {} }, inventory: {} }, ownerKey: '/host', imagePolicy: { remove: false, reason: 'other owners' } }), { operation: 'retain', reason: 'not an owner of this home', dependsOnDetach: false, blocked: false });
+  assert.deepEqual(planRecordOperation({ mode: 'uninstall', recordState: 'valid', format2: { owners: {}, inventory: {} }, ownerKey: 'toString', imagePolicy: { remove: false, reason: 'incomplete inventory' } }), { operation: 'retain', reason: 'not an owner of this home', dependsOnDetach: false, blocked: false });
+});
+
+test('record planning rejects unknown and missing modes and record states', () => {
+  assert.throws(() => planRecordOperation({ mode: 'remove', recordState: 'missing' }), { name: 'TypeError', message: 'Invalid removal mode: remove' });
+  assert.throws(() => planRecordOperation({ mode: 'purge', recordState: 'unreadable' }), { name: 'TypeError', message: 'Invalid installation record state: unreadable' });
+  assert.throws(() => planRecordOperation({ recordState: 'missing' }), TypeError);
+  assert.throws(() => planRecordOperation({ mode: 'uninstall' }), TypeError);
+});
+
+test('purge plans every directory as empty-only removal in inspection order with root last', () => {
+  const result = planHomeDirectories({ mode: 'purge', inspection: { root: 'present', directories: [{ relative: 'state/dispatchers' }, { relative: 'lib/runner' }, { relative: 'state' }, { relative: 'lib' }] }, imageMembers: [], imagePolicy: { remove: false, reason: 'other owners' } });
+  assert.deepEqual(result, [{ relative: 'state/dispatchers', action: 'remove-if-empty', reason: 'purge' }, { relative: 'lib/runner', action: 'remove-if-empty', reason: 'purge' }, { relative: 'state', action: 'remove-if-empty', reason: 'purge' }, { relative: 'lib', action: 'remove-if-empty', reason: 'purge' }, { relative: '', action: 'remove-if-empty', reason: 'purge' }]);
+});
+
+test('uninstall removes image ancestors only, protecting registered folders and sibling prefixes', () => {
+  const result = planHomeDirectories({ mode: 'uninstall', inspection: { root: 'present', directories: [{ relative: 'state/dispatchers' }, { relative: 'state/diagnostics' }, { relative: 'lib/runner' }, { relative: 'state' }, { relative: 'lib' }, { relative: 'li' }, { relative: 'foreign' }] }, imageMembers: ['lib/runner/main.mjs', 'state/dispatchers/image.mjs', 'state/diagnostics/image.mjs'], imagePolicy: { remove: true, reason: 'last owner' } });
+  assert.deepEqual(result, [{ relative: 'state/dispatchers', action: 'keep', reason: 'holds purge-only data' }, { relative: 'state/diagnostics', action: 'keep', reason: 'holds purge-only data' }, { relative: 'lib/runner', action: 'remove-if-empty', reason: 'image' }, { relative: 'state', action: 'keep', reason: 'holds purge-only data' }, { relative: 'lib', action: 'remove-if-empty', reason: 'image' }, { relative: 'li', action: 'keep', reason: 'holds purge-only data' }, { relative: 'foreign', action: 'keep', reason: 'holds purge-only data' }, { relative: '', action: 'remove-if-empty', reason: 'image' }]);
+});
+
+test('uninstall without image removal keeps all directories and root with the policy reason', () => {
+  const result = planHomeDirectories({ mode: 'uninstall', inspection: { root: 'present', directories: [{ relative: 'state/dispatchers' }, { relative: 'lib/runner' }, { relative: 'state' }, { relative: 'lib' }] }, imageMembers: ['lib/runner/main.mjs'], imagePolicy: { remove: false, reason: 'other owners' } });
+  assert.deepEqual(result, [{ relative: 'state/dispatchers', action: 'keep', reason: 'other owners' }, { relative: 'lib/runner', action: 'keep', reason: 'other owners' }, { relative: 'state', action: 'keep', reason: 'other owners' }, { relative: 'lib', action: 'keep', reason: 'other owners' }, { relative: '', action: 'keep', reason: 'other owners' }]);
+});
+
+test('missing and unreadable roots have no directory rows even with listed directories', () => {
+  assert.deepEqual(planHomeDirectories({ mode: 'purge', inspection: { root: 'missing', directories: [{ relative: 'lib' }] }, imageMembers: [], imagePolicy: { remove: true } }), []);
+  assert.deepEqual(planHomeDirectories({ mode: 'uninstall', inspection: { root: 'error', directories: [{ relative: 'lib' }] }, imageMembers: [], imagePolicy: { remove: true } }), []);
+});
+
+test('an empty directory inspection still plans root last', () => {
+  assert.deepEqual(planHomeDirectories({ mode: 'uninstall', inspection: { root: 'present', directories: [] }, imageMembers: [], imagePolicy: { remove: true } }), [{ relative: '', action: 'remove-if-empty', reason: 'image' }]);
+});
+
+test('combined deletion includes unique sorted record temporaries and is pure and repeatable', () => {
+  const input = {
+    mode: 'purge', recordState: 'valid', format2: { owners: {}, inventory: {} }, ownerKey: '/host',
+    inspection: { root: 'present', files: [{ relative: '.installed.json.z.tmp', id: 'install-record', role: 'atomic-temporary', removal: 'install-owned' }, { relative: '.installed.json.a.tmp', id: 'install-record', role: 'atomic-temporary', removal: 'install-owned' }, { relative: '.installed.json.z.tmp', id: 'install-record', role: 'atomic-temporary', removal: 'install-owned' }, { relative: '.installed.json', id: 'install-record', role: 'primary', removal: 'install-owned' }], unknown: [], links: [], errors: [], directories: [{ relative: 'lib' }] },
+    imageMembers: [], imageEvidence: new Map(), imagePolicy: { remove: true, reason: 'purge' },
+  };
+  const before = structuredClone(input);
+  const result = planHomeRemoval(input);
+  assert.deepEqual(result.rows.filter((row) => row.id === 'install-record'), [{ relative: '.installed.json.a.tmp', id: 'install-record', role: 'atomic-temporary', removal: 'install-owned', action: 'remove', reason: 'record deleted' }, { relative: '.installed.json.z.tmp', id: 'install-record', role: 'atomic-temporary', removal: 'install-owned', action: 'remove', reason: 'record deleted' }]);
+  assert.deepEqual(result.record, { operation: 'delete', reason: 'purge', dependsOnDetach: true, blocked: false });
+  assert.deepEqual(result.directories, [{ relative: 'lib', action: 'remove-if-empty', reason: 'purge' }, { relative: '', action: 'remove-if-empty', reason: 'purge' }]);
+  assert.deepEqual(result.rows.map((row) => row.relative), [...new Set(result.rows.map((row) => row.relative))].sort());
+  assert.equal(result.blocked, false);
+  assert.deepEqual(input, before);
+  assert.deepEqual(planHomeRemoval(input), result);
+});
+
+test('combined retention keeps record temporaries in use', () => {
+  const result = planHomeRemoval({ mode: 'uninstall', recordState: 'valid', format2: { owners: { '/other': {} }, inventory: {} }, ownerKey: '/host', inspection: { root: 'present', files: [{ relative: '.installed.json.a.tmp', id: 'install-record', role: 'atomic-temporary', removal: 'install-owned' }], unknown: [], links: [], errors: [], directories: [] }, imageMembers: [], imageEvidence: new Map(), imagePolicy: { remove: false, reason: 'other owners' } });
+  assert.deepEqual(result.rows.find((row) => row.relative === '.installed.json.a.tmp'), { relative: '.installed.json.a.tmp', id: 'install-record', role: 'atomic-temporary', removal: 'install-owned', action: 'keep', reason: 'record in use' });
+  assert.deepEqual(result.record, { operation: 'retain', reason: 'not an owner of this home', dependsOnDetach: false, blocked: false });
+  assert.equal(result.blocked, false);
+});
+
+test('removing only the current owner also keeps record temporaries in use', () => {
+  const result = planHomeRemoval({ mode: 'uninstall', recordState: 'valid', format2: { owners: { '/host': {}, '/other': {} }, inventory: {} }, ownerKey: '/host', inspection: { root: 'present', files: [{ relative: '.installed.json.a.tmp', id: 'install-record', role: 'atomic-temporary', removal: 'install-owned' }], unknown: [], links: [], errors: [], directories: [] }, imageMembers: [], imageEvidence: new Map(), imagePolicy: { remove: false, reason: 'other owners' } });
+  assert.deepEqual(result.rows.find((row) => row.relative === '.installed.json.a.tmp'), { relative: '.installed.json.a.tmp', id: 'install-record', role: 'atomic-temporary', removal: 'install-owned', action: 'keep', reason: 'record in use' });
+  assert.equal(result.record.operation, 'remove-current-owner');
+  assert.equal(result.blocked, false);
+});
+
+test('a corrupt record blocks the combined plan without any blocked file row', () => {
+  const result = planHomeRemoval({ mode: 'purge', recordState: 'corrupt', inspection: { root: 'present', files: [{ relative: '.installed.json.a.tmp', id: 'install-record', role: 'atomic-temporary', removal: 'install-owned' }], unknown: [], links: [], errors: [], directories: [] }, imageMembers: [], imageEvidence: new Map(), imagePolicy: { remove: true, reason: 'purge' } });
+  assert.deepEqual(result.record, { operation: 'retain', reason: 'unreadable installation record', dependsOnDetach: false, blocked: true });
+  assert.deepEqual(result.rows.find((row) => row.relative === '.installed.json.a.tmp'), { relative: '.installed.json.a.tmp', id: 'install-record', role: 'atomic-temporary', removal: 'install-owned', action: 'keep', reason: 'record in use' });
+  assert.equal(result.rows.some((row) => row.action === 'blocked'), false);
+  assert.equal(result.blocked, true);
+});
+
+test('blocked files still block the combined plan when the record does not block', () => {
+  const result = planHomeRemoval({ mode: 'uninstall', recordState: 'missing', inspection: { root: 'present', files: [], unknown: [], links: [{ relative: 'foreign' }], errors: [], directories: [] }, imageMembers: [], imageEvidence: new Map(), imagePolicy: { remove: false, reason: 'no record' } });
+  assert.equal(result.record.blocked, false);
+  assert.equal(result.rows.some((row) => row.action === 'blocked'), true);
+  assert.equal(result.blocked, true);
+});
+
+test('the combined plan for a missing home and record contains no file or directory rows', () => {
+  assert.deepEqual(planHomeRemoval({ mode: 'uninstall', recordState: 'missing', inspection: { root: 'missing', files: [], unknown: [], links: [], errors: [], directories: [] }, imageMembers: [], imageEvidence: new Map(), imagePolicy: { remove: false, reason: 'no record' } }), { rows: [], directories: [], record: { operation: 'none', reason: 'no installation record', dependsOnDetach: false, blocked: false }, blocked: false });
 });
