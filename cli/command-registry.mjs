@@ -19,15 +19,17 @@ import { prune } from './prune.mjs';
 import { stop } from './stop.mjs';
 import { unlock } from './unlock.mjs';
 import { uninstall } from './uninstall.mjs';
+import { purge } from './uninstall-purge.mjs';
 import { update } from './update.mjs';
 
 export function commandOptions(command, argv) {
   const options = {};
   const booleanFlags = command === 'install' || command === 'update' ? new Set(['--dry-run', '--force'])
-    : command === 'uninstall' ? new Set(['--dry-run'])
+    : command === 'uninstall' ? new Set(['--dry-run', '--purge'])
       : command === 'doctor' ? new Set(['--probe-contract']) : new Set();
   const flagNames = new Map([
     ['--dry-run', 'dryRun'],
+    ['--purge', 'purge'],
     ['--force', 'force'],
     ['--probe-contract', 'probeContract'],
   ]);
@@ -108,12 +110,14 @@ export const COMMANDS = [
   {
     name: 'uninstall',
     summary: 'Remove installed files while preserving run artifacts',
-    usage: ['codex-bridge uninstall [--scope user|project] [--host <path>] [--dry-run]'],
+    usage: ['codex-bridge uninstall [--scope user|project] [--host <path>] [--dry-run] [--purge]'],
     section: 'public',
     async handler(argv, io) {
       const options = commandOptions('uninstall', argv);
       const host = resolveHost(options);
-      const result = await uninstall({ host, dryRun: options.dryRun });
+      const result = options.purge
+        ? await purge({ host, dryRun: options.dryRun })
+        : await uninstall({ host, dryRun: options.dryRun });
       io.log(result.output);
       return result.exitCode;
     },

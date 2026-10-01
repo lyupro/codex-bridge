@@ -31,7 +31,7 @@ function permissionOutput(host, removed, dryRun) {
 
 // Permission strings live in the same settings.json as the hooks; an unreadable file is left untouched
 // and named rather than rewritten, like the hooks themselves (Plan_65 D10 item 4).
-async function removePermissions(host, inspection, dryRun) {
+export async function removePermissions(host, inspection, dryRun) {
   if (inspection.settingsError !== null) {
     return `Left permission rules in ${host.settingsPath} because \
 settings could not be read: ${inspection.settingsError}`;
@@ -40,7 +40,7 @@ settings could not be read: ${inspection.settingsError}`;
   return permissionOutput(host, removed, dryRun);
 }
 
-function stillAttachedLine(host) {
+export function stillAttachedLine(host) {
   return `Did not finish uninstalling codex-bridge: ${host.root} still has its hooks; fix \
 ${host.settingsPath} and run uninstall again.`;
 }
