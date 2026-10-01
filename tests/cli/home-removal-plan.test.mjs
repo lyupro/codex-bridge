@@ -227,6 +227,8 @@ test('D12 includes recorded-only and package-only members once in sorted order',
   assert.equal(rowAt(plan, packageOnly).action, 'remove');
   assert.equal(rowAt(plan, packageOnly).reason, 'evidence: package');
   assert.equal(imageRows(plan).length, members.length + 1);
+  const expectedMembers = [...new Set([...members.map((file) => file.path), recordedOnly])].sort();
+  assert.deepEqual(plan.imageMembers, expectedMembers);
   const relatives = plan.rows.map((row) => row.relative);
   assert.deepEqual(relatives, [...new Set(relatives)].sort());
 });

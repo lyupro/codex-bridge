@@ -37,7 +37,7 @@ test('last-owner uninstall keeps a junction and all outside image bytes while re
 
   const result = await uninstall({ host });
 
-  assert.equal(result.exitCode, 0);
+  assert.equal(result.exitCode, 1);
   assert.equal((await fs.lstat(folder)).isSymbolicLink(), true);
   assert.deepEqual((await fs.readdir(outside, { recursive: true })).sort(), originalEntries);
   for (const file of movedFiles) {

@@ -76,10 +76,17 @@ export function outcomeExitCode(outcomes) {
     || (entry.result === 'kept' && unsafeReason(entry.reason))) ? 1 : 0;
 }
 
-export function planLines(plan, { host }) {
+export function planExitCode(plan) {
+  return plan.blocked || plan.rows.some((row) => (row.action === 'keep' || row.action === 'blocked')
+    && unsafeReason(row.reason)) ? 1 : 0;
+}
+
+export function planLines(plan, { host, detached = true }) {
   const files = plan.rows.map((row) => ({ ...row, result: row.action === 'keep' ? 'kept' : row.action }));
   const lines = fileLines(files, host, true);
-  if (plan.record.operation === 'delete') {
+  if (plan.record.dependsOnDetach && detached === false) {
+    lines.push(`Would keep ${host.root} in the installation record because its hooks could not be removed.`);
+  } else if (plan.record.operation === 'delete') {
     lines.push(`Would remove the installation record of ${host.brandRoot}.`);
   } else if (plan.record.operation === 'remove-current-owner') {
     lines.push(`Would remove ${host.root} from the installation record of ${host.brandRoot}; the shared image stays.`);

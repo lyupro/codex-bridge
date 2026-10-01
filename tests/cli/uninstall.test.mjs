@@ -18,6 +18,7 @@ import {
 } from '../../cli/rules-owners.mjs';
 import { uninstall } from '../../cli/uninstall.mjs';
 import { normalizeRepoPath } from '../../src/home/lib/runner/project-dir.mjs';
+import { runsRoot } from '../../src/home/lib/runner/runs-root.mjs';
 import { allFiles, fixture, formatOneRecord } from './host-fixture.mjs';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 
@@ -110,9 +111,7 @@ test('uninstall removes only recorded files and hook while preserving foreign ho
   await fs.writeFile(run, 'keep');
   const result = await uninstall({ host });
   assert.equal(result.exitCode, 0);
-  assert.match(result.output, /artifacts.*preserved/i);
-  // Plan_66 added state/host-observations.json; the 0.6.7 promise was that every kept kind is named.
-  assert.match(result.output, /host observations/);
+  assert.equal(result.output.split('\n').at(-1), `Run artifacts in ${runsRoot()} are outside uninstall and stay.`);
   assert.equal(await fs.readFile(foreign, 'utf8'), 'keep');
   assert.equal(await fs.readFile(run, 'utf8'), 'keep');
   assert.equal(await readInstallRecord(host), null);
@@ -128,14 +127,16 @@ test('uninstall removes only recorded files and hook while preserving foreign ho
 test('uninstall and its dry run name everything the package leaves in its home', async (t) => {
   const { host } = await fixture(t);
   await install({ host });
+  await fs.writeFile(path.join(host.brandRoot, '.host-contract.json'), '{}\n');
+  await fs.mkdir(path.join(host.brandRoot, 'state'), { recursive: true });
+  await fs.writeFile(path.join(host.brandRoot, 'state/host-observations.json'), '{}\n');
   const dryRun = await uninstall({ host, dryRun: true });
   const result = await uninstall({ host });
-  for (const output of [dryRun.output, result.output]) {
-    for (const kept of [host.brandConfigPath, host.brandConventionsPath,
-      path.join(host.brandRoot, '.host-contract.json'), path.join(host.brandRoot, 'state')]) {
-      assert.ok(output.includes(kept), `expected ${kept} in: ${output}`);
-    }
-    assert.match(output, /full hook input/);
+  const paths = '.host-contract.json, config.json, conventions.md, state/host-observations.json';
+  for (const [verb, output] of [['Would keep', dryRun.output], ['Kept', result.output]]) {
+    const expected = `${verb} 4 operator file(s) in ${host.brandRoot} for --purge: ${paths}`;
+    assert.equal(output.split('\n').filter((line) => line === expected).length, 1);
+    assert.equal(output.split('\n').at(-1), `Run artifacts in ${runsRoot()} are outside uninstall and stay.`);
   }
 });
 
@@ -211,6 +212,7 @@ test('uninstall without a record is nonzero and dry-run uninstall changes nothin
   const missing = await uninstall({ host: absent.host });
   assert.equal(missing.exitCode, 1);
   assert.match(missing.output, /not installed/);
+  assert.equal(missing.output.split('\n').at(-1), `Run artifacts in ${runsRoot()} are outside uninstall and stay.`);
   await assert.rejects(() => fs.access(absent.host.root), { code: 'ENOENT' });
 
   const installed = await fixture(t);

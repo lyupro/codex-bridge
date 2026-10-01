@@ -1,7 +1,7 @@
 /** Guards Plan_65 D12 items 4 and 7: report facts, preserve reasons, and fail for unsafe removal. */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { outcomeLines, outcomeExitCode, planLines } from '../../cli/removal-outcomes.mjs';
+import { outcomeLines, outcomeExitCode, planLines, planExitCode } from '../../cli/removal-outcomes.mjs';
 
 const host = { brandRoot: '/home/brand', root: '/home/host' };
 
@@ -212,4 +212,36 @@ test('message groups stay ordered even when file outcomes arrive in a different 
     'Removed /home/brand.',
   ];
   assert.deepEqual(outcomeLines(outcomes, { host }).slice(0, -1), expected);
+});
+
+// D12 item 4 makes unsafe keeps nonzero for dry runs as well as real removal.
+test('plan exit codes distinguish blocked plans and unsafe keeps from clean plans', () => {
+  assert.equal(planExitCode({ blocked: true, rows: [] }), 1);
+  for (const action of ['keep', 'blocked']) {
+    for (const reason of ['link', 'link at lib/runner', 'unreadable: EACCES']) {
+      assert.equal(planExitCode({ blocked: false, rows: [{ action, reason }] }), 1);
+    }
+  }
+  const clean = { blocked: false, rows: [
+    { action: 'remove', reason: 'evidence: recorded' },
+    { action: 'keep', reason: 'changed' },
+    { action: 'keep', reason: 'other-owners' },
+    { action: 'keep', reason: 'purge-only' },
+    { action: 'keep', reason: 'unknown' },
+  ] };
+  assert.equal(planExitCode(clean), 0);
+  assert.equal(planExitCode({ blocked: false, rows: [] }), 0);
+});
+
+test('dry run keeps a detachment-dependent record when hooks cannot be removed', () => {
+  const expected = 'Would keep /home/host in the installation record because its hooks could not be removed.';
+  for (const operation of ['delete', 'remove-current-owner']) {
+    const plan = { rows: [], record: { operation, dependsOnDetach: true }, directories: [] };
+    assert.equal(planLines(plan, { host, detached: false })[0], expected);
+    assert.notEqual(planLines(plan, { host })[0], expected);
+    assert.notEqual(planLines(plan, { host, detached: true })[0], expected);
+  }
+  const independent = { rows: [], record: { operation: 'delete', dependsOnDetach: false }, directories: [] };
+  assert.equal(planLines(independent, { host, detached: false })[0],
+    'Would remove the installation record of /home/brand.');
 });

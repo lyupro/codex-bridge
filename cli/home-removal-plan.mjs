@@ -55,5 +55,6 @@ export async function buildHomeRemovalPlan({ command, host, packageRoot, imagePo
     }),
     recordState,
     format2,
+    imageMembers: members,
   };
 }
