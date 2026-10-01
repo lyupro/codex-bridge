@@ -18,6 +18,7 @@ npm test                                   # whole suite (node --test) with an i
 npm test -- tests/meta/verdict.test.mjs    # one file
 npm test -- "tests/cli/*.test.mjs"         # one directory
 npm run check:size                         # 400-line source-file gate, .file-size-limit.json
+npm run check:open-work                    # open-work register + live-step thresholds (strict)
 node bin/codex-bridge.mjs doctor           # what is installed on this host, is codex alive
 npm run dev:install                        # update --force into ~/.claude from this clone
 git config core.hooksPath .githooks        # enable the pre-commit size gate (once per clone)
@@ -79,7 +80,12 @@ defect Plan_46 was written about.
 - Every closed step gets an operator checklist in `docs/checklists/` and a link from
   `docs/checklists/operator-checklists.md` — `tests/docs-checklist-index.test.mjs` enforces both
   sides wherever the folder exists, and skips where it does not. Fully passed checklists move to
-  `docs/checklists/done/`.
+  `docs/checklists/done/`. Every active index line ends with `live=[…]` — the steps still pending and
+  the release they wait for (`live=[]` when none).
+- **Open work lives in one register, `docs/plans/open-work.md` (Plan_72).** The queue order, every
+  unfinished finding and every operator task is an `OW-NNN` item there, never only in a handoff or
+  inside another plan; handoff items name the id. `npm run check:open-work` validates the register,
+  the references to it and the live-step thresholds of the checklist index.
 - `docs/plans/` records why the code is shaped this way, what was rejected and at what cost. Read
   the relevant plan before redesigning a mechanism.
 - Tests mirror source layout (`tests/meta/`, `tests/runner/`, `tests/cli/`); shared fixtures live in
