@@ -2,13 +2,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import fsSync from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { resolveHost } from '../../cli/hosts.mjs';
+import { createHomeWriter } from '../../src/home/lib/home-write.mjs';
 import {
   claudeBoundary,
   removeEmpty,
+  removeEmptyHome,
+  removeEmptyHomeParents,
   removeEmptyLayout,
   removeEmptyParents,
 } from '../../cli/remove-layout.mjs';
@@ -114,4 +118,117 @@ test('removeEmptyLayout keeps a previous-layout directory holding a foreign file
   await fs.writeFile(foreign, 'mine\n');
   await removeEmptyLayout(host.legacyCommandsDir);
   await fs.access(foreign);
+});
+
+test('home parent removal uses the adapter and keeps the home root', async (t) => {
+  const tree = await tempHome(t);
+  const root = path.join(tree, 'home');
+  const writer = createHomeWriter({ root, imageMembers: ['lib/runner/a.mjs', 'lib/b.mjs'] });
+  const target = path.join(root, 'lib', 'runner', 'a.mjs');
+  writer.mkdirSync('install-image', path.dirname(target));
+  writer.writeFileSync('install-image', target, 'image');
+  await writer.unlink('install-image', target);
+  const result = await removeEmptyHomeParents(writer, 'install-image', target, root);
+  assert.deepEqual(result, { kept: null });
+  assert.equal(fsSync.existsSync(path.dirname(target)), false);
+  assert.equal(fsSync.existsSync(path.join(root, 'lib')), false);
+  assert.equal(fsSync.existsSync(root), true);
+});
+
+test('home parent removal stops at a non-empty parent', async (t) => {
+  const tree = await tempHome(t);
+  const root = path.join(tree, 'home');
+  const writer = createHomeWriter({ root, imageMembers: ['lib/runner/a.mjs', 'lib/b.mjs'] });
+  const target = path.join(root, 'lib', 'runner', 'a.mjs');
+  const kept = path.join(root, 'lib', 'b.mjs');
+  writer.mkdirSync('install-image', path.dirname(target));
+  writer.writeFileSync('install-image', kept, 'keep');
+  const result = await removeEmptyHomeParents(writer, 'install-image', target, root);
+  assert.deepEqual(result, { kept: null });
+  assert.equal(fsSync.existsSync(path.dirname(target)), false);
+  assert.equal(fsSync.existsSync(path.join(root, 'lib')), true);
+  assert.equal(await fs.readFile(kept, 'utf8'), 'keep');
+});
+
+test('home parent removal keeps both an ancestor junction and its outside target', async (t) => {
+  const tree = await tempHome(t);
+  const root = path.join(tree, 'home');
+  const outside = path.join(tree, 'outside');
+  const link = path.join(root, 'lib');
+  const writer = createHomeWriter({ root, imageMembers: ['lib/runner/a.mjs', 'lib/a.mjs'] });
+  await fs.mkdir(root);
+  await fs.mkdir(path.join(outside, 'runner'), { recursive: true });
+  fsSync.symlinkSync(outside, link, 'junction');
+  const result = await removeEmptyHomeParents(writer, 'install-image', path.join(link, 'runner', 'a.mjs'), root);
+  assert.equal(result.kept.kind, 'link');
+  assert.equal(result.kept.at, link);
+  assert.equal(fsSync.lstatSync(link).isSymbolicLink(), true);
+  assert.equal(fsSync.existsSync(outside), true);
+  assert.equal(fsSync.existsSync(path.join(outside, 'runner')), true);
+  const direct = await removeEmptyHomeParents(writer, 'install-image', path.join(link, 'a.mjs'), root);
+  assert.equal(direct.kept.kind, 'link');
+  assert.equal(fsSync.lstatSync(link).isSymbolicLink(), true);
+  assert.equal(fsSync.existsSync(outside), true);
+});
+
+test('home parent removal continues upward past an already missing middle folder', async (t) => {
+  const tree = await tempHome(t);
+  const root = path.join(tree, 'home');
+  const writer = createHomeWriter({ root, imageMembers: ['lib/runner/a.mjs', 'lib/b.mjs'] });
+  const target = path.join(root, 'lib', 'runner', 'a.mjs');
+  writer.mkdirSync('install-image', path.join(root, 'lib'));
+  const result = await removeEmptyHomeParents(writer, 'install-image', target, root);
+  assert.deepEqual(result, { kept: null });
+  assert.equal(fsSync.existsSync(path.join(root, 'lib')), false);
+  assert.equal(fsSync.existsSync(root), true);
+});
+
+test('home parent removal never enters a sibling sharing the root prefix', async (t) => {
+  const tree = await tempHome(t);
+  const root = path.join(tree, 'home');
+  const writer = createHomeWriter({ root, imageMembers: ['lib/runner/a.mjs', 'lib/b.mjs'] });
+  const sibling = path.join(tree, 'home-extra', 'lib', 'runner');
+  await fs.mkdir(sibling, { recursive: true });
+  const result = await removeEmptyHomeParents(writer, 'install-image', path.join(sibling, 'a.mjs'), root);
+  assert.deepEqual(result, { kept: null });
+  assert.equal(fsSync.existsSync(sibling), true);
+});
+
+test('home parent removal propagates a real readdir error without removing anything', async (t) => {
+  const tree = await tempHome(t);
+  const root = path.join(tree, 'home');
+  const writer = createHomeWriter({ root, imageMembers: ['lib/runner/a.mjs', 'lib/b.mjs'] });
+  await fs.mkdir(root);
+  const blocked = path.join(root, 'lib');
+  await fs.writeFile(blocked, 'not a directory');
+  const target = path.join(blocked, 'a.mjs');
+  await assert.rejects(() => removeEmptyHomeParents(writer, 'install-image', target, root), { code: 'ENOTDIR' });
+  assert.equal(await fs.readFile(blocked, 'utf8'), 'not a directory');
+});
+
+test('removeEmptyHome removes an empty trusted root through the adapter', async (t) => {
+  const tree = await tempHome(t);
+  const root = path.join(tree, 'home');
+  const writer = createHomeWriter({ root, imageMembers: ['lib/runner/a.mjs', 'lib/b.mjs'] });
+  writer.mkdirSync('install-image', root);
+  await removeEmptyHome(writer, 'install-image', root);
+  assert.equal(fsSync.existsSync(root), false);
+});
+
+test('removeEmptyHome keeps a non-empty root', async (t) => {
+  const tree = await tempHome(t);
+  const root = path.join(tree, 'home');
+  const writer = createHomeWriter({ root, imageMembers: ['lib/runner/a.mjs', 'lib/b.mjs'] });
+  writer.mkdirSync('install-image', path.join(root, 'lib', 'runner'));
+  await removeEmptyHome(writer, 'install-image', root);
+  assert.equal(fsSync.existsSync(root), true);
+  assert.equal(fsSync.existsSync(path.join(root, 'lib', 'runner')), true);
+});
+
+test('removeEmptyHome ignores a missing root', async (t) => {
+  const tree = await tempHome(t);
+  const root = path.join(tree, 'home');
+  const writer = createHomeWriter({ root, imageMembers: ['lib/runner/a.mjs', 'lib/b.mjs'] });
+  await removeEmptyHome(writer, 'install-image', root);
+  assert.equal(fsSync.existsSync(root), false);
 });

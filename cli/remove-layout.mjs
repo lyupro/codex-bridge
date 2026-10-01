@@ -1,6 +1,10 @@
-/** Removes emptied directories of an installed layout without walking out of the package's own. */
+/**
+ * Removes emptied directories of an installed layout without walking out of the package's own.
+ * Home folders use the adapter and link check (Plan_65 D3, D4 item 4); host folders keep the raw route.
+ */
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { inspectSegments } from './link-segments.mjs';
 
 /**
  * These four helpers existed as two copies — one in uninstall.mjs, one in update.mjs — and the
@@ -56,4 +60,39 @@ export function claudeBoundary(host, target) {
  */
 export async function removeEmptyLayout(directory) {
   await removeEmpty(directory);
+}
+
+// The segment check runs before every rmdir, not once per walk: on Windows rmdir on a junction
+// removes the junction itself, and a folder above the target may be a link even when the target's
+// own folder is not. A folder already gone keeps the walk going — its parent may still be empty.
+export async function removeEmptyHomeParents(writer, id, target, homeRoot) {
+  const root = path.resolve(homeRoot);
+  let current = path.dirname(path.resolve(target));
+  for (;;) {
+    const relative = path.relative(root, current);
+    if (!relative || path.isAbsolute(relative) || relative === '..'
+      || relative.startsWith(`..${path.sep}`)) break;
+
+    const finding = inspectSegments(current, root);
+    if (finding.kind !== 'missing') {
+      if (finding.kind !== 'clear') return { kept: finding };
+      try {
+        if ((await fs.readdir(current)).length !== 0) break;
+        await writer.rmdir(id, current);
+      } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+      }
+    }
+    current = path.dirname(current);
+  }
+  return { kept: null };
+}
+
+export async function removeEmptyHome(writer, id, homeRoot) {
+  // Plan_65 D4 item 1 trusts the root as written, including a deliberately relocated home.
+  try {
+    if ((await fs.readdir(homeRoot)).length === 0) await writer.rmdir(id, homeRoot);
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
 }

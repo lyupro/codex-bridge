@@ -5,7 +5,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import test from 'node:test';
 import { createHomeWriter } from '../src/home/lib/home-write.mjs';
-import { makeTempTree } from './temp-tree.mjs';
+import { makeTempTree, removeTempTree } from './temp-tree.mjs';
 
 function isRegistryError(error, id, absolutePath) {
   return error.code === 'EHOMEREGISTRY'
@@ -160,4 +160,27 @@ test('the conventions seed may be published through the copier temporary', () =>
   writer.writeFileSync('conventions', temporary, 'seed', { flag: 'wx' });
   writer.renameSync('conventions', temporary, target);
   assert.deepEqual(fs.readdirSync(root), ['conventions.md']);
+});
+
+test('rmdir removes an allowed empty image folder through its artifact id', async (t) => {
+  const tree = makeTempTree('home-write-rmdir-');
+  t.after(() => removeTempTree(tree));
+  const root = path.join(tree, 'home');
+  const writer = createHomeWriter({ root, imageMembers: ['lib/runner/a.mjs'] });
+  const folder = path.join(root, 'lib', 'runner');
+  writer.mkdirSync('install-image', folder);
+  assert.equal(await writer.rmdir('install-image', folder), undefined);
+  assert.equal(fs.existsSync(folder), false);
+  assert.equal(fs.existsSync(path.join(root, 'lib')), true);
+});
+
+test('rmdir refuses an undeclared folder without removing it', async (t) => {
+  const tree = makeTempTree('home-write-rmdir-refused-');
+  t.after(() => removeTempTree(tree));
+  const root = path.join(tree, 'home');
+  const writer = createHomeWriter({ root, imageMembers: ['lib/runner/a.mjs'] });
+  const folder = path.join(root, 'undeclared');
+  fs.mkdirSync(folder, { recursive: true });
+  await assert.rejects(() => writer.rmdir('install-image', folder), { code: 'EHOMEREGISTRY' });
+  assert.equal(fs.existsSync(folder), true);
 });

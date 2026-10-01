@@ -182,5 +182,9 @@ export function createHomeWriter({ root, imageMembers } = {}) {
       assertDirectoryPath(id, absolutePath);
       return fs.rmdirSync(absolutePath);
     },
+    async rmdir(id, absolutePath) {
+      assertDirectoryPath(id, absolutePath);
+      return fs.promises.rmdir(absolutePath);
+    },
   };
 }
