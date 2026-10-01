@@ -158,6 +158,14 @@ here. Nothing was reworded on the way out.
   refusal is added without a side and a reason. Why: on 2026-09-19 the busy refusal created its folder
   first, and in `~/.claude`, where run folders sit inside the worktree, the live writer's witness spent
   every tool call ordering the orchestrator to revert a directory the tool itself had made.
+- **Every `cli/*.mjs` is reachable through static imports from the `package.json#bin` targets**, except the
+  version-bound entries in `EXCEPTIONS` of `tests/cli-modules-reachable.test.mjs` (Plan_65 D13). A module whose last
+  caller moved away is deleted in the same change, its still-needed assertions moved onto the live path first; a
+  module written ahead of its wiring needs a plan decision for its exception, and the exception's `packageVersion`
+  makes a release without the wiring fail the suite. Imports are read by Node's own parser
+  (`vm.SourceTextModule#moduleRequests` under `--experimental-vm-modules`, `tests/module-requests.mjs`), never by
+  regex. The guard proves structural reachability only: code still imported out of habit is review's job. Why: on
+  2026-10-01 `removeImageFiles` lost its last caller to the removal plan and stayed green on its own test.
 - **Whether a recorded process is still live is decided by the module that owns its record — a run by
   `src/home/lib/meta/run-liveness.mjs`, a lifecycle lock holder by `holderLiveness` in
   `cli/lifecycle-lock.mjs` (Plan_65 D11: its record is `acquiredAt`, read as `started_at` with the heartbeat

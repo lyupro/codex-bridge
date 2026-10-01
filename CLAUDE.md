@@ -57,6 +57,7 @@ memory:**
 | `agents/**`, dispatcher prompts, `hooks/order-gate.mjs`, anything that builds a command line | one line, `codex-bridge run`, never by path, no free text |
 | Any `spawn`/`spawnSync`/`execFile` call, the `shell` option, anything executing a command on PATH | the shell is never enabled; a `.cmd` shim goes through `cmd.exe` in one proven spelling |
 | Path comparison, `cli/invoked-directly.mjs` | Windows paths are compared normalized, symlinks deliberately unresolved |
+| Adding, moving or retiring a `cli/` module | every `cli/*.mjs` is reached from `bin`; an unwired module needs a plan decision |
 | `src/home/lib/cli-names.mjs`, `codex-runs/`, prune | one list of spellings; run artifacts are user data |
 | Host version, `doctor`/`install` host lines, `--probe-contract`, witness, `host-observations` | the host is named by its transcript version, never by PATH or inherited env |
 

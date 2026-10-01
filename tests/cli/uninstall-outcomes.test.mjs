@@ -13,12 +13,12 @@ import { allFiles, fixture, formatOneRecord } from './host-fixture.mjs';
 
 const artifactsLine = () => `Run artifacts in ${runsRoot()} are outside uninstall and stay.`;
 
-// D12 item 7 forbids claiming image removal when content evidence preserved an edited member.
+// D12 item 7 and D13 preserve edited lib bytes while retiring the last owner's record.
 test('last-owner uninstall names an edited image file without claiming the shared image was removed', async (t) => {
   const { host } = await fixture(t);
   await install({ host });
   const record = await readInstallRecord(host);
-  const imageFile = record.files.find((file) => file.root === 'brand');
+  const imageFile = record.files.find((file) => file.root === 'brand' && file.path.startsWith('lib/'));
   assert.ok(imageFile);
   const target = recordTarget(host, imageFile);
   await fs.appendFile(target, '\noperator edit\n');
@@ -29,8 +29,39 @@ test('last-owner uninstall names an edited image file without claiming the share
   assert.equal(result.exitCode, 0);
   assert.deepEqual(await fs.readFile(target), edited);
   assert.ok(result.output.split('\n').includes(`Left brand/${imageFile.path} (changed)`));
+  assert.match(result.output, /^Removed \d+ image file\(s\) from /m);
+  assert.doesNotMatch(result.output, /^Removed brand\//m);
   assert.doesNotMatch(result.output, /Removed the shared image/);
+  await assert.rejects(() => fs.access(installRecordPath(host)), { code: 'ENOENT' });
   assert.equal(result.output.split('\n').at(-1), artifactsLine());
+});
+
+// D13 moves the combined preservation proof onto uninstall instead of a retired remover's private API.
+test('dry-run uninstall counts unchanged image files and preserves edited bytes and the record', async (t) => {
+  const { host } = await fixture(t);
+  await install({ host });
+  const record = await readInstallRecord(host);
+  const imageFiles = record.files.filter((file) => file.root === 'brand');
+  const changed = imageFiles.find((file) => file.path.startsWith('lib/'));
+  assert.ok(changed);
+  const unchanged = imageFiles.find((file) => file.path !== changed.path);
+  assert.ok(unchanged);
+  const changedTarget = recordTarget(host, changed);
+  const unchangedTarget = recordTarget(host, unchanged);
+  const edited = Buffer.from('dry-run operator edit\n');
+  await fs.writeFile(changedTarget, edited);
+  const original = await fs.readFile(unchangedTarget);
+  const recordBefore = await fs.readFile(installRecordPath(host));
+
+  const result = await uninstall({ host, dryRun: true });
+
+  assert.equal(result.exitCode, 0);
+  const expected = `Would remove ${imageFiles.length - 1} image file(s) from ${host.brandRoot}`;
+  assert.ok(result.output.split('\n').some((line) => line.startsWith(expected)), result.output);
+  assert.ok(result.output.split('\n').includes(`Would leave brand/${changed.path} (changed)`));
+  assert.deepEqual(await fs.readFile(unchangedTarget), original);
+  assert.deepEqual(await fs.readFile(changedTarget), edited);
+  assert.deepEqual(await fs.readFile(installRecordPath(host)), recordBefore);
 });
 
 // D10 detachment and D12's record line must agree before a dry run promises any record mutation.
