@@ -5,6 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 import {
   classifyHomePath,
+  directoryArtifact,
   HOME_ARTIFACTS,
   HOME_DIRECTORIES,
   homeArtifact,
@@ -131,4 +132,34 @@ test('registry metadata is complete and no declared paths overlap', () => {
   }
 
   assert.throws(() => homeArtifact('unknown-artifact'), /Unknown home artifact id/);
+});
+
+test('home root belongs to the install image', () => {
+  assert.equal(directoryArtifact(''), 'install-image');
+});
+
+test('an image ancestor belongs to the install image', () => {
+  assert.equal(directoryArtifact('image', { imageMembers: ['image/hooks/guard.mjs'] }), 'install-image');
+});
+
+test('declared home directories use their first fixed artifact even with image members', () => {
+  assert.equal(directoryArtifact('state', { imageMembers: ['state/image.mjs'] }), 'dispatcher-contract');
+});
+
+test('a family directory belongs to its artifact', () => {
+  assert.equal(directoryArtifact('state/dispatchers'), 'dispatcher-state');
+});
+
+test('an unknown folder has no artifact', () => {
+  assert.equal(directoryArtifact('unknown'), null);
+});
+
+test('unsafe folders have no artifact', () => {
+  assert.equal(directoryArtifact('../image', { imageMembers: ['image/hooks/guard.mjs'] }), null);
+});
+
+test('file names and partial folder names are not artifact directories', () => {
+  assert.equal(directoryArtifact('config.json'), null);
+  assert.equal(directoryArtifact('state/dispatch'), null);
+  assert.equal(directoryArtifact('imag', { imageMembers: ['image/hooks/guard.mjs'] }), null);
 });

@@ -190,3 +190,22 @@ export function homeArtifact(id) {
   if (!entry) throw new Error(`Unknown home artifact id: ${id}`);
   return entry;
 }
+
+export function directoryArtifact(relativeDirectory, { imageMembers } = {}) {
+  if (relativeDirectory === '') return 'install-image';
+  if (!validRelativePath(relativeDirectory)) return null;
+  const prefix = `${relativeDirectory}/`;
+  if (!HOME_DIRECTORIES.includes(relativeDirectory)
+    && [...imagePathSet(imageMembers)].some((member) => member.startsWith(prefix))) {
+    return 'install-image';
+  }
+  for (const entry of HOME_ARTIFACTS) {
+    const containsArtifact = Array.isArray(entry.primary)
+      ? entry.primary.some((primary) => primary.startsWith(prefix))
+      : entry.primary.dir === relativeDirectory || entry.primary.dir.startsWith(prefix);
+    if (containsArtifact) {
+      return entry.id;
+    }
+  }
+  return null;
+}
