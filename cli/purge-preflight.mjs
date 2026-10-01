@@ -1,5 +1,6 @@
 /**
- * Runs purge's one preflight and mints the authorization the executor requires.
+ * Holds purge's one set of refusal checks: under a live ticket it asks both consents and mints
+ * the executor's authorization; for a dry run it only reports.
  *
  * Plan_65 D12 items 5-6 and D14 require one ordered check inside the lifecycle transaction:
  * live runs, installation inventory, inventory consent, then separate data consent. The executor
@@ -14,8 +15,8 @@ import { normalizeRepoPath } from '../src/home/lib/runner/project-dir.mjs';
 
 const authorizations = new WeakMap();
 
-// D14 item 2: this is THE live-run step, called only by runPurgePreflight below. Plan_74 can
-// replace it with the admission gate without changing the executor or the remaining preflight.
+// D14 item 2: this is THE live-run step, reached only as the default liveRunCheck of
+// runPurgePreflight and diagnosePurge. Plan_74 replaces it alone with the admission gate.
 export function checkLiveRuns() {
   return inspectLiveRuns();
 }
@@ -30,6 +31,36 @@ function freezePlan(value) {
 
 const refused = (line) => ({ verdict: 'refused', lines: [line] });
 
+export function planRefusals(plan, host) {
+  if (plan.homeRoot === 'error') {
+    return [`Could not read ${host.brandRoot}: purge cannot inventory the home.`];
+  }
+  if (plan.recordState === 'corrupt') {
+    return [`The installation record of ${host.brandRoot} is unreadable: purge cannot tell who uses this home.`];
+  }
+
+  const ownerKey = normalizeRepoPath(host.root);
+  const otherOwners = plan.recordState === 'valid'
+    ? Object.keys(plan.format2.owners).filter((root) => root !== ownerKey)
+    : [];
+  return otherOwners.map((root) => `${root} is recorded as using ${host.brandRoot}; uninstall it first.`);
+}
+
+export function purgeDataFiles(plan) {
+  return plan.rows.filter((row) => row.removal === 'purge-only' && row.action === 'remove')
+    .map((row) => row.relative).sort();
+}
+
+export async function diagnosePurge({ host, packageRoot, liveRunCheck = checkLiveRuns }) {
+  const liveRuns = await liveRunCheck();
+  const plan = await buildHomeRemovalPlan({
+    command: 'purge', host, packageRoot, imagePolicy: { remove: true, reason: 'purge' },
+  });
+  return {
+    refusals: [...liveRunLines(liveRuns), ...planRefusals(plan, host)], plan, dataFiles: purgeDataFiles(plan),
+  };
+}
+
 export async function runPurgePreflight({ host, ticket, packageRoot, options = {}, liveRunCheck = checkLiveRuns }) {
   assertLiveTicket(ticket, host);
   const liveRuns = await liveRunCheck();
@@ -38,30 +69,17 @@ export async function runPurgePreflight({ host, ticket, packageRoot, options = {
   const plan = await buildHomeRemovalPlan({
     command: 'purge', host, packageRoot, imagePolicy: { remove: true, reason: 'purge' },
   });
-  if (plan.homeRoot === 'error') {
-    return refused(`Could not read ${host.brandRoot}: purge cannot inventory the home.`);
-  }
-  if (plan.recordState === 'corrupt') {
-    return refused(`The installation record of ${host.brandRoot} is unreadable: purge cannot tell who uses this home.`);
-  }
+  const lines = planRefusals(plan, host);
+  if (lines.length) return { verdict: 'refused', lines };
 
   const ownerKey = normalizeRepoPath(host.root);
-  const otherOwners = plan.recordState === 'valid'
-    ? Object.keys(plan.format2.owners).filter((root) => root !== ownerKey)
-    : [];
-  if (otherOwners.length) {
-    return { verdict: 'refused', lines: otherOwners.map((root) =>
-      `${root} is recorded as using ${host.brandRoot}; uninstall it first.`) };
-  }
-
   const inventoryConsent = await askPurgeConsent(host, 'inventory', options);
   if (inventoryConsent === 'cancel') return { verdict: 'cancelled' };
   if (inventoryConsent === 'no') {
     return refused(`Purge needs your confirmation that no other host uses ${host.brandRoot}.`);
   }
 
-  const dataFiles = plan.rows.filter((row) => row.removal === 'purge-only' && row.action === 'remove')
-    .map((row) => row.relative).sort();
+  const dataFiles = purgeDataFiles(plan);
   const dataConsent = await askPurgeConsent(host, 'data', options, dataFiles);
   if (dataConsent === 'cancel') return { verdict: 'cancelled' };
   if (dataConsent === 'no') {

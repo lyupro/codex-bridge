@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { install } from '../../cli/install.mjs';
 import { resolveHost } from '../../cli/hosts.mjs';
 import { withLifecycle } from '../../cli/lifecycle-transaction.mjs';
-import { runPurgePreflight } from '../../cli/purge-preflight.mjs';
+import { runPurgePreflight, diagnosePurge, planRefusals, purgeDataFiles } from '../../cli/purge-preflight.mjs';
 import { liveRunLines } from '../../cli/purge-live-runs.mjs';
 import { executeHomePlan } from '../../cli/home-plan-execute.mjs';
 import { installRecordPath } from '../../cli/install-record.mjs';
@@ -298,4 +298,33 @@ test('a missing record still needs both consents before authorizing package imag
   assert.equal(granted.plan.recordState, 'missing');
   assert.equal(questions.length, 2);
   assert.deepEqual(await snapshot(root), before);
+});
+
+test('shared helpers preserve the preflight refusal texts and sorted consent data', async (t) => {
+  const { root, host } = await installedHome(t);
+  const { options, questions } = consent();
+  const granted = await withLifecycle(host, 'purge-test', (ticket) => preflight(host, ticket, options));
+  assert.equal(granted.verdict, 'authorized');
+  assert.deepEqual(planRefusals(granted.plan, host), []);
+  const askedData = questions[1].split('\n').filter((line) => line.startsWith('  ')).map((line) => line.trim());
+  assert.deepEqual(purgeDataFiles(granted.plan), askedData);
+  assert.deepEqual(purgeDataFiles({ rows: [
+    { relative: 'z', removal: 'purge-only', action: 'remove' },
+    { relative: 'ignored-image', removal: 'image', action: 'remove' },
+    { relative: 'ignored-keep', removal: 'purge-only', action: 'keep' },
+    { relative: 'a', removal: 'purge-only', action: 'remove' },
+  ] }), ['a', 'z']);
+  const other = resolveHost({
+    host: path.join(root, 'other-host'), codexHome: path.join(root, 'other-codex-home'), brandRoot: host.brandRoot,
+  });
+  await install({ host: other });
+  for (const corrupt of [false, true]) {
+    if (corrupt) await fs.writeFile(installRecordPath(host), '{');
+    const diagnostic = await diagnosePurge({ host, packageRoot, liveRunCheck: clear });
+    const noQuestions = { isTTY: true, prompt: () => assert.fail('A refusal must precede consent') };
+    const outcome = await withLifecycle(host, 'purge-test', (ticket) => preflight(host, ticket, noQuestions));
+    assert.equal(outcome.verdict, 'refused');
+    assert.deepEqual(planRefusals(diagnostic.plan, host), outcome.lines);
+    assert.deepEqual(diagnostic.refusals, outcome.lines);
+  }
 });

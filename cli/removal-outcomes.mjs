@@ -96,3 +96,20 @@ export function planLines(plan, { host, detached = true }) {
   lines.push(artifactsLine());
   return lines;
 }
+
+export function purgeDryRunLines({ refusals, plan, dataFiles }, { host }) {
+  if (plan.homeRoot === 'missing' && refusals.length === 0) {
+    return [`Nothing to purge: ${host.brandRoot} does not exist.`, artifactsLine()];
+  }
+  const lines = [];
+  if (refusals.length) lines.push('A real purge would refuse:', ...refusals.map((line) => `  ${line}`));
+  const question = `A real purge would ask two questions: whether any other host uses ${host.brandRoot}`;
+  lines.push(`${question}, and whether to delete your data in it.`);
+  if (dataFiles.length) lines.push(`Your data it would ask about: ${dataFiles.join(', ')}`);
+  lines.push('If you confirm both questions:', ...planLines(plan, { host }));
+  return lines;
+}
+
+export function purgeDryRunExitCode({ refusals, plan }) {
+  return refusals.length ? 1 : planExitCode(plan);
+}
