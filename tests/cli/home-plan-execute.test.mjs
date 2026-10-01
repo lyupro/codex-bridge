@@ -76,7 +76,9 @@ test('detached last owner removes image and record, keeps config and root, in ex
   const folders = outcomes.slice(plan.rows.length + 1).map((entry) => entry.relative);
   assert.deepEqual(folders, plan.directories.filter((entry) => folders.includes(entry.relative)).map((entry) => entry.relative));
   for (const outcome of outcomes) {
-    assert.deepEqual(Object.keys(outcome), ['lane', 'relative', 'result', 'reason']);
+    assert.deepEqual(Object.keys(outcome), ['lane', 'kind', 'id', 'relative', 'result', 'reason']);
+    const row = plan.rows.find((entry) => entry.relative === outcome.relative);
+    assert.equal(outcome.id, row ? row.id : outcome.relative === '.installed.json' ? 'install-record' : null);
     assert.ok(['removed', 'kept', 'blocked', 'missing', 'failed'].includes(outcome.result));
   }
 });

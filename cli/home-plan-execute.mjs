@@ -27,22 +27,23 @@ const failure = (error) => error.code ?? error.message;
 async function executeFiles(host, plan, writer, add) {
   for (const row of plan.rows) {
     if (row.action === 'keep' || row.action === 'blocked' || row.action === 'missing') {
-      add(row.relative, row.action === 'keep' ? 'kept' : row.action, row.reason);
+      add(row.relative, row.action === 'keep' ? 'kept' : row.action, row.reason, row.id);
       continue;
     }
     if (row.action !== 'remove') throw new TypeError(`Invalid home file action: ${row.action}`);
     const target = path.join(host.brandRoot, row.relative);
     const finding = inspectSegments(target, host.brandRoot);
     if (finding.kind !== 'clear') {
-      add(row.relative, finding.kind === 'missing' ? 'missing' : 'kept', findingReason(finding, host.brandRoot));
+      add(row.relative, finding.kind === 'missing' ? 'missing' : 'kept',
+        findingReason(finding, host.brandRoot), row.id);
       continue;
     }
     try {
       await writer.unlink(row.id, target);
-      add(row.relative, 'removed', row.reason);
+      add(row.relative, 'removed', row.reason, row.id);
     } catch (error) {
       // One failed file does not stop the rest: each is reported, and a repeat run retries it.
-      add(row.relative, error.code === 'ENOENT' ? 'missing' : 'failed', failure(error));
+      add(row.relative, error.code === 'ENOENT' ? 'missing' : 'failed', failure(error), row.id);
     }
   }
 }
@@ -127,9 +128,11 @@ export async function executeHomePlan(host, plan, { detached, imageMembers }) {
 
   const writer = createHomeWriter({ root: host.brandRoot, imageMembers });
   const outcomes = [];
-  const add = (relative, result, reason) => outcomes.push({ lane: 'home', relative, result, reason });
-  await executeFiles(host, plan, writer, add);
-  await executeRecord(host, plan.record, writer, detached, add);
-  await executeDirectories(host, plan.directories, writer, imageMembers, add);
+  // Each step tags its own outcomes: the renderer must not infer a folder from its position.
+  const adder = (kind, fixedId) => (relative, result, reason, id = fixedId) => (
+    outcomes.push({ lane: 'home', kind, id, relative, result, reason }));
+  await executeFiles(host, plan, writer, adder('file', null));
+  await executeRecord(host, plan.record, writer, detached, adder('record', 'install-record'));
+  await executeDirectories(host, plan.directories, writer, imageMembers, adder('directory', null));
   return { outcomes };
 }
