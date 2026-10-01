@@ -63,12 +63,11 @@ function directoryIsAllowed(id, relativeDirectory, imageMembers) {
     return true;
   }
 
+  // Every ancestor of an image member, not only its direct parent: the installer creates the chain
+  // recursively, and uninstall takes emptied ones down one by one (Plan_65 B15b2b — `agents/` holds
+  // only subfolders, and refusing it left an empty folder or threw mid-uninstall).
   if (entry.id === 'install-image') {
-    return imageMembers.some((candidate) => {
-      const slash = candidate.lastIndexOf('/');
-      const parent = slash < 0 ? '' : candidate.slice(0, slash);
-      return parent === relativeDirectory;
-    });
+    return imageMembers.some((candidate) => candidate.startsWith(`${relativeDirectory}/`));
   }
 
   if (Array.isArray(entry.primary)) {

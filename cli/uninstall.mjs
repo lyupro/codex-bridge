@@ -21,7 +21,7 @@ import { brandStateDir } from '../src/home/lib/brand-home.mjs';
 import { withSettingsRun } from './settings-merge.mjs';
 import { withLifecycle } from './lifecycle-transaction.mjs';
 import { readRulesRegistry, removeRulesOwner, remainingRulesOwners } from './rules-owners.mjs';
-import { removeEmpty, removeEmptyLayout } from './remove-layout.mjs';
+import { removeEmpty, removeEmptyHome, removeEmptyLayout } from './remove-layout.mjs';
 import { recordHomeWriter, removeOutside } from './record-removal.mjs';
 import { removeImageFiles } from './image-removal.mjs';
 
@@ -135,7 +135,7 @@ async function uninstallOrphan(options, format2, inspection, registry) {
     } catch (err) {
       if (err.code !== 'ENOENT') throw err;
     }
-    await removeEmpty(host.brandRoot);
+    await removeEmptyHome(writer, 'install-image', host.brandRoot);
     imageLine = `Removed the shared image and the installation record of ${host.brandRoot}.`;
   } else if (answer === 'remove') {
     imageLine = `Left the shared image in ${host.brandRoot} because this host's hooks could not be removed.`;
@@ -304,7 +304,7 @@ async function uninstallInRun(options = {}) {
   await removeEmpty(host.agentsDir);
   await removeEmptyLayout(host.legacyAgentsDir);
   await removeEmptyLayout(host.legacyCommandsDir);
-  if (decision.removeImage && hostSide.detached) await removeEmpty(host.brandRoot);
+  if (decision.removeImage && hostSide.detached) await removeEmptyHome(writer, 'install-image', host.brandRoot);
   const blockedImageLine = decision.removeImage && !hostSide.detached
     ? `Left the shared image in ${host.brandRoot} because this host's hooks could not be removed.`
     : null;

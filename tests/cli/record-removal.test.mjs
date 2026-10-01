@@ -80,3 +80,16 @@ test('a missing recorded file is not an error', async () => {
 
   await removeRecordedFile(host, writer, entry);
 });
+
+test('a recorded brand file already gone still has its emptied parents removed', async () => {
+  const { host } = fixture('bridge-record-removal-gone-');
+  const entry = { root: 'brand', path: 'agents/codex-bridge/agent.md' };
+  const target = await seed(host, entry);
+  await fs.unlink(target);
+  const writer = recordHomeWriter(host, [entry]);
+
+  await removeRecordedFile(host, writer, entry);
+
+  await assert.rejects(fs.access(path.join(host.brandRoot, 'agents')), { code: 'ENOENT' });
+  await fs.access(host.brandRoot);
+});

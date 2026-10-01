@@ -3,6 +3,7 @@
  * are preserved and named instead of being lost during uninstall.
  */
 import fs from 'node:fs/promises';
+import path from 'node:path';
 import { buildInstallPlan, contentFingerprint } from './manifest.mjs';
 import { plannedContent } from './copy.mjs';
 import { fingerprintFor, recordTarget } from './install-record.mjs';
@@ -55,7 +56,16 @@ export async function removeImageFiles(host, files, fingerprints, { dryRun = fal
       ? bytes.equals(await plannedContent(item, host.brandRoot))
       : false;
     if (matchesRecord || matchesPackage) {
-      if (!dryRun) await removeRecordedFile(host, writer, file);
+      if (!dryRun) {
+        const { kept } = await removeRecordedFile(host, writer, file);
+        if (kept) {
+          const reason = kept.kind === 'link'
+            ? `link at ${path.relative(host.brandRoot, kept.at).split(path.sep).join('/')}`
+            : `unreadable: ${kept.code ?? kept.kind}`;
+          lines.push(leftLine(file, reason, dryRun));
+          continue;
+        }
+      }
       lines.push(`${dryRun ? 'Would remove' : 'Removed'} ${displayFile(file)}`);
     } else {
       lines.push(leftLine(file, 'changed', dryRun));

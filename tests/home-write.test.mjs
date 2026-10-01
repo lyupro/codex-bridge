@@ -184,3 +184,14 @@ test('rmdir refuses an undeclared folder without removing it', async (t) => {
   await assert.rejects(() => writer.rmdir('install-image', folder), { code: 'EHOMEREGISTRY' });
   assert.equal(fs.existsSync(folder), true);
 });
+
+test('rmdir accepts every ancestor of an image member, not only its direct parent', async (t) => {
+  const tree = makeTempTree('home-write-rmdir-ancestor-');
+  t.after(() => removeTempTree(tree));
+  const root = path.join(tree, 'home');
+  const writer = createHomeWriter({ root, imageMembers: ['agents/codex-bridge/agent.md'] });
+  const folder = path.join(root, 'agents');
+  fs.mkdirSync(folder, { recursive: true });
+  await writer.rmdir('install-image', folder);
+  assert.equal(fs.existsSync(folder), false);
+});

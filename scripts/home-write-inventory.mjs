@@ -16,7 +16,7 @@ export const HOME_WRITE_INVENTORY = Object.freeze([
   outside('cli/probe-rig.mjs', 'mkdir', 2, 'Creates hook and agent directories inside the throwaway probe rig.'),
   outside('cli/probe-rig.mjs', 'writeFile', 3, 'Writes hook, agent, and settings fixtures inside the throwaway probe rig.'),
   outside('cli/prune.mjs', 'rmSync', 1, 'Deletes the explicitly selected run or archived transport target.'),
-  outside('cli/remove-layout.mjs', 'rmdir', 1, 'Removes empty host agents or commands directories after uninstall.'),
+  outside('cli/remove-layout.mjs', 'rmdir', 1, 'Removes empty host package directories (agents, commands, their legacy layout); home folders go through the adapter (Plan_65 B15b2).'),
   outside('cli/rules-owners.mjs', 'rename', 1, 'Publishes the shared host rules ownership registry.'),
   outside('cli/rules-owners.mjs', 'rm', 2, 'Removes a failed temporary copy or the host rules ownership registry.'),
   outside('cli/rules-owners.mjs', 'withOutsideFileLock', 1, 'Locks the shared registry under the host Codex rules directory.'),

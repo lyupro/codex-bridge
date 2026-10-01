@@ -109,3 +109,19 @@ test('uninstall of the last owner preserves an edited lib file and removes the r
   assert.doesNotMatch(result.output, /^Removed brand\//m);
   await assert.rejects(() => fs.access(installRecordPath(state.host)), { code: 'ENOENT' });
 });
+
+test('image file beneath a junction is kept and named with the relative link folder', async (t) => {
+  const state = await fixture(t);
+  const folder = path.dirname(state.target);
+  const outside = path.join(state.root, 'outside-image');
+  const originalBytes = await fs.readFile(state.target);
+  await fs.rename(folder, outside);
+  await fs.symlink(outside, folder, 'junction');
+
+  const result = await removeImageFiles(state.host, [state.libFile], state.record.fingerprints);
+
+  const relativeFolder = path.relative(state.host.brandRoot, folder).split(path.sep).join('/');
+  assert.deepEqual(result.lines, [`Left brand/${state.libFile.path} (link at ${relativeFolder})`]);
+  assert.equal((await fs.lstat(folder)).isSymbolicLink(), true);
+  assert.deepEqual(await fs.readFile(path.join(outside, path.basename(state.target))), originalBytes);
+});
