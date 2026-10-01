@@ -3,7 +3,6 @@
  * the record and only once the host is detached, preserving host data and foreign files (Plan_65 D10).
  */
 import {
-  fileFingerprint,
   legacyInstallRecordPath,
   readInstallRecord,
 } from './manifest.mjs';
@@ -16,16 +15,13 @@ import { removeHostSide } from './host-removal.mjs';
 import { askRemoval, removalHint } from './inventory-removal.mjs';
 import { withSettingsRun } from './settings-merge.mjs';
 import { withLifecycle } from './lifecycle-transaction.mjs';
-import { readRulesRegistry, removeRulesOwner, remainingRulesOwners } from './rules-owners.mjs';
+import { readRulesRegistry } from './rules-owners.mjs';
+import { rulesDryRunLines, removeRulesForHost, remainingOwnersText } from './uninstall-rules.mjs';
 import { removeEmpty, removeEmptyLayout } from './remove-layout.mjs';
 import { recordHomeWriter, removeOutside } from './record-removal.mjs';
 import { buildHomeRemovalPlan } from './home-removal-plan.mjs';
 import { executeHomePlan } from './home-plan-execute.mjs';
 import { outcomeLines, outcomeExitCode, planLines, planExitCode } from './removal-outcomes.mjs';
-
-function remainingOwnersText(count) {
-  return `${count} other owner${count === 1 ? '' : 's'} ${count === 1 ? 'remains' : 'remain'}`;
-}
 
 function permissionOutput(host, removed, dryRun) {
   const verb = dryRun ? 'Would remove' : 'Removed';
@@ -37,14 +33,16 @@ function permissionOutput(host, removed, dryRun) {
 // and named rather than rewritten, like the hooks themselves (Plan_65 D10 item 4).
 async function removePermissions(host, inspection, dryRun) {
   if (inspection.settingsError !== null) {
-    return `Left permission rules in ${host.settingsPath} because settings could not be read: ${inspection.settingsError}`;
+    return `Left permission rules in ${host.settingsPath} because \
+settings could not be read: ${inspection.settingsError}`;
   }
   const { removed } = await removePermissionRules(host.settingsPath, { dryRun });
   return permissionOutput(host, removed, dryRun);
 }
 
 function stillAttachedLine(host) {
-  return `Did not finish uninstalling codex-bridge: ${host.root} still has its hooks; fix ${host.settingsPath} and run uninstall again.`;
+  return `Did not finish uninstalling codex-bridge: ${host.root} still has its hooks; fix \
+${host.settingsPath} and run uninstall again.`;
 }
 
 // Plan_65 D6: uninstalling one host removed the shared image from under every other host of the
@@ -66,12 +64,14 @@ function imageDispositionLine(host, decision, dryRun) {
   if (decision.removeImage) return null;
   const verb = dryRun ? 'Would leave' : 'Left';
   if (decision.reason === 'no-record') {
-    return `${verb} the shared image in ${host.brandRoot} because this host has no installation record; its members are unknown.`;
+    return `${verb} the shared image in ${host.brandRoot} because \
+this host has no installation record; its members are unknown.`;
   }
   if (decision.reason === 'other-owners') {
     return `${verb} the shared image in ${host.brandRoot} because ${remainingOwnersText(decision.remaining)}.`;
   }
-  return `${verb} the shared image in ${host.brandRoot} because the installation inventory is incomplete: other installations may use this home.`;
+  return `${verb} the shared image in ${host.brandRoot} because \
+the installation inventory is incomplete: other installations may use this home.`;
 }
 
 // Plan_65 D9 item 3 as amended by D10 item 4: after the last known owner answered "no", a repeat uninstall
@@ -194,27 +194,11 @@ async function uninstallInRun(options = {}) {
     const imageLine = blockedImageLine || (!decision.removeImage
       ? imageDispositionLine(host, decision, true) : null);
     if (imageLine) lines.push(imageLine);
-    if (lastKnownOwner) lines.push(`A real run would ask whether ${host.root} is the last host using ${host.brandRoot}.`);
-    if (record?.rules && hostSide.detached) {
-      if (registryError) {
-        lines.push(`Would leave ${record.rules.path} because the rules ownership registry is invalid; ownership is unknown.`);
-      } else {
-        const remainingOwners = remainingRulesOwners(registry, host);
-        const currentFingerprint = await fileFingerprint(record.rules.path);
-        if (remainingOwners?.length) {
-          lines.push(`Would leave ${record.rules.path} because ${remainingOwnersText(remainingOwners.length)}.`);
-        } else if (currentFingerprint === record.rules.fingerprint) {
-          lines.push(`Would remove ${record.rules.path}; no other owners remain and its fingerprint is unchanged.`);
-        } else if (currentFingerprint !== null) {
-          lines.push(`Would leave ${record.rules.path} because its contents changed after installation.`);
-        } else {
-          lines.push(`Would leave ${record.rules.path} because it is already absent.`);
-        }
-        if (!registry) {
-          lines.push(`Warning: the rules ownership registry was missing; other installations may use ${record.rules.path}.`);
-        }
-      }
-    }
+    if (lastKnownOwner) lines.push(`A real run would ask whether ${host.root} is the last host \
+using ${host.brandRoot}.`);
+    lines.push(...await rulesDryRunLines({
+      host, record, registry, registryError, detached: hostSide.detached,
+    }));
     lines.push(...planLines(plan, { host, detached: hostSide.detached }));
     return {
       exitCode: decision.reason === 'incomplete-inventory' || !hostSide.detached ? 1 : planExitCode(plan),
@@ -229,34 +213,11 @@ async function uninstallInRun(options = {}) {
   // Plan_65 D10 item 4: a host still attached keeps everything it shares — its rules ownership, its
   // place in the record, the old per-host record — so a repeat run after the fix finds it whole.
   const detachedRecord = record && hostSide.detached ? record : null;
-  let ownership = null;
-  if (detachedRecord && !registryError) {
-    try {
-      ownership = await removeRulesOwner(host);
-    } catch (err) {
-      registryError = err;
-    }
-  }
-  const rulesOutput = [];
-  if (detachedRecord?.rules) {
-    if (registryError) {
-      rulesOutput.push(`Left ${record.rules.path} because the rules ownership registry is invalid; ownership is unknown.`);
-    } else {
-      if (ownership?.owners.length) {
-        rulesOutput.push(`Left ${record.rules.path} because ${remainingOwnersText(ownership.owners.length)}.`);
-      } else {
-        const currentFingerprint = await fileFingerprint(record.rules.path);
-        if (currentFingerprint === record.rules.fingerprint) {
-          await removeOutside(writer, record.rules.path);
-        } else if (currentFingerprint !== null) {
-          rulesOutput.push(`Left ${record.rules.path} because its contents changed after installation.`);
-        }
-      }
-      if (!registry) {
-        rulesOutput.push(`Warning: the rules ownership registry was missing; other installations may use ${record.rules.path}.`);
-      }
-    }
-  }
+  const rulesResult = await removeRulesForHost({
+    host, record, registry, registryError, detached: hostSide.detached, writer,
+  });
+  const rulesOutput = rulesResult.lines;
+  registryError = rulesResult.registryError;
   const { outcomes } = await executeHomePlan(host, plan,
     { detached: hostSide.detached, imageMembers: plan.imageMembers });
   await removeEmpty(host.commandsDir);
