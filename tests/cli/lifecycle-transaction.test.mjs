@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import test from 'node:test';
 import { install } from '../../cli/install.mjs';
 import { buildInstallPlan } from '../../cli/manifest.mjs';
-import { withLifecycle } from '../../cli/lifecycle-transaction.mjs';
+import { assertLiveTicket, withLifecycle } from '../../cli/lifecycle-transaction.mjs';
 import { uninstall } from '../../cli/uninstall.mjs';
 import { update } from '../../cli/update.mjs';
 import { fixture } from './host-fixture.mjs';
@@ -135,6 +135,22 @@ test('a lifecycle ticket expires when its transaction ends', async (t) => {
     /lifecycle ticket is no longer active/,
   );
   assert.equal(actionRan, false);
+});
+
+// Plan_65 D14: the purge authorization trusts this one check, so it must refuse exactly what withLifecycle refuses.
+test('assertLiveTicket accepts only a running transaction of the same home', async (t) => {
+  const first = await fixture(t);
+  const second = await fixture(t);
+  let ticket;
+  await withLifecycle(first.host, 'ticket-check', (activeTicket) => {
+    ticket = activeTicket;
+    assert.doesNotThrow(() => assertLiveTicket(activeTicket, first.host));
+    assert.throws(() => assertLiveTicket(activeTicket, second.host), /belongs to a different home/);
+  }, { createHome: true });
+  assert.throws(() => assertLiveTicket(ticket, first.host), /no longer active/);
+  for (const forged of [undefined, null, {}, Object.freeze({})]) {
+    assert.throws(() => assertLiveTicket(forged, first.host), /no longer active/);
+  }
 });
 
 test('dry-run install answers while another process holds the home without taking its lock', { skip: childSkip }, async (t) => {

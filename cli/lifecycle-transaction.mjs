@@ -20,16 +20,24 @@ import { acquireLifecycleLock } from './lifecycle-lock.mjs';
 
 const liveTickets = new WeakMap();
 
+/**
+ * Throws unless `ticket` belongs to a transaction still running on this host's home. The purge authorization
+ * (Plan_65 D14) binds itself to the ticket through this check, so the two can never disagree about "live".
+ */
+export function assertLiveTicket(ticket, host) {
+  if (!ticket || typeof ticket !== 'object' || !liveTickets.has(ticket)) {
+    throw new Error('lifecycle ticket is no longer active');
+  }
+  if (typeof host?.brandRoot !== 'string' || path.resolve(host.brandRoot) !== liveTickets.get(ticket)) {
+    throw new Error('lifecycle ticket belongs to a different home');
+  }
+}
+
 export async function withLifecycle(host, command, action, { ticket, waitMs, createHome = false } = {}) {
   if (typeof action !== 'function') throw new TypeError('lifecycle action must be a function');
 
   if (ticket !== undefined) {
-    if (!ticket || typeof ticket !== 'object' || !liveTickets.has(ticket)) {
-      throw new Error('lifecycle ticket is no longer active');
-    }
-    if (typeof host?.brandRoot !== 'string' || path.resolve(host.brandRoot) !== liveTickets.get(ticket)) {
-      throw new Error('lifecycle ticket belongs to a different home');
-    }
+    assertLiveTicket(ticket, host);
     return action(ticket);
   }
 
