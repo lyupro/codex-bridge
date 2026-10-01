@@ -54,6 +54,7 @@ export async function buildHomeRemovalPlan({ command, host, packageRoot, imagePo
       recordState, format2, ownerKey: normalizeRepoPath(host.root),
     }),
     recordState,
+    homeRoot: inspection.root,
     format2,
     imageMembers: members,
   };

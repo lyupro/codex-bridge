@@ -60,6 +60,7 @@ for (const command of commands) {
     const imagePolicy = Object.freeze(removePolicy(command));
     const plan = await buildHomeRemovalPlan({ command, host, packageRoot, imagePolicy });
     assert.equal(plan.recordState, 'valid');
+    assert.equal(plan.homeRoot, 'present');
     assert.deepEqual(plan.format2, record);
     assert.equal(imageRows(plan).length, members.length);
     assert.ok(imageRows(plan).length > 0);
@@ -187,7 +188,9 @@ test('an unreadable record path is corrupt rather than missing', async (t) => {
   const recordPath = installRecordPath(host);
   await fs.rename(recordPath, `${recordPath}.saved`);
   await fs.mkdir(recordPath);
-  const plan = await buildHomeRemovalPlan({ command: 'uninstall', host, packageRoot, imagePolicy: removePolicy('uninstall') });
+  const plan = await buildHomeRemovalPlan({
+    command: 'uninstall', host, packageRoot, imagePolicy: removePolicy('uninstall'),
+  });
   assert.equal(plan.recordState, 'corrupt');
   assert.equal(plan.format2, undefined);
   assert.equal(plan.record.operation, 'retain');
@@ -199,7 +202,9 @@ test('format-1 migration builds a valid format-2 plan without rewriting the reco
   const legacy = await readInstallRecord(host);
   await fs.writeFile(installRecordPath(host), JSON.stringify(legacy));
   const before = await snapshot(root);
-  const plan = await buildHomeRemovalPlan({ command: 'uninstall', host, packageRoot, imagePolicy: removePolicy('uninstall') });
+  const plan = await buildHomeRemovalPlan({
+    command: 'uninstall', host, packageRoot, imagePolicy: removePolicy('uninstall'),
+  });
   assert.equal(plan.recordState, 'valid');
   assert.equal(plan.format2.format, 2);
   assert.equal(plan.record.operation, 'delete');
@@ -220,7 +225,9 @@ test('D12 includes recorded-only and package-only members once in sorted order',
   record.image.fingerprints.brand[recordedOnly] = contentFingerprint(bytes);
   assert.doesNotThrow(() => validateFormat2(record));
   await fs.writeFile(installRecordPath(host), JSON.stringify(record));
-  const plan = await buildHomeRemovalPlan({ command: 'uninstall', host, packageRoot, imagePolicy: removePolicy('uninstall') });
+  const plan = await buildHomeRemovalPlan({
+    command: 'uninstall', host, packageRoot, imagePolicy: removePolicy('uninstall'),
+  });
   assert.equal(plan.recordState, 'valid');
   assert.equal(rowAt(plan, recordedOnly).action, 'remove');
   assert.equal(rowAt(plan, recordedOnly).reason, 'evidence: recorded');
@@ -231,4 +238,16 @@ test('D12 includes recorded-only and package-only members once in sorted order',
   assert.deepEqual(plan.imageMembers, expectedMembers);
   const relatives = plan.rows.map((row) => row.relative);
   assert.deepEqual(relatives, [...new Set(relatives)].sort());
+});
+
+test('a home that has never been installed reports its missing root', async (t) => {
+  const root = makeTempTree('bridge-home-removal-missing-');
+  t.after(() => removeTempTree(root));
+  const host = resolveHost({
+    host: path.join(root, 'host'), codexHome: path.join(root, 'codex-home'), brandRoot: path.join(root, 'missing'),
+  });
+  const plan = await buildHomeRemovalPlan({ command: 'purge', host, packageRoot, imagePolicy: removePolicy('purge') });
+  assert.equal(plan.homeRoot, 'missing');
+  assert.equal(plan.recordState, 'missing');
+  await assert.rejects(fs.lstat(host.brandRoot), { code: 'ENOENT' });
 });

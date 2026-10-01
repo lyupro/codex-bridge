@@ -12,6 +12,7 @@ import { directoryArtifact } from '../src/home/lib/home-registry.mjs';
 import { inspectSegments } from './link-segments.mjs';
 import { installRecordPath, removeInstallOwner } from './install-record.mjs';
 import { removeEmptyHome } from './remove-layout.mjs';
+import { consumePurgeAuthorization } from './purge-preflight.mjs';
 
 function findingReason(finding, root) {
   if (finding.kind === 'link') {
@@ -120,11 +121,12 @@ async function executeDirectories(host, directories, writer, imageMembers, add) 
   }
 }
 
-export async function executeHomePlan(host, plan, { detached, imageMembers }) {
+export async function executeHomePlan(host, plan, { detached, imageMembers, authorization }) {
   if (plan.command === 'purge') {
-    throw new Error('purge requires its preflight authorization (Plan_65 D12 item 6)');
+    consumePurgeAuthorization(authorization, host, plan);
+  } else if (plan.command !== 'uninstall') {
+    throw new TypeError(`Invalid removal command: ${plan.command}`);
   }
-  if (plan.command !== 'uninstall') throw new TypeError(`Invalid removal command: ${plan.command}`);
 
   const writer = createHomeWriter({ root: host.brandRoot, imageMembers });
   const outcomes = [];

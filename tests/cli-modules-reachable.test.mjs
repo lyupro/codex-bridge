@@ -9,9 +9,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-const EXCEPTIONS = [
-  { module: 'cli/purge-live-runs.mjs', wiredBy: 'Plan_65 B20', packageVersion: '0.6.8' },
-];
+const EXCEPTIONS = [];
 
 // Computed import() in cli/hook.mjs and cli/run-launcher.mjs adds no static edge.
 // This proves CLI structural reachability, not the runtime closure.
@@ -89,13 +87,15 @@ try {
 assert.ok(parsed && typeof parsed.graph === 'object' && parsed.graph !== null, 'Parser graph is missing');
 assert.ok(parsed.probes && typeof parsed.probes === 'object', 'Parser source probes are missing');
 
-test('every CLI module is structurally reachable except the version-bound B20 task', () => {
+test('every CLI module is structurally reachable from a package binary', () => {
   const reached = assertCliReachability({
     graph: parsed.graph, roots, cliFiles, exceptions: EXCEPTIONS, packageVersion: packageJson.version,
   });
   assert.equal(roots.length, new Set(Object.values(packageJson.bin)).size);
   assert.ok([...reached].some((file) => file.startsWith('src/home/')), 'Follow CLI edges through home modules');
 });
+
+const fixtureException = { module: 'cli/purge-live-runs.mjs', wiredBy: 'Plan_65 B20', packageVersion: '0.6.8' };
 
 function fixtureGraph() {
   return {
@@ -106,7 +106,7 @@ function fixtureGraph() {
     },
     roots: ['bin/start.mjs'],
     cliFiles: ['cli/entry.mjs', 'cli/purge-live-runs.mjs'],
-    exceptions: EXCEPTIONS,
+    exceptions: [fixtureException],
     packageVersion: '0.6.8',
   };
 }
@@ -157,21 +157,21 @@ test('relative edges through home modules are followed and missing targets fail 
 
 test('invalid exceptions fail instead of concealing unused code or surviving a release', () => {
   const cases = [
-    ['duplicate', (state) => { state.exceptions = [EXCEPTIONS[0], EXCEPTIONS[0]]; }, /Duplicate/],
-    ['missing file', (state) => { delete state.graph[EXCEPTIONS[0].module]; }, /Exception file is missing/],
+    ['duplicate', (state) => { state.exceptions = [fixtureException, fixtureException]; }, /Duplicate/],
+    ['missing file', (state) => { delete state.graph[fixtureException.module]; }, /Exception file is missing/],
     ['reachable', (state) => { state.graph['cli/entry.mjs'] = ['./purge-live-runs.mjs']; }, /retire the entry/],
     ['empty wiredBy', (state) => {
-      state.exceptions = [{ ...EXCEPTIONS[0], wiredBy: '' }];
+      state.exceptions = [{ ...fixtureException, wiredBy: '' }];
     }, /wiredBy must be nonempty/],
     ['blank wiredBy', (state) => {
-      state.exceptions = [{ ...EXCEPTIONS[0], wiredBy: '  ' }];
+      state.exceptions = [{ ...fixtureException, wiredBy: '  ' }];
     }, /wiredBy must be nonempty/],
     ['release version', (state) => { state.packageVersion = '0.6.9'; }, /before releasing/],
     ['multiple entries', (state) => {
-      state.exceptions = [...EXCEPTIONS, { ...EXCEPTIONS[0], module: 'cli/extra.mjs' }];
+      state.exceptions = [fixtureException, { ...fixtureException, module: 'cli/extra.mjs' }];
     }, /new plan decision/],
     ['different module', (state) => {
-      state.exceptions = [{ ...EXCEPTIONS[0], module: 'cli/entry.mjs' }];
+      state.exceptions = [{ ...fixtureException, module: 'cli/entry.mjs' }];
     }, /new plan decision/],
   ];
   for (const [label, mutate, message] of cases) {
