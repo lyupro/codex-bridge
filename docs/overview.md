@@ -695,6 +695,48 @@ existing structure without replacing unrelated hooks and backs up the file befor
 What remains is to check `codex --version` and Codex CLI authorization—the package does not install
 them.
 
+## Uninstall and purge
+
+`codex-bridge uninstall` removes one host: its permission rules, its hooks, the agent and command
+files the package placed there, and its line in the home's installation record. The shared home
+(`~/.lyupro/.codex-bridge/`) is several hosts' at once, so the image in it goes only when the
+leaving host was the last one recorded and its hooks are really gone; a host whose hooks could not
+be removed keeps everything it shares, so a repeat run after the fix finds it whole. A file is
+removed only when its content proves it is ours — the fingerprint recorded for this host, or an
+exact match with what the current package would write; anything edited stays and is named.
+`config.json`, `conventions.md` and `state/` are operator data and stay.
+
+`codex-bridge uninstall --purge` additionally deletes that operator data and the home folder. It
+runs one preflight before it touches anything, in this order:
+
+1. no recorded Codex run may still be executing — a live run is named with its `stop` command, and
+   a run folder that cannot be read refuses as well, because it cannot be proven idle;
+2. the installation record must be readable, and no other host may be recorded in it — no answer
+   overrides another recorded host; uninstall it first;
+3. you confirm that no other host uses the home (the record cannot prove its own completeness);
+4. you separately consent to deleting your data, shown file by file.
+
+Without a terminal both answers count as "no" and purge refuses: there is nobody to give consent.
+A refusal or a cancel changes nothing. When the host's hooks cannot be removed, purge stops before
+the home and exits 1. Run artifacts in `~/.claude/codex-runs/` are outside every uninstall and stay.
+
+`--purge --dry-run` takes no lock and asks nothing. It prints every refusal the real run would
+meet — all at once, not only the first — and the removals under `If you confirm both questions:`,
+so no line reads as permission already given. It exits 1 on a refusal or an unsafe entry, not for
+the two questions every purge asks.
+
+What purge cannot guarantee:
+
+- **A run started during purge.** Starting a run does not take the home's lifecycle lock, so a run
+  launched in the seconds a purge (or an update, or an uninstall) is changing the home may fail
+  while loading. A file such a run recreates after purge is named by the final re-check, which then
+  exits 1. Plan_74 closes this with an admission gate shared by runs and every lifecycle command.
+- **A folder swapped mid-removal.** Links and junctions below the home root are never followed or
+  deleted, and every ancestor is checked before its children. Node has no `openat`/`unlinkat`, so
+  each removal resolves its path again; a deliberate replacement of an ancestor between the check
+  and the removal is not caught. Only a process of the same user can do that, and purge gives it
+  nothing it did not already have; the final re-check is not presented as protection against it.
+
 ## Documentation for maintainers
 
 - [Run lifecycle](run-lifecycle.md)

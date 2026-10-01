@@ -10,7 +10,7 @@ import { resolveHost } from '../../cli/hosts.mjs';
 import { permissions } from '../../cli/permissions.mjs';
 import { findOwnHooks } from '../../cli/hook-recognizer.mjs';
 import { installRecordPath, readInstallRecord, recordTarget } from '../../cli/manifest.mjs';
-import { purge } from '../../cli/uninstall-purge.mjs';
+import { purge, appearedLines } from '../../cli/uninstall-purge.mjs';
 import { uninstall } from '../../cli/uninstall.mjs';
 import { commandOptions, COMMANDS } from '../../cli/command-registry.mjs';
 import { normalizeRepoPath } from '../../src/home/lib/runner/project-dir.mjs';
@@ -165,6 +165,7 @@ test('both consents remove permissions, hooks, package agents, rules and the who
   } });
   assert.equal(result.exitCode, 0);
   assert.match(result.output, /^Purged codex-bridge\./);
+  assert.doesNotMatch(result.output, /Appeared during purge/);
   assert.equal(questions.length, 2);
   assert.equal(checks, 1, 'D14 permits exactly one preflight live-run check');
   const settings = JSON.parse(await fs.readFile(host.settingsPath, 'utf8'));
@@ -260,4 +261,23 @@ test('uninstall parses purge and dry-run as booleans and advertises both flags',
     'codex-bridge uninstall [--scope user|project] [--host <path>] [--dry-run] [--purge]',
   ]);
   assert.throws(() => commandOptions('install', ['--purge']), /unknown install option/);
+});
+
+test('D12 item 7: the re-check names a registry file present after purge unless an outcome kept it', async (t) => {
+  const root = makeTempTree('bridge-purge-recheck-');
+  t.after(() => removeTempTree(root));
+  const host = { brandRoot: path.join(root, 'home') };
+  const plan = { imageMembers: [] };
+  assert.deepEqual(appearedLines(host, plan, []), []);
+  await fs.mkdir(host.brandRoot);
+  await fs.writeFile(path.join(host.brandRoot, 'config.json'), '{}');
+  await fs.writeFile(path.join(host.brandRoot, 'stranger.txt'), 'not ours');
+  const appeared = appearedLines(host, plan, []);
+  assert.equal(appeared.length, 1, 'only registry files count; unknown entries were never purge targets');
+  assert.match(appeared[0], /^Appeared during purge: brand\/config\.json;/);
+  const removed = [{ kind: 'file', relative: 'config.json', result: 'removed' }];
+  assert.equal(appearedLines(host, plan, removed).length, 1, 'removed, then recreated');
+  for (const result of ['kept', 'blocked', 'failed']) {
+    assert.deepEqual(appearedLines(host, plan, [{ kind: 'file', relative: 'config.json', result }]), []);
+  }
 });

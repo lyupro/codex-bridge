@@ -17,9 +17,30 @@ import { removeEmpty, removeEmptyLayout } from './remove-layout.mjs';
 import { recordHomeWriter, removeOutside } from './record-removal.mjs';
 import { runPurgePreflight, diagnosePurge } from './purge-preflight.mjs';
 import { executeHomePlan } from './home-plan-execute.mjs';
+import { inspectHome } from './home-inspection.mjs';
 import {
   purgeDryRunLines, purgeDryRunExitCode, outcomeLines, outcomeExitCode,
 } from './removal-outcomes.mjs';
+
+const ACCOUNTED = new Set(['kept', 'blocked', 'failed']);
+
+/**
+ * Plan_65 D12 item 7: a run started during purge (D14 item 3) or any other writer can recreate a registry
+ * file after its removal, and "Purged" would then be a false report. One more pass names every registry
+ * file present that the outcomes did not already name as kept. It does not defend against a deliberate
+ * swap of a folder between check and removal (D4 item 6); that limit is documented, not compensated.
+ */
+export function appearedLines(host, plan, outcomes) {
+  const inspection = inspectHome(host.brandRoot, { imageMembers: plan.imageMembers });
+  if (inspection.root === 'missing') return [];
+  if (inspection.root === 'error') {
+    return [`Could not re-check ${host.brandRoot} after purge (${inspection.rootCode}).`];
+  }
+  const named = new Set(outcomes.filter((entry) => entry.kind !== 'directory' && ACCOUNTED.has(entry.result))
+    .map((entry) => entry.relative));
+  return inspection.files.filter((file) => !named.has(file.relative)).map((file) =>
+    `Appeared during purge: brand/${file.relative}; run uninstall --purge again once nothing writes to the home.`);
+}
 
 async function purgeInRun(options, ticket) {
   const { host } = options;
@@ -65,10 +86,11 @@ async function purgeInRun(options, ticket) {
   await removeEmpty(host.agentsDir);
   await removeEmptyLayout(host.legacyAgentsDir);
   await removeEmptyLayout(host.legacyCommandsDir);
+  const appeared = appearedLines(host, plan, outcomes);
   return {
-    exitCode: outcomeExitCode(outcomes),
+    exitCode: appeared.length ? 1 : outcomeExitCode(outcomes),
     output: ['Purged codex-bridge.', permissionLine, ...hostSide.lines, ...rules.lines,
-      ...outcomeLines(outcomes, { host })].join('\n'),
+      ...outcomeLines(outcomes, { host }), ...appeared].join('\n'),
   };
 }
 
