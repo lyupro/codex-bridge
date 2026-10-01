@@ -13,7 +13,7 @@ import { inspectHome } from './home-inspection.mjs';
 import { planHomeRemoval } from './removal-plan.mjs';
 import { normalizeRepoPath } from '../src/home/lib/runner/project-dir.mjs';
 
-export async function buildHomeRemovalPlan({ mode, host, packageRoot, imagePolicy }) {
+export async function buildHomeRemovalPlan({ command, host, packageRoot, imagePolicy }) {
   let recordState;
   let format2;
   try {
@@ -49,7 +49,7 @@ export async function buildHomeRemovalPlan({ mode, host, packageRoot, imagePolic
 
   return {
     ...planHomeRemoval({
-      mode, inspection, imageMembers: members, imageEvidence, imagePolicy,
+      command, inspection, imageMembers: members, imageEvidence, imagePolicy,
       recordState, format2, ownerKey: normalizeRepoPath(host.root),
     }),
     recordState,

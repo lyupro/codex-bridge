@@ -15,10 +15,10 @@ import { validateFormat2 } from '../../cli/install-owners.mjs';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 
 const packageRoot = fileURLToPath(new URL('../../', import.meta.url));
-const modes = ['uninstall', 'purge'];
+const commands = ['uninstall', 'purge'];
 const rowAt = (plan, relative) => plan.rows.find((row) => row.relative === relative);
 const imageRows = (plan) => plan.rows.filter((row) => row.id === 'install-image' && row.role === 'primary');
-const removePolicy = (mode) => ({ remove: true, reason: mode === 'purge' ? 'purge' : 'last owner' });
+const removePolicy = (command) => ({ remove: true, reason: command === 'purge' ? 'purge' : 'last owner' });
 
 async function installedHome(t) {
   const root = makeTempTree('bridge-home-removal-plan-');
@@ -54,11 +54,11 @@ async function snapshot(root) {
   return entries;
 }
 
-for (const mode of modes) {
-  test(`fresh ${mode} uses recorded evidence and the caller's removal policy`, async (t) => {
+for (const command of commands) {
+  test(`fresh ${command} uses recorded evidence and the caller's removal policy`, async (t) => {
     const { host, record, members } = await installedHome(t);
-    const imagePolicy = Object.freeze(removePolicy(mode));
-    const plan = await buildHomeRemovalPlan({ mode, host, packageRoot, imagePolicy });
+    const imagePolicy = Object.freeze(removePolicy(command));
+    const plan = await buildHomeRemovalPlan({ command, host, packageRoot, imagePolicy });
     assert.equal(plan.recordState, 'valid');
     assert.deepEqual(plan.format2, record);
     assert.equal(imageRows(plan).length, members.length);
@@ -68,31 +68,31 @@ for (const mode of modes) {
       assert.equal(row.reason, 'evidence: recorded');
     }
     for (const relative of ['config.json', 'conventions.md']) {
-      assert.equal(rowAt(plan, relative).action, mode === 'purge' ? 'remove' : 'keep');
-      assert.equal(rowAt(plan, relative).reason, mode === 'purge' ? 'purge' : 'purge-only');
+      assert.equal(rowAt(plan, relative).action, command === 'purge' ? 'remove' : 'keep');
+      assert.equal(rowAt(plan, relative).reason, command === 'purge' ? 'purge' : 'purge-only');
     }
     assert.equal(plan.record.operation, 'delete');
     assert.equal(plan.record.dependsOnDetach, true);
     assert.equal(plan.blocked, false);
-    assert.deepEqual(imagePolicy, removePolicy(mode));
+    assert.deepEqual(imagePolicy, removePolicy(command));
     const relatives = plan.rows.map((row) => row.relative);
     assert.deepEqual(relatives, [...new Set(relatives)].sort());
   });
 
-  test(`${mode} preserves an edited image file`, async (t) => {
+  test(`${command} preserves an edited image file`, async (t) => {
     const { host, members } = await installedHome(t);
     const relative = members[0].path;
     await fs.appendFile(path.join(host.brandRoot, relative), '\noperator edit\n');
-    const plan = await buildHomeRemovalPlan({ mode, host, packageRoot, imagePolicy: removePolicy(mode) });
+    const plan = await buildHomeRemovalPlan({ command, host, packageRoot, imagePolicy: removePolicy(command) });
     assert.equal(rowAt(plan, relative).action, 'keep');
     assert.equal(rowAt(plan, relative).reason, 'changed');
     assert.equal(plan.blocked, false);
   });
 
-  test(`${mode} retains a corrupt JSON record and blocks removal`, async (t) => {
+  test(`${command} retains a corrupt JSON record and blocks removal`, async (t) => {
     const { host } = await installedHome(t);
     await fs.writeFile(installRecordPath(host), '{');
-    const plan = await buildHomeRemovalPlan({ mode, host, packageRoot, imagePolicy: removePolicy(mode) });
+    const plan = await buildHomeRemovalPlan({ command, host, packageRoot, imagePolicy: removePolicy(command) });
     assert.equal(plan.recordState, 'corrupt');
     assert.equal(plan.format2, undefined);
     assert.equal(plan.record.operation, 'retain');
@@ -103,11 +103,11 @@ for (const mode of modes) {
     }
   });
 
-  test(`${mode} rejects a parsed record that fails format-2 validation`, async (t) => {
+  test(`${command} rejects a parsed record that fails format-2 validation`, async (t) => {
     const { host, record } = await installedHome(t);
     record.inventory = 'invalid';
     await fs.writeFile(installRecordPath(host), JSON.stringify(record));
-    const plan = await buildHomeRemovalPlan({ mode, host, packageRoot, imagePolicy: removePolicy(mode) });
+    const plan = await buildHomeRemovalPlan({ command, host, packageRoot, imagePolicy: removePolicy(command) });
     assert.equal(plan.recordState, 'corrupt');
     assert.equal(plan.format2, undefined);
     assert.equal(plan.record.operation, 'retain');
@@ -118,10 +118,10 @@ for (const mode of modes) {
     }
   });
 
-  test(`${mode} finds package image members when the record is missing`, async (t) => {
+  test(`${command} finds package image members when the record is missing`, async (t) => {
     const { host, members } = await installedHome(t);
     await fs.unlink(installRecordPath(host));
-    const plan = await buildHomeRemovalPlan({ mode, host, packageRoot, imagePolicy: removePolicy(mode) });
+    const plan = await buildHomeRemovalPlan({ command, host, packageRoot, imagePolicy: removePolicy(command) });
     assert.equal(plan.recordState, 'missing');
     assert.equal(plan.format2, undefined);
     assert.equal(plan.record.operation, 'none');
@@ -133,7 +133,7 @@ for (const mode of modes) {
     }
   });
 
-  test(`${mode} blocks files hidden behind a junction and leaves outside bytes unchanged`, async (t) => {
+  test(`${command} blocks files hidden behind a junction and leaves outside bytes unchanged`, async (t) => {
     const { root, host, members } = await installedHome(t);
     const relativeFolder = 'lib/runner';
     const movedFiles = members.filter((file) => file.path.startsWith(`${relativeFolder}/`));
@@ -143,7 +143,7 @@ for (const mode of modes) {
     await fs.rename(folder, outside);
     await fs.symlink(outside, folder, 'junction');
     const before = await snapshot(root);
-    const plan = await buildHomeRemovalPlan({ mode, host, packageRoot, imagePolicy: removePolicy(mode) });
+    const plan = await buildHomeRemovalPlan({ command, host, packageRoot, imagePolicy: removePolicy(command) });
     assert.equal(rowAt(plan, relativeFolder).action, 'blocked');
     assert.equal(rowAt(plan, relativeFolder).reason, 'link');
     for (const file of movedFiles) {
@@ -154,12 +154,12 @@ for (const mode of modes) {
     assert.deepEqual(await snapshot(root), before);
   });
 
-  test(`${mode} leaves the whole installation tree byte-for-byte unchanged`, async (t) => {
+  test(`${command} leaves the whole installation tree byte-for-byte unchanged`, async (t) => {
     const { root, host } = await installedHome(t);
     await fs.writeFile(path.join(host.brandRoot, 'operator-notes.txt'), 'keep these bytes\n');
     const before = await snapshot(root);
-    const first = await buildHomeRemovalPlan({ mode, host, packageRoot, imagePolicy: removePolicy(mode) });
-    const second = await buildHomeRemovalPlan({ mode, host, packageRoot, imagePolicy: removePolicy(mode) });
+    const first = await buildHomeRemovalPlan({ command, host, packageRoot, imagePolicy: removePolicy(command) });
+    const second = await buildHomeRemovalPlan({ command, host, packageRoot, imagePolicy: removePolicy(command) });
     assert.deepEqual(second, first);
     assert.deepEqual(await snapshot(root), before);
   });
@@ -168,7 +168,7 @@ for (const mode of modes) {
 test('uninstall preserves image files and removes only the normalized current owner', async (t) => {
   const { host, record, members } = await installedHome(t);
   const imagePolicy = Object.freeze({ remove: false, reason: 'other-owners' });
-  const plan = await buildHomeRemovalPlan({ mode: 'uninstall', host, packageRoot, imagePolicy });
+  const plan = await buildHomeRemovalPlan({ command: 'uninstall', host, packageRoot, imagePolicy });
   assert.equal(imageRows(plan).length, members.length);
   for (const row of imageRows(plan)) {
     assert.equal(row.action, 'keep');
@@ -187,7 +187,7 @@ test('an unreadable record path is corrupt rather than missing', async (t) => {
   const recordPath = installRecordPath(host);
   await fs.rename(recordPath, `${recordPath}.saved`);
   await fs.mkdir(recordPath);
-  const plan = await buildHomeRemovalPlan({ mode: 'uninstall', host, packageRoot, imagePolicy: removePolicy('uninstall') });
+  const plan = await buildHomeRemovalPlan({ command: 'uninstall', host, packageRoot, imagePolicy: removePolicy('uninstall') });
   assert.equal(plan.recordState, 'corrupt');
   assert.equal(plan.format2, undefined);
   assert.equal(plan.record.operation, 'retain');
@@ -199,7 +199,7 @@ test('format-1 migration builds a valid format-2 plan without rewriting the reco
   const legacy = await readInstallRecord(host);
   await fs.writeFile(installRecordPath(host), JSON.stringify(legacy));
   const before = await snapshot(root);
-  const plan = await buildHomeRemovalPlan({ mode: 'uninstall', host, packageRoot, imagePolicy: removePolicy('uninstall') });
+  const plan = await buildHomeRemovalPlan({ command: 'uninstall', host, packageRoot, imagePolicy: removePolicy('uninstall') });
   assert.equal(plan.recordState, 'valid');
   assert.equal(plan.format2.format, 2);
   assert.equal(plan.record.operation, 'delete');
@@ -220,7 +220,7 @@ test('D12 includes recorded-only and package-only members once in sorted order',
   record.image.fingerprints.brand[recordedOnly] = contentFingerprint(bytes);
   assert.doesNotThrow(() => validateFormat2(record));
   await fs.writeFile(installRecordPath(host), JSON.stringify(record));
-  const plan = await buildHomeRemovalPlan({ mode: 'uninstall', host, packageRoot, imagePolicy: removePolicy('uninstall') });
+  const plan = await buildHomeRemovalPlan({ command: 'uninstall', host, packageRoot, imagePolicy: removePolicy('uninstall') });
   assert.equal(plan.recordState, 'valid');
   assert.equal(rowAt(plan, recordedOnly).action, 'remove');
   assert.equal(rowAt(plan, recordedOnly).reason, 'evidence: recorded');

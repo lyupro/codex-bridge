@@ -23,6 +23,12 @@ function recordOutcome(operation, reason, blocked = false) {
   return { operation, reason, dependsOnDetach, blocked };
 }
 
+// The command that asked for the plan. Not "mode": that word already meant six things in this
+// package, and a guard (tests/mode-is-not-a-name.test.mjs) keeps it from meaning a seventh.
+function assertCommand(command) {
+  if (command !== 'uninstall' && command !== 'purge') throw new TypeError(`Invalid removal command: ${command}`);
+}
+
 function metadata(relative, imageMembers) {
   const match = classifyHomePath(relative, { imageMembers });
   return match
@@ -30,7 +36,7 @@ function metadata(relative, imageMembers) {
     : { id: null, role: null, removal: null };
 }
 
-function fileDecision(file, mode, imageEvidence, imagePolicy) {
+function fileDecision(file, command, imageEvidence, imagePolicy) {
   if (file.id === 'install-image') {
     if (!imagePolicy.remove) return { action: 'keep', reason: imagePolicy.reason };
     if (file.role !== 'primary') return { action: 'remove', reason: imagePolicy.reason };
@@ -51,7 +57,7 @@ function fileDecision(file, mode, imageEvidence, imagePolicy) {
     if (file.role === 'clear-gate') return { action: 'keep', reason: 'clear queue' };
   }
   if (file.removal === 'purge-only') {
-    return mode === 'purge'
+    return command === 'purge'
       ? { action: 'remove', reason: 'purge' }
       : { action: 'keep', reason: 'purge-only' };
   }
@@ -73,8 +79,8 @@ function ancestorDecision(relative, inspection) {
   return { action: 'missing', reason: 'missing' };
 }
 
-export function planHomeFiles({ mode, inspection, imageMembers, imageEvidence, imagePolicy }) {
-  if (mode !== 'uninstall' && mode !== 'purge') throw new TypeError(`Invalid removal mode: ${mode}`);
+export function planHomeFiles({ command, inspection, imageMembers, imageEvidence, imagePolicy }) {
+  assertCommand(command);
   if (inspection.root === 'missing') return { rows: [], blocked: false };
   if (inspection.root === 'error') return { rows: [], blocked: true };
   if (inspection.root !== 'present') throw new TypeError(`Invalid home root state: ${inspection.root}`);
@@ -98,7 +104,7 @@ export function planHomeFiles({ mode, inspection, imageMembers, imageEvidence, i
   }
   for (const file of inspection.files) {
     if (rowsByPath.has(file.relative)) continue;
-    const decision = fileDecision(file, mode, imageEvidence, imagePolicy);
+    const decision = fileDecision(file, command, imageEvidence, imagePolicy);
     if (decision) add(file.relative, { id: file.id, role: file.role, removal: file.removal }, decision);
   }
 
@@ -122,8 +128,8 @@ export function planHomeFiles({ mode, inspection, imageMembers, imageEvidence, i
   return { rows, blocked: rows.some((row) => row.action === 'blocked') };
 }
 
-export function planRecordOperation({ mode, recordState, format2, ownerKey, imagePolicy }) {
-  if (mode !== 'uninstall' && mode !== 'purge') throw new TypeError(`Invalid removal mode: ${mode}`);
+export function planRecordOperation({ command, recordState, format2, ownerKey, imagePolicy }) {
+  assertCommand(command);
   if (!['missing', 'corrupt', 'valid'].includes(recordState)) {
     throw new TypeError(`Invalid installation record state: ${recordState}`);
   }
@@ -134,8 +140,8 @@ export function planRecordOperation({ mode, recordState, format2, ownerKey, imag
   if (recordState === 'corrupt') {
     return recordOutcome('retain', 'unreadable installation record', true);
   }
-  if (mode === 'purge' || imagePolicy.remove) {
-    return recordOutcome('delete', mode === 'purge' ? 'purge' : 'last owner');
+  if (command === 'purge' || imagePolicy.remove) {
+    return recordOutcome('delete', command === 'purge' ? 'purge' : 'last owner');
   }
   if (Object.hasOwn(format2.owners, ownerKey)) {
     return recordOutcome('remove-current-owner', imagePolicy.reason);
@@ -143,10 +149,10 @@ export function planRecordOperation({ mode, recordState, format2, ownerKey, imag
   return recordOutcome('retain', 'not an owner of this home');
 }
 
-export function planHomeDirectories({ mode, inspection, imageMembers, imagePolicy }) {
+export function planHomeDirectories({ command, inspection, imageMembers, imagePolicy }) {
   if (inspection.root !== 'present') return [];
   const decide = (relative) => {
-    if (mode === 'purge') return { relative, action: 'remove-if-empty', reason: 'purge' };
+    if (command === 'purge') return { relative, action: 'remove-if-empty', reason: 'purge' };
     if (!imagePolicy.remove) return { relative, action: 'keep', reason: imagePolicy.reason };
     const imageDirectory = relative === '' || (
       !HOME_DIRECTORIES.includes(relative)
