@@ -12,7 +12,7 @@ export const AGENTS = {
   'codex-build': { role: 'build', budget: 25, writes: true, result: 'result.json' },
   'codex-review': { role: 'review', budget: 20, writes: false, result: 'review.json' },
   // Plan_59: design advice needs a bounded scope pass before the continued decision pass.
-  'codex-advisor': { role: 'advisor', budget: { scope: 5, advise: 15 }, writes: false, result: 'result.json' },
+  'codex-advisor': { role: 'advisor', budget: { scope: 10, advise: 25 }, writes: false, result: 'result.json' },
 };
 
 export const agentRole = (agent) => AGENTS[agent]?.role;

@@ -111,12 +111,12 @@ test('run-config state appends a pinned tier in the profile sentence and leaves 
 });
 
 test('budgets default per role and merge when only one role is written', () => {
-  assert.deepEqual(DEFAULTS.budgets, { scout: { default: 15 }, build: { default: 25 }, review: { default: 20 }, advisor: { scope: 5, advise: 15 } });
+  assert.deepEqual(DEFAULTS.budgets, { scout: { default: 15 }, build: { default: 25 }, review: { default: 20 }, advisor: { scope: 10, advise: 25 } });
   assert.deepEqual(readRunConfig(tempFile('{"budgets": {"build": 7.5}}')).budgets, {
     scout: { default: 15 },
     build: { default: 7.5 },
     review: { default: 20 },
-    advisor: { scope: 5, advise: 15 },
+    advisor: { scope: 10, advise: 25 },
   });
 });
 

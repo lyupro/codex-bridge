@@ -20,7 +20,7 @@ test('the registry owns execution agents and the phased advisor defaults from Pl
     'codex-scout': { role: 'scout', budget: 15, writes: false, result: 'result.json' },
     'codex-build': { role: 'build', budget: 25, writes: true, result: 'result.json' },
     'codex-review': { role: 'review', budget: 20, writes: false, result: 'review.json' },
-    'codex-advisor': { role: 'advisor', budget: { scope: 5, advise: 15 }, writes: false, result: 'result.json' },
+    'codex-advisor': { role: 'advisor', budget: { scope: 10, advise: 25 }, writes: false, result: 'result.json' },
   });
   for (const [name, agent] of Object.entries(AGENTS)) {
     assert.equal(typeof agent.role, 'string', `${name} must have a role`);

@@ -73,8 +73,8 @@ codex-bridge run --agent codex-review --repo . --slug auth-flow-review --order-i
 
 ### Design advice before a build
 
-`codex-advisor` runs in two phases. The 5-minute `scope` phase checks whether the supplied paths
-cover the question and records missing paths and predicted risks. The 15-minute `advise` phase is
+`codex-advisor` runs in two phases. The 10-minute `scope` phase checks whether the supplied paths
+cover the question and records missing paths and predicted risks. The 25-minute `advise` phase is
 available only with `--continue` after an `OK` scope run for the same order; it can continue an
 insufficient-but-valid scope result too. The task file has `## Question` for the design question,
 `## Options` with at least two unbiased `- id: description` lines with unique ids and no preference
@@ -414,7 +414,7 @@ multi-agent tools are unavailable to the executor. Otherwise their edits would e
 snapshot as work by the run itself, bypassing the scope check by which it is judged.
 
 `budgets` sets run time limits in minutes by role: `scout` 15, `build` 25, `review` 20, and
-`advisor` with `scope` 5 and `advise` 15. Single-phase roles accept a positive number; `advisor`
+`advisor` with `scope` 10 and `advise` 25. Single-phase roles accept a positive number; `advisor`
 requires a phase map, and partial maps override only the named phases while retaining the defaults.
 A bare number for `advisor` is refused. An empty field is a configuration error, not an absent
 value. When the limit expires, worker kills Codex together with its entire process tree, records the kill in `status.json` through the `stopped_on_deadline` field (the verdict
@@ -429,7 +429,7 @@ took about twenty minutes.
     "scout": 15,
     "build": 25,
     "review": 20,
-    "advisor": { "scope": 5, "advise": 15 }
+    "advisor": { "scope": 10, "advise": 25 }
   }
 }
 ```

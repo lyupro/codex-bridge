@@ -81,7 +81,7 @@ test('scope writes its phase schema, read-only argv, configured profile and answ
   assert.deepEqual(schema, advisorSchema('scope'));
   assert.equal(worker.phase, 'scope');
   assert.equal(status.phase, 'scope');
-  assert.equal(worker.budget_minutes, 5);
+  assert.equal(worker.budget_minutes, 10);
   assert.equal(worker.args[0], 'exec');
   assert.equal(worker.args.includes('review'), false);
   assert.equal(worker.args[worker.args.indexOf('--sandbox') + 1], 'read-only');
@@ -156,7 +156,7 @@ test('advise continues the scope order with its own schema and budget', () => {
   assert.notEqual(second.dir, first.dir);
   assert.deepEqual(second.schema, advisorSchema('advise'));
   assert.equal(second.worker.phase, 'advise');
-  assert.equal(second.worker.budget_minutes, 15);
+  assert.equal(second.worker.budget_minutes, 25);
   assert.equal(second.status.order_id, first.status.order_id);
   assert.equal(second.status.continued_from, path.basename(first.dir));
   assert.match(second.task, /Advise phase:/);

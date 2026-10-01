@@ -219,6 +219,10 @@ response could look like the verdict for a new job.
 
 ## Continuation limit
 
+An advisor `scope` phase is never continued: `--phase scope --continue` is refused before start, because
+continuing a failed scope spent the order's single continuation and left its `advise` phase unreachable
+(2026-09-30). A failed scope is repeated under a new order id, and `advise` then continues that order.
+
 A limit applies on top of authorization: `--continue` is permitted once per job label and only after a
 run with a recorded verdict:
 

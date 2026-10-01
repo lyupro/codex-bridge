@@ -159,6 +159,8 @@ verbatim; compose nothing.
 The run folder contains its status and artifacts. An abandoned run is not a reason to start over
 yourself: the orchestrator decides whether to continue, and without the `--continue` it issued,
 the runner will reject that continuation itself.
+The orchestrator repeats a failed scope under a NEW order id, never with `continue:` or `--continue`:
+the runner refuses a continued scope, because it would spend the continuation that advise needs.
 
 ## Codex is unavailable
 

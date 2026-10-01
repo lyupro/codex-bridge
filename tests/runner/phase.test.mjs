@@ -6,12 +6,13 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { makeTempTree } from '../temp-tree.mjs';
 import { fixtureTask, launcherProcessMocks } from './launcher-mocks.mjs';
+import { resolveRunPhase } from '../../src/home/lib/runner/preflight.mjs';
 
 const AGENTS = new URL('../../src/home/lib/agents.mjs', import.meta.url).href;
 const RUNNER = new URL('../../src/home/lib/run-codex.mjs', import.meta.url).href;
 const CONFIG = new URL('../../src/home/lib/run-config.mjs', import.meta.url);
 
-function launch({ budget = 15, phase, overrides, refuse = false, agent = 'codex-scout' } = {}) {
+function launch({ budget = 15, phase, overrides, refuse = false, agent = 'codex-scout', continue: isContinue = false } = {}) {
   const root = makeTempTree('run-phase-');
   const repo = path.join(root, 'repo');
   const home = path.join(root, 'home');
@@ -25,6 +26,7 @@ function launch({ budget = 15, phase, overrides, refuse = false, agent = 'codex-
   const args = ['--agent', agent, '--repo', repo, '--order-id', 'phase-fixture', '--task-file', task,
     ...(agent === 'codex-scout' ? ['--question', 'What does the source export?'] : []),
     ...(agent === 'codex-build' ? ['--scope', 'source.mjs'] : []),
+    ...(isContinue ? ['--continue'] : []),
     ...(phase === undefined ? [] : ['--phase', phase])];
   const source = `
 import childProcess from 'node:child_process';
@@ -87,6 +89,34 @@ test('single-phase agents keep the default phase when omitted or explicitly requ
   }
 });
 
+test('advisor scope continuation refuses before budget lookup, probes and run creation', () => {
+  // OW-040, 2026-09-30: a scope retry must not spend the continuation reserved for advise.
+  const message = 'codex-advisor --phase scope refuses --continue: a scope pass is never continued, and continuing one ' +
+    "spends the order's single continuation that its advise phase needs. Action: repeat the scope under a new order id " +
+    "without --continue and without a continue: grant, then run advise as that order's continuation. The run folder " +
+    'was not created; quota was not spent.';
+  assert.throws(() => resolveRunPhase({ agent: 'codex-advisor', phase: 'scope', continue: true }, undefined),
+    (error) => {
+      assert.equal(error.exitCode, 2);
+      assert.equal(error.message, message);
+      return true;
+    });
+  const { output, runs, repo } = launch({
+    agent: 'codex-advisor', budget: { scope: 5, advise: 15 }, phase: 'scope', continue: true, refuse: true,
+  });
+  assert.equal(output.status, 2, output.stderr || output.error?.message);
+  assert.ok(output.stderr.includes(message), output.stderr);
+  assert.doesNotMatch(output.stdout, /RUN=|STARTED/);
+  assert.equal(fs.existsSync(runs), false);
+  assert.deepEqual(fs.readdirSync(repo), ['source.mjs']);
+});
+
+test('advisor scope without continuation and advise with continuation still resolve', () => {
+  const budgets = { advisor: { scope: 5, advise: 15 } };
+  assert.equal(resolveRunPhase({ agent: 'codex-advisor', phase: 'scope', continue: false }, budgets), 'scope');
+  assert.equal(resolveRunPhase({ agent: 'codex-advisor', phase: 'advise', continue: true }, budgets), 'advise');
+});
+
 test('a selected phase freezes its configured minutes in the worker order', () => {
   for (const [phase, minutes] of [['scope', 5], ['advise', 12]]) {
     const { order, status, env } = workerFrom(launch({
@@ -126,8 +156,8 @@ await import(${JSON.stringify(CONFIG.href)});
     });
     assert.equal(output.status, 0, output.stderr);
     const expected = budget === 15
-      ? 'budgets: scout: 15 minutes; build: 25 minutes; review: 20 minutes; advisor: scope: 5 minutes, advise: 15 minutes'
-      : 'budgets: scout: scope: 5 minutes, advise: 15 minutes; build: 25 minutes; review: 20 minutes; advisor: scope: 5 minutes, advise: 15 minutes';
+      ? 'budgets: scout: 15 minutes; build: 25 minutes; review: 20 minutes; advisor: scope: 10 minutes, advise: 25 minutes'
+      : 'budgets: scout: scope: 5 minutes, advise: 15 minutes; build: 25 minutes; review: 20 minutes; advisor: scope: 10 minutes, advise: 25 minutes';
     assert.equal(output.stdout.split(/\r?\n/).find((line) => line.startsWith('budgets:')), expected);
   }
 });
