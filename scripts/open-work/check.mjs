@@ -1,14 +1,18 @@
 /**
  * Validates open-work rules and reciprocal document references, exposing them through the CLI.
  * Plan_72: 15 of 20 handoff records dropped unfinished items because open work had no single home.
+ * Plan_72 R3 B2: with the checklist index absent even strict validation was green, so no live-step marker was
+ * ever judged; the index is now required wherever the workroom exists.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isInvokedDirectly } from '../../cli/invoked-directly.mjs';
 import { readRegister } from './register.mjs';
+import { checkLiveThresholds } from './live-thresholds.mjs';
 
 const REGISTER = 'docs/plans/open-work.md';
+const INDEX = 'docs/checklists/operator-checklists.md';
 const WORKROOM = ['docs/plans', 'docs/checklists'];
 const REQUIRED = ['состояние', 'владелец', 'источник', 'дом', 'следующий шаг'];
 const KNOWN = new Set([...REQUIRED, 'блокер', 'доказательство']);
@@ -51,13 +55,14 @@ export function validateOpenWork(root, { strict = false } = {}) {
   if (typeof root !== 'string' || !root) throw new TypeError('A repository root is required');
   root = path.resolve(root);
   const violations = [];
+  const notices = [];
   const report = (file, line, problem) => violations.push(`${file}:${line}: ${problem}`);
   const present = WORKROOM.map((directory) => {
     const absolute = path.join(root, directory);
     return fs.existsSync(absolute) && fs.statSync(absolute).isDirectory();
   });
   if (!strict && present.every((exists) => !exists)) {
-    return { violations, message: 'Workroom is absent; nothing was checked.' };
+    return { violations, notices, message: 'Workroom is absent; nothing was checked.' };
   }
   if (strict) {
     WORKROOM.forEach((directory, index) => {
@@ -65,12 +70,27 @@ export function validateOpenWork(root, { strict = false } = {}) {
     });
   }
   const registerFile = path.join(root, REGISTER);
-  if (!fs.existsSync(registerFile)) {
+  const registerExists = fs.existsSync(registerFile);
+  if (!registerExists) {
     report(REGISTER, 1, 'register is missing');
-    return { violations, message: null };
   }
 
-  const { items, queue } = readRegister(registerFile);
+  const { items, queue } = registerExists ? readRegister(registerFile) : { items: [], queue: [] };
+  const indexFile = path.join(root, INDEX);
+  if (!fs.existsSync(indexFile)) {
+    report(INDEX, 1, 'checklist index is missing');
+  } else {
+    let version;
+    try { version = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version; }
+    catch { /* The threshold rule reports one package.json:1 violation for an unavailable version. */ }
+    const live = checkLiveThresholds({
+      indexText: fs.readFileSync(indexFile, 'utf8'), indexFile: INDEX,
+      version, versionFile: 'package.json', items,
+    });
+    for (const entry of live.violations) report(entry.file, entry.line, entry.text);
+    for (const entry of live.notices) notices.push(`${entry.file}:${entry.line}: ${entry.text}`);
+  }
+  if (!registerExists) return { violations, notices, message: null };
   if (!items.length) report(REGISTER, 1, 'register must contain at least one item');
   const byId = new Map();
   const states = new Map();
@@ -138,7 +158,7 @@ export function validateOpenWork(root, { strict = false } = {}) {
       }
     }
   }
-  return { violations, message: null };
+  return { violations, notices, message: null };
 }
 
 const scriptFile = fileURLToPath(import.meta.url);
@@ -150,6 +170,7 @@ if (isInvokedDirectly(process.argv[1], import.meta.url)) {
     const root = path.resolve(path.dirname(scriptFile), '../..');
     const result = validateOpenWork(root, { strict: args.includes('--strict') });
     for (const violation of result.violations) console.log(violation);
+    for (const notice of result.notices) console.log(`note: ${notice}`);
     if (result.message) console.log(result.message);
     process.exitCode = result.violations.length ? 1 : 0;
   } catch (error) {

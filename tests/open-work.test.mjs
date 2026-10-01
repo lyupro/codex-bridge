@@ -12,7 +12,8 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const script = path.join(root, 'scripts/open-work/check.mjs');
 // The CLI imports the package's one same-file judge, so a fixture copy carries it along.
 const sources = new Map([
-  'scripts/open-work/register.mjs', 'scripts/open-work/check.mjs', 'cli/invoked-directly.mjs',
+  'scripts/open-work/register.mjs', 'scripts/open-work/check.mjs', 'scripts/open-work/live-thresholds.mjs',
+  'cli/invoked-directly.mjs',
 ].map((relative) => [relative, fs.readFileSync(path.join(root, relative), 'utf8')]));
 const registerPath = 'docs/plans/open-work.md';
 
@@ -49,6 +50,9 @@ async function fixture(options, work) {
     for (const folder of folders) fs.mkdirSync(path.join(directory, folder), { recursive: true });
     const files = { ...(options.files ?? { 'docs/plans/Plan.md': '# Plan\n\nSee OW-001.\n' }) };
     if (options.register !== null) files[registerPath] = options.register ?? register();
+    if (options.index !== null) files['docs/checklists/operator-checklists.md'] = options.index
+      ?? '## Актуальные\n- [Checklist](Checklist.md) live=[]\n';
+    if (options.package !== null) files['package.json'] = options.package ?? '{"version":"1.0.0"}\n';
     // Copy only the validator: CLI fixtures exercise its own root without adding a root override.
     for (const [relative, source] of sources) files[relative] = source;
     for (const [relative, contents] of Object.entries(files)) {
@@ -270,29 +274,32 @@ test('rule 7: documents outside the workroom and non-markdown files are not scan
 });
 
 test('both workroom folders absent: plain mode explains its pass, strict mode fails', async () => {
-  await fixture({ folders: [], register: null, files: {} }, (directory) => {
+  await fixture({ folders: [], register: null, index: null, files: {} }, (directory) => {
     const result = run(directory);
     assert.equal(result.status, 0);
     assert.equal(result.stdout.trim(), 'Workroom is absent; nothing was checked.');
     fails(run(directory, true), [
       'workroom folder is missing (strict mode)', 'workroom folder is missing (strict mode)', 'register is missing',
+      'checklist index is missing',
     ]);
   });
 });
 
 for (const folder of ['docs/plans', 'docs/checklists']) {
   test(`only ${folder} present without register: both modes fail`, async () => {
-    await fixture({ folders: [folder], register: null, files: {} }, (directory) => {
-      fails(run(directory), ['register is missing']);
-      fails(run(directory, true), ['workroom folder is missing (strict mode)', 'register is missing']);
+    await fixture({ folders: [folder], register: null, index: null, files: {} }, (directory) => {
+      fails(run(directory), ['register is missing', 'checklist index is missing']);
+      fails(run(directory, true), [
+        'workroom folder is missing (strict mode)', 'register is missing', 'checklist index is missing',
+      ]);
     });
   });
 }
 
 test('strict mode rejects a missing checklist folder even when the register is valid', async () => {
-  await fixture({ folders: ['docs/plans'] }, (directory) => {
-    assert.equal(run(directory).status, 0);
-    fails(run(directory, true), ['workroom folder is missing (strict mode)']);
+  await fixture({ folders: ['docs/plans'], index: null }, (directory) => {
+    fails(run(directory), ['checklist index is missing']);
+    fails(run(directory, true), ['workroom folder is missing (strict mode)', 'checklist index is missing']);
   });
 });
 
@@ -304,6 +311,6 @@ test('real repository register passes the CLI', (context) => {
   const result = spawnSync(process.execPath, [script], { cwd: root, encoding: 'utf8', timeout: 15_000 });
   assert.ifError(result.error);
   assert.equal(result.status, 0, `${result.stdout}${result.stderr}`);
-  assert.equal(result.stdout, '');
+  for (const line of result.stdout.split(/\r?\n/).filter(Boolean)) assert.ok(line.startsWith('note: '), result.stdout);
   assert.equal(result.stderr, '');
 });
