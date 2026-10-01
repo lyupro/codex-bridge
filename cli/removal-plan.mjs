@@ -143,6 +143,9 @@ export function planRecordOperation({ command, recordState, format2, ownerKey, i
   if (command === 'purge' || imagePolicy.remove) {
     return recordOutcome('delete', command === 'purge' ? 'purge' : 'last owner');
   }
+  if (Object.keys(format2.owners).length === 0) {
+    return recordOutcome('retain', 'no host is recorded as using it');
+  }
   if (Object.hasOwn(format2.owners, ownerKey)) {
     return recordOutcome('remove-current-owner', imagePolicy.reason);
   }

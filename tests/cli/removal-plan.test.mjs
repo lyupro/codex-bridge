@@ -266,7 +266,19 @@ test('uninstall removes only the current owner after detach and preserves the po
 
 test('uninstall retains a record this host does not own without requiring detach', () => {
   assert.deepEqual(planRecordOperation({ command: 'uninstall', recordState: 'valid', format2: { owners: { '/other': {} }, inventory: {} }, ownerKey: '/host', imagePolicy: { remove: false, reason: 'other owners' } }), { operation: 'retain', reason: 'not an owner of this home', dependsOnDetach: false, blocked: false });
-  assert.deepEqual(planRecordOperation({ command: 'uninstall', recordState: 'valid', format2: { owners: {}, inventory: {} }, ownerKey: 'toString', imagePolicy: { remove: false, reason: 'incomplete inventory' } }), { operation: 'retain', reason: 'not an owner of this home', dependsOnDetach: false, blocked: false });
+  assert.deepEqual(planRecordOperation({ command: 'uninstall', recordState: 'valid', format2: { owners: { '/other': {} }, inventory: {} }, ownerKey: 'toString', imagePolicy: { remove: false, reason: 'incomplete inventory' } }), { operation: 'retain', reason: 'not an owner of this home', dependsOnDetach: false, blocked: false });
+});
+
+test('uninstall retains an owner-less valid record with the orphan reason without requiring detach', () => {
+  for (const ownerKey of ['/host', 'toString']) {
+    const result = planRecordOperation({
+      command: 'uninstall', recordState: 'valid', format2: { owners: {}, inventory: 'incomplete' },
+      ownerKey, imagePolicy: { remove: false, reason: 'incomplete inventory' },
+    });
+    assert.deepEqual(result, {
+      operation: 'retain', reason: 'no host is recorded as using it', dependsOnDetach: false, blocked: false,
+    });
+  }
 });
 
 test('record planning rejects unknown and missing commands and record states', () => {

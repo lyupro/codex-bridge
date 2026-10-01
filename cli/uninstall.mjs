@@ -2,28 +2,23 @@
  * Uninstalls one host: its side from an inspection of the package's marks, the shared image only from
  * the record and only once the host is detached, preserving host data and foreign files (Plan_65 D10).
  */
-import path from 'node:path';
 import {
   fileFingerprint,
-  installRecordPath,
   legacyInstallRecordPath,
   readInstallRecord,
 } from './manifest.mjs';
 import { imageRemoval } from './install-owners.mjs';
-import { asFormat2, imageMembers, readInstallRecordFile } from './install-record.mjs';
+import { asFormat2, readInstallRecordFile } from './install-record.mjs';
 import { normalizeRepoPath } from '../src/home/lib/runner/project-dir.mjs';
 import { removePermissionRules } from './permissions.mjs';
-import { hostContractPath } from './host-contract.mjs';
 import { inspectHost, hasPackageMarks } from './host-inspection.mjs';
 import { removeHostSide } from './host-removal.mjs';
 import { askRemoval, removalHint } from './inventory-removal.mjs';
-import { brandStateDir } from '../src/home/lib/brand-home.mjs';
 import { withSettingsRun } from './settings-merge.mjs';
 import { withLifecycle } from './lifecycle-transaction.mjs';
 import { readRulesRegistry, removeRulesOwner, remainingRulesOwners } from './rules-owners.mjs';
-import { removeEmpty, removeEmptyHome, removeEmptyLayout } from './remove-layout.mjs';
+import { removeEmpty, removeEmptyLayout } from './remove-layout.mjs';
 import { recordHomeWriter, removeOutside } from './record-removal.mjs';
-import { removeImageFiles } from './image-removal.mjs';
 import { buildHomeRemovalPlan } from './home-removal-plan.mjs';
 import { executeHomePlan } from './home-plan-execute.mjs';
 import { outcomeLines, outcomeExitCode, planLines, planExitCode } from './removal-outcomes.mjs';
@@ -48,28 +43,8 @@ async function removePermissions(host, inspection, dryRun) {
   return permissionOutput(host, removed, dryRun);
 }
 
-// A real uninstall removes ~90 image files; one line per file buried the few that were kept
-// (Plan_65 H7). The dry run still lists every file, since there the list is the point.
-function realImageLines(host, lines) {
-  const removed = lines.filter((line) => line.startsWith('Removed '));
-  const kept = lines.filter((line) => !line.startsWith('Removed '));
-  return removed.length ? [`Removed ${removed.length} image file(s) from ${host.brandRoot}.`, ...kept] : kept;
-}
-
 function stillAttachedLine(host) {
   return `Did not finish uninstalling codex-bridge: ${host.root} still has its hooks; fix ${host.settingsPath} and run uninstall again.`;
-}
-
-// Plan_62 D22: uninstall removes only recorded files, and the message used to name only runs and
-// config.json — state/, the host measurement and conventions.md stayed behind unmentioned. Until
-// Plan_65 derives this from a registry, the sentence names every kind the package writes while working.
-function preservationText(host) {
-  return `Run artifacts in ${path.join(host.root, 'codex-runs')} are preserved, and so is what the package `
-    + `wrote into ${host.brandRoot} while working: the run configuration ${host.brandConfigPath}, the conventions `
-    + `${host.brandConventionsPath}, the host measurement ${hostContractPath(host)} and runtime state in `
-    + `${brandStateDir(host.brandRoot)} (dispatcher state, guard counters, the handback witness, the host `
-    + 'observations, dispatcher contract verdicts, and hook diagnostics that hold the full hook input). Delete them by '
-    + 'hand for a complete removal.';
 }
 
 // Plan_65 D6: uninstalling one host removed the shared image from under every other host of the
@@ -103,18 +78,22 @@ function imageDispositionLine(host, decision, dryRun) {
 // of ANY host of the home promised a question and printed "not installed" instead. The branch decides from
 // the raw record and the inspection only — `legacy` is nobody's host view (D10 item 5) — removes the named
 // host's side either way, and removes the image only on "yes" for a detached host.
-async function uninstallOrphan(options, format2, inspection, registry) {
+async function uninstallOrphan(options, inspection, registry) {
   const { host, dryRun = false } = options;
-  const preservation = preservationText(host);
   const promptOptions = { ...options, candidates: options.candidates ?? registry?.owners ?? [] };
   if (dryRun) {
     const permissionLine = await removePermissions(host, inspection, true);
     const hostSide = await removeHostSide(host, inspection, { owner: null, dryRun: true });
+    const imagePolicy = { remove: hostSide.detached,
+      reason: hostSide.detached ? 'operator confirmed' : 'this host is still attached' };
+    const plan = await buildHomeRemovalPlan({ command: 'uninstall', host, packageRoot: options.packageRoot,
+      imagePolicy });
     return {
       exitCode: 1,
       output: [permissionLine, ...hostSide.lines,
-        `A real run would ask whether to remove the shared image of ${host.brandRoot}: no host is recorded as using it.`,
-        preservation].join('\n'),
+        `A real run would ask whether to remove the shared image of ${host.brandRoot}: \
+no host is recorded as using it.`,
+        'If the answer is yes:', ...planLines(plan, { host, detached: hostSide.detached })].join('\n'),
     };
   }
 
@@ -123,35 +102,26 @@ async function uninstallOrphan(options, format2, inspection, registry) {
 
   const permissionLine = await removePermissions(host, inspection, false);
   const hostSide = await removeHostSide(host, inspection, { owner: null });
+  const imagePolicy = answer === 'remove'
+    ? { remove: hostSide.detached,
+      reason: hostSide.detached ? 'operator confirmed' : 'this host is still attached' }
+    : { remove: false, reason: 'no host is recorded as using it' };
+  const plan = await buildHomeRemovalPlan({ command: 'uninstall', host, packageRoot: options.packageRoot,
+    imagePolicy });
   await removeEmpty(host.commandsDir);
   await removeEmpty(host.agentsDir);
   await removeEmptyLayout(host.legacyAgentsDir);
   await removeEmptyLayout(host.legacyCommandsDir);
+  const { outcomes } = await executeHomePlan(host, plan,
+    { detached: hostSide.detached, imageMembers: plan.imageMembers });
 
-  let imageLine;
-  let imageLines = [];
+  let imageLine = null;
   let hint = null;
-  if (answer === 'remove' && hostSide.detached) {
-    const members = imageMembers(format2, host);
-    const removed = await removeImageFiles(
-      host,
-      members,
-      { brand: format2.image.fingerprints?.brand },
-      { packageRoot: options.packageRoot },
-    );
-    imageLines = realImageLines(host, removed.lines);
-    const writer = recordHomeWriter(host, members);
-    try {
-      await writer.unlink('install-record', installRecordPath(host));
-    } catch (err) {
-      if (err.code !== 'ENOENT') throw err;
-    }
-    await removeEmptyHome(writer, 'install-image', host.brandRoot);
-    imageLine = `Removed the shared image and the installation record of ${host.brandRoot}.`;
-  } else if (answer === 'remove') {
+  if (answer === 'remove' && !hostSide.detached) {
     imageLine = `Left the shared image in ${host.brandRoot} because this host's hooks could not be removed.`;
-  } else {
-    imageLine = `Left the shared image in ${host.brandRoot} because no host is recorded as using it and the inventory is incomplete.`;
+  } else if (answer !== 'remove') {
+    imageLine = `Left the shared image in ${host.brandRoot} because no host is recorded as using it \
+and the inventory is incomplete.`;
     hint = removalHint(host);
   }
 
@@ -161,8 +131,8 @@ async function uninstallOrphan(options, format2, inspection, registry) {
     : hasMarks ? 'Uninstalled codex-bridge.'
       : `No codex-bridge files or hooks were found in ${host.root}.`;
   return {
-    exitCode: answer === 'remove' && hostSide.detached ? 0 : 1,
-    output: [heading, permissionLine, ...hostSide.lines, ...imageLines, imageLine, hint, preservation]
+    exitCode: answer === 'remove' && hostSide.detached ? outcomeExitCode(outcomes) : 1,
+    output: [heading, permissionLine, ...hostSide.lines, imageLine, hint, ...outcomeLines(outcomes, { host })]
       .filter(Boolean).join('\n'),
   };
 }
@@ -186,7 +156,7 @@ async function uninstallInRun(options = {}) {
   const owner = format2?.owners[ownerKey] ?? null;
   // Plan_65 D10: inspect marks and content before permission edits or any other host mutation.
   const inspection = await inspectHost(host, { owner });
-  if (orphaned) return uninstallOrphan(options, format2, inspection, registry);
+  if (orphaned) return uninstallOrphan(options, inspection, registry);
 
   const record = await readInstallRecord(host);
   let decision = rawRecord === null
