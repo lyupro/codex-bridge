@@ -1,6 +1,6 @@
 /**
- * Asks uninstall's permission to remove a shared image that an incomplete inventory cannot prove
- * unused (Plan_65 D9).
+ * Asks the operator's permission for removals the installation record cannot prove safe: uninstall's
+ * shared image under an incomplete inventory (Plan_65 D9) and purge's two consents (D6, D12 item 5).
  *
  * An old installation record never named every host of the home, so leaving the last KNOWN owner
  * behind, or finding no owner at all, is not proof that nobody else runs from the image. Only the
@@ -43,6 +43,39 @@ export async function askRemoval(host, kind, options) {
   if (answer === 'yes') return 'remove';
   if (answer === 'no') return 'keep';
   return 'cancel';
+}
+
+// Plan_65 D6/D12 item 5: purge needs two separate consents, in this order. The first replaces the
+// inventory the record cannot prove; the second is the only permission to delete the operator's own data.
+export function purgeInventoryQuestion(host, candidates) {
+  return [
+    `Home: ${host.brandRoot}`,
+    `Purge removes this home for good, including what you edited in it. Leaving host: ${host.root}.`,
+    ...registryHintLines(host, candidates),
+    'Is the inventory complete — does no other host use this home?',
+  ].join('\n');
+}
+
+export function purgeDataQuestion(host, dataFiles) {
+  const listed = dataFiles.length ? dataFiles.map((file) => `  ${file}`) : ['  none found'];
+  return [
+    `Your data in ${host.brandRoot}:`,
+    ...listed,
+    'Delete it? This cannot be undone; run artifacts outside the home stay.',
+  ].join('\n');
+}
+
+/**
+ * Asks one purge consent. Unlike askRemoval, "no terminal" is answered here as 'no': purge without
+ * a person at the keyboard has no consent to rely on, and the caller refuses rather than keeping.
+ */
+export async function askPurgeConsent(host, kind, options, detail = []) {
+  if (kind !== 'inventory' && kind !== 'data') throw new TypeError(`Unknown purge consent: ${kind}`);
+  if (!isInteractive(options)) return 'no';
+  const question = kind === 'inventory'
+    ? purgeInventoryQuestion(host, options.candidates ?? (await readRulesRegistry(host))?.owners ?? [])
+    : purgeDataQuestion(host, detail);
+  return askYesNo(question, options);
 }
 
 export function removalHint(host) {

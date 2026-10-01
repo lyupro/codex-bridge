@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
-import { askRemoval, lastOwnerQuestion, orphanQuestion, removalHint } from '../../cli/inventory-removal.mjs';
+import {
+  askPurgeConsent, askRemoval, lastOwnerQuestion, orphanQuestion, purgeDataQuestion, purgeInventoryQuestion, removalHint,
+} from '../../cli/inventory-removal.mjs';
 import { normalizedRulesOwner, RULES_REGISTRY_VERSION, rulesRegistryPath } from '../../cli/rules-owners.mjs';
 import { resolveHost } from '../../cli/hosts.mjs';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
@@ -113,4 +115,34 @@ test('removal hint names the host and shared home', async (t) => {
 
   assert.ok(hint.startsWith(`Run codex-bridge uninstall --host "${host.root}" again in a terminal`));
   assert.ok(hint.endsWith(`no other host uses ${host.brandRoot} and remove it.`));
+});
+
+// Plan_65 D6/D12 item 5: purge's two consents are separate questions, and no terminal is never consent.
+test('purge consents ask the inventory and the data questions apart', async (t) => {
+  const { host, ownRoot, otherRoot } = await fixture(t);
+
+  const inventory = purgeInventoryQuestion(host, [ownRoot, otherRoot]);
+  assert.equal(inventory.split('\n')[0], `Home: ${host.brandRoot}`);
+  assertHintShowsOnly(inventory, otherRoot, ownRoot);
+  assert.ok(inventory.endsWith('Is the inventory complete — does no other host use this home?'));
+
+  const data = purgeDataQuestion(host, ['config.json', 'state/host-observations.json']);
+  assert.deepEqual(data.split('\n').slice(1, 3), ['  config.json', '  state/host-observations.json']);
+  assert.ok(data.endsWith('Delete it? This cannot be undone; run artifacts outside the home stay.'));
+  assert.ok(purgeDataQuestion(host, []).includes('  none found'));
+});
+
+test('purge consent answers yes, no and cancel, and refuses without a terminal', async (t) => {
+  const { host } = await fixture(t);
+  for (const kind of ['inventory', 'data']) {
+    for (const answer of ['yes', 'no', 'cancel']) {
+      const prompt = countingPrompt(answer);
+      assert.equal(await askPurgeConsent(host, kind, { isTTY: true, candidates: [], prompt }, ['config.json']), answer);
+      assert.equal(prompt.calls, 1);
+    }
+    const silent = countingPrompt('yes');
+    assert.equal(await askPurgeConsent(host, kind, { isTTY: false, prompt: silent }), 'no');
+    assert.equal(silent.calls, 0);
+  }
+  await assert.rejects(askPurgeConsent(host, 'everything', { isTTY: true }), /Unknown purge consent: everything/);
 });
