@@ -224,7 +224,8 @@ export const PHASE_SCHEMAS = {
           required: ['option_id', 'text'],
           properties: {
             option_id: { type: 'string' },
-            text: { type: 'string', pattern: '^[^\\r\\n\\u2028\\u2029]*$' },
+            // Plan_68 D8: the 2026-10-01 runs hit control characters when prose line breaks were banned.
+            text: { type: 'string' },
           },
         },
         unlisted_option: { type: 'string' },

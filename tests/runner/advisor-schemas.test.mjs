@@ -86,7 +86,7 @@ test('advisor schemas are selected by phase while execution schemas retain their
   for (const [agent, schema] of Object.entries(SCHEMAS)) assert.equal(schemaFor(agent, 'default'), schema);
 });
 
-test('schemas have no hidden string length caps and every array bound is rendered from its schema', () => {
+test('schemas have no hidden string length caps or prose line-break bans and every array bound is rendered from its schema', () => {
   const schemas = [
     ...Object.entries(SCHEMAS).map(([agent, schema]) => ({ agent, schema })),
     ...Object.entries(PHASE_SCHEMAS.advisor).map(([phase, schema]) => ({ agent: 'codex-advisor', phase, schema })),
@@ -99,6 +99,16 @@ test('schemas have no hidden string length caps and every array bound is rendere
         if (node.pattern) {
           assert.equal(/\{\d+(?:,\d*)?\}/.test(node.pattern), false,
             `${agent}${phase ? `/${phase}` : ''} ${path} pattern bounds string length`);
+          // Plan_68 D8: the 2026-10-01 runs substituted control characters for banned prose breaks.
+          if (!path.endsWith('.file')) {
+            const pattern = new RegExp(node.pattern, 'u');
+            if (pattern.test('First Second')) {
+              for (const newline of ['\n', '\u2028']) {
+                assert.equal(pattern.test(`First${newline}Second`), true,
+                  `${agent}${phase ? `/${phase}` : ''} ${path} pattern forbids ${JSON.stringify(newline)}`);
+              }
+            }
+          }
         }
       }
     }
@@ -189,10 +199,6 @@ for (const [name, change] of [
   ['empty checks', (r) => { r.independent_checks = []; }],
   ['empty independent-check evidence', (r) => { r.independent_checks[0].evidence = []; }],
   ['empty risk-outcome evidence', (r) => { r.risk_outcomes[0].evidence = []; }],
-  ...['\n', '\r', '\u2028', '\u2029'].flatMap((newline) => [
-    ['multiline recommendation', (r) => { r.recommendation.text = `First${newline}Second`; }],
-    ['trailing line terminator', (r) => { r.recommendation.text = `First${newline}`; }],
-  ]),
   ['wrong type', (r) => { r.assumptions = 'none'; }],
   ['wrong array item type', (r) => { r.why[0] = 1; }],
   ['null object', (r) => { r.recommendation = null; }],
@@ -207,6 +213,19 @@ for (const [name, change] of [
     change(value);
     assert.equal(validates(advisorSchema('advise'), value), false);
   });
+}
+
+for (const newline of ['\n', '\r\n', '\u2028', '\u2029']) {
+  for (const [name, text] of [
+    ['multiline recommendation', `First paragraph.${newline}Second paragraph.`],
+    ['trailing line terminator', `First paragraph.${newline}Second paragraph.${newline}`],
+  ]) {
+    test(`advise schema accepts ${name} ${JSON.stringify(newline)}`, () => {
+      const value = validAdvice();
+      value.recommendation.text = text;
+      assert.equal(validates(advisorSchema('advise'), value), true);
+    });
+  }
 }
 
 test('schema minimum boundaries, unrestricted recommendation length, confidence values and scope types are enforced', () => {

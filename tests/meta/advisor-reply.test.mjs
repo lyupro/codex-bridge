@@ -52,6 +52,14 @@ test('advice leads with the recommended option and counts the settled risks', ()
   assert.ok(rows.length <= 5);
 });
 
+test('multiline advice keeps both paragraphs on one recommendation reply line', () => {
+  const result = validAdvice();
+  result.recommendation.text = 'Keep the current boundary.\nPreserve both paragraphs.';
+  const rows = reply(result);
+  assert.equal(rows[0], 'OK — recommend keep: Keep the current boundary. Preserve both paragraphs.');
+  assert.doesNotMatch(rows[0], /[\r\n\u2028\u2029]/u);
+});
+
 test('meta.json records the scope outcome for advisors and the named advice for builds', () => {
   const scope = collect(makeRun({ result: { ...validScope(), sufficient: false, missing_paths: ['src/a.mjs'] } }),
     'codex-advisor', 0).meta;
