@@ -41,7 +41,9 @@ import { cleanupRetention } from '../retention.mjs';
 import { renderConventions } from './conventions.mjs';
 import { validateScope } from './scope-check.mjs';
 import { probeSandbox, sandboxRefusal } from './sandbox-probe.mjs';
-import { preflightRefusal, resolveRunPhase, scopeRunRefusal, taskPreflight } from './preflight.mjs';
+import {
+  codexAvailabilityRefusal, preflightRefusal, resolveRunPhase, scopeRunRefusal, taskPreflight,
+} from './preflight.mjs';
 
 /**
  * The worker is this same program re-invoked as `--worker <runDir>`, so the path spawned
@@ -196,9 +198,12 @@ export async function launcher(argv = process.argv.slice(2)) {
     );
   }
 
-  // Review 2026-09-17: the slow probe widened the window between the busy check and registration.
-  // Probe first so the busy check sees writers that registered while it waited.
-  // Keep dead refusal before retention to preserve old run artifacts.
+  // Plan_60 D2: a missing or signed-out Codex answers UNAVAILABLE (exit 4) before the paid sandbox probe.
+  const availability = await codexAvailabilityRefusal();
+  if (availability?.unavailable) { process.stdout.write(`${availability.text}\n`); return 4; }
+  if (availability) die(availability.text, 1);
+  // Review 2026-09-17: probe before the busy check so it sees writers that registered while the slow
+  // probe waited; the dead refusal stays before retention to preserve old run artifacts.
   const sandboxProbe = await probeSandbox({ agent: opts.agent, repo: repoRoot });
   if (sandboxProbe.outcome === 'dead') die(sandboxRefusal(sandboxProbe));
 

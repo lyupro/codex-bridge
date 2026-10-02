@@ -9,7 +9,6 @@ import { advisorTaskRefusal } from '../meta/advisor-task.mjs';
 import { unavailableRows } from '../meta/reply.mjs';
 import { activeRunDetails, readJson } from '../write-meta.mjs';
 import { probeCodexAvailability } from './codex-availability.mjs';
-import { codexUnavailableReason } from './codex-cmd.mjs';
 import { agentRole } from '../agents.mjs';
 import { die } from './args.mjs';
 
@@ -124,13 +123,5 @@ export function preflightRefusal({ agent, projectRunsRoot, repoRoot }) {
     ].join('\n');
   }
 
-  const why = codexUnavailableReason();
-  if (why !== null) {
-    return [
-      `Codex CLI unavailable: ${why}`,
-      'Operator check: codex --version (and codex login if authorization is rejected)',
-      'The run folder was not created; quota was not spent.',
-    ].join('\n');
-  }
   return null;
 }

@@ -66,10 +66,16 @@ const REFUSALS = [
     why: 'Plan_57: the host is broken, the order is not; repair precedes any run',
   },
   {
-    name: 'a busy tree or an unavailable Codex CLI',
+    name: 'a busy tree',
     side: 'before',
     marker: 'if (preflightError) die(preflightError, 1)',
-    why: 'Plan_58: both spend no quota, so neither may leave a path in the worktree',
+    why: 'Plan_58: it spends no quota, so it may not leave a path in the worktree',
+  },
+  {
+    name: 'an unclear Codex availability probe',
+    side: 'before',
+    marker: 'if (availability) die(availability.text, 1)',
+    why: 'Plan_60 D2: an inconclusive probe is an ordinary refusal and spends no quota',
   },
   {
     name: 'an argument cmd.exe cannot carry',
@@ -99,6 +105,12 @@ test('task gates precede the paid sandbox probe and read the one parsed task', (
   assert.ok(taskGate > LAUNCHER.indexOf('= parseArgs(argv)'));
   assert.ok(taskGate >= 0 && taskGate < LAUNCHER.indexOf('await probeSandbox('));
   assert.equal(LAUNCHER.includes('preflightAdvisorInput'), false);
+});
+
+test('Codex availability is checked after the repeat refusal and before the paid sandbox probe', () => {
+  const availability = LAUNCHER.indexOf('if (availability) die(availability.text, 1)');
+  assert.ok(availability > LAUNCHER.indexOf('`--continue is required:'));
+  assert.ok(availability < LAUNCHER.indexOf('await probeSandbox('));
 });
 
 for (const { name, side, marker, why } of REFUSALS) {

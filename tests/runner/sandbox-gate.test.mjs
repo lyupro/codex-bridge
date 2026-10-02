@@ -36,6 +36,8 @@ const args = process.argv.slice(2);
 fs.appendFileSync(new URL('./codex-calls.jsonl', import.meta.url), JSON.stringify(args) + '\\n');
 if (args[0] === '--version') {
   console.log('codex-cli 0.154.0');
+} else if (args[0] === 'login' && args[1] === 'status') {
+  console.log('Logged in using ChatGPT');
 } else if (args[0] === 'sandbox') {
   const scenario = ${JSON.stringify(scenario)};
   if (scenario === 'dead') {
@@ -140,9 +142,10 @@ test('a dead sandbox refuses the real CLI before creating a run or checking Code
   assert.deepEqual(statusFiles(tree.runsRoot), []);
   const invocations = calls(tree.root);
   assert.equal(invocations.some((args) => args.includes('exec')), false);
-  assert.deepEqual(invocations.map((args) => args[0]), ['sandbox', 'sandbox', '--version']);
-  assert.ok(invocations[0].includes('-c'));
-  assert.deepEqual(invocations[1], ['sandbox', '--', 'cmd', '/d', '/c', 'echo', SANDBOX_PROBE_MARKER]);
+  assert.deepEqual(invocations.slice(0, 2), [['--version'], ['login', 'status']]);
+  assert.deepEqual(invocations.slice(2).map((args) => args[0]), ['sandbox', 'sandbox', '--version']);
+  assert.ok(invocations[2].includes('-c'));
+  assert.deepEqual(invocations[3], ['sandbox', '--', 'cmd', '/d', '/c', 'echo', SANDBOX_PROBE_MARKER]);
 });
 
 test('changed Codex flags continue silently and record both real probe attempts', (t) => {
@@ -163,9 +166,10 @@ test('changed Codex flags continue silently and record both real probe attempts'
     assert.equal(attempt.stderrTail, '');
   }
   const invocations = calls(tree.root);
-  assert.deepEqual(invocations.map((args) => args[0]), ['sandbox', 'sandbox', '--version']);
-  assert.ok(invocations[0].includes('-c'));
-  assert.deepEqual(invocations[1], ['sandbox', '--', 'cmd', '/d', '/c', 'echo', SANDBOX_PROBE_MARKER]);
+  assert.deepEqual(invocations.slice(0, 2), [['--version'], ['login', 'status']]);
+  assert.deepEqual(invocations.slice(2).map((args) => args[0]), ['sandbox', 'sandbox']);
+  assert.ok(invocations[2].includes('-c'));
+  assert.deepEqual(invocations[3], ['sandbox', '--', 'cmd', '/d', '/c', 'echo', SANDBOX_PROBE_MARKER]);
   assertSilentProbe(output);
 });
 
@@ -188,8 +192,9 @@ for (const [agent, sandbox] of [['codex-build', 'workspace-write'], ['codex-scou
     assert.equal(attempt.stderrTail, '');
     assert.ok(Number.isInteger(attempt.ms) && attempt.ms >= 0);
     const invocations = calls(tree.root);
-    assert.deepEqual(invocations.map((args) => args[0]), ['sandbox', '--version']);
-    const flagged = invocations[0];
+    assert.deepEqual(invocations.slice(0, 2), [['--version'], ['login', 'status']]);
+    assert.deepEqual(invocations.slice(2).map((args) => args[0]), ['sandbox']);
+    const flagged = invocations[2];
     assert.ok(flagged.includes('-c'));
     assert.ok(flagged.includes(`sandbox_mode=${sandbox}`), JSON.stringify(flagged));
     assert.ok(flagged.includes('windows.sandbox=elevated'), JSON.stringify(flagged));
@@ -228,8 +233,9 @@ if (args[0] === 'sandbox') {
     assert.deepEqual(fs.readdirSync(project, { withFileTypes: true })
       .filter((entry) => entry.isDirectory()).map((entry) => entry.name), ['other-live-run']);
     const invocations = calls(tree.root);
-    assert.deepEqual(invocations.map((args) => args[0]), ['sandbox']);
-    assert.ok(invocations[0].includes('-c'));
+    assert.deepEqual(invocations.slice(0, 2), [['--version'], ['login', 'status']]);
+    assert.deepEqual(invocations.slice(2).map((args) => args[0]), ['sandbox']);
+    assert.ok(invocations[2].includes('-c'));
   } finally {
     holder.kill();
     await holderExited;
@@ -260,7 +266,8 @@ test('a dead sandbox refuses a busy writing tree before creating a run', async (
       .filter((entry) => entry.isDirectory()).map((entry) => entry.name), ['other-live-run']);
     const invocations = calls(tree.root);
     assert.equal(invocations.some((args) => args.includes('exec')), false);
-    assert.deepEqual(invocations.map((args) => args[0]), ['sandbox', 'sandbox', '--version']);
+    assert.deepEqual(invocations.slice(0, 2), [['--version'], ['login', 'status']]);
+    assert.deepEqual(invocations.slice(2).map((args) => args[0]), ['sandbox', 'sandbox', '--version']);
   } finally {
     holder.kill();
     await holderExited;

@@ -128,6 +128,7 @@ test('the busy refusal reports on stderr without creating a run folder', (t) => 
 const command = process.argv[2];
 if (command === 'sandbox') console.log('codex-bridge-sandbox-ok');
 else if (command === '--version') console.log('codex-cli fixture');
+else if (command === 'login' && process.argv[3] === 'status') console.log('Logged in using ChatGPT');
 else process.exitCode = 90;
 `);
   const pathKey = Object.keys(process.env).find((key) => key.toUpperCase() === 'PATH') || 'PATH';
@@ -258,17 +259,66 @@ test('a folder with a Codex session still sends the same order to the continuati
   assert.doesNotMatch(output.stdout, /^RUN=/m);
 });
 
-test('an unavailable Codex CLI reports on stderr without creating a run folder', (t) => {
-  const root = fixture(t, 'codex');
+test('a signed-out Codex reports UNAVAILABLE without creating a run folder', (t) => {
+  const root = fixture(t, 'signed-out');
   const repo = path.join(root, 'repo');
   const runsRoot = path.join(root, 'runs');
   fs.mkdirSync(repo);
   const project = resolveProjectRunsDir(runsRoot, repo).dir;
   const source = `
-${launcherProcessMocks({ worker: 'forbidden', probe: 'marker' })}
-const availableSpawnSync = childProcess.spawnSync;
-childProcess.spawnSync = (command, args, options) =>
-  command === 'git' ? availableSpawnSync(command, args, options) : { status: 1, error: new Error('Codex missing'), stderr: '', stdout: '' };
+${launcherProcessMocks({ worker: 'forbidden', probe: 'forbidden' })}
+const availableSpawn = childProcess.spawn;
+childProcess.spawn = (command, args = [], options) => {
+  if (!args.join(' ').includes('login status')) return availableSpawn(command, args, options);
+  const child = new LauncherMocksEventEmitter();
+  child.stdout = new LauncherMocksPassThrough();
+  child.stderr = new LauncherMocksPassThrough();
+  child.kill = () => true;
+  setImmediate(() => {
+    child.emit('spawn');
+    child.stdout.end();
+    child.stderr.end('Not logged in\\n');
+    setImmediate(() => { child.emit('exit', 1, null); child.emit('close', 1, null); });
+  });
+  return child;
+};
+`;
+  const output = mockedLauncher(source, baseArgs('codex-review', repo, 'signed-out-order'), 'codex refusal', {
+    CODEX_RUNS_ROOT: runsRoot,
+  }, repo);
+
+  assert.equal(output.status, 4, output.stderr);
+  assert.match(output.stdout.split(/\r?\n/)[0], /^UNAVAILABLE \u2014 /);
+  assert.match(output.stdout, /Signal: codex login status: Not logged in/);
+  assert.match(output.stdout, /The run folder was not created; quota was not spent\.\s*$/);
+  assert.equal(output.stderr, '');
+  assert.deepEqual(fs.readdirSync(project, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory()), []);
+});
+
+test('an inconclusive Codex probe reports on stderr without creating a run folder', (t) => {
+  const root = fixture(t, 'inconclusive');
+  const repo = path.join(root, 'repo');
+  const runsRoot = path.join(root, 'runs');
+  fs.mkdirSync(repo);
+  const project = resolveProjectRunsDir(runsRoot, repo).dir;
+  const source = `
+${launcherProcessMocks({ worker: 'forbidden', probe: 'forbidden' })}
+const availableSpawn = childProcess.spawn;
+childProcess.spawn = (command, args = [], options) => {
+  if (!args.join(' ').includes('--version')) return availableSpawn(command, args, options);
+  const child = new LauncherMocksEventEmitter();
+  child.stdout = new LauncherMocksPassThrough();
+  child.stderr = new LauncherMocksPassThrough();
+  child.kill = () => true;
+  setImmediate(() => {
+    child.emit('spawn');
+    child.stdout.end();
+    child.stderr.end('Codex missing');
+    setImmediate(() => { child.emit('exit', 1, null); child.emit('close', 1, null); });
+  });
+  return child;
+};
 `;
   const output = mockedLauncher(source, baseArgs('codex-review', repo, 'codex-order'), 'codex refusal', {
     CODEX_RUNS_ROOT: runsRoot,
