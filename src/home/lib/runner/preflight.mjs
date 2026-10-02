@@ -6,10 +6,27 @@
 import path from 'node:path';
 import fs from 'node:fs';
 import { advisorTaskRefusal } from '../meta/advisor-task.mjs';
+import { unavailableRows } from '../meta/reply.mjs';
 import { activeRunDetails, readJson } from '../write-meta.mjs';
+import { probeCodexAvailability } from './codex-availability.mjs';
 import { codexUnavailableReason } from './codex-cmd.mjs';
 import { agentRole } from '../agents.mjs';
 import { die } from './args.mjs';
+
+/** Plan_60 D2: only conclusive evidence says UNAVAILABLE; an unclear probe stays an ordinary refusal. */
+export async function codexAvailabilityRefusal({ probe = probeCodexAvailability } = {}) {
+  const result = await probe();
+  if (result.state === 'available') return null;
+  const unavailable = result.state === 'missing' || result.state === 'logged-out';
+  const rows = unavailable ? unavailableRows(result.detail) : [
+    `Codex CLI unavailable: ${result.detail}`,
+    'Operator check: codex --version (and codex login if authorization is rejected)',
+  ];
+  return {
+    unavailable,
+    text: [...rows, 'The run folder was not created; quota was not spent.'].join('\n'),
+  };
+}
 
 /** Plan_59 D5/D6: settle design authority before any probe can spend quota. */
 export function taskPreflight({ agent, taskText }) {
