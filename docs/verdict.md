@@ -30,7 +30,9 @@ the first matching branch determines the status. The order is therefore part of 
    `stopped_on_deadline` field but no adjacent `stderr.log` — the same invocation writes both. A run
    whose arguments do not contain `--json` is archival and is judged by the rules of its own day.
 6. **A transport error in events.** An event with `type: "error"` or `turn.failed` produces `LIMIT` if it
-   carries `status: 429` or an error type naming a limit, and otherwise `FAIL` with the event's reason.
+   carries `status: 429` or an error type naming a limit, `UNAVAILABLE` for a final `turn.failed` matching
+   a measured signed-out sample (never the `Reconnecting...` `error` events), otherwise `FAIL` with the
+   event's reason; quota wins when both appear.
    The check considers only a run with nothing to show (an empty result or nonzero exit): the CLI also
    prints an error event for an interrupted stream that it then survives, and coloring a run that
    completed its work would mirror the false `LIMIT`. `item.completed` is never a source — see
@@ -210,6 +212,15 @@ was done.” Service paths are checked before chain lookup so an earlier run can
 | `OK` | Artifacts confirm contract fulfillment. | `0` |
 | `FAIL` | The contract, process, verification, or work match was violated. | `1` |
 | `LIMIT` | There is no result, and the event stream contains a transport refusal caused by exhausted quota. | `3` |
+| `UNAVAILABLE` | Codex is missing or signed out.[^codex-unavailable] | `5` |
+
+An unclear probe is never `UNAVAILABLE`; an unfamiliar sign-in error stays `FAIL` with its raw text until
+its sample is measured and added as a fixture (`tests/meta/fixtures/`); `2` is the launcher's argument error.
+
+[^codex-unavailable]: Before start by the runner's own PATH lookup and `codex login status` (exit 1 with
+    the line `Not logged in`); after start only when the final `turn.failed` matches a measured signed-out
+    sample (codex-cli 0.159.0:
+    `unexpected status 401 Unauthorized: Missing bearer or basic authentication in header`).
 
 `LIMIT` does not mean partial success. For build, the short response separately reports in a `Worktree:`
 line whether unfinished changes remain in the tree — for both `LIMIT` and `FAIL`. “Work was not done”

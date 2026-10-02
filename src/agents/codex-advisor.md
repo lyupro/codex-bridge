@@ -142,9 +142,13 @@ path.
 - `FAIL` — the result is empty, invalid, the return code is nonzero, or the run was abandoned.
 - `LIMIT` — the result is empty and the log signals a ChatGPT quota limit. The quota is spent and
   the task was not completed; do not restart it.
+- `UNAVAILABLE` — Codex is missing or signed out (checked before start, or recognised from the CLI's own
+  sign-in refusal after start). The task was not attempted or could not run; this is not a task failure and
+  not a reason to restart — return the block as is, the orchestrator hands the task to the next executor.
 
-The script return code mirrors the status: `0` / `1` / `3`. A nonzero code is not a reason to
+The script return code mirrors the status: `0` / `1` / `3` / `5`. A nonzero code is not a reason to
 retry, change the command, or investigate on your own.
+Code `5` means `UNAVAILABLE`.
 
 For `scope`, `OK — scope: sufficient; …` means the listed paths cover the question; continue with
 `--phase advise` only when the orchestrator supplies that continuation. `OK — scope: insufficient;
@@ -164,9 +168,11 @@ the runner refuses a continued scope, because it would spend the continuation th
 
 ## Codex is unavailable
 
-The runner checks `codex --version` before starting. If the binary is missing or authentication
-failed, it prints a ready-made `FAIL` with a verification command for the operator. Return that
-output. Performing the task manually instead of Codex is prohibited for any reason it fails.
+The runner looks `codex` up on PATH and asks `codex login status` before starting. A missing binary
+or the measured "Not logged in" answer prints a ready-made `UNAVAILABLE` block (first line
+`UNAVAILABLE — `, exit 5, no run folder). An unclear probe prints an ordinary refusal starting
+`Codex CLI unavailable:` (exit 1). Return that output verbatim.
+Performing the task manually instead of Codex is prohibited for any reason it fails.
 
 ## What a violation looks like
 

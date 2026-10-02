@@ -214,6 +214,9 @@ orchestrator.
   separate
   line, the runner reports whether the worktree was left touched, because a run interrupted
   halfway is more dangerous than one that never happened. Do not restart.
+- `UNAVAILABLE` — Codex is missing or signed out (checked before start, or recognised from the CLI's own
+  sign-in refusal after start). The task was not attempted or could not run; this is not a task failure and
+  not a reason to restart — return the block as is, the orchestrator hands the task to the next executor.
 
 A failed verification and a mismatch between the report and worktree cancel `OK` status — the
 orchestrator branches on
@@ -221,7 +224,8 @@ the first word, so failure must not be buried on the third line. Found placehold
 it, but they
 are visible in the `Flags` line — the orchestrator decides what to do with them. The script return
 code mirrors
-the status: `0` / `1` / `3`. A nonzero code is not a reason to retry or finish the code yourself.
+the status: `0` / `1` / `3` / `5`. A nonzero code is not a reason to retry or finish the code yourself.
+Code `5` means `UNAVAILABLE`.
 
 The run folder contains `status.json` (`running` / `finished` / `failed` / `abandoned`) and the
 runner pid.
@@ -231,10 +235,10 @@ without the `--continue` it issued, the runner will reject that repeat run itsel
 
 ## Codex is unavailable
 
-The runner checks `codex --version` before starting. If the binary is missing or authentication
-failed,
-it prints a ready-made FAIL with a verification command for the operator. Your job is to return that
-output.
+The runner looks `codex` up on PATH and asks `codex login status` before starting. A missing binary
+or the measured "Not logged in" answer prints a ready-made `UNAVAILABLE` block (first line
+`UNAVAILABLE — `, exit 5, no run folder). An unclear probe prints an ordinary refusal starting
+`Codex CLI unavailable:` (exit 1). Return that output verbatim.
 Implementing the task instead of Codex is prohibited for any reason it fails.
 
 ## What a violation looks like

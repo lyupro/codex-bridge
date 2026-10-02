@@ -82,7 +82,15 @@ complete job before detaching from the launcher.
    and the rejected run remains visible in it. An `advise` continuation is additionally refused before
    folder creation unless the named run's `meta.json` records `agent: codex-advisor`, `phase: scope`,
    and `status: OK`.
-8. `probeSandbox()` (`runner/sandbox-probe.mjs`) asks the host's Codex sandbox to run `echo` with the
+8. First, `codexAvailabilityRefusal()` (`runner/preflight.mjs`, built on `runner/codex-availability.mjs`)
+   looks `codex` up on PATH and asks `codex login status` (10-second deadline each, through
+   `spawnCaptured()`). A missing binary or the measured `Not logged in` answer produces an `UNAVAILABLE`
+   block on stdout, exit 5, no folder, no quota; an unclear probe produces the ordinary
+   `Codex CLI unavailable:` refusal, exit 1. It runs before the sandbox probe because that probe can spend
+   quota, and after attach and the repeat refusal so a live same-order run is still joined first
+   (Plan_60 D2).
+
+   `probeSandbox()` (`runner/sandbox-probe.mjs`) asks the host's Codex sandbox to run `echo` with the
    role's own sandbox flags, for every agent. Windows and Linux are judged — each only after both a dead
    and a live sandbox were observed on it; on macOS the result is `skipped`. The sandbox counts as dead
    only on double evidence: no marker with the role's flags, no marker in the flag-free control form,
@@ -103,10 +111,10 @@ complete job before detaching from the launcher.
    and a process that never reports its exit gets five seconds after the stop, so the probe always
    settles.
    Only then comes the pre-flight pass (`runner/preflight.mjs`): for build, a live writing run in the
-   same repository, then the availability of `codex --version`. The order matters: the probe takes
+   same repository. The order matters: the probe takes
    seconds, and between the busy check and this run registering itself in step 10 nothing slow may run,
    or a second writer can enter the same tree unseen (review of 2026-09-17). A busy build therefore
-   waits for the probe before it is refused. Both refusals leave the worktree untouched and exit 1 —
+   waits for the probe before it is refused. The refusal leaves the worktree untouched and exits 1 —
    the order was correct, the host or the tree was not — because on 2026-09-19 a busy refusal created
    its folder first, and inside `~/.claude`, where run folders live in the worktree, the live writer's
    witness spent every tool call demanding the orchestrator revert a directory the tool itself had

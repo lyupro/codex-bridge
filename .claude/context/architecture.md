@@ -44,7 +44,7 @@ hand-edited files stop the run unless `--force`.
   (artifact reads and path matching), `chain` (earlier passes of the same task), `run-state`
   (`status.json` honesty, abandoned runs), `events` (the JSONL stream — the only module that knows
   it is JSONL), `startup` (a run that never began), `transport`/`deadline`/`outcome` (damaged
-  evidence, killed runs, the declared outcome), `verdict` (OK/FAIL/LIMIT), `reply` (printed lines),
+  evidence, killed runs, the declared outcome), `verdict` (OK/FAIL/LIMIT/UNAVAILABLE), `reply` (printed lines),
   `launch-rows` (rows from what the launcher recorded in `status.json` — retention, an inconclusive
   sandbox probe — applied once in `collect()` and once in `writeFailure()`, because the retention row
   once lived in five reply functions and was missing from the sixth path), `run-liveness` (the one
