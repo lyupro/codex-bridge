@@ -4,6 +4,115 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.9] - 2026-10-02
+
+### Added
+
+- `uninstall --purge` can remove operator data and the home folder after one preflight under the lifecycle lock:
+  no live runs, a readable installation record and no other recorded owners, before permissions, hooks or files change.
+  A live run is named with its stop command; an unreadable run folder refuses because it cannot be proven idle.
+- Purge asks separately whether the host inventory is complete and whether it may remove the listed operator data,
+  because a record cannot prove that nobody else uses the home and inventory consent is not deletion consent.
+  Without a terminal both answers are no; a refusal or cancellation changes nothing.
+- `uninstall --purge --dry-run` reports every refusal together and lists removals under
+  `If you confirm both questions:`, so an inspection never implies consent. It takes no lock and asks no questions;
+  refusals and unsafe entries exit 1, while the two pending confirmations alone do not.
+- The "Uninstall and purge" section in `docs/overview.md` explains removal and its limits, because a run can start
+  during purge and Node cannot prevent an ancestor being swapped between its check and removal.
+- The installation record keeps one owner per host sharing the home, because installing a second host used to erase
+  the first host's record. A new home starts with a complete inventory; an old record cannot prove all its owners.
+- Interactive install and update ask once whether this host is the home's only owner when migrating an old record
+  or recording a pre-existing image, because those transitions leave other users unknown. Uninstall asks again when
+  the last known owner of an incomplete inventory leaves; no keeps the image, and Ctrl+C cancels before changes.
+- `doctor` prints `host files` and `home owners` lines showing package files and hooks, files uninstall would keep,
+  recorded hosts and inventory completeness, because "not installed" had hidden files in an unrecorded host.
+- The `doctor` line `owners in sync` names hosts verified against an older shared image and gives their update commands,
+  because a warning printed only during install was easily lost. It reports recorded verification, not a fresh
+  inspection of those hosts, and an incomplete inventory never reads as all in sync.
+- Install, update and uninstall take the home's lifecycle lock before their first read, because concurrent hosts
+  could interleave image copies and record writes. Windows uses a named pipe and Linux an abstract socket released
+  by the kernel when the holder dies; macOS uses a lock file requiring explicit recovery. Dry runs take no lock.
+- `codex-bridge unlock --lifecycle` shows whether the home is free, held or unverified, with the holder's command,
+  host and pid when available, because a busy-home refusal previously pointed to a command that did not exist.
+- `codex-bridge unlock --lifecycle --clear` removes only a proven-dead holder's macOS lock file, because automatic
+  takeover could remove a live or replacement holder's lock. Windows and Linux have no lock file to clear.
+- Every command and its actions answer `-h` and `--help` from one command registry, because separate usage text had
+  omitted model actions and subcommands refused help. A flag that needs a value still refuses `--host --help`.
+- The model table ends with `codex-bridge model set <role> <model> [effort]` and `codex-bridge model list`, because
+  the profiles alone did not tell the operator how to change one.
+
+### Changed
+
+- Install and update bring other recorded hosts' package files and hooks along with the shared image, even when the
+  initiating host is already current, because those hosts had kept old agents without the guards the new image needs.
+  A host left behind is named with its update command and makes the command exit 1.
+- Other hosts' edited, missing or linked files remain conflicts that the initiating host's `--force` cannot override,
+  because replacing the shared image must not erase another host's edits. Synchronization leaves permissions, seeds
+  and Codex rules ownership alone; unreachable host roots are named rather than created.
+- `uninstall` removes only the departing host's owner entry while other hosts still use the home, because removing
+  the whole record and image had broken their installations. The shared image goes only after the last owner's
+  hooks are gone and the inventory is complete or the operator confirms nobody else uses it.
+- The installer and uninstall touch only declared files in the package home, because undeclared writes and copied
+  removal lists had left files that removal could not account for.
+- Ordinary `uninstall` and its dry run use one home removal plan, and the real summary counts actual outcomes and
+  distinguishes an owner removed from a record removed, because planned removals were reported as completed even
+  when files stayed. Folders are removed only when empty, never recursively.
+- Ordinary `uninstall` names each operator file it keeps for `--purge`, such as `config.json` and `conventions.md`,
+  because a hand-written preservation sentence missed files. Runs in `codex-runs` remain outside both uninstall
+  and purge.
+- Advisor default budgets are now 10 minutes for `scope` and 25 minutes for `advise`, because measured advise runs
+  approached or exceeded the previous 15-minute deadline.
+- Worktree snapshots use format v2 with exact file names, because quoted and trimmed legacy names could change the
+  verdict. A legacy clean snapshot still reads as clean; missing, damaged or incompatible snapshot pairs fail the
+  verdict rather than count as a clean tree, including a run started before and judged after this format update.
+
+### Fixed
+
+- `uninstall` recognizes host files and hooks by the package's marks and deletes files only when content matches
+  that host's recorded fingerprint or the current package, because edited agents were lost and unrecorded hosts
+  could not be cleaned safely. Edited, unknown and seed files, links and unreadable entries are kept and named.
+- Host hooks are removed before host files, and a host whose hooks cannot be detached keeps its files, rules
+  ownership, record entry and shared image, because a broken `settings.json` had left hooks pointing at removed files.
+- Edited image files stay and are named by uninstall and purge unless their content proves they are package files,
+  because recorded paths alone had authorized deletion. Links are never crossed or removed; unreadable entries are
+  kept, and a link, inspection error or removal failure exits 1 instead of claiming complete removal.
+- Purge re-checks the home after removal, names files that appeared with `Appeared during purge:` and exits 1,
+  because a run started during purge can recreate a file after it was removed.
+- Repeating `uninstall` for a home with no recorded owners asks whether anyone still uses it, because declining
+  removal once had left a home that the next uninstall incorrectly called "not installed".
+- A migrated old record is no longer treated as every unrecorded host's own installation, because update and
+  uninstall had operated on another host's files. Install or update can record an unrecorded host from its
+  package marks.
+- Install and update refresh the host's stale image verification even when its files are current, because the
+  "up to date" exit had left the `doctor` warning in place after the prescribed update.
+- Command usage refusals point to the command's `-h`, including inside the JSON error from `prune --json`,
+  because malformed arguments had failed without showing where to find the correct syntax.
+- `model speed` refuses dash arguments before reading config or fetching the catalogue and points to
+  `model speed -h`, because `model speed build --fast` had treated the flag as a tier identifier.
+- Advisor prose containing clock times, ratios or host:port no longer fails as a file citation, because `00:05`
+  had been read as a file and line number. Invented paths and citations outside the allowed files still fail.
+- Advisor recommendations can contain full text and paragraphs, because hidden length and line-break limits had
+  cut answers mid-citation or caused broken text during decoding. Remaining array bounds are stated in the prompt.
+- Broken advisor text now fails with a named contract error, and reply previews preserve whole characters,
+  because a NUL-containing answer had passed and UTF-16 shortening could split an emoji.
+- An advisor `scope` with `--continue` is refused before starting and asks for a new order id, because continuing
+  scope spent the order's only continuation and made its advise phase unreachable.
+- Scope checks, snapshots and verdicts read Git file names byte-exact, so Cyrillic and other non-ASCII names work,
+  because Git's quoted output had refused valid scopes and judged in-scope edits outside them. Invalid UTF-8 names
+  fail instead of being silently replaced, and scope patterns with line breaks are refused before starting.
+- An untracked file edit that keeps the same size now appears in the snapshot comparison, because recording size
+  alone had made such edits invisible; files that disappear or cannot be read are recorded as missing or unreadable.
+- An unreadable `config.json` fails with its path and reason in the runner and `doctor`, because permission errors
+  or a directory in its place had silently selected default models and budgets. Only a missing file uses defaults.
+- `prune` checks links from the trusted root down and keeps the target on any inspection error, because checking
+  from the leaf up had crossed links first and treated unreadable ancestors as permission to delete.
+
+After `npm i -g @lyupro/codex-bridge@0.6.9`, run `codex-bridge update` once to migrate the installation record.
+An interactive update asks once whether this host is the home's only owner; answer it, because it decides whether a
+later uninstall may remove the shared image. Every host sharing the home should run 0.6.9: older CLI copies do not take
+the lifecycle lock. `codex-bridge doctor` from 0.6.8 cannot read a record written by 0.6.9 and reports
+`[fail] installation: broken record`; installing 0.6.9 clears that report.
+
 ## [0.6.8] - 2026-09-25
 
 ### Added
