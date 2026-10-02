@@ -2,7 +2,8 @@
  * Renders the reply lines a dispatcher is allowed to return, one format per agent.
  *
  * AGENTS adds reply strategies to the shared agent registry: for each one it describes how
- * to tell the result file is filled in and which reply strategy below renders it. FAIL and LIMIT bypass the per-agent strategy — a run that
+ * to tell the result file is filled in and which reply strategy below renders it.
+ * FAIL, LIMIT and UNAVAILABLE bypass the per-agent strategy — a run that
  * produced nothing has nothing agent-specific left to say.
  *
  * The lines built here ARE the reply. Agents forward this text verbatim instead of
@@ -218,6 +219,30 @@ export function limitReply(ctx, meta) {
     const { work: touched } = runChanges(ctx.runDir);
     rows.push(
       `Worktree: ${touched.length ? `has unfinished changes (${touched.length}), see git-after.txt` : 'no new changes'}`,
+    );
+  }
+  rows.push(`Log: ${readCommand(ctx.runDir)}`);
+  return rows;
+}
+
+/** Plan_60 D2: pre-start and post-start refusals share the same handoff contract. */
+export function unavailableRows(signal) {
+  return [
+    'UNAVAILABLE — Codex is not available (missing or signed out); ' +
+      'hand the task to the next executor, do not retry',
+    `Signal: ${line(signal, 170)}`,
+    'Operator check: codex --version; codex login status (sign in with codex login)',
+  ];
+}
+
+export function unavailableReply(ctx, meta) {
+  const rows = unavailableRows(meta.reason);
+  if (ctx.agent === 'codex-build') {
+    const { work: touched } = runChanges(ctx.runDir);
+    rows.push(
+      `Worktree: ${
+        touched.length ? `has unfinished changes (${touched.length}), see git-after.txt` : 'no new changes'
+      }`,
     );
   }
   rows.push(`Log: ${readCommand(ctx.runDir)}`);

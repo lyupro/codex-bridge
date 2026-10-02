@@ -28,7 +28,7 @@ import { splitRunChanges } from './meta/environment.mjs';
 import { readEvents } from './meta/events.mjs';
 import { writeStatus } from './meta/run-state.mjs';
 import { resolveStatus } from './meta/verdict.mjs';
-import { AGENTS, failReply, limitReply, withProfileRow } from './meta/reply.mjs';
+import { AGENTS, failReply, limitReply, unavailableReply, withProfileRow } from './meta/reply.mjs';
 import { withLaunchRows } from './meta/launch-rows.mjs';
 
 function readRunnerVersion() {
@@ -164,7 +164,13 @@ export function collect(runDir, agent, exitCode) {
   const reply =
     withProfileRow(
       withLaunchRows(
-        status === 'OK' ? cfg.reply(ctx) : status === 'LIMIT' ? limitReply(ctx, meta) : failReply(ctx, meta),
+        status === 'OK'
+          ? cfg.reply(ctx)
+          : status === 'LIMIT'
+            ? limitReply(ctx, meta)
+            : status === 'UNAVAILABLE'
+              ? unavailableReply(ctx, meta)
+              : failReply(ctx, meta),
         runDir,
       ),
       meta,
@@ -173,8 +179,12 @@ export function collect(runDir, agent, exitCode) {
   return { meta, reply: reply.join('\n') };
 }
 
-/** Exit code mirrors the status so an orchestrator can branch without parsing text. */
-export const exitCodeFor = (status) => (status === 'OK' ? 0 : status === 'LIMIT' ? 3 : 1);
+/**
+ * Exit codes: 0 OK, 1 FAIL, 3 LIMIT, 4 UNAVAILABLE.
+ * 2 is the launcher's argument error and never comes from here.
+ */
+export const exitCodeFor = (status) =>
+  (status === 'OK' ? 0 : status === 'LIMIT' ? 3 : status === 'UNAVAILABLE' ? 4 : 1);
 
 const invokedDirectly =
   process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));

@@ -1,5 +1,5 @@
 /** Parses dispatcher replies into guard facts. */
-const STATUSES = ['OK', 'FAIL', 'LIMIT'];
+const STATUSES = ['OK', 'FAIL', 'LIMIT', 'UNAVAILABLE'];
 
 /**
  * Either line names the run folder. `RUN=` is printed by the call that starts a run, `ATTACH=`
