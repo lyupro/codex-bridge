@@ -1,6 +1,6 @@
 /**
- * Invoking the `codex` CLI: starting it, stopping its whole tree, telling whether it is there at
- * all, and keeping its JSONL stdout in events.jsonl while stderr stays separate.
+ * Invoking the `codex` CLI: starting it, stopping its whole tree, and keeping its JSONL stdout
+ * in events.jsonl while stderr stays separate. Availability belongs to codex-availability.mjs.
  *
  * Which flags a run gets is the neighbouring codex-args.mjs: this file starts the process and
  * stops it, and knows nothing about what the arguments mean. The two were one module until it
@@ -335,21 +335,4 @@ export function runCodex(args, taskText, eventsPath, budgetMinutes, graceMs = ST
     });
     child.on('close', (code) => finish(code, true));
   });
-}
-
-/**
- * Codex missing or not authorised is a deterministic FAIL, never a reason to improvise.
- * Plan_58, 2026-09-19: return a reason for refusal before registration, like the dead-sandbox
- * probe. One no-quota question must not have two answers about whether it leaves a folder.
- */
-export function codexUnavailableReason() {
-  const probe = spawnSync(
-    process.platform === 'win32' ? process.env.ComSpec || 'cmd.exe' : 'codex',
-    process.platform === 'win32' ? ['/d', '/s', '/c', 'codex --version'] : ['--version'],
-    { encoding: 'utf8', windowsHide: true },
-  );
-  if (probe.error || probe.status !== 0) {
-    return (probe.stderr || probe.error?.message || 'codex --version is not responding').trim();
-  }
-  return null;
 }

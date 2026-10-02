@@ -85,7 +85,7 @@ export async function probeSandbox({
 
   const version = await attempt('version', ['--version']);
   if (version.error || version.signal || version.status !== 0) {
-    // codexUnavailableReason() owns the refusal for an unavailable CLI, in the same pre-flight pass.
+    // codexAvailabilityRefusal() owns the refusal for an unavailable CLI, earlier in the same pre-flight pass.
     return finish('inconclusive', 'Codex CLI is unavailable.');
   }
   return finish('dead', 'The Codex sandbox on this host cannot start a process.');

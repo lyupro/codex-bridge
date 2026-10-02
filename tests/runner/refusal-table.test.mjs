@@ -149,5 +149,7 @@ test('the pre-flight module cannot write a run folder', () => {
 test('the CLI availability check no longer records a failure of its own', () => {
   const codexCmd = read('codex-cmd.mjs');
   assert.ok(!codexCmd.includes('writeFailure'), 'codex-cmd.mjs writes a refusal folder again');
-  assert.match(codexCmd, /export function codexUnavailableReason\(\) \{/);
+  assert.ok(!codexCmd.includes(['codex', 'UnavailableReason'].join('')),
+    'codex-cmd.mjs restores the retired availability check');
+  assert.match(read('codex-availability.mjs'), /export async function probeCodexAvailability\(/);
 });
