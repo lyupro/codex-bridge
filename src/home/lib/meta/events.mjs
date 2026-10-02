@@ -14,6 +14,15 @@ import { safeSlice } from './paths.mjs';
  */
 const LIMIT_RE = /rate[\s_-]*limit|usage[\s_-]*limit|quota|too many requests|\b429\b/i;
 
+// Plan_60 D2: add a new measured sample only together with its verbatim fixture.
+const UNAVAILABLE_SAMPLES = [
+  {
+    cli: 'codex-cli 0.159.0',
+    measured: '2026-10-03',
+    pattern: /^unexpected status 401 Unauthorized: Missing bearer or basic authentication in header\b/,
+  },
+];
+
 const record = (value) => value && typeof value === 'object' && !Array.isArray(value);
 
 const compact = (value, max = 300) =>
@@ -129,6 +138,8 @@ function transportErrorOf(event) {
   const status = payload.status ?? nested.status ?? null;
   const marker = [errorType, message].join(' ');
   const quota = Number(status) === 429 || LIMIT_RE.test(marker);
+  const unavailable = !quota && event.type === 'turn.failed' &&
+    UNAVAILABLE_SAMPLES.some((sample) => sample.pattern.test(message));
   const reason = compact(
     [errorType, message, status === null || status === undefined ? '' : `status ${status}`]
       .filter(Boolean)
@@ -137,7 +148,7 @@ function transportErrorOf(event) {
       (typeof event.error?.message === 'string' ? event.error.message : '') ||
       event.type,
   );
-  return { event, payload, status, error_type: errorType, message, quota, reason };
+  return { event, payload, status, error_type: errorType, message, quota, unavailable, reason };
 }
 
 /**
@@ -150,7 +161,8 @@ export function readEvents(runDir) {
   const accounting = usageOf(events);
   const started = events.find((event) => event.type === 'thread.started' && event.thread_id);
   const errors = events.map(transportErrorOf).filter(Boolean);
-  const transport_error = errors.find((error) => error.quota) || errors[0] || null;
+  const transport_error = errors.find((error) => error.quota) ||
+    errors.find((error) => error.unavailable) || errors[0] || null;
   return {
     events,
     // The file was written, whatever it holds. Pass 2 judges a run by this: a stream the

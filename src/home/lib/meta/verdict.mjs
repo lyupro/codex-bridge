@@ -288,9 +288,10 @@ export function resolveStatus({ resultOk, exit, agent, result, runDir, events })
     // This branch already knows why the run died: the CLI said so itself, with a status. Letting
     // the ordered reason speak here would answer a transport question with the model's older
     // complaint about the task — a LIMIT that never mentions quota is the same "verdict says the
-    // wrong thing" defect this module exists to remove.
+    // wrong thing" defect this module exists to remove. Plan_60 D2: UNAVAILABLE only on a measured
+    // signed-out sample (events.mjs); an unfamiliar failure stays FAIL with its raw CLI text.
     return {
-      status: transportError.quota ? 'LIMIT' : 'FAIL',
+      status: transportError.quota ? 'LIMIT' : transportError.unavailable ? 'UNAVAILABLE' : 'FAIL',
       reason: transportError.reason,
     };
   }
