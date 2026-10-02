@@ -1,11 +1,11 @@
 /** Merges and removes named codex-bridge hooks without disturbing host settings. */
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { spawnSync } from 'node:child_process';
-import { existsSync, statSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { readJsonFileWithRaw } from '../src/home/lib/json-file.mjs';
+import { envValue, resolveCommandOnPath } from '../src/home/lib/command-path.mjs';
 
 const LEGACY_SPEC = { event: 'SubagentStop', matcher: '*' };
 const settingsRuns = new AsyncLocalStorage();
@@ -18,34 +18,8 @@ export function shortCommandFor(name) {
   return `codex-bridge hook ${name}`;
 }
 
-function envValue(env, name) {
-  const key = Object.keys(env).find((entry) => entry.toLowerCase() === name);
-  return key ? env[key] : '';
-}
-
-function pathValue(env) {
-  return envValue(env, 'path');
-}
-
-function resolveCommand(name, env) {
-  const extensions = process.platform === 'win32'
-    ? (env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';')
-    : [''];
-  for (const directory of pathValue(env).split(path.delimiter).filter(Boolean)) {
-    for (const extension of extensions) {
-      const candidate = path.join(path.resolve(directory), `${name}${extension}`);
-      try {
-        if (existsSync(candidate) && statSync(candidate).isFile()) return candidate;
-      } catch {
-        continue;
-      }
-    }
-  }
-  return null;
-}
-
 export function commandReachable(name = 'codex-bridge', env = process.env) {
-  return Boolean(resolveCommand(name, env));
+  return Boolean(resolveCommandOnPath(name, env));
 }
 
 /**
@@ -63,7 +37,7 @@ export function reachableCommandVersion(name = 'codex-bridge', env = process.env
 }
 
 export function runReachableCommand(name, args, env = process.env) {
-  const shimPath = resolveCommand(name, env);
+  const shimPath = resolveCommandOnPath(name, env);
   if (!shimPath) return null;
   // Node 24 warned with DEP0190 during update (2026-09-07): invoke cmd explicitly for npm shims.
   // Live probes covered plain, bin with space, Program Files (x86), weird & name, and caret^dir.
