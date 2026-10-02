@@ -186,8 +186,9 @@ for which the operator is prepared to account as environment work; the audit rem
 
 ## Matching the report against the tree and chain
 
-For tracked files, a snapshot contains counts of added and deleted lines; for untracked files, size.
-This exposes a new edit to an already modified file even when its `git status` code does not change.
+For tracked files, a snapshot contains counts of added and deleted lines; for untracked files, size and a
+SHA-256 of the content (format v2, `docs/artifact-formats.md`). This exposes a new edit to an already modified
+file even when its `git status` code does not change, and an untracked edit that keeps the size.
 
 The chain for this comparison is assembled using all three signals: slug, task-text fingerprint, and job
 label from `status.json`. A run that renamed itself and rewrote the text still finds its baseline, while
