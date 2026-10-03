@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { continuationRefusal } from '../../src/home/lib/runner/continuation.mjs';
 import { chainRuns } from '../../src/home/lib/meta/chain.mjs';
+import { orderOwnerConflictText } from '../../src/home/lib/runner/order-owner.mjs';
 import { attaching, deadPid, fixture, order, run, running } from './attach-fixtures.mjs';
 
 test('an order with no runs at all starts one', async (t) => {
@@ -96,31 +97,22 @@ test('--continue starts a new pass when no run of this order continues its grant
   assert.equal(code, null);
 });
 
-test('a reused order id with a different task is refused before a run can start', async (t) => {
-  const runsRoot = fixture(t);
-  const repo = path.join(runsRoot, 'repo');
-  const name = '2026-08-15_090000_plan42-run2';
-  run(runsRoot, name, running(repo, {
-    slug: 'plan42-run2',
-    task_hash: 'run2-hash',
-    started_at: '2026-08-15T09:00:00.000Z',
-  }), {
-    'reply.txt': 'OK — run2 verdict\n',
-    'meta.json': JSON.stringify({ status: 'OK' }),
+// Plan_75 D5, 2026-10-03: an old hash cannot justify a different-task claim or spend quota.
+for (const scheme of [undefined, 2]) {
+  test(`an order collision uses ${scheme === 2 ? 'current-scheme' : 'pre-scheme'} text without starting a run`, async (t) => {
+    const runsRoot = fixture(t);
+    const repo = path.join(runsRoot, 'repo');
+    const name = '2026-08-15_090000_plan42-run2';
+    const status = running(repo, {
+      slug: 'plan42-run2', task_hash: 'run2-hash', task_hash_scheme: scheme, started_at: '2026-08-15T09:00:00.000Z',
+    });
+    const dir = run(runsRoot, name, status, { 'reply.txt': 'OK — run2 verdict\n', 'meta.json': JSON.stringify({ status: 'OK' }) });
+    const { code, lines } = await attaching(order(runsRoot, repo, { slug: 'plan42-run3', taskHash: 'run3-hash' }));
+    assert.equal(code, 2);
+    assert.equal(lines[0], orderOwnerConflictText({ run: name, status }, dir, 'order-1'));
+    assert.deepEqual(fs.readdirSync(runsRoot), [name]);
   });
-
-  const { code, lines } = await attaching(
-    order(runsRoot, repo, { slug: 'plan42-run3', taskHash: 'run3-hash' }),
-  );
-
-  assert.equal(code, 2);
-  assert.match(lines[0], new RegExp(name));
-  assert.match(lines[0], /slug plan42-run2/);
-  assert.match(lines[0], /started_at 2026-08-15T09:00:00.000Z/);
-  assert.match(lines[0], /new --order-id/);
-  assert.match(lines[0], /--continue/);
-  assert.deepEqual(fs.readdirSync(runsRoot), [name]);
-});
+}
 
 test('a reused order id with the identical normalized task hash still attaches', async (t) => {
   const runsRoot = fixture(t);

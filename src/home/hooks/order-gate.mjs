@@ -25,10 +25,11 @@ import {
 } from '../lib/required-inputs.mjs';
 import { SUBAGENT_TOOLS } from '../lib/hook-definitions.mjs';
 import { taskFingerprint } from '../lib/meta/chain.mjs';
-import { conflictingOrderOwner } from '../lib/runner/order-owner.mjs';
+import { conflictingOrderOwner, orderOwnerConflictText } from '../lib/runner/order-owner.mjs';
 import { resolveProjectRunsDir } from '../lib/runner/project-dir.mjs';
 import { runsRoot } from '../lib/runner/runs-root.mjs';
 import { parseTaskDocument } from '../lib/runner/task-file.mjs';
+import { parseTaskHeader, taskHeaderRefusal } from '../lib/task-header.mjs';
 
 const GUARDED = new Set(Object.keys(AGENTS));
 /**
@@ -117,9 +118,25 @@ const orderId = extractValue(toolInput.prompt, 'order id');
 const taskFile = extractValue(toolInput.prompt, 'task file');
 if (!orderId || !taskFile || parseContinuationGrant(toolInput.prompt)) pass();
 
+let rawTask;
 try {
-  const taskDocument = parseTaskDocument(fs.readFileSync(taskFile, 'utf8'));
-  const taskHash = taskFingerprint(taskDocument.task);
+  rawTask = fs.readFileSync(taskFile, 'utf8');
+} catch {
+  pass();
+}
+// Plan_75 D5, 2026-10-03 20:42: malformed metadata must not disappear into the disk-state guard.
+const parsed = parseTaskHeader(rawTask);
+const headerRefusal = taskHeaderRefusal(parsed);
+if (headerRefusal) deny(headerRefusal);
+let taskHash;
+try {
+  taskHash = taskFingerprint(parseTaskDocument(parsed.body).task);
+} catch {
+  // A malformed Questions or Verify section is the runner's refusal to issue, with its own text.
+  pass();
+}
+
+try {
   const projectRunsDir = resolveProjectRunsDir(runsRoot(), input.cwd, { create: false }).dir;
   // Per folder, not per directory: a run folder created a moment before its status.json, or any
   // leftover beside the runs, would otherwise throw out of the whole check and silently disarm the
@@ -131,12 +148,7 @@ try {
   const owner = conflictingOrderOwner(runs, orderId, taskHash);
   if (owner) {
     const ownerDir = path.join(projectRunsDir, owner.run);
-    deny(
-      `Order gate denied the Agent call because order id ${JSON.stringify(orderId)} already belongs ` +
-        `to run folder ${ownerDir} (slug ${owner.status.slug}, started_at ${owner.status.started_at}) ` +
-        'with a different task. Use a new order id, or provide an explicit continuation grant if ' +
-        'this is another pass of that order.',
-    );
+    deny(orderOwnerConflictText(owner, ownerDir, orderId));
   }
 } catch {
   // The 2026-08-15 collision guard is diagnostic: uncertain disk state must not block real work.

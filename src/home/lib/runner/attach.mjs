@@ -7,7 +7,7 @@ import { workerMayBeAlive } from '../meta/run-liveness.mjs';
 import { processAlive } from '../process-identity.mjs';
 import { exitCodeFor, writeFailure, chainRuns } from '../write-meta.mjs';
 import { readyGrantLines, sameRun } from './continuation.mjs';
-import { conflictingOrderOwner, runsForOrder } from './order-owner.mjs';
+import { conflictingOrderOwner, orderOwnerConflictText, runsForOrder } from './order-owner.mjs';
 
 // The attach call is the only process that waits for a worker it did not spawn. Keeping that
 // wait here leaves the launcher free to return before a caller's time ceiling kills it.
@@ -114,11 +114,7 @@ export async function attach({ runsRoot, repo, slug, taskHash, orderId, chain, g
   const owner = isContinue ? null : conflictingOrderOwner(runRecords, orderId, taskHash);
   if (owner) {
     const ownerDir = path.join(runsRoot, owner.run);
-    console.log(
-      `Order id collision: ${JSON.stringify(String(orderId ?? ''))} already belongs to run folder ${ownerDir} ` +
-        `(slug ${owner.status.slug}, started_at ${owner.status.started_at}) with a different task. ` +
-        'Pass a new --order-id, or pass --continue if this really is another pass of the same order.',
-    );
+    console.log(orderOwnerConflictText(owner, ownerDir, orderId));
     return EXIT.USAGE;
   }
 

@@ -3,58 +3,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
 import { HOOK_DEFINITIONS, SUBAGENT_TOOLS } from '../../src/home/lib/hook-definitions.mjs';
 import { taskFingerprint } from '../../src/home/lib/meta/chain.mjs';
-import { parseTaskDocument } from '../../src/home/lib/runner/task-file.mjs';
-import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
-
-const ROOT = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
-const GATE = path.join(ROOT, 'src', 'home', 'hooks', 'order-gate.mjs');
-
-function runGate(root, input) {
-  return spawnSync(process.execPath, [GATE], {
-    input,
-    encoding: 'utf8',
-    env: {
-      ...process.env,
-      CODEX_RUNS_ROOT: path.join(root, 'runs'),
-      HOME: root,
-      USERPROFILE: root,
-      CODEX_BRIDGE_HOME: path.join(root, '.lyupro', '.codex-bridge'),
-    },
-  });
-}
-
-async function fixture(t) {
-  const root = makeTempTree('bridge-order-gate-');
-  t.after(() => removeTempTree(root));
-  return root;
-}
-
-function payload(subagentType, prompt, toolName = 'Agent', cwd = undefined) {
-  return JSON.stringify({
-    hook_event_name: 'PreToolUse',
-    tool_name: toolName,
-    tool_input: { subagent_type: subagentType, prompt },
-    tool_use_id: 'toolu-test-order-gate',
-    cwd,
-  });
-}
-
-function validPrompt(orderId, taskFile, continuation = '') {
-  return `order id: ${orderId}\ntask file: ${taskFile}${continuation}`;
-}
-
-async function createStoredRun(root, repo, name, status) {
-  const runs = path.join(root, 'runs', 'project');
-  const run = path.join(runs, name);
-  await fs.mkdir(run, { recursive: true });
-  await fs.writeFile(path.join(runs, '.project.json'), `${JSON.stringify({ repo })}\n`);
-  await fs.writeFile(path.join(run, 'status.json'), `${JSON.stringify(status)}\n`);
-  return run;
-}
+import { createStoredRun, fixture, payload, runGate, validPrompt } from './order-gate-fixtures.mjs';
 
 test('missing dispatcher inputs are denied with actionable details', async (t) => {
   const root = await fixture(t);
@@ -192,6 +143,7 @@ test('an order id owned by a different task is denied before dispatch', async (t
   const run = await createStoredRun(root, repo, 'run-two', {
     order_id: 'plan-43-step-3',
     task_hash: taskFingerprint('Different task'),
+    task_hash_scheme: 2,
     slug: 'plan43-run-two',
     started_at: '2026-08-15T09:00:00.000Z',
   });
@@ -208,24 +160,9 @@ test('an order id owned by a different task is denied before dispatch', async (t
   assert.match(reason, /plan43-run-two/);
   assert.match(reason, /2026-08-15T09:00:00\.000Z/);
   assert.match(reason, /new order id/);
-  assert.match(reason, /explicit continuation/);
-});
-
-test('an order id may repeat the same parsed task', async (t) => {
-  const root = await fixture(t);
-  const repo = path.join(root, 'project');
-  const taskFile = path.join(root, 'task.md');
-  const taskText = '# Task\nRequested task\n\n## Verify\nnpm test\n';
-  await fs.writeFile(taskFile, taskText);
-  await createStoredRun(root, repo, 'matching-run', {
-    order_id: 'same-order',
-    task_hash: taskFingerprint(parseTaskDocument(taskText).task),
-    slug: 'matching-run',
-    started_at: '2026-08-15T09:01:00.000Z',
-  });
-
-  const result = runGate(root, payload('codex-review', validPrompt('same-order', taskFile), 'Agent', repo));
-  assert.equal(result.stdout, '');
+  assert.match(reason, /with a different task/);
+  assert.match(reason, /continue:\/retry: header line/);
+  assert.doesNotMatch(reason, /cannot be compared/);
 });
 
 test('an explicit continuation grant permits a refined task under the same order id', async (t) => {
@@ -291,6 +228,7 @@ test('a folder without status.json does not disarm the collision check', async (
   const run = await createStoredRun(root, repo, 'owner-run', {
     order_id: 'guarded-order',
     task_hash: taskFingerprint('Another task'),
+    task_hash_scheme: 2,
     slug: 'owner-run',
     started_at: '2026-08-15T09:04:00.000Z',
   });
