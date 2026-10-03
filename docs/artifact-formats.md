@@ -183,6 +183,59 @@ it gets `FAIL` with `worktree snapshots cannot be compared (incompatible-version
 stays silent for it. Restart such a run. A missing or damaged snapshot is `FAIL` as well, never a clean
 tree.
 
+## `flags-baseline.json`, `flags.txt` and `flags-coverage.txt`
+
+Before a build run starts, the launcher copies the bytes of every tracked file dirty against HEAD
+and every untracked file into `<run>/flags-baseline/`, then writes `flags-baseline.json`. The copies
+are limited to 1 MiB per file and 32 MiB per run. A failed file listing makes the baseline incomplete,
+never an empty baseline that could make earlier work look new.
+
+| Field | Value |
+| --- | --- |
+| `version` | Baseline manifest format version. |
+| `head` | Start HEAD used to recover the start content of files clean at launch. |
+| `complete` | Whether the baseline capture is complete. |
+| `reason` | Explanation when the baseline is incomplete. |
+| `limits` | Capture limits: 1 MiB per file, 32 MiB per run. |
+| `files` | Entries `{ path, tracked, state, copy?, bytes? }` for the start-dirty and untracked files. |
+
+Each entry records the repository-relative `path`, whether it was `tracked`, and its capture `state`;
+`copy` and `bytes`, when present, identify the saved copy and its byte count.
+
+| State | Meaning |
+| --- | --- |
+| `copied` | Start bytes were saved for comparison. |
+| `deleted` | The file was deleted at start; its start content is empty. |
+| `absent` | The file was absent at capture; its start content is empty. |
+| `truncated` | The file exceeded the per-file capture limit; start content is unknown. |
+| `over-run-cap` | The copy could not fit within the run's capture limit. |
+| `binary` | The file could not be captured as text for flag scanning. |
+| `unreadable` | The file's start bytes could not be read. |
+
+After the run, the worker writes `flags.txt` and `flags-coverage.txt`. Every start-dirty file and
+every file the before/after snapshots show as changed is compared with its start content: the copy,
+the start HEAD for a file clean at launch, or empty content for a new file. `git diff --no-index`
+uses pinned flags, including `--ignore-cr-at-eol`; only added lines inside hunks are judged.
+
+Flags are `test`/`it`/`describe` with `.skip` or `.only`, `NotImplemented`, and TODO/FIXME markers.
+TODO/FIXME must follow a comment leader (`//`, `/*`, `#`, `<!--`, `--`, or a leading `*`), appear at
+the line start, or follow a Markdown list prefix, such as `- [ ] TODO`. Test data such as
+`['', 'TODO']` is not a flag. A moved existing marker is reported as added; this is an accepted
+residual of judging added lines.
+
+Unknown start content is a coverage gap, never an accusation: this includes every state except
+`copied`, `deleted` and `absent`, an unreadable start commit, a failed diff, an over-limit end file,
+or a missing baseline. Gaps go to `flags-coverage.txt`; the reply adds
+`Flags coverage: incomplete — <first gap> (+N more)`. Flags never change the status.
+
+On 2026-09-22 runs were flagged for a `skills/synced/` folder that existed before them and for test
+data `['', 'TODO', '<phase>']` added by an earlier uncommitted run. The old scanner read the whole
+dirty tree and the word TODO anywhere. The start baseline and marker boundaries keep that earlier
+work and ordinary test data from being attributed to the current run.
+
+The worker deletes `flags-baseline/` immediately after the scan; closing a run as abandoned removes
+it too. The manifest stays and holds no file content.
+
 ## `git-before.txt`, `git-after.txt` and `diff.stat`
 
 Human-readable only: `git status --porcelain` before and after the run and `git diff --stat` after it,

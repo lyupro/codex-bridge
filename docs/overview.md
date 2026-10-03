@@ -268,7 +268,8 @@ Main files:
 | `reply.txt` | Short response to the dispatcher; worker writes it last. |
 
 For scout, `questions.json` holds an array of `{ id, text, kind }`; for review and build, `scope.txt`;
-build also creates `head-*`, `git-*`, `state-*`, `diff.stat`, and `flags.txt` snapshots.
+build also creates `head-*`, `git-*`, `state-*`, `diff.stat`, `flags-baseline.json`, `flags.txt`, and
+`flags-coverage.txt` artifacts.
 
 ### Inspecting the run store
 

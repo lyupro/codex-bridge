@@ -138,7 +138,9 @@ complete job before detaching from the launcher.
     in `required`), so an old directory is judged by the contract of its own day — see
     [verdict.md](verdict.md).
 14. For build, `head-before.txt`, `branch-before.txt`, `git-before.txt`, and `state-before.txt` are
-    captured. An empty `branch-before.txt` means detached HEAD, not missing data.
+    captured. The launcher also copies start-dirty tracked and untracked files into `flags-baseline/`
+    and writes `flags-baseline.json` before the run starts, so earlier uncommitted work is not
+    attributed to this run. An empty `branch-before.txt` means detached HEAD, not missing data.
 15. argv for `codex exec` is assembled; an argument unsafe for `cmd.exe` produces an artifacted `FAIL`
     before Codex is invoked.
 16. `worker.json` is written — the complete job for the second half.
@@ -331,7 +333,9 @@ pass occurred.”
    verdict uses these fields: `status.json` is outside the repository covered by `workspace-write`, so
    Codex cannot forge it.
 4. After Codex finishes, build writes `head-after.txt`, `branch-after.txt`, `git-after.txt`,
-   `state-after.txt`, `diff.stat`, and `flags.txt`, in that order.
+   `state-after.txt`, `diff.stat`, `flags.txt`, and `flags-coverage.txt`, in that order. Flags judge
+   lines added since the start baseline; coverage gaps name files that could not be judged. The
+   worker removes the `flags-baseline/` copies immediately after the scan, leaving the manifest.
 5. For scout and build, the worker reads the structured result and, if `report_markdown` is present,
    writes `report.md`. Review leaves its report in `review.json`.
 6. `collect()` reads the artifacts, computes the verdict, and writes `meta.json`.

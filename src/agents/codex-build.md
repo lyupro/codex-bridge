@@ -191,8 +191,9 @@ anything.
 An empty `summary` is FAIL.
 
 The `Flags` line in the response lists `TODO`, `FIXME`, `test.skip`/`.only`, and
-`NotImplemented` found in the diff. They are not hidden: false completion must be visible to the
-orchestrator.
+`NotImplemented` markers on lines THIS run added, compared with its start content. They are not
+hidden: false completion must be visible to the orchestrator. `Flags coverage: incomplete` means
+some files could not be judged.
 
 ## The script determines status, not you
 
