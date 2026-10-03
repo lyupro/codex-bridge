@@ -153,8 +153,9 @@ here. Nothing was reworded on the way out.
   order was right and the host or the tree was not. Only two refusals stay after registration
   (`unsafeForCmd`, a worker that fails to spawn): by then the tree snapshot and the worker order are in
   the folder, so the folder explains itself. The busy and CLI checks live in
-  `src/home/lib/runner/preflight.mjs`, which is handed no run directory — a check added there cannot
-  create one. `tests/runner/refusal-table.test.mjs` holds the table of all of them and fails when a
+  `src/home/lib/runner/preflight.mjs`, and the attach / continuation / repeat decision in
+  `src/home/lib/runner/pass-gate.mjs` (Plan_75 P0); neither is handed a run directory — a check added
+  there cannot create one. `tests/runner/refusal-table.test.mjs` holds the table of all of them and fails when a
   refusal is added without a side and a reason. Why: on 2026-09-19 the busy refusal created its folder
   first, and in `~/.claude`, where run folders sit inside the worktree, the live writer's witness spent
   every tool call ordering the orchestrator to revert a directory the tool itself had made.

@@ -17,6 +17,7 @@ const read = (relative) =>
   fs.readFileSync(new URL(`../../src/home/lib/runner/${relative}`, import.meta.url), 'utf8');
 
 const LAUNCHER = read('launcher.mjs');
+const PASS_GATE = read('pass-gate.mjs');
 
 /**
  * `marker` is a fragment of the refusal itself, not of the call: the call sites are
@@ -44,18 +45,21 @@ const REFUSALS = [
   {
     name: 'a refused continuation',
     side: 'before',
+    file: 'pass-gate.mjs',
     marker: 'if (continuationError) die(continuationError)',
     why: 'the chain, not the tree, is what refuses; no folder may join the chain',
   },
   {
     name: 'a continuation that is not an OK advisor scope run',
     side: 'before',
+    file: 'pass-gate.mjs',
     marker: 'scopeRunRefusal({ agent: opts.agent',
     why: 'Plan_59 D14: phase 2 needs a successful phase 1 and must refuse before registration',
   },
   {
     name: 'a repeat that needs --continue',
     side: 'before',
+    file: 'pass-gate.mjs',
     marker: '`--continue is required:',
     why: 'Plan_23: a folder here sent the next identical order to the continuation gate',
   },
@@ -92,6 +96,7 @@ const REFUSALS = [
 ];
 
 const registrationIndex = LAUNCHER.indexOf('= makeRunDir(');
+const passGateIndex = LAUNCHER.indexOf('await passGate(');
 
 test('the launcher registers a run exactly once', () => {
   assert.notEqual(registrationIndex, -1);
@@ -109,22 +114,26 @@ test('task gates precede the paid sandbox probe and read the one parsed task', (
 
 test('Codex availability is checked after the repeat refusal and before the paid sandbox probe', () => {
   const availability = LAUNCHER.indexOf('if (availability) die(availability.text, EXIT.FAIL)');
-  assert.ok(availability > LAUNCHER.indexOf('`--continue is required:'));
+  assert.notEqual(passGateIndex, -1);
+  assert.ok(availability > passGateIndex);
   assert.ok(availability < LAUNCHER.indexOf('await probeSandbox('));
 });
 
-for (const { name, side, marker, why } of REFUSALS) {
+for (const { name, side, marker, why, file } of REFUSALS) {
   test(`${name} refuses ${side} registration: ${why}`, () => {
-    const at = LAUNCHER.indexOf(marker);
-    assert.notEqual(at, -1, `refusal marker no longer present: ${marker}`);
-    assert.equal(LAUNCHER.indexOf(marker, at + 1), -1, `refusal marker is not unique: ${marker}`);
+    const source = file === 'pass-gate.mjs' ? PASS_GATE : LAUNCHER;
+    const markerIndex = source.indexOf(marker);
+    assert.notEqual(markerIndex, -1, `refusal marker no longer present: ${marker}`);
+    assert.equal(source.indexOf(marker, markerIndex + 1), -1, `refusal marker is not unique: ${marker}`);
+    const at = file === 'pass-gate.mjs' ? passGateIndex : markerIndex;
+    assert.notEqual(at, -1, 'pass gate call no longer present in the launcher');
     if (side === 'before') assert.ok(at < registrationIndex, `${name} now refuses after registration`);
     else assert.ok(at > registrationIndex, `${name} now refuses before registration`);
   });
 }
 
 test('every refusal in the launcher is classified by the table', () => {
-  const sites = LAUNCHER.match(/\bdie\(|\bwriteFailure\(/g) || [];
+  const sites = `${LAUNCHER}\n${PASS_GATE}`.match(/\bdie\(|\bwriteFailure\(/g) || [];
   assert.equal(
     sites.length,
     REFUSALS.length,
@@ -142,6 +151,16 @@ test('the pre-flight module cannot write a run folder', () => {
     assert.ok(
       !preflight.includes(forbidden),
       `preflight.mjs mentions ${forbidden}: a pre-flight refusal must not be able to register a run`,
+    );
+  }
+});
+
+test('the pass gate module cannot write a run folder', () => {
+  // Plan_75 P0: moving the gate must preserve Plan_58's refusal-before-registration boundary.
+  for (const forbidden of ['makeRunDir', 'writeStatus', 'writeFailure', 'mkdirSync', 'writeFileSync']) {
+    assert.ok(
+      !PASS_GATE.includes(forbidden),
+      `pass-gate.mjs mentions ${forbidden}: a pass gate must not be able to register a run`,
     );
   }
 });

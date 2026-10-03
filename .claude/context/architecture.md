@@ -32,7 +32,8 @@ hand-edited files stop the run unless `--force`.
   override or the default. `run-config.mjs` and `cli/hosts.mjs` ask it; nothing derives that path
   from its own module location any more.
 - `runner/` is one concern per module: `run-context` holds the run in progress, `run-env` reads
-  `run-config.json`, `args` refuses the command line, `schemas`/`prompts` are what each agent is
+  `run-config.json`, `args` refuses the command line, `pass-gate` decides before registration whether a
+  call attaches, continues or is a refused repeat (Plan_75), `schemas`/`prompts` are what each agent is
   asked for, `git-state` snapshots the tree, `codex-args` decides what Codex is asked to run — model,
   reasoning depth and the flag set per agent, with `sandbox-flags` naming what the platform needs
   before a sandboxed process can start at all — while `codex-cmd` starts and stops that process and
