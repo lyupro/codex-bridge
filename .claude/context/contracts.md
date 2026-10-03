@@ -159,6 +159,14 @@ here. Nothing was reworded on the way out.
   refusal is added without a side and a reason. Why: on 2026-09-19 the busy refusal created its folder
   first, and in `~/.claude`, where run folders sit inside the worktree, the live writer's witness spent
   every tool call ordering the orchestrator to revert a directory the tool itself had made.
+- **Orchestrator metadata in a task — `advice:`, `continue:`, `retry:` — exists only in the header at its top, and
+  `src/home/lib/task-header.mjs` is its only reader** (Plan_75 D5). The runner (`args.mjs`, both task channels), the
+  advice gate, the pass gate and the producer hook `order-gate.mjs` all take its result, parsed from the raw document
+  before sections are extracted; a metadata-shaped line below the header is a free refusal, other prose is text. The
+  task hash is the header-free body (`TASK_HASH_SCHEME` in `meta/chain.mjs`, recorded as `status.json#task_hash_scheme`);
+  an owner without that field is never claimed to be "a different task" (`order-owner.mjs`). A new label is one
+  descriptor in the module's registry, never another regex in a consumer. Why: on 2026-10-03 20:42 wrapped prose that
+  began with `continue:` was obeyed as a grant, because grants, advice and the hash each had their own rule.
 - **Every `cli/*.mjs` is reachable through static imports from the `package.json#bin` targets**, except the
   version-bound entries in `EXCEPTIONS` of `tests/cli-modules-reachable.test.mjs` (Plan_65 D13). A module whose last
   caller moved away is deleted in the same change, its still-needed assertions moved onto the live path first; a
