@@ -17,6 +17,7 @@ import {
   renderRequiredInputSummary,
   renderRequiredInputs,
   shellUnsafeInputs,
+  splitGrantValue,
 } from '../src/home/lib/required-inputs.mjs';
 
 const agentDirectory = path.join('src', 'agents');
@@ -162,6 +163,30 @@ test('continuation grants reject placeholders and incomplete values', () => {
     `continue: ${run} —`,
   ];
   for (const taskText of invalid) assert.equal(parseContinuationGrant(taskText), null, taskText);
+});
+
+// Plan_75 D5, 2026-10-03 20:42: extraction must not give header grants a different grammar.
+test('splitGrantValue preserves the old separators, precedence and placeholder rejection', () => {
+  const run = '2026-08-05_092913_plan14-build';
+  const reason = 'LIMIT at step 3, tests unwritten';
+  for (const separator of [' — ', ' - ', ': ', ':', '\t—\t', '  -  ']) {
+    const value = `${run}${separator}${reason}`;
+    assert.deepEqual(splitGrantValue(value), { run, reason });
+    assert.deepEqual(splitGrantValue(value), parseContinuationGrant(`continue: ${value}`));
+  }
+  assert.deepEqual(splitGrantValue('X: detail - earlier — final'), {
+    run: 'X: detail - earlier', reason: 'final',
+  });
+  assert.deepEqual(splitGrantValue('X: detail - final'), {
+    run: 'X: detail', reason: 'final',
+  });
+  for (const value of [null, undefined, '', 'TODO', '<run> — reason', `${run} — TODO`,
+    `${run} — <reason>`, `${run} —`, run, 'none: reason', 'X: scope']) {
+    assert.equal(splitGrantValue(value), null, String(value));
+    if (typeof value === 'string') {
+      assert.equal(parseContinuationGrant(`continue: ${value}`), null, value);
+    }
+  }
 });
 
 test('valid values pass and the renderer uses the same entries', () => {

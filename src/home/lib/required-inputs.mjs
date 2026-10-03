@@ -214,6 +214,11 @@ export function diagnoseInput(promptText, label) {
 function parseLabelledGrant(promptText, label) {
   const prompt = typeof promptText === 'string' ? promptText : '';
   const value = extractValue(prompt, label);
+  return splitGrantValue(value);
+}
+
+// Plan_75 D5, 2026-10-03 20:42: header parsing must reuse the existing grant value grammar.
+export function splitGrantValue(value) {
   if (isPlaceholder(value)) return null;
 
   for (const separator of [/\s+—\s+/, /\s+-\s+/, /\s*:\s*/]) {
