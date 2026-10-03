@@ -40,6 +40,60 @@ test('successful build replies preserve summaries longer than the old 160-charac
   assert.ok(reply.includes(summary));
 });
 
+test('build replies name incomplete flag coverage immediately after the flags row', () => {
+  const dir = makeRun({
+    args: ['exec', '--json'],
+    events: [{ type: 'thread.started', thread_id: 'reply-flag-gaps' }],
+    result: buildResult([]),
+  });
+  fs.writeFileSync(path.join(dir, 'flags-coverage.txt'),
+    '\na.mjs: start content truncated\n\nb.mjs: diff failed\n');
+
+  const { meta, reply } = collect(dir, 'codex-build', 0);
+  const rows = reply.split('\n');
+  const flagsAt = rows.findIndex((row) => row.startsWith('Flags: '));
+
+  assert.equal(meta.status, 'OK');
+  assert.notEqual(flagsAt, -1);
+  assert.equal(rows[flagsAt + 1],
+    'Flags coverage: incomplete — a.mjs: start content truncated (+1 more)');
+});
+
+test('build replies shorten a single coverage gap to 120 characters without a more suffix', () => {
+  const dir = makeRun({
+    args: ['exec', '--json'],
+    events: [{ type: 'thread.started', thread_id: 'reply-long-flag-gap' }],
+    result: buildResult([]),
+  });
+  fs.writeFileSync(path.join(dir, 'flags-coverage.txt'), `a.mjs: ${'start content '.repeat(15)}end\n`);
+
+  const { reply } = collect(dir, 'codex-build', 0);
+  const prefix = 'Flags coverage: incomplete — ';
+  const row = reply.split('\n').find((value) => value.startsWith(prefix));
+
+  assert.ok(row);
+  assert.ok(row.slice(prefix.length).length <= 120);
+  assert.match(row, /a\.mjs: start content/);
+  assert.doesNotMatch(row, / end|\(\+\d+ more\)/);
+});
+
+for (const coverage of ['', '\n \t\n', null]) {
+  const description = coverage === null ? 'absent' : coverage === '' ? 'empty' : 'blank';
+  test(`build replies omit flag coverage when its file is ${description}`, () => {
+    const dir = makeRun({
+      args: ['exec', '--json'],
+      events: [{ type: 'thread.started', thread_id: 'reply-complete-flags' }],
+      result: buildResult([]),
+    });
+    if (coverage !== null) fs.writeFileSync(path.join(dir, 'flags-coverage.txt'), coverage);
+
+    const { meta, reply } = collect(dir, 'codex-build', 0);
+
+    assert.equal(meta.status, 'OK');
+    assert.doesNotMatch(reply, /^Flags coverage:/m);
+  });
+}
+
 test('failed replies report events and stderr sizes plus the read command', () => {
   const dir = makeRun({
     args: ['exec', '--json'],

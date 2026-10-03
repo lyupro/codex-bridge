@@ -12,6 +12,7 @@ import path from 'node:path';
 import { changedPaths, line, normalizePath, readJson, readText, size } from './paths.mjs';
 import { withLaunchRows } from './launch-rows.mjs';
 import { runLiveness } from './run-liveness.mjs';
+import { removeFlagBaselineCopies } from '../runner/flag-baseline.mjs';
 
 /**
  * Run state on disk, merged over whatever is already there. A killed runner leaves no
@@ -115,6 +116,8 @@ export function markAbandoned(runsRoot, currentTree) {
     }
     try {
       writeStatus(runDir, patch);
+      // Plan_60 D3a: a dead worker cannot remove its start copies; keep the manifest for inspection.
+      if (patch.state === 'abandoned') removeFlagBaselineCopies(runDir);
       changed.push({ run: entry.name, state: patch.state });
     } catch {
       // A folder that cannot be written to is not worth failing a fresh run over.

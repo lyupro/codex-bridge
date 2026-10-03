@@ -69,6 +69,7 @@ function buildReply(ctx) {
   const { work: touchedPaths, environment } = runChanges(ctx.runDir);
   const paths = touchedPaths.slice(0, 3).join(', ');
   const flags = readText(path.join(ctx.runDir, 'flags.txt')).split(/\r?\n/).filter(Boolean);
+  const gaps = readText(path.join(ctx.runDir, 'flags-coverage.txt')).split(/\r?\n/).filter((gap) => gap.trim());
   // A multi-line verification is several commands, and collapsing them into one 60-character
   // line cut the last one mid-word: the reply named a command nobody could run.
   const commands = String(r.verify_command ?? '')
@@ -100,6 +101,9 @@ function buildReply(ctx) {
       : []),
     `Verification: ${verify} — ${verdict}`,
     `Flags: ${flags.length ? `${flags.length} TODO/skip — ${line(flags.slice(0, 3).join(' | '), 140)}` : 'none'}`,
+    ...(gaps.length
+      ? [`Flags coverage: incomplete — ${line(gaps[0], 120)}${gaps.length > 1 ? ` (+${gaps.length - 1} more)` : ''}`]
+      : []),
     `Report: ${ctx.file('report.md')} · Log: ${readCommand(ctx.runDir)}`,
   ];
 }

@@ -51,18 +51,38 @@ test('writeFailure() can record a refusal that never started Codex', () => {
   assert.equal(meta.stderr_bytes, 0);
 });
 
-test('markAbandoned marks a dead, meta-less running run as abandoned', () => {
+test('markAbandoned marks a dead, meta-less running run as abandoned', (t) => {
   const runsRoot = makeTempTree('codex-runs-');
   const runDir = path.join(runsRoot, 'run1');
   fs.mkdirSync(runDir);
   writeStatus(runDir, { state: 'running', pid: DEAD_PID, repo: '/repo', agent: 'codex-build' });
+  const copies = path.join(runDir, 'flags-baseline');
+  const manifest = path.join(runDir, 'flags-baseline.json');
+  const manifestText = JSON.stringify({ version: 1, files: [{ path: 'a.mjs', copy: '0.bin' }] });
+  fs.mkdirSync(copies);
+  fs.writeFileSync(path.join(copies, '0.bin'), 'start content\n');
+  fs.writeFileSync(manifest, manifestText);
+  const realRemove = fs.rmSync;
+  let removals = 0;
+  // Plan_60 D3a: settle status before deleting a dead worker's start copies.
+  t.mock.method(fs, 'rmSync', function rmSync(file, ...rest) {
+    if (file === copies) {
+      removals += 1;
+      assert.equal(JSON.parse(fs.readFileSync(path.join(runDir, 'status.json'), 'utf8')).state, 'abandoned');
+    }
+    return realRemove.call(this, file, ...rest);
+  });
 
   const changed = markAbandoned(runsRoot);
+  t.mock.restoreAll();
 
   assert.deepEqual(changed, [{ run: 'run1', state: 'abandoned' }]);
   const status = JSON.parse(fs.readFileSync(path.join(runDir, 'status.json'), 'utf8'));
   assert.equal(status.state, 'abandoned');
   assert.match(status.abandoned_reason, /meta\.json was not recorded/);
+  assert.equal(removals, 1);
+  assert.equal(fs.existsSync(copies), false);
+  assert.equal(fs.readFileSync(manifest, 'utf8'), manifestText);
 });
 
 test('an abandoned run says its tree was never snapshotted either', () => {
@@ -137,6 +157,9 @@ test('markAbandoned repairs a dead running run that already has a meta.json to f
   writeStatus(runDir, { state: 'running', pid: DEAD_PID, repo: '/repo', agent: 'codex-build' });
   const metaText = JSON.stringify({ status: 'OK', finished_at: 'X' });
   fs.writeFileSync(path.join(runDir, 'meta.json'), metaText);
+  const copies = path.join(runDir, 'flags-baseline');
+  fs.mkdirSync(copies);
+  fs.writeFileSync(path.join(copies, '0.bin'), 'start content\n');
 
   const changed = markAbandoned(runsRoot);
 
@@ -146,6 +169,7 @@ test('markAbandoned repairs a dead running run that already has a meta.json to f
   assert.equal(status.status, 'OK');
   assert.equal(status.finished_at, 'X');
   assert.equal(fs.readFileSync(path.join(runDir, 'meta.json'), 'utf8'), metaText);
+  assert.equal(fs.readFileSync(path.join(copies, '0.bin'), 'utf8'), 'start content\n');
 });
 
 test('markAbandoned keeps a pre-Plan_20 running record without heartbeat alive', () => {
