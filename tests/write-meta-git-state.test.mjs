@@ -20,7 +20,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { collect } from '../src/home/lib/write-meta.mjs';
-import { worktreeSnapshot, reviewScope, findFakeDone } from '../src/home/lib/runner/git-state.mjs';
+import { worktreeSnapshot, reviewScope } from '../src/home/lib/runner/git-state.mjs';
 import { compareSnapshots, decodeSnapshot, SNAPSHOT_V2_HEADER } from '../src/home/lib/meta/snapshot-format.mjs';
 import { makeTempTree, removeTempTree } from './temp-tree.mjs';
 import { buildResult as build, makeRun } from './meta/test-fixtures.mjs';
@@ -275,12 +275,6 @@ test('reviewScope keeps commit and base labels while decoding exact names', (t) 
   });
 });
 
-test('findFakeDone flags a placeholder in a new Cyrillic file', (t) => {
-  const { repo } = repository(t);
-  fs.writeFileSync(path.join(repo, 'проверка.md'), 'TODO: implement\n');
-  assert.equal(findFakeDone(repo), 'проверка.md:1: TODO: implement\n');
-});
-
 test('decoded Cyrillic run-folder names are excluded from snapshots and untracked scans', (t) => {
   const { repo, run, commit } = repository(t);
   process.env.CODEX_RUNS_ROOT = path.join(repo, 'прогоны');
@@ -294,6 +288,4 @@ test('decoded Cyrillic run-folder names are excluded from snapshots and untracke
   fs.mkdirSync(path.join(repo, 'прогоны-other'));
   fs.writeFileSync(path.join(repo, 'прогоны-other', 'реальный.md'), 'real work\n');
   assert.deepEqual([...decodeSnapshot(worktreeSnapshot(repo)).rows.keys()], ['прогоны-other/реальный.md']);
-  // D4 replaces only the untracked path listing; tracked diff scanning keeps its behavior.
-  assert.equal(findFakeDone(repo), '+TODO: runner artifact\n');
 });

@@ -5,8 +5,9 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { git, headSha, branchName, worktreeSnapshot, findFakeDone } from './git-state.mjs';
+import { git, headSha, branchName, worktreeSnapshot } from './git-state.mjs';
 import { captureFlagBaseline } from './flag-baseline.mjs';
+import { scanRunFlags } from './flag-scan.mjs';
 
 export function writeBuildBefore({ runDir, repoRoot, isGitRepo }) {
   fs.writeFileSync(path.join(runDir, 'head-before.txt'), `${isGitRepo ? headSha(repoRoot) : ''}\n`);
@@ -22,5 +23,7 @@ export function writeBuildAfter({ runDir, repoRoot, isGitRepo }) {
   fs.writeFileSync(path.join(runDir, 'git-after.txt'), git(repoRoot, ['-c', 'core.quotepath=false', 'status', '--porcelain']).stdout || '');
   fs.writeFileSync(path.join(runDir, 'state-after.txt'), worktreeSnapshot(repoRoot));
   fs.writeFileSync(path.join(runDir, 'diff.stat'), git(repoRoot, ['-c', 'core.quotepath=false', 'diff', '--stat']).stdout || '');
-  fs.writeFileSync(path.join(runDir, 'flags.txt'), findFakeDone(repoRoot));
+  const scan = scanRunFlags({ runDir, repoRoot });
+  fs.writeFileSync(path.join(runDir, 'flags.txt'), scan.text);
+  fs.writeFileSync(path.join(runDir, 'flags-coverage.txt'), scan.coverage.gaps.map((gap) => `${gap}\n`).join(''));
 }

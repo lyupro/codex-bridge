@@ -159,6 +159,15 @@ test('a newly added Cyrillic Markdown path is printed exactly', (t) => {
   assert.equal(scan().text, 'проверка.md:1: TODO: implement\n');
 });
 
+test('a TODO added under an inside-repository runs root after the baseline is not a hit', (t) => {
+  const { repoRoot, write, capture, scan } = fixture(t);
+  // Plan_60 R12b excludes runner artifacts; fixture restores CODEX_RUNS_ROOT after the test.
+  process.env.CODEX_RUNS_ROOT = path.join(repoRoot, 'прогоны');
+  capture();
+  write('прогоны/задача.md', 'TODO: runner artifact\n');
+  assert.deepEqual(scan(), { text: '', coverage: { complete: true, gaps: [] } });
+});
+
 test('a removed and reinserted TODO is an accepted moved-line residual', (t) => {
   const { write, capture, scan } = fixture(t);
   capture();

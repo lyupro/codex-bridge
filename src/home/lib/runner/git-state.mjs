@@ -94,39 +94,6 @@ export const headSha = (repo) => (git(repo, ['rev-parse', 'HEAD']).stdout || '')
 export const branchName = (repo) =>
   (git(repo, ['symbolic-ref', '--short', '-q', 'HEAD']).stdout || '').trim();
 
-const FAKE_DONE_RE =
-  /TODO|FIXME|test\.(skip|only)|it\.(skip|only)|describe\.(skip|only)|NotImplemented/;
-
-/**
- * Traces of fake completion. `git diff` carries nothing for untracked files, so a brand
- * new file full of TODOs would otherwise pass as "Flags: none" — the one case the check
- * exists for.
- */
-export function findFakeDone(repo) {
-  const skip = runsPrefixInside(repo);
-  const hits = (git(repo, ['diff', '-U0']).stdout || '')
-    .split(/\r?\n/)
-    .filter((l) => l.startsWith('+') && FAKE_DONE_RE.test(l));
-  for (const file of (listUntrackedPaths(repo) ?? [])
-    // Same reason as in worktreeSnapshot: inside ~/.claude the run folder is part of the
-    // worktree, and task.md spells out the very words this scans for ("do not leave TODOs,
-    // test.skip"). A run flagged itself for quoting its own instructions.
-    .filter((file) => !(skip && `${file}/`.startsWith(skip)))) {
-    const full = path.join(repo, file);
-    try {
-      if (fs.statSync(full).size > 1024 * 1024) continue;
-      fs.readFileSync(full, 'utf8')
-        .split(/\r?\n/)
-        .forEach((l, i) => {
-          if (FAKE_DONE_RE.test(l)) hits.push(`${file}:${i + 1}: ${l.trim()}`);
-        });
-    } catch {
-      // Binary or unreadable: nothing to flag.
-    }
-  }
-  return hits.length ? `${hits.slice(0, 20).join('\n')}\n` : '';
-}
-
 /** What exactly is under review, resolved from git rather than from wording. */
 export function reviewScope(repo, changeset) {
   if (changeset.startsWith('base:')) {
