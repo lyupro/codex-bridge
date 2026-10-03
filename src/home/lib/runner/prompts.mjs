@@ -10,6 +10,7 @@
 import { DEFAULTS } from '../run-config.mjs';
 import { RUN_ENV } from './run-env.mjs';
 import { advisorSchema, schemaFor } from './schemas.mjs';
+import { QUESTION_KIND } from './question-kind.mjs';
 
 function boundedArrayRules(schema, path = '') {
   if (schema.type === 'object') {
@@ -93,8 +94,12 @@ ${
     : `- Put one object in answers with question_id "Q1": analysis in answer, references in evidence.
 - The top-level answer is the same response summarized in 2-4 sentences.`
 }
-- Base the response on what you read; support every fact with a \`path:line\` reference in where.
-- If facts are missing, list them in unknowns; do not make them up.
+- Base the response on what you read; support every fact about the code with a \`path:line\` reference in where.
+${questions.some((question) => question?.kind === QUESTION_KIND.STARTUP_CONTEXT)
+    ? `- A sub-question marked [context-only] asks about what this run was handed at startup
+  (task, instructions, schema, environment), not about the repository. Answer it from that context,
+  cite evidence as \`startup:<source>\`, and never cite a repository \`path:line\` you did not read
+  with a command — that fails the run.\n` : ''}- If facts are missing, list them in unknowns; do not make them up.
 - report_markdown is a full markdown report with sections: “Response” (2-4 sentences),
   “How it works” (required: prose analysis ${questions.length ? 'for each sub-question' : 'of the mechanism'},
   grounded in the code), “Findings” (fact / location / confidence table), “Missing information”.`,

@@ -28,6 +28,7 @@ import { startupGap } from './startup.mjs';
 import { transportGap } from './transport.mjs';
 import { reasonFrom } from './reason.mjs';
 import { adviceGap } from './advice-status.mjs';
+import { allStartupContext, contextOnlyGap } from './context-only.mjs';
 import { compareSnapshots } from './snapshot-format.mjs';
 import { readSnapshot, runSnapshotChanges, snapshotRefusal } from './run-snapshots.mjs';
 
@@ -156,7 +157,7 @@ function substanceLength(text) {
 
 const questionsOf = (runDir) => {
   const parsed = readJson(path.join(runDir, 'questions.json'));
-  return Array.isArray(parsed) ? parsed.filter((q) => q && q.id) : [];
+  return Array.isArray(parsed) ? parsed : [];
 };
 
 /** Answers indexed by question id, first one wins; ids come back in whatever case Codex used. */
@@ -175,8 +176,8 @@ const answersById = (result) => {
  * single-answer check. Every branch here exists because a schema alone accepted the run that
  * answered in coordinates.
  */
-function scoutCoverageGap(runDir, result) {
-  const questions = questionsOf(runDir);
+function scoutCoverageGap(orderedQuestions, result) {
+  const questions = orderedQuestions.filter((q) => q && q.id);
   const show = (list) => list.slice(0, 8).join(', ');
 
   if (!questions.length) {
@@ -211,7 +212,7 @@ function scoutCoverageGap(runDir, result) {
 
 /** `1/1 sub-questions`, or null for legacy runs with no questions.json artifact. */
 export function scoutCoverage(runDir, result) {
-  const questions = questionsOf(runDir);
+  const questions = questionsOf(runDir).filter((q) => q && q.id);
   if (!questions.length) return null;
   const byId = answersById(result);
   const answered = questions.filter((q) => String(byId.get(q.id)?.answer || '').trim()).length;
@@ -319,19 +320,25 @@ export function resolveStatus({ resultOk, exit, agent, result, runDir, events })
   // Answers that never arrived, or arrived as coordinates. Scout-only, and per-question
   // only when questions.json is absent — see scoutCoverageGap().
   if (agent === 'codex-scout') {
+    const questions = questionsOf(runDir);
     // The 2026-09-16 dead sandbox produced nonempty evidence without reading code. Require an
     // execution fact first: checking whether evidence paths existed falsely rejected 64/151 runs.
     // Only a run that left a stream can prove it: an archived run from before `--json` has none and
     // is judged by the contract of its day; a `--json` run missing its stream already failed above.
-    if (eventData.hasStream && eventData.commands_executed === 0) {
+    // Plan_60 D1 exempts only orders whose every question asks about handed startup context.
+    if (eventData.hasStream && eventData.commands_executed === 0 && !allStartupContext(questions)) {
       return {
         status: 'FAIL',
         reason: 'scout executed no command, so no answer rests on reading the code; '
           + 'check stderr.log for sandbox refusals before changing the order',
       };
     }
-    const gap = scoutCoverageGap(runDir, result);
+    const gap = scoutCoverageGap(questions, result);
     if (gap) return { status: 'FAIL', reason: gap };
+    const contextGap = contextOnlyGap({
+      questions, result, commandsExecuted: eventData.hasStream ? eventData.commands_executed : null,
+    });
+    if (contextGap) return { status: 'FAIL', reason: contextGap };
   }
   // Plan_59 D3/D4/D5/D10: a schema-valid agreement still needs evidence and decision checks.
   // Place the advisor judge before the build-only scope check, alongside the other agent contracts.
