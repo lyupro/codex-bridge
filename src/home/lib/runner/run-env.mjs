@@ -13,6 +13,7 @@
  * falling back — a typo must not decide what environment a run gets.
  */
 import { readRunConfig, disableFlags } from '../run-config.mjs';
+import { EXIT } from './exit-codes.mjs';
 
 /**
  * The switches as read (they go to env.json) and the flags they turn into (they go to
@@ -33,6 +34,6 @@ export function loadRunEnv() {
     CLEAN_ENV = disableFlags(RUN_ENV);
   } catch (err) {
     console.log(`FAIL — ${err.message}\nRun was not started; quota was not spent`);
-    process.exit(1);
+    process.exit(EXIT.FAIL);
   }
 }

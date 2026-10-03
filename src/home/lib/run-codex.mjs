@@ -54,6 +54,7 @@ import { setWorkerDir, getRun, emitReply } from './runner/run-context.mjs';
 import { launcher } from './runner/launcher.mjs';
 import { worker } from './runner/worker.mjs';
 import { RunnerUsageError } from './runner/args.mjs';
+import { EXIT } from './runner/exit-codes.mjs';
 
 export { parseArgs } from './runner/args.mjs';
 export { runsPrefixInside, worktreeSnapshot } from './runner/git-state.mjs';
@@ -88,18 +89,20 @@ export function installRunnerCrashBoundary() {
           `Log: codex-bridge read ${currentRun}`,
         ]);
         emitReply(reply);
-        process.exit(1);
+        process.exit(EXIT.FAIL);
       } catch {
         // Falls through to the bare reply below: the disk itself is not cooperating.
       }
     }
     emitReply(
       [
-        `FAIL — Codex runner crashed before creating the run folder: ${String(err.message).replace(/\s+/g, ' ').slice(0, 150)}`,
+        `FAIL — Codex runner crashed before creating the run folder: ${
+          String(err.message).replace(/\s+/g, ' ').slice(0, 150)
+        }`,
         'No artifacts; nothing to inspect',
       ].join('\n'),
     );
-    process.exit(1);
+    process.exit(EXIT.FAIL);
   });
 }
 

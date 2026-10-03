@@ -207,12 +207,18 @@ was done.” Service paths are checked before chain lookup so an earlier run can
 
 ## Statuses and process codes
 
-| Status | Meaning | Runner code |
+| Name | Meaning | Runner code |
 | --- | --- | --- |
 | `OK` | Artifacts confirm contract fulfillment. | `0` |
 | `FAIL` | The contract, process, verification, or work match was violated. | `1` |
+| `USAGE` | Argument error: the order itself must be rewritten. A call outcome, not a run status. | `2` |
 | `LIMIT` | There is no result, and the event stream contains a transport refusal caused by exhausted quota. | `3` |
+| `PENDING` | `--no-wait` only: the run is still in progress, or no run exists. A call outcome, not a run status. | `4` |
 | `UNAVAILABLE` | Codex is missing or signed out.[^codex-unavailable] | `5` |
+
+The numbers are defined only in `src/home/lib/runner/exit-codes.mjs`, and
+`tests/runner/exit-codes.test.mjs` fails when this table, the dispatcher prompts or a runner module
+disagree with it.
 
 An unclear probe is never `UNAVAILABLE`; an unfamiliar sign-in error stays `FAIL` with its raw text until
 its sample is measured and added as a fixture (`tests/meta/fixtures/`); `2` is the launcher's argument error.
