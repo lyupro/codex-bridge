@@ -27,6 +27,49 @@ const agents = [
   ['codex-advisor', validScope()],
 ];
 
+function retryRun(records) {
+  const root = path.join(makeRun(), 'retry-runs');
+  fs.mkdirSync(root);
+  for (const [name, status] of Object.entries(records)) {
+    const dir = path.join(root, name);
+    fs.mkdirSync(dir);
+    fs.writeFileSync(path.join(dir, 'status.json'), `${JSON.stringify(status)}\n`);
+  }
+  return path.join(root, 'current');
+}
+
+test('launchRows omits attempt provenance when retry_of is absent or empty', () => {
+  for (const retry_of of [undefined, '', '   ']) {
+    assert.deepEqual(launchRows(retryRun({ current: { retry_of } })), []);
+  }
+});
+
+test('launchRows counts one retry and a retry of a retry within the same pass', () => {
+  for (const [base, attempt] of [[{}, 2], [{ retry_of: 'first' }, 3]]) {
+    const dir = retryRun({ first: {}, base, current: { retry_of: 'base' } });
+    assert.deepEqual(launchRows(dir), [`Attempt: ${attempt} of this pass — retry of base`]);
+  }
+});
+
+test('launchRows stops safely at missing, non-bare and repeated retry links', () => {
+  for (const retry_of of ['missing', '../x', '..\\x', '.', '..', 'current']) {
+    const dir = retryRun({ current: { retry_of } });
+    assert.deepEqual(launchRows(dir), [`Attempt: 1 of this pass — retry of ${retry_of}`]);
+  }
+  for (const retry_of of ['missing', '../x', 'current', 'base']) {
+    const dir = retryRun({ base: { retry_of }, current: { retry_of: 'base' } });
+    assert.deepEqual(launchRows(dir), ['Attempt: 2 of this pass — retry of base']);
+  }
+});
+
+test('launchRows bounds retry traversal to 50 hops', () => {
+  const records = { current: { retry_of: 'retry-0' } };
+  for (let index = 0; index < 51; index += 1) {
+    records[`retry-${index}`] = { retry_of: `retry-${index + 1}` };
+  }
+  assert.deepEqual(launchRows(retryRun(records)), ['Attempt: 51 of this pass — retry of retry-0']);
+});
+
 for (const [agent, result] of agents) {
   for (const status of ['OK', 'FAIL', 'LIMIT']) {
     test(`${agent} ${status} replies keep Retention, Sandbox probe, Model and Log consecutive`, () => {

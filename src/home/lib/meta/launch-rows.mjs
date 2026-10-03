@@ -23,6 +23,27 @@ function retentionReply(runDir) {
   return `Retention: freed ${formatBytes(bytes)} from ${runs} runs older than ${days} days`;
 }
 
+function attemptReply(runDir) {
+  const retryOf = readJson(path.join(runDir, 'status.json'))?.retry_of;
+  if (typeof retryOf !== 'string' || !retryOf.trim()) return null;
+  const runsRoot = path.dirname(runDir);
+  const key = (name) => process.platform === 'win32' ? name.toLowerCase() : name;
+  const seen = new Set([key(path.basename(runDir))]);
+  let previous = retryOf;
+  let attempt = 1;
+  // Plan_75 D1, 2026-10-03 TradeForge: show retries without trusting broken provenance links.
+  for (let hops = 0; hops < 50; hops += 1) {
+    if (typeof previous !== 'string' || !previous || /[/\\]/.test(previous)
+      || previous === '.' || previous === '..' || seen.has(key(previous))) break;
+    const status = readJson(path.join(runsRoot, previous, 'status.json'));
+    if (!status) break;
+    seen.add(key(previous));
+    attempt += 1;
+    previous = status.retry_of;
+  }
+  return `Attempt: ${attempt} of this pass — retry of ${retryOf}`;
+}
+
 // Five copies of Retention missed writeFailure(), so both reply assemblers share this point.
 // The 2026-09-16 dead Codex sandbox incident is why the launcher probes the sandbox at all.
 export function launchRows(runDir) {
@@ -33,6 +54,8 @@ export function launchRows(runDir) {
     const reason = line(probe.reason, 160) || 'no reason recorded';
     rows.push(`Sandbox probe: inconclusive — ${reason} The run started without a sandbox check.`);
   }
+  const attempt = attemptReply(runDir);
+  if (attempt) rows.push(attempt);
   return rows;
 }
 

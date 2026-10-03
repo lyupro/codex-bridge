@@ -6,7 +6,7 @@ import { readJsonFileSync } from '../json-file.mjs';
 import { workerMayBeAlive } from '../meta/run-liveness.mjs';
 import { processAlive } from '../process-identity.mjs';
 import { exitCodeFor, writeFailure, chainRuns } from '../write-meta.mjs';
-import { sameRun } from './continuation.mjs';
+import { readyGrantLines, sameRun } from './continuation.mjs';
 import { conflictingOrderOwner, runsForOrder } from './order-owner.mjs';
 
 // The attach call is the only process that waits for a worker it did not spawn. Keeping that
@@ -133,7 +133,12 @@ export async function attach({ runsRoot, repo, slug, taskHash, orderId, chain, g
     if (fs.existsSync(path.join(dir, 'reply.txt'))) {
       announceSavedReply(dir, orderId, entry.status.started_at);
       console.log(fs.readFileSync(path.join(dir, 'reply.txt'), 'utf8').replace(/\s+$/, ''));
-      return exitCodeFor(readJsonFile(path.join(dir, 'meta.json'))?.status);
+      const meta = readJsonFile(path.join(dir, 'meta.json'));
+      // Plan_75 D1, 2026-10-03 TradeForge: a cached failure must name its current repair.
+      if (meta?.status !== 'OK' && entry.run === runs.at(-1)) {
+        console.log(readyGrantLines(runsRoot, runs));
+      }
+      return exitCodeFor(meta?.status);
     }
     if (workerMayBeAlive({ runDir: dir, status: entry.status })) {
       candidate = entry;

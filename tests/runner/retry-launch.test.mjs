@@ -73,6 +73,45 @@ test('TradeForge advise retry keeps the failed pass and carries its original OK 
   assert.deepEqual(fs.readdirSync(tree.projectRunsRoot), [S, A]);
 });
 
+for (const [verdict, exitCode] of [['FAIL', 1], ['OK', 0]]) {
+  test(`identical original TradeForge advise attaches to saved ${verdict} with repair only for failure`, async (t) => {
+    const tree = fixture();
+    run(tree, S, {}, 'OK', { 'result.json': JSON.stringify(validScope()) });
+    const dir = run(tree, A, { phase: 'advise', continued_from: S }, verdict, {
+      'reply.txt': `${verdict} — original advise\n`,
+    });
+    const lines = [];
+    t.mock.method(console, 'log', (...values) => lines.push(values.join(' ')));
+
+    assert.deepEqual(await passGate({
+      ...tree, opts: tree.opts, taskText: `${TASK}\ncontinue: ${S} — scope approved\n`,
+    }), { exitCode });
+    assert.equal(lines[0], `ATTACH=${dir} order-id=o started=2026-10-03T18:00:00.000Z`);
+    if (verdict === 'FAIL') {
+      assert.equal(lines.at(-2), 'FAIL — original advise');
+      assert.match(lines.at(-1), new RegExp(`Ready retry line: retry: ${A} —`));
+    } else {
+      assert.equal(lines.at(-1), 'OK — original advise');
+      assert.doesNotMatch(lines.join('\n'), /Ready/);
+    }
+    assert.deepEqual(fs.readdirSync(tree.projectRunsRoot), [S, A]);
+  });
+}
+
+test('an older saved TradeForge failure prints no repair for the newer retry', async (t) => {
+  const tree = tradeforge();
+  fs.writeFileSync(path.join(tree.projectRunsRoot, A, 'reply.txt'), 'FAIL — original advise\n');
+  run(tree, R, { phase: 'advise', retry_of: A }, 'FAIL');
+  const lines = [];
+  t.mock.method(console, 'log', (...values) => lines.push(values.join(' ')));
+
+  assert.deepEqual(await passGate({
+    ...tree, opts: tree.opts, taskText: `${TASK}\ncontinue: ${S} — scope approved\n`,
+  }), { exitCode: 1 });
+  assert.equal(lines.at(-1), 'FAIL — original advise');
+  assert.doesNotMatch(lines.join('\n'), /Ready/);
+});
+
 test('identical retry attaches only to its retry child and returns that saved verdict', async (t) => {
   const tree = tradeforge();
   // TradeForge: the original failed advise also has this base, so base matching is insufficient.
