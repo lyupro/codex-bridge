@@ -165,7 +165,7 @@ verdict with findings. `codex-advisor` reports its phase-specific scope assessme
 
 ### Repeated runs and `--continue`
 
-A chain is all runs of one repository that match by `slug`, task-text fingerprint, or order label.
+A chain is all runs of one repository that match by `slug`, header-free task-body fingerprint, or order label.
 If `--slug` is omitted, a new slug comes from the `order id`, so different orders do not inherit
 the agent's generic name. If such a chain already exists, a new run without `--continue` does not
 create a new directory or spend quota: an ordinary repeat attaches to the existing response or
@@ -174,40 +174,67 @@ wait. This protects against accidental repetition.
 Directories created before this rule with a generic slug such as `build` are not renamed: the
 chain still finds them by the stored order label or task fingerprint.
 
-Add `--continue` only for the next pass on the same task, and only together with authorization in
-the task text—the flag without authorization is rejected before quota is spent. The runner always
-parses authorization from the text: if the line is present but the flag was lost along the way,
-the result is a refusal before attachment, directory creation, and quota, not an old response
+Add `--continue` only with an orchestrator grant in the task header: `continue:` authorizes the next
+pass, and `retry:` repeats a failed pass. The flag without a grant is rejected before quota is spent.
+The dispatcher adds `--continue` when its call carries either grant. If the header carries a grant
+but the flag was lost along the way, the result is a refusal before attachment, directory creation,
+and quota, not an old response
 presented as the result of a new order:
 
 ```bash
 codex-bridge run --agent codex-build --repo . --slug auth-flow --order-id order-42 --continue --scope "src/auth/**,tests/auth/**" --task-file /abs/path/to/follow-up.md
 ```
 
-where `follow-up.md` contains a line with the run name and reason:
+where `follow-up.md` starts with this build-continuation header, a blank line, and the task body:
 
-```
+```text
 continue: 2026-08-05_092913_auth-flow — LIMIT at step 3, tests unwritten
+advice: mechanical
+
+Complete step 3 and write the remaining authentication tests.
 ```
 
-Authorization is the line form: the `continue:` label, run directory name, `—`, and reason. Form
+The header contains consecutive lowercase `label: value` lines starting at the task's first line,
+with no leading blank line; one initial BOM is ignored. Its labels are `advice:`, `continue:`, and
+`retry:`, in any order, and the first blank or other line ends it. Values must be non-empty and
+single-line. A duplicate label or both grants together is refused before any run folder or quota.
+A build task requires `advice:` in this header: `mechanical`, `revert`, `docs-only`, `test-only`, or
+an absolute path to an existing `OK` advisor `advise` run.
+
+Either grant names a bare run folder (`[A-Za-z0-9._-]+`, excluding `.` and `..`), followed by `—`
+and a non-placeholder reason. An invalid folder name or missing reason is a free refusal. Form
 validation does not depend on whether the directory exists: the runner does not silently correct
 a mistyped name, but refuses with the latest run's name, status, and reason, plus a ready-made line
-for another attempt. Mentioning the word `continue:` in prose is not authorization. On a safe
-`attach`, the first line is `ATTACH=<directory> order-id=<id> started=<time>`. For a saved reply, the
-next line says that it printed the answer from the previous run and no new work was started. For a
+for another attempt. Below the header, a known label, decorated or not, followed by a bare folder
+name with or without a reason, or by an advice value, is refused for free with its line number and
+repair: move it into the header with the exact lowercase spelling, or quote an example with `>` or
+reword it inside a sentence. Code fences do not exempt such lines. Other prose that merely starts
+with a label remains task text. These rules apply to both `--task-file` and stdin; the producer's
+`order-gate.mjs` hook applies the same refusal.
+
+On a safe `attach`, the first line is `ATTACH=<directory> order-id=<id> started=<time>`. For a saved
+reply, the next line says that it printed the answer from the previous run and no new work was started. For a
 live run, it says the run is already in progress, no new work was started, and this invocation is
 waiting for its verdict.
 
-An order id names one task. When the id already belongs to a run whose task text differs, the runner
+An order id names one task. When the id already belongs to a run whose task-body hash differs, the runner
 refuses with exit code `2` before printing anything from that run: it names the folder that owns the
-id, its slug and start time, and the two remedies — a new `--order-id`, or `--continue` if this
-really is another pass of the same order. The refusal exists because on 2026-08-15 a run ordered
+id, its slug and start time, and the two remedies — a new `--order-id`, or a `continue:`/`retry:`
+header grant with `--continue` if this really is another pass of the same order. The refusal exists
+because on 2026-08-15 a run ordered
 under the previous run's id was answered with that run's `OK`, its file list and its suite, over a
 worktree where nothing had been done.
 
-Authorization is single-use: it names the latest run in the chain, and continuation appends a
-later one, so the same line will not work twice. Details and all refusals are in
+Each grant is single-use: it names the latest run in the chain, and its execution appends a later
+one. Repeating an identical granted command attaches to the run it already started.
+
+`retry: <failed run> — <reason>` with `--continue` repeats a `FAIL`, `LIMIT`, or `UNAVAILABLE` pass
+once under that grant. The named run must be the last of its chain, have a finished verdict and a
+worker proven dead, and match the order id, agent, and phase. The new run records `retry_of` and
+does not spend another continuation of the order; an `advise` retry carries the original `OK`
+scope. Its reply shows `Attempt: N of this pass — retry of <run>`. A saved non-OK reply returned by
+attach ends with ready grant lines; refusals that encounter a failed last run with an order id
+include a ready `retry:` line. Details and all refusals are in
 [run-lifecycle.md](run-lifecycle.md).
 
 When reconciling the builder's report, the runner considers accumulated changes from the state
@@ -548,8 +575,9 @@ unconfirmed response cannot pass silently.
 the call while it can still be corrected for free: when a required input is missing or still a
 template placeholder, when a labelled value carries a shell sequence that would make the command
 unmatchable by a permission rule, and when the ordered order id already belongs to a run whose task
-text differs — the collision the runner also refuses, caught one step earlier, before Codex is
-invoked at all. An explicit continuation grant is the one case that passes.
+body hash differs — the collision the runner also refuses, caught one step earlier, before Codex is
+invoked at all. An explicit `continue:` or `retry:` header grant permits another pass. The gate also
+applies the runner's malformed-header and misplaced-metadata refusals.
 
 The gate and the runner share one definition of which task owns an order id
 (`lib/runner/order-owner.mjs`); a second copy would drift, and drift between two such lists is what

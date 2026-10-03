@@ -42,10 +42,12 @@ complete job before detaching from the launcher.
    an undeclared phase (or a missing required phase) is refused before the run folder exists. A role
    with only the `default` phase may omit the flag. `codex-advisor --phase advise` without `--continue`
    is also refused here, before a run folder exists or quota is spent.
-3. The launcher reads stdin and rejects an empty task. Before proceeding, it also rejects a biased or
+3. The launcher reads `--task-file` or stdin and rejects an empty task. It parses the metadata header
+   and refuses malformed or misplaced metadata before creating a run folder or spending quota;
+   the producer hook applies the same check. Before proceeding, it also rejects a biased or
    malformed advisor task: `## Options` must contain at least two distinct `- option-id: description`
    choices without preference markers, and `## Paths` must contain at least one list path. A build task
-   must contain exactly one valid `advice:` line: `mechanical`, `revert`, `docs-only`, `test-only`, or
+   must contain exactly one valid `advice:` line in the header: `mechanical`, `revert`, `docs-only`, `test-only`, or
    an absolute path to an existing advisor run directory whose `meta.json` says agent `codex-advisor`,
    phase `advise` and status `OK` — a scope pass or a failed advice authorizes nothing.
    These task-contract refusals happen before the run folder exists and spend no quota.
@@ -74,14 +76,14 @@ complete job before detaching from the launcher.
 7. If `--slug` is absent, the runner takes it from the mandatory job label and applies the sanitizer
    `[^A-Za-z0-9._-]+` → `-`; a result with no letters or digits is rejected before creating a directory.
    Then `chainRuns()` finds runs from the same repository by three signals: the same `slug`, the same
-   task-text fingerprint, or the same job label. A matching chain without `--continue` stops startup
+   header-free task-body fingerprint, or the same job label. A matching chain without `--continue` stops startup
    before a new directory is created. Old-contract directories with a generic slug such as `build` are
    not lost: the saved job label or fingerprint finds them. Only runs that had a Codex session count:
    a directory with `state=aborted_pre_start` (and its old-contract equivalent) is excluded — it spent
    no quota and contains nothing to continue. The chain itself remains complete: it is the audit view,
    and the rejected run remains visible in it. An `advise` continuation is additionally refused before
    folder creation unless the named run's `meta.json` records `agent: codex-advisor`, `phase: scope`,
-   and `status: OK`.
+   and `status: OK`; an `advise` retry carries the original `OK` scope instead.
 8. First, `codexAvailabilityRefusal()` (`runner/preflight.mjs`, built on `runner/codex-availability.mjs`)
    looks `codex` up on PATH and asks `codex login status` (10-second deadline each, through
    `spawnCaptured()`). A missing binary or the measured `Not logged in` answer produces an `UNAVAILABLE`
@@ -151,6 +153,10 @@ complete job before detaching from the launcher.
 
 ## Attaching by job label
 
+`task_hash` fingerprints the header-free task body, normalizing whitespace and case.
+`status.json#task_hash_scheme` is `2` for this scheme; a missing field identifies an earlier scheme.
+Changing only header metadata does not change this identity.
+
 A repeated invocation with the same label does not create a second run. The check occurs before
 directory creation, immediately after finding the chain and before the `--continue is required` refusal
 (step 7):
@@ -158,10 +164,14 @@ directory creation, immediately after finding the chain and before the `--contin
 - **A run with this label already has `reply.txt`** — the verdict is printed from disk; the repeat
   responds rather than refusing. `--no-wait` does not change this branch or its existing verdict exit
   code.
-- **The label already belongs to a run whose task text differs** — the invocation refuses with exit
+- **The label already belongs to a run whose task-body hash differs** — the invocation refuses with exit
   code `2`, naming the folder that owns the label, its slug and start time, and the two remedies: a
-  new `--order-id`, or `--continue`. Nothing is printed from the other run, no folder is created and
-  no quota is spent. Checked before every branch below, and skipped under `--continue` and whenever
+  new `--order-id`, or a `continue:`/`retry:` header grant with `--continue`. If the owner lacks
+  `task_hash_scheme` and its hash differs, the refusal explains that the owner predates the task
+  header and its task cannot be compared, points to the saved answer in that folder with
+  `codex-bridge read "<directory>"`, and gives the same remedies. Nothing is printed from the other
+  run, no folder is created and no quota is spent. Checked before every branch below, and skipped
+  under `--continue` and whenever
   either task hash is unknown, so runs older than the `task_hash` field keep attaching as they did.
 - **There is no `reply.txt`, and the pid is alive** — the invocation prints
   `ATTACH=<directory> order-id=<id> started=<time>`, waits for `reply.txt`, and prints it. The next line states
@@ -179,29 +189,46 @@ directory creation, immediately after finding the chain and before the `--contin
   the earlier path applies (`markAbandoned()` has already marked the directory, then the `--continue`
   refusal takes effect).
 - **`--continue` was passed** — the invocation attaches only to a run of this order label whose
-  `status.json#continued_from` names the same run as the `continue:` grant, and it does so BEFORE the
+  `status.json#continued_from` names the same run as the header's `continue:` grant, or whose
+  `status.json#retry_of` names the same run as its `retry:` grant, and it does so BEFORE the
   grant is checked: that run is what an identical earlier continuation command started, and by now the
   grant is spent. Live, saved and dead cases are then handled exactly as above. No such run — a new pass
   starts, subject to the authorization below. On 2026-09-23 a dispatcher repeating its continuation to
   collect the verdict was refused as a reused grant while its advise run was working — every
   continuation was unable to return its verdict to chat.
 
+When attach returns a saved non-OK reply, it appends ready grant lines, including a `retry:` line
+when the failed last run has an order id.
+
 ## Continuation authorization
 
-The gate always parses the task text for authorization. If an authorization line exists but
+The gate always parses the task header for authorization. If a grant exists but
 `--continue` was not passed, the call is rejected before `attach()`, directory creation, and quota use.
-`--continue` without authorization from the orchestrator is also rejected. Authorization is a line in
-the task text next to `order id:` and `scope:`:
+`--continue` without authorization from the orchestrator is also rejected. The dispatcher adds
+`--continue` when its call carries either grant. The header consists of consecutive lowercase
+`advice:`, `continue:`, or `retry:` lines in any order at the very start of the task. One initial BOM
+is ignored; no blank line may precede the header. The first blank or other line ends it. A build
+continuation has this form:
 
-```
+```text
 continue: 2026-08-05_092913_plan14-build — LIMIT at step 3, tests unwritten
+advice: mechanical
+
+Complete step 3 and write the remaining tests.
 ```
 
-It names the run after which execution continues and gives the reason. The line form constitutes
-authorization, not the existence of the named directory: after `continue:` there must be a readable
-directory name, `—`, and a reason. A typo in the name is still authorization in the wrong form for the
+The grant names the run after which execution continues and gives the reason. Each value must be
+non-empty and single-line; duplicate labels and both grants together are free refusals. After
+`continue:` or `retry:` there must be a bare folder name (`[A-Za-z0-9._-]+`, excluding `.` and `..`),
+`—`, and a non-placeholder reason. The line form constitutes authorization, not the existence of
+the named directory. A typo in the name is still authorization in the wrong form for the
 directory check: the runner does not silently replace it with the correct name. Mentioning `continue:`
-in ordinary prose is not authorization.
+in ordinary prose is not authorization. Below the header, a known label, decorated or not, followed
+by a bare folder name with or without a reason, or by an advice value, is refused with its line
+number and repair: move it into the header with the exact lowercase spelling, or quote an example
+with `>` or reword it inside a sentence. Code fences do not exempt such metadata. Other prose that
+merely starts with a label stays task text. The same rules cover task files and stdin, and
+`order-gate.mjs` applies the same refusal on the producer side.
 
 All refusals are free:
 
@@ -210,8 +237,9 @@ All refusals are free:
 - the named run is not the last in the chain — refusal.
 
 If authorization exists but the flag was omitted, the refusal names the exact directory of this task's
-last run, its status and reason, and prints a ready-to-use authorization line for the retry. If the
-directory is absent, all three hints are still provided; the entered name is not substituted.
+last run, its status and reason, and prints a ready-to-use authorization line. A failed last run with
+an order id also gets a ready `retry:` line. If the directory is absent, all three hints are still
+provided; the entered name is not substituted.
 
 The last rule makes authorization single-use: continuation appends a later run to the chain, so the same
 line stops matching by itself — without a counter or new state. The named run is recorded in
@@ -229,12 +257,14 @@ response could look like the verdict for a new job.
 
 ## Continuation limit
 
-An advisor `scope` phase is never continued: `--phase scope --continue` is refused before start, because
+An advisor `scope` phase is never continued: `--phase scope --continue` with a `continue:` grant is
+refused before start, because
 continuing a failed scope spent the order's single continuation and left its `advise` phase unreachable
-(2026-09-30). A failed scope is repeated under a new order id, and `advise` then continues that order.
+(2026-09-30). A failed scope can be repeated with a `retry:` grant and `--continue`, or under a new
+order id; `advise` then continues that order.
 
-A limit applies on top of authorization: `--continue` is permitted once per job label and only after a
-run with a recorded verdict:
+A limit applies on top of continuation authorization: a `continue:` grant with `--continue` is
+permitted once per job label and only after a run with a recorded verdict:
 
 - no runs with this label — continuation is allowed;
 - one run with a verdict — allowed;
@@ -243,11 +273,27 @@ run with a recorded verdict:
 - two or more — refusal naming the spent runs; another attempt requires a new job label from the
   orchestrator.
 
-Only runs with this label count, not the entire chain. The chain also links runs by slug and task-text
+Only non-retry runs with this label count, not the entire chain. Runs with `retry_of` do not spend
+another continuation. The chain also links runs by slug and header-free task-body
 fingerprint — catching a repeat that renamed itself — but applying the limit to the chain would break
 the promised exit: a new label joins the same chain through the fingerprint, and the task is rejected
 both with `--continue` (“continuation spent”) and without it (“`--continue` required”). A permanently
 unstartable task is worse than the retry storm the limit was introduced to prevent.
+
+## Retry authorization
+
+`retry: <failed run> — <reason>` in the header, together with `--continue`, repeats a `FAIL`, `LIMIT`,
+or `UNAVAILABLE` pass once under that grant. The named folder must exist and be the last run of the
+chain, have a finished verdict and a worker proven dead, and match this call's order id, agent, and
+phase. A missing verdict, a worker that may still be alive, or an `OK` outcome is a free refusal.
+An advisor `advise` retry carries the original `OK` scope, rather than treating the failed advise
+run as a scope result.
+
+The new run records the named folder in `status.json#retry_of` and does not count as another
+continuation of the order. Appending it spends the grant; repeating the identical retry command
+attaches to that run instead of starting another one. Its reply includes
+`Attempt: N of this pass — retry of <run>`. Refusals that encounter a failed last run with an order id
+print a ready `retry:` line, and attach appends ready grant lines to a saved non-OK reply.
 
 ## Manual stop
 

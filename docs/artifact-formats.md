@@ -17,15 +17,17 @@ before the final update to `status.json`.
 | `runner_pid` | Worker pid; added after a successful spawn. |
 | `agent` | Name of the selected dispatcher. |
 | `phase` | Resolved phase for this run. A single-phase role uses `default`; roles with named phases record the selected phase. |
-| `advice` | Build only: the single accepted `advice:` value from the task. Absent for other agents. |
+| `advice` | Build only: the single accepted `advice:` value from the task header. Absent for other agents. |
 | `slug` | Normalized task slug. |
-| `task_hash` | Fingerprint of the normalized task text; the chain uses it to find a repeated run whose name was changed. |
+| `task_hash` | Fingerprint of the header-free task body, with whitespace and case normalized; the chain uses it to find a repeated run whose name was changed. |
+| `task_hash_scheme` | `2` for the header-free task-body fingerprint. An absent field identifies a run that used an earlier hash scheme. |
 | `order_id` | Job label from the orchestrator; the chain uses it to find a repeated run whose name and text were both changed. |
 | `repo` | Repository root. |
 | `started_at` | Run creation time in ISO 8601. |
 | `continues` | Optional name of the first directory in the chain if the run was started with continuation. |
 | `sandbox_probe` | The launcher's check of the host Codex sandbox, written whole: `outcome` (`alive`, `inconclusive` or `skipped`), `reason`, and `attempts` — one entry per probe form with `form` (`flagged`, `control`, `version`), `status`, `marker`, `ms` and `stderrTail` (at most 300 characters, evidence only, never judged). `dead` never appears here: a dead sandbox refuses before the folder exists. Every launch that reaches the run folder carries it, a busy-tree refusal included; an absent field means a run from before 0.6.3. `inconclusive` adds the row `Sandbox probe: inconclusive — <reason> The run started without a sandbox check.` to the run's reply, whatever the verdict, including a runner failure closed by `writeFailure()`. |
-| `continued_from` | Optional name of the run named by the `continue:` authorization in the task text. Unlike `continues`, this is not the start of the chain, but the run after which the orchestrator instructed execution to continue. Grant enforcement is handled by the “named run is the last in the chain” rule; this field is the key by which a repeated identical continuation command attaches to the run it already started. For an advisor `advise` phase, the target must also be an `OK` advisor `scope` run. |
+| `continued_from` | Optional name of the run named by the `continue:` grant in the task header. Unlike `continues`, this is not the start of the chain, but the run after which the orchestrator instructed execution to continue. Grant enforcement is handled by the “named run is the last in the chain” rule; this field is the key by which a repeated identical continuation command attaches to the run it already started. For an advisor `advise` phase, the target must also be an `OK` advisor `scope` run. |
+| `retry_of` | Optional name of the failed run named by the `retry:` grant in the task header. The retry repeats that pass with the same order id, agent, and phase; it does not count as another continuation. This field lets a repeated identical retry command attach to the run it already started. An advisor `advise` retry carries the original `OK` scope. |
 
 ### Completion fields
 
