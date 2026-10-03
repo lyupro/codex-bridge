@@ -5,6 +5,7 @@
  * else's quota is touched, and every refusal is an exit code rather than a message: a
  * dispatcher branches on it.
  */
+import { EXIT } from './exit-codes.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { AGENTS } from '../write-meta.mjs';
@@ -16,13 +17,13 @@ export class RunnerUsageError extends Error {
   // 2 says the order itself is wrong and has to be rewritten. A refusal about the state of the
   // host or the worktree passes 1: the order was fine, nothing about it needs changing, and
   // Plan_58 moved two such refusals here from a code path that already answered 1.
-  constructor(message, exitCode = 2) {
+  constructor(message, exitCode = EXIT.USAGE) {
     super(message);
     this.exitCode = exitCode;
   }
 }
 
-export function die(message, exitCode = 2) {
+export function die(message, exitCode = EXIT.USAGE) {
   console.error(`run-codex: ${message}`);
   throw new RunnerUsageError(message, exitCode);
 }

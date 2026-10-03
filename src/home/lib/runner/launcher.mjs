@@ -2,9 +2,8 @@
  * The half the caller can kill: every preparation and every refusal that costs no quota,
  * then the spawn of the worker and the immediate return; a repeated call waits for the reply.
  *
- * The order it leaves for the worker is worker.json in the run folder — after the split that file
- * is the only connection between the two halves. Its shape and the reason for every field live in
- * worker-order.mjs, which writes it.
+ * worker.json in the run folder is the only connection between the two halves after the split.
+ * worker-order.mjs writes it and owns its shape and the reason for every field.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -20,6 +19,7 @@ import {
   taskFingerprint,
   readJson,
 } from '../write-meta.mjs';
+import { EXIT } from './exit-codes.mjs';
 import { attach } from './attach.mjs';
 import { setRun } from './run-context.mjs';
 import { loadRunEnv, RUN_ENV } from './run-env.mjs';
@@ -100,7 +100,7 @@ export async function launcher(argv = process.argv.slice(2)) {
   const taskText = settleTaskInput(opts);
   // Plan_59 D5/D6: blind choices and design authority must be checked before the paid probe.
   const taskGate = taskPreflight({ agent: opts.agent, taskText });
-  if (taskGate.refusal) die(taskGate.refusal, 1);
+  if (taskGate.refusal) die(taskGate.refusal, EXIT.FAIL);
   const topLevel = git(opts.repo, ['rev-parse', '--show-toplevel']);
   const isGitRepo = topLevel.status === 0;
   const repoRoot = isGitRepo ? topLevel.stdout.trim() : opts.repo;
@@ -171,7 +171,7 @@ export async function launcher(argv = process.argv.slice(2)) {
   // Plan_59 D14: the grant is valid by now; an advise pass may continue only an OK scope run.
   const scopeRun = continuationGrant &&
     scopeRunRefusal({ agent: opts.agent, phase: opts.phase, runsRoot: projectRunsRoot, grantRun: continuationGrant.run });
-  if (scopeRun) die(scopeRun, 1);
+  if (scopeRun) die(scopeRun, EXIT.FAIL);
   // Plan_59 D22: the advise snapshot is read before the folder exists, so a broken scope result refuses for free.
   const advisorTask = opts.agent === 'codex-advisor' ? advisorTaskOrRefuse({ taskText, phase: opts.phase, runsRoot: projectRunsRoot, grantRun: continuationGrant?.run }) : null;
 
@@ -198,10 +198,10 @@ export async function launcher(argv = process.argv.slice(2)) {
     );
   }
 
-  // Plan_60 D2: a missing or signed-out Codex answers UNAVAILABLE (exit 4) before the paid sandbox probe.
+  // Plan_60 D2: a missing or signed-out Codex answers UNAVAILABLE (exit 5) before the paid sandbox probe.
   const availability = await codexAvailabilityRefusal();
-  if (availability?.unavailable) { process.stdout.write(`${availability.text}\n`); return 4; }
-  if (availability) die(availability.text, 1);
+  if (availability?.unavailable) { process.stdout.write(`${availability.text}\n`); return EXIT.UNAVAILABLE; }
+  if (availability) die(availability.text, EXIT.FAIL);
   // Review 2026-09-17: probe before the busy check so it sees writers that registered while the slow
   // probe waited; the dead refusal stays before retention to preserve old run artifacts.
   const sandboxProbe = await probeSandbox({ agent: opts.agent, repo: repoRoot });
@@ -213,7 +213,7 @@ export async function launcher(argv = process.argv.slice(2)) {
   // every tool call demanding the orchestrator revert a directory the tool itself had created.
   // Exit 1, not the usage code 2: the order was correct, the host or the tree was not.
   const preflightError = preflightRefusal({ agent: opts.agent, projectRunsRoot, repoRoot });
-  if (preflightError) die(preflightError, 1);
+  if (preflightError) die(preflightError, EXIT.FAIL);
 
   let retention = null;
   try {
@@ -350,7 +350,7 @@ export async function launcher(argv = process.argv.slice(2)) {
       true,
     );
     console.log(reply);
-    return 1;
+    return EXIT.FAIL;
   }
   writeWorkerOrder(runDir, {
     agent: opts.agent,
@@ -385,7 +385,7 @@ export async function launcher(argv = process.argv.slice(2)) {
       resolve(false);
     });
   });
-  if (!started) return 1;
+  if (!started) return EXIT.FAIL;
   worker.unref();
   writeStatus(runDir, { pid: worker.pid, runner_pid: worker.pid, process_started_at: null });
 
@@ -395,5 +395,5 @@ export async function launcher(argv = process.argv.slice(2)) {
   console.log(
     'To get the verdict, repeat the identical command with the same --order-id; it will attach to this run and will not start a second run.',
   );
-  return 0;
+  return EXIT.OK;
 }

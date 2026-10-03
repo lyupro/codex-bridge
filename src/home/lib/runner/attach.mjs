@@ -1,4 +1,5 @@
 /** Finds a live run for an order and waits for its verdict when a repeated launcher call attaches. */
+import { EXIT } from './exit-codes.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { readJsonFileSync } from '../json-file.mjs';
@@ -116,7 +117,7 @@ export async function attach({ runsRoot, repo, slug, taskHash, orderId, chain, g
         `(slug ${owner.status.slug}, started_at ${owner.status.started_at}) with a different task. ` +
         'Pass a new --order-id, or pass --continue if this really is another pass of the same order.',
     );
-    return 2;
+    return EXIT.USAGE;
   }
 
   // The run an order is currently about is its newest one, and the chain arrives oldest first.
@@ -140,7 +141,7 @@ export async function attach({ runsRoot, repo, slug, taskHash, orderId, chain, g
   if (!candidate) {
     if (!noWait) return null;
     console.log(`No run exists for order id ${JSON.stringify(String(orderId ?? ''))}; --no-wait never starts a new run.`);
-    return 4;
+    return EXIT.PENDING;
   }
 
   const runDir = path.join(runsRoot, candidate.run);
@@ -148,7 +149,7 @@ export async function attach({ runsRoot, repo, slug, taskHash, orderId, chain, g
   // A distinct call outcome lets the dispatcher inspect disk without mistaking pending for failure.
   if (noWait) {
     announcePending(runDir, orderId, candidate.status.started_at);
-    return 4;
+    return EXIT.PENDING;
   }
   announceLiveAttach(runDir, orderId, candidate.status.started_at);
   const replyText = await waitForReply(runDir, candidate.status.pid, candidate.status);
@@ -174,5 +175,5 @@ export async function attach({ runsRoot, repo, slug, taskHash, orderId, chain, g
     'Any Codex changes remain in the tree — check them with git status',
   ]);
   console.log(reply);
-  return 1;
+  return EXIT.FAIL;
 }

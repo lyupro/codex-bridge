@@ -26,7 +26,7 @@ const REFUSALS = [
   {
     name: 'a biased advisor task or missing build advice',
     side: 'before',
-    marker: 'if (taskGate.refusal) die(taskGate.refusal, 1)',
+    marker: 'if (taskGate.refusal) die(taskGate.refusal, EXIT.FAIL)',
     why: 'Plan_59 D5/D6: blind choices and design authority must be settled without spending quota',
   },
   {
@@ -68,13 +68,13 @@ const REFUSALS = [
   {
     name: 'a busy tree',
     side: 'before',
-    marker: 'if (preflightError) die(preflightError, 1)',
+    marker: 'if (preflightError) die(preflightError, EXIT.FAIL)',
     why: 'Plan_58: it spends no quota, so it may not leave a path in the worktree',
   },
   {
     name: 'an unclear Codex availability probe',
     side: 'before',
-    marker: 'if (availability) die(availability.text, 1)',
+    marker: 'if (availability) die(availability.text, EXIT.FAIL)',
     why: 'Plan_60 D2: an inconclusive probe is an ordinary refusal and spends no quota',
   },
   {
@@ -101,14 +101,14 @@ test('the launcher registers a run exactly once', () => {
 test('task gates precede the paid sandbox probe and read the one parsed task', () => {
   // Plan_59 D5/D6: a biased advisor task or a build order without advice costs nothing. The task
   // text comes from parseArgs alone; a second argv reader would drift from it.
-  const taskGate = LAUNCHER.indexOf('if (taskGate.refusal) die(taskGate.refusal, 1)');
+  const taskGate = LAUNCHER.indexOf('if (taskGate.refusal) die(taskGate.refusal, EXIT.FAIL)');
   assert.ok(taskGate > LAUNCHER.indexOf('= parseArgs(argv)'));
   assert.ok(taskGate >= 0 && taskGate < LAUNCHER.indexOf('await probeSandbox('));
   assert.equal(LAUNCHER.includes('preflightAdvisorInput'), false);
 });
 
 test('Codex availability is checked after the repeat refusal and before the paid sandbox probe', () => {
-  const availability = LAUNCHER.indexOf('if (availability) die(availability.text, 1)');
+  const availability = LAUNCHER.indexOf('if (availability) die(availability.text, EXIT.FAIL)');
   assert.ok(availability > LAUNCHER.indexOf('`--continue is required:'));
   assert.ok(availability < LAUNCHER.indexOf('await probeSandbox('));
 });

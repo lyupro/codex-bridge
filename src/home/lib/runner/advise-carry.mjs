@@ -1,4 +1,5 @@
 /** Owns the scope snapshot shared by advise readers because run 2026-09-23_141341_plan59-a1-stdin-hang left them with different inputs. */
+import { EXIT } from './exit-codes.mjs';
 import path from 'node:path';
 import { readJsonFileSync } from '../json-file.mjs';
 import { parseAdvisorTask } from '../meta/advisor-task.mjs';
@@ -32,7 +33,7 @@ export function advisorTaskOrRefuse(input) {
   try {
     return advisorTaskArtifact(input);
   } catch (error) {
-    return die(`${error.message} The run folder was not created; quota was not spent.`, 1);
+    return die(`${error.message} The run folder was not created; quota was not spent.`, EXIT.FAIL);
   }
 }
 

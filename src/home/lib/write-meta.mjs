@@ -19,6 +19,7 @@
  * run-state.mjs keeps status.json honest, verdict.mjs decides OK/FAIL/LIMIT, reply.mjs
  * renders the lines. Importers name this file and nothing below it.
  */
+import { EXIT } from './runner/exit-codes.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -180,11 +181,12 @@ export function collect(runDir, agent, exitCode) {
 }
 
 /**
- * Exit codes: 0 OK, 1 FAIL, 3 LIMIT, 4 UNAVAILABLE.
- * 2 is the launcher's argument error and never comes from here.
+ * Exit code numbers live in runner/exit-codes.mjs.
+ * USAGE is the launcher's argument error and never comes from here.
  */
 export const exitCodeFor = (status) =>
-  (status === 'OK' ? 0 : status === 'LIMIT' ? 3 : status === 'UNAVAILABLE' ? 4 : 1);
+  (status === 'OK' ? EXIT.OK : status === 'LIMIT' ? EXIT.LIMIT :
+    status === 'UNAVAILABLE' ? EXIT.UNAVAILABLE : EXIT.FAIL);
 
 const invokedDirectly =
   process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
@@ -193,7 +195,7 @@ if (invokedDirectly) {
   const [runDir, agent, exitCode] = process.argv.slice(2);
   if (!runDir || !agent) {
     console.error('usage: node write-meta.mjs <runDir> <agent> <exitCode>');
-    process.exit(1);
+    process.exit(EXIT.FAIL);
   }
   const { meta, reply } = collect(runDir, agent, exitCode);
   console.log(reply);

@@ -287,7 +287,7 @@ childProcess.spawn = (command, args = [], options) => {
     CODEX_RUNS_ROOT: runsRoot,
   }, repo);
 
-  assert.equal(output.status, 4, output.stderr);
+  assert.equal(output.status, 5, output.stderr);
   assert.match(output.stdout.split(/\r?\n/)[0], /^UNAVAILABLE \u2014 /);
   assert.match(output.stdout, /Signal: codex login status: Not logged in/);
   assert.match(output.stdout, /The run folder was not created; quota was not spent\.\s*$/);

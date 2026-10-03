@@ -9,7 +9,7 @@ test('Plan_60 D2: status exit codes distinguish executor handoff from quota limi
     ['OK', 0],
     ['FAIL', 1],
     ['LIMIT', 3],
-    ['UNAVAILABLE', 4],
+    ['UNAVAILABLE', 5],
     ['unknown', 1],
   ]) {
     assert.equal(exitCodeFor(status), expected, status);
