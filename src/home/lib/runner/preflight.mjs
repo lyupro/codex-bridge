@@ -86,13 +86,6 @@ export function scopeRunRefusal({ agent, phase, runsRoot, grantRun }) {
 
 /** D2: phase mistakes must refuse before even the sandbox probe can spend quota. */
 export function resolveRunPhase({ agent, phase, continue: isContinue }, budgets) {
-  // OW-040, 2026-09-30: continuing a failed scope spent the order's only continuation and blocked advise.
-  if (agent === 'codex-advisor' && phase === 'scope' && isContinue) {
-    die('codex-advisor --phase scope refuses --continue: a scope pass is never continued, and continuing one ' +
-      "spends the order's single continuation that its advise phase needs. Action: repeat the scope under a new order id " +
-      "without --continue and without a continue: grant, then run advise as that order's continuation. The run folder " +
-      'was not created; quota was not spent.');
-  }
   // Plan_59 D7: phase 2 must retain the scope run's predictions before quota is spent.
   if (agent === 'codex-advisor' && phase === 'advise' && !isContinue) {
     die('codex-advisor --phase advise requires --continue: phase 2 continues the scope run of the same order ' +

@@ -12,7 +12,7 @@ const AGENTS = new URL('../../src/home/lib/agents.mjs', import.meta.url).href;
 const RUNNER = new URL('../../src/home/lib/run-codex.mjs', import.meta.url).href;
 const CONFIG = new URL('../../src/home/lib/run-config.mjs', import.meta.url);
 
-function launch({ budget = 15, phase, overrides, refuse = false, agent = 'codex-scout', continue: isContinue = false } = {}) {
+function launch({ budget = 15, phase, overrides, refuse = false, agent = 'codex-scout', continue: isContinue = false, taskText } = {}) {
   const root = makeTempTree('run-phase-');
   const repo = path.join(root, 'repo');
   const home = path.join(root, 'home');
@@ -21,7 +21,7 @@ function launch({ budget = 15, phase, overrides, refuse = false, agent = 'codex-
   fs.mkdirSync(home);
   fs.writeFileSync(path.join(repo, 'source.mjs'), 'export default 1;\n');
   const task = path.join(root, 'task.md');
-  fs.writeFileSync(task, fixtureTask(agent, 'Inspect the fixture source.\n'));
+  fs.writeFileSync(task, taskText ?? fixtureTask(agent, 'Inspect the fixture source.\n'));
   if (overrides) fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ budgets: overrides }));
   const args = ['--agent', agent, '--repo', repo, '--order-id', 'phase-fixture', '--task-file', task,
     ...(agent === 'codex-scout' ? ['--question', 'What does the source export?'] : []),
@@ -89,26 +89,26 @@ test('single-phase agents keep the default phase when omitted or explicitly requ
   }
 });
 
-test('advisor scope continuation refuses before budget lookup, probes and run creation', () => {
+test('advisor scope continuation resolves its phase but refuses before probes and run creation', () => {
   // OW-040, 2026-09-30: a scope retry must not spend the continuation reserved for advise.
   const message = 'codex-advisor --phase scope refuses --continue: a scope pass is never continued, and continuing one ' +
     "spends the order's single continuation that its advise phase needs. Action: repeat the scope under a new order id " +
-    "without --continue and without a continue: grant, then run advise as that order's continuation. The run folder " +
-    'was not created; quota was not spent.';
-  assert.throws(() => resolveRunPhase({ agent: 'codex-advisor', phase: 'scope', continue: true }, undefined),
-    (error) => {
-      assert.equal(error.exitCode, 2);
-      assert.equal(error.message, message);
-      return true;
-    });
+    "without --continue and without a continue: grant, then run advise as that order's continuation; a " +
+    'scope run that failed is repeated with a `retry:` grant instead. The run folder was not created; quota was not spent.';
+  assert.equal(resolveRunPhase({ agent: 'codex-advisor', phase: 'scope', continue: true },
+    { advisor: { scope: 5, advise: 15 } }), 'scope');
   const { output, runs, repo } = launch({
     agent: 'codex-advisor', budget: { scope: 5, advise: 15 }, phase: 'scope', continue: true, refuse: true,
+    taskText: '## Options\n- keep: Keep the boundary.\n- split: Split the boundary.\n## Paths\n- source.mjs\n',
   });
   assert.equal(output.status, 2, output.stderr || output.error?.message);
   assert.ok(output.stderr.includes(message), output.stderr);
   assert.doesNotMatch(output.stdout, /RUN=|STARTED/);
-  assert.equal(fs.existsSync(runs), false);
-  assert.deepEqual(fs.readdirSync(repo), ['source.mjs']);
+  // Plan_75 P3a: the moved OW-040 gate permits project scaffolding but must register no run.
+  const entries = fs.existsSync(runs) ? fs.readdirSync(runs, { recursive: true }) : [];
+  assert.equal(entries.some((entry) => /^\d{4}-\d{2}-\d{2}_\d{6}_/.test(path.basename(entry))), false);
+  assert.equal(entries.some((entry) => ['status.json', 'worker.json'].includes(path.basename(entry))), false);
+  assert.deepEqual(fs.readdirSync(repo).filter((entry) => entry !== 'runs'), ['source.mjs']);
 });
 
 test('advisor scope without continuation and advise with continuation still resolve', () => {

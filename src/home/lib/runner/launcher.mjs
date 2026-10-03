@@ -132,7 +132,7 @@ export async function launcher(argv = process.argv.slice(2)) {
   // The pass gate lives in pass-gate.mjs, Plan_75 P0.
   const gate = await passGate({ opts, taskText, projectRunsRoot, repoRoot });
   if ('exitCode' in gate) return gate.exitCode;
-  const { taskHash, chain, startedChain, continuationGrant, advisorTask } = gate;
+  const { taskHash, chain, startedChain, continuationGrant, advisorTask, retryOf } = gate;
 
   // Plan_60 D2: a missing or signed-out Codex answers UNAVAILABLE (exit 5) before the paid sandbox probe.
   const availability = await codexAvailabilityRefusal();
@@ -191,6 +191,8 @@ export async function launcher(argv = process.argv.slice(2)) {
     ...(startedChain.length ? { continues: startedChain[0] } : {}),
     // `continued_from` is the exact run the orchestrator named; `continues` above remains the chain base.
     ...(continuationGrant ? { continued_from: continuationGrant.run } : {}),
+    // Plan_75: the repeated failed run; pass accounting skips runs carrying it.
+    ...(retryOf ? { retry_of: retryOf } : {}),
     ...(retention ? { retention } : {}),
     sandbox_probe: sandboxProbe,
   });

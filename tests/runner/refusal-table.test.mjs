@@ -57,6 +57,27 @@ const REFUSALS = [
     why: 'the chain, not the tree, is what refuses; no folder may join the chain',
   },
   {
+    name: 'an advisor scope continuation that would spend the advise pass',
+    side: 'before',
+    file: 'pass-gate.mjs',
+    marker: 'codex-advisor --phase scope refuses --continue',
+    why: 'OW-040: failed scope repeats only with retry, preserving the advise continuation',
+  },
+  {
+    name: 'a refused retry',
+    side: 'before',
+    file: 'pass-gate.mjs',
+    marker: 'if (retryError) die(retryError)',
+    why: 'Plan_75 D1: a same-pass retry needs a finished failed run of its own order',
+  },
+  {
+    name: 'a retry that changes the failed run agent or phase',
+    side: 'before',
+    file: 'pass-gate.mjs',
+    marker: "a retry repeats the named run's own agent and phase:",
+    why: 'Plan_75 D4: a retry repeats the named pass rather than starting another one',
+  },
+  {
     name: 'a continuation that is not an OK advisor scope run',
     side: 'before',
     file: 'pass-gate.mjs',

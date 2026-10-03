@@ -98,14 +98,16 @@ export async function waitForReply(runDir, workerPid, status) {
  * reason. `--continue` may attach to a run created from its grant: the 2026-09-23 dispatcher
  * incident showed that repeating the identical continuation command must return to that run.
  */
-export async function attach({ runsRoot, repo, slug, taskHash, orderId, chain, grantRun, isContinue, noWait } = {}) {
+export async function attach({ runsRoot, repo, slug, taskHash, orderId, chain, grantRun, retryRun, isContinue, noWait } = {}) {
   const runs = chain || chainRuns(runsRoot, repo, slug, taskHash, orderId);
   const runRecords = runs
     .map((run) => ({ run, status: readJsonFile(path.join(runsRoot, run, 'status.json')) }))
     .filter(({ status }) => status);
   const sameOrder = runsForOrder(runRecords, orderId);
   const attachRuns = isContinue
-    ? sameOrder.filter(({ status }) => grantRun && status.continued_from && sameRun(runsRoot, status.continued_from, grantRun))
+    ? sameOrder.filter(({ status }) => retryRun
+      ? status.retry_of && sameRun(runsRoot, status.retry_of, retryRun)
+      : grantRun && status.continued_from && sameRun(runsRoot, status.continued_from, grantRun))
     : sameOrder;
   if (isContinue && !attachRuns.length) return null;
 
