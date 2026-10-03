@@ -151,7 +151,7 @@ test('advise continues the scope order with its own schema and budget', () => {
   fs.writeFileSync(path.join(first.dir, 'status.json'), JSON.stringify({ ...first.status, state: 'finished' }));
   fs.writeFileSync(path.join(first.dir, 'meta.json'), JSON.stringify({ agent: 'codex-advisor', status: 'OK', phase: 'scope' }));
   fs.writeFileSync(path.join(first.dir, 'result.json'), JSON.stringify(validScope()));
-  const task = `${TASK}\ncontinue: ${path.basename(first.dir)} — settle the scope predictions\n`;
+  const task = `continue: ${path.basename(first.dir)} — settle the scope predictions\n\n${TASK}`;
   const second = runFrom(launch(tree, { phase: 'advise', continued: true, task }));
   assert.notEqual(second.dir, first.dir);
   assert.deepEqual(second.schema, advisorSchema('advise'));
@@ -174,7 +174,7 @@ test('advise refuses for free when the scope result cannot be carried', () => {
   fs.writeFileSync(path.join(first.dir, 'status.json'), JSON.stringify({ ...first.status, state: 'finished' }));
   fs.writeFileSync(path.join(first.dir, 'meta.json'), JSON.stringify({ agent: 'codex-advisor', status: 'OK', phase: 'scope' }));
   fs.writeFileSync(path.join(first.dir, 'result.json'), JSON.stringify({ sufficient: true }));
-  const task = `${TASK}\ncontinue: ${path.basename(first.dir)} — settle the scope predictions\n`;
+  const task = `continue: ${path.basename(first.dir)} — settle the scope predictions\n\n${TASK}`;
   const before = fs.readdirSync(tree.runs);
   const output = launch(tree, { phase: 'advise', continued: true, task, refuse: true });
   assert.equal(output.status, 1, output.stdout || output.error?.message);
@@ -196,7 +196,7 @@ test('advise refuses for free when the continued run is not an OK scope run', ()
   fs.writeFileSync(path.join(first.dir, 'status.json'), JSON.stringify({ ...first.status, state: 'finished' }));
   fs.writeFileSync(path.join(first.dir, 'meta.json'), JSON.stringify({ agent: 'codex-advisor', status: 'OK', phase: 'advise' }));
   fs.writeFileSync(path.join(first.dir, 'result.json'), JSON.stringify(validScope()));
-  const task = `${TASK}\ncontinue: ${path.basename(first.dir)} — settle the scope predictions\n`;
+  const task = `continue: ${path.basename(first.dir)} — settle the scope predictions\n\n${TASK}`;
   const before = fs.readdirSync(tree.runs);
   const output = launch(tree, { phase: 'advise', continued: true, task, refuse: true });
   assert.equal(output.status, 1, output.stdout || output.error?.message);

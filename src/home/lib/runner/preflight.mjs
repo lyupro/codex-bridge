@@ -28,7 +28,7 @@ export async function codexAvailabilityRefusal({ probe = probeCodexAvailability 
 }
 
 /** Plan_59 D5/D6: settle design authority before any probe can spend quota. */
-export function taskPreflight({ agent, taskText }) {
+export function taskPreflight({ agent, taskText, header }) {
   const freeRefusal = (reason) => ({
     refusal: `${reason}\nThe run folder was not created; quota was not spent.`,
   });
@@ -37,13 +37,8 @@ export function taskPreflight({ agent, taskText }) {
     return reason ? freeRefusal(reason) : { refusal: null };
   }
   if (agent !== 'codex-build') return { refusal: null };
-  const lines = taskText.split(/\r\n|\n|\r/)
-    .flatMap((line) => {
-      const match = line.match(/^\s*(?:-\s+)?advice\s*:\s*(.*?)\s*$/i);
-      return match ? [match[1]] : [];
-    });
-  const advice = lines[0];
-  if (lines.length === 1) {
+  const advice = header.advice;
+  if (advice !== null) {
     if (['mechanical', 'revert', 'docs-only', 'test-only'].includes(advice)) {
       return { refusal: null, advice };
     }
@@ -60,7 +55,8 @@ export function taskPreflight({ agent, taskText }) {
       }
     }
   }
-  return freeRefusal('codex-build requires exactly one advice: line: mechanical | revert | docs-only | test-only ' +
+  return freeRefusal('codex-build requires the task file to start with the header line `advice: <value>`, where the ' +
+    'value is mechanical | revert | docs-only | test-only ' +
     'or an absolute path to an existing advisor run directory whose meta.json says agent codex-advisor, ' +
     'phase advise, status OK. ' +
     'An order that invents a construction needs a second opinion first; only work with no design choice may skip it.');

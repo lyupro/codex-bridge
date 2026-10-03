@@ -11,7 +11,7 @@ import { die, readTaskDocument } from './args.mjs';
 import { questionKindRefusal } from './question-kind.mjs';
 
 export function settleTaskInput(opts) {
-  const { task, questions: fileQuestions, verify: fileVerify } = readTaskDocument(opts);
+  const { task, header, questions: fileQuestions, verify: fileVerify } = readTaskDocument(opts);
   opts.questions ??= fileQuestions.length ? fileQuestions : undefined;
   opts.verify ??= fileVerify;
   // Still before the run folder exists and before a token of someone else's quota is touched,
@@ -31,5 +31,5 @@ export function settleTaskInput(opts) {
       );
     }
   }
-  return task;
+  return { task, header };
 }

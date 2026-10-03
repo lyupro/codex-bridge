@@ -43,13 +43,6 @@ const REFUSALS = [
     why: 'the repository has to be returned to its branch first, by the operator',
   },
   {
-    name: 'conflicting continuation and retry grants',
-    side: 'before',
-    file: 'pass-gate.mjs',
-    marker: 'if (grant?.error) die(`${grant.error}',
-    why: 'Plan_75 D1: exactly one grant per task, decided from the text before anything exists',
-  },
-  {
     name: 'a refused continuation',
     side: 'before',
     file: 'pass-gate.mjs',

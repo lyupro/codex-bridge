@@ -60,8 +60,8 @@ function statusFrom(output) {
 
 const JUDGED_ADVICE = { agent: 'codex-advisor', phase: 'advise', status: 'OK' };
 
-function assertFree(tree, output) {
-  assert.equal(output.status, 1, output.stderr || output.error?.message);
+function assertFree(tree, output, exitCode = 1) {
+  assert.equal(output.status, exitCode, output.stderr || output.error?.message);
   assert.equal(output.stdout, '');
   assert.match(output.stderr, FREE);
   assert.equal(fs.existsSync(tree.runs), false);
@@ -70,13 +70,13 @@ function assertFree(tree, output) {
 
 for (const advice of ['mechanical', 'revert', 'docs-only', 'test-only']) {
   test(`build accepts ${advice} and persists advice in status`, () => {
-    const text = advice === 'mechanical' ? fixtureTask('codex-build', 'Edit source.') : `Edit source.\nadvice: ${advice}`;
+    const text = advice === 'mechanical' ? fixtureTask('codex-build', 'Edit source.') : `advice: ${advice}\n\nEdit source.`;
     assert.equal(statusFrom(launch(fixture(), 'codex-build', text)).advice, advice);
   });
 }
 
-test('advice label is case-insensitive, list-item and whitespace tolerant, including task files', () => {
-  const output = launch(fixture(), 'codex-build', 'Edit source.\r\n \t-  AdViCe \t: \t docs-only \t\r\n', { taskFile: true });
+test('advice header accepts value whitespace and CRLF, including task files', () => {
+  const output = launch(fixture(), 'codex-build', 'advice: \t docs-only \t\r\n\r\nEdit source.\r\n', { taskFile: true });
   assert.equal(statusFrom(output).advice, 'docs-only');
 });
 
@@ -85,13 +85,13 @@ test('an absolute advisor run path with spaces passes and is persisted', () => {
   const advisorRun = path.join(tree.root, 'finished advisor');
   fs.mkdirSync(advisorRun);
   fs.writeFileSync(path.join(advisorRun, 'meta.json'), JSON.stringify(JUDGED_ADVICE));
-  assert.equal(statusFrom(launch(tree, 'codex-build', `Edit source.\nadvice: ${advisorRun}`)).advice, advisorRun);
+  assert.equal(statusFrom(launch(tree, 'codex-build', `advice: ${advisorRun}\n\nEdit source.`)).advice, advisorRun);
 });
 
 test('advisor metadata uses the shared BOM-tolerant JSON reader', () => {
   const tree = fixture();
   fs.writeFileSync(path.join(tree.home, 'meta.json'), `\uFEFF${JSON.stringify(JUDGED_ADVICE)}\n`);
-  assert.equal(statusFrom(launch(tree, 'codex-build', `advice: ${tree.home}`)).advice, tree.home);
+  assert.equal(statusFrom(launch(tree, 'codex-build', `advice: ${tree.home}\n\nEdit source.`)).advice, tree.home);
 });
 
 const invalid = {
@@ -130,8 +130,15 @@ const invalid = {
 for (const [name, task] of Object.entries(invalid)) {
   test(`build refuses ${name} without a probe or run folder`, () => {
     const tree = fixture();
-    const output = launch(tree, 'codex-build', task(tree), { refuse: true });
-    assertFree(tree, output);
+    const output = launch(tree, 'codex-build', `${task(tree)}\n\nEdit source.`, { refuse: true });
+    const headerError = name === 'duplicate' || name === 'empty';
+    assertFree(tree, output, headerError ? 2 : 1);
+    if (headerError) {
+      assert.match(output.stderr, name === 'duplicate' ? /line 2: misplaced advice/ : /line 1: advice value must be non-empty/);
+      return;
+    }
+    assert.match(output.stderr, /requires the task file to start with the header line `advice: <value>`/);
+    if (name === 'inline label') assert.doesNotMatch(output.stderr, /misplaced/);
     assert.match(output.stderr, /mechanical \| revert \| docs-only \| test-only/);
     assert.match(output.stderr, /absolute path.*meta\.json.*codex-advisor/);
     assert.match(output.stderr, /an order that invents a construction needs a second opinion first; only work with no design choice may skip it/i);
@@ -156,3 +163,68 @@ test('biased advisor task is refused by the task gate with the free-refusal sent
 test('clean advisor task is not refused by the task gate', () => {
   assert.equal(taskPreflight({ agent: 'codex-advisor', taskText: CLEAN_TASK }).refusal, null);
 });
+// Plan_75 D5, 2026-10-03 20:42: inspect raw lines before Verify can swallow a grant.
+const malformedHeaders = [
+  ['advice below the body', 'Edit source.\nadvice: mechanical', /line 2: misplaced advice.*: advice: mechanical/],
+  ['duplicate header label', 'advice: mechanical\nadvice: revert\n\nEdit source.', /line 2: duplicate advice label/],
+  ['decorated label below the header', 'advice: mechanical\n\nEdit source.\n**advice:** revert', /line 4: misplaced advice.*: \*\*advice:\*\* revert/],
+  ['decorated first label', ' \t-  AdViCe \t: \t docs-only \t\r\n\r\nEdit source.', /line 1: misplaced advice/],
+  ['grant hidden in Verify', 'advice: mechanical\n\nEdit source.\n## Verify\nretry: X — finish the failed work', /line 5: misplaced retry/],
+  ['conflicting header grants', 'advice: mechanical\ncontinue: X — finish the work\nretry: Y — repeat failed work\n\nEdit source.', /continue and retry cannot both be present/],
+];
+for (const taskFile of [false, true]) {
+  const channel = taskFile ? 'task file' : 'stdin';
+  for (const [name, text, reason] of malformedHeaders) {
+    test(`build refuses ${name} from ${channel} before any probe or run folder`, () => {
+      const tree = fixture();
+      const output = launch(tree, 'codex-build', text, { refuse: true, taskFile });
+      assertFree(tree, output, 2);
+      assert.match(output.stderr, reason);
+      if (taskFile) assert.ok(output.stderr.startsWith(`run-codex: ${path.join(tree.root, 'task.md')}: line `));
+    });
+  }
+  test(`a header-only ${channel} is refused as an empty task`, () => {
+    const tree = fixture();
+    const output = launch(tree, 'codex-build', 'advice: mechanical\n\n', { refuse: true, taskFile });
+    assert.equal(output.status, 2, output.stderr || output.error?.message);
+    assert.match(output.stderr, taskFile ? /task file from --task-file is empty/ : /task text on stdin is empty/);
+    assert.equal(output.stdout, '');
+    assert.equal(fs.existsSync(tree.runs), false);
+  });
+}
+
+// Plan_75 D5: transport must retain metadata while extracting only the body sections.
+for (const taskFile of [false, true]) {
+  test(`settleTaskInput retains either header grant through ${taskFile ? 'task file' : 'stdin'} sections`, () => {
+    const tree = fixture();
+    for (const kind of ['continue', 'retry']) {
+      for (const grantFirst of [false, true]) {
+        const lines = ['advice: mechanical', `${kind}: X — finish the work`];
+        if (grantFirst) lines.reverse();
+        const text = [...lines, '', '## Task', 'Edit source.', '## Questions', '- Inspect source?', '## Verify', 'npm test'].join('\n');
+        const opts = { agent: 'codex-review' };
+        if (taskFile) {
+          opts['task-file'] = path.join(tree.root, 'task.md');
+          fs.writeFileSync(opts['task-file'], text);
+        }
+        const source = `
+import { settleTaskInput } from ${JSON.stringify(new URL('../../src/home/lib/runner/task-input.mjs', import.meta.url).href)};
+const opts = ${JSON.stringify(opts)};
+const input = settleTaskInput(opts);
+process.stdout.write(JSON.stringify({ input, questions: opts.questions, verify: opts.verify }));
+`;
+        const output = spawnSync(process.execPath, ['--input-type=module', '-e', source], {
+          input: taskFile ? '' : text, encoding: 'utf8', timeout: 10_000, windowsHide: true,
+        });
+        assert.equal(output.status, 0, output.stderr || output.error?.message);
+        const result = JSON.parse(output.stdout);
+        assert.equal(result.input.task, 'Edit source.');
+        assert.equal(result.input.header.advice, 'mechanical');
+        assert.deepEqual(result.input.header.grant, { kind, run: 'X', reason: 'finish the work' });
+        assert.deepEqual(result.input.header.problems, []);
+        assert.deepEqual(result.questions, ['Inspect source?']);
+        assert.equal(result.verify, 'npm test');
+      }
+    }
+  });
+}

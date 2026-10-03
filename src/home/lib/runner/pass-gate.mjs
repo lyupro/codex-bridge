@@ -11,12 +11,11 @@ import { chainRuns, startedRuns, taskFingerprint, readJson } from '../write-meta
 import { die } from './args.mjs';
 import { EXIT } from './exit-codes.mjs';
 import { attach } from './attach.mjs';
-import { parseGrant } from '../required-inputs.mjs';
 import { continuationRefusal, retryRefusal, readyGrantLines } from './continuation.mjs';
 import { advisorTaskOrRefuse } from './advise-carry.mjs';
 import { scopeRunRefusal } from './preflight.mjs';
 
-export async function passGate({ opts, taskText, projectRunsRoot, repoRoot }) {
+export async function passGate({ opts, taskText, header, projectRunsRoot, repoRoot }) {
   // A second pass at the same task is a real need — after a timeout or a LIMIT the work has
   // to be finished — so it is allowed and made visible rather than forbidden. What is
   // forbidden is repeating by accident: the orchestrator saw the previous reply, the runner
@@ -27,8 +26,7 @@ export async function passGate({ opts, taskText, projectRunsRoot, repoRoot }) {
   // the identical order as `<slug>-v2` and spent 46k on it. Refused before the folder exists,
   // like --scope.
   const taskHash = taskFingerprint(taskText);
-  const grant = parseGrant(taskText);
-  if (grant?.error) die(`${grant.error}. The run folder was not created; quota was not spent.`);
+  const grant = header.grant;
   // OW-040, 2026-09-30: only a retry repeats failed scope without spending advise's continuation.
   if (opts.agent === 'codex-advisor' && opts.phase === 'scope' && opts.continue && grant?.kind !== 'retry') {
     die('codex-advisor --phase scope refuses --continue: a scope pass is never continued, and continuing one ' +

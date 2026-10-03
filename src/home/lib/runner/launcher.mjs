@@ -15,6 +15,7 @@ import {
   markAbandoned,
   abandonedBranchDrift,
 } from '../write-meta.mjs';
+import { TASK_HASH_SCHEME } from '../meta/chain.mjs';
 import { EXIT } from './exit-codes.mjs';
 import { passGate } from './pass-gate.mjs';
 import { setRun } from './run-context.mjs';
@@ -91,9 +92,9 @@ export async function launcher(argv = process.argv.slice(2)) {
   loadRunEnv();
   const opts = parseArgs(argv);
   opts.phase = resolveRunPhase(opts, RUN_ENV.budgets);
-  const taskText = settleTaskInput(opts);
+  const { task: taskText, header } = settleTaskInput(opts);
   // Plan_59 D5/D6: blind choices and design authority must be checked before the paid probe.
-  const taskGate = taskPreflight({ agent: opts.agent, taskText });
+  const taskGate = taskPreflight({ agent: opts.agent, taskText, header });
   if (taskGate.refusal) die(taskGate.refusal, EXIT.FAIL);
   const topLevel = git(opts.repo, ['rev-parse', '--show-toplevel']);
   const isGitRepo = topLevel.status === 0;
@@ -130,7 +131,7 @@ export async function launcher(argv = process.argv.slice(2)) {
   }
 
   // The pass gate lives in pass-gate.mjs, Plan_75 P0.
-  const gate = await passGate({ opts, taskText, projectRunsRoot, repoRoot });
+  const gate = await passGate({ opts, taskText, header, projectRunsRoot, repoRoot });
   if ('exitCode' in gate) return gate.exitCode;
   const { taskHash, chain, startedChain, continuationGrant, advisorTask, retryOf } = gate;
 
@@ -184,6 +185,7 @@ export async function launcher(argv = process.argv.slice(2)) {
     // Fingerprint of the order, so a later run of the same task finds this one whatever it
     // calls itself. Written here, before Codex starts, like everything the chain reads.
     task_hash: taskHash,
+    task_hash_scheme: TASK_HASH_SCHEME,
     repo: repoRoot,
     started_at: new Date().toISOString(),
     // Which run of this task started the chain — the base every later pass is measured

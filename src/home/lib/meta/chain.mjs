@@ -11,7 +11,10 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { startedRuns } from './pre-start.mjs';
 import { normalizePath, readJson } from './paths.mjs';
-import { taskTextWithoutGrants } from '../required-inputs.mjs';
+
+// Plan_75 D5: 2 hashes the header-free body. Runs without this field used earlier schemes:
+// the whole task text, then the task without grant lines (Plan_75 P1).
+export const TASK_HASH_SCHEME = 2;
 
 /**
  * What makes two runs the same task when their names disagree.
@@ -22,10 +25,11 @@ import { taskTextWithoutGrants } from '../required-inputs.mjs';
  * built to refuse. Whitespace and case are normalized away because the same order re-sent
  * through a shell is rewrapped, not rewritten; anything more forgiving would tie together
  * tasks that merely look alike.
- * Grant lines do not change task identity (OW-049 and TradeForge case 4, 2026-10-03).
+ * Plan_75 D5: the runner supplies the header-free body; every body line counts, including
+ * prose beginning with a grant label. Stripping it again would silently change identity.
  */
 export const taskFingerprint = (taskText) => {
-  const normalized = taskTextWithoutGrants(taskText).replace(/\s+/g, ' ').trim().toLowerCase();
+  const normalized = String(taskText ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
   return normalized ? createHash('sha256').update(normalized).digest('hex').slice(0, 16) : '';
 };
 

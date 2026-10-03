@@ -6,6 +6,7 @@ import path from 'node:path';
 import { makeTempTree } from '../temp-tree.mjs';
 import { validScope } from '../meta/advisor-fixtures.mjs';
 import { passGate } from '../../src/home/lib/runner/pass-gate.mjs';
+import { parseTaskHeader } from '../../src/home/lib/task-header.mjs';
 
 const S = '2026-10-03_180000_scope';
 const A = '2026-10-03_180100_advise';
@@ -48,8 +49,14 @@ function tradeforge() {
   return tree;
 }
 
+function taskInput(text) {
+  const header = parseTaskHeader(text);
+  return { header, taskText: header.body.trim() };
+}
+
 const retry = (tree, name = A, opts = {}) => passGate({
-  ...tree, opts: { ...tree.opts, ...opts }, taskText: `${TASK}\nretry: ${name} \u2014 model at capacity\n`,
+  ...tree, opts: { ...tree.opts, ...opts },
+  ...taskInput(`retry: ${name} \u2014 model at capacity\n\n${TASK}`),
 });
 
 function refusal(message) {
@@ -84,7 +91,7 @@ for (const [verdict, exitCode] of [['FAIL', 1], ['OK', 0]]) {
     t.mock.method(console, 'log', (...values) => lines.push(values.join(' ')));
 
     assert.deepEqual(await passGate({
-      ...tree, opts: tree.opts, taskText: `${TASK}\ncontinue: ${S} — scope approved\n`,
+      ...tree, opts: tree.opts, ...taskInput(`continue: ${S} — scope approved\n\n${TASK}`),
     }), { exitCode });
     assert.equal(lines[0], `ATTACH=${dir} order-id=o started=2026-10-03T18:00:00.000Z`);
     if (verdict === 'FAIL') {
@@ -106,7 +113,7 @@ test('an older saved TradeForge failure prints no repair for the newer retry', a
   t.mock.method(console, 'log', (...values) => lines.push(values.join(' ')));
 
   assert.deepEqual(await passGate({
-    ...tree, opts: tree.opts, taskText: `${TASK}\ncontinue: ${S} — scope approved\n`,
+    ...tree, opts: tree.opts, ...taskInput(`continue: ${S} — scope approved\n\n${TASK}`),
   }), { exitCode: 1 });
   assert.equal(lines.at(-1), 'FAIL — original advise');
   assert.doesNotMatch(lines.join('\n'), /Ready/);
@@ -152,7 +159,7 @@ test('scope continuation still refuses with OW-040 before reading the chain', as
   const missingRoot = path.join(tree.projectRunsRoot, 'missing');
   await assert.rejects(passGate({
     ...tree, projectRunsRoot: missingRoot, opts: { ...tree.opts, phase: 'scope' },
-    taskText: `${TASK}\ncontinue: ${S} \u2014 repeat scope\n`,
+    ...taskInput(`continue: ${S} \u2014 repeat scope\n\n${TASK}`),
   }), refusal(/codex-advisor --phase scope refuses --continue:.*a scope run that failed is repeated with a `retry:` grant instead/));
   assert.deepEqual(fs.readdirSync(tree.projectRunsRoot), []);
 });
@@ -183,7 +190,7 @@ test('a pre-phase run folder retries under the resolved default phase', async ()
 
 test('ordinary first passes have no retry provenance', async () => {
   const tree = fixture();
-  const gate = await passGate({ ...tree, opts: { ...tree.opts, phase: 'scope', continue: false }, taskText: TASK });
+  const gate = await passGate({ ...tree, opts: { ...tree.opts, phase: 'scope', continue: false }, ...taskInput(TASK) });
   assert.equal(gate.retryOf, null);
   assert.equal(gate.continuationGrant, null);
 });

@@ -12,6 +12,7 @@ import { AGENTS } from '../write-meta.mjs';
 import { isAbsoluteTaskFilePath, requiredInputsFor } from '../required-inputs.mjs';
 import { firstShellUnsafeSequence } from '../shell-unsafe.mjs';
 import { parseTaskDocument } from './task-file.mjs';
+import { parseTaskHeader, taskHeaderRefusal } from '../task-header.mjs';
 
 export class RunnerUsageError extends Error {
   // 2 says the order itself is wrong and has to be rewritten. A refusal about the state of the
@@ -47,9 +48,14 @@ export function readTaskDocument(opts) {
       die(`task file from --task-file could not be read: ${err.message}`);
     }
     if (!fileText.trim()) die(`task file from --task-file is empty: ${taskFile}`);
+    // Plan_75 D5, 2026-10-03 20:42: validate raw metadata before sections can hide a grant.
+    const parsed = parseTaskHeader(fileText);
+    const refusal = taskHeaderRefusal(parsed);
+    if (refusal) die(`${taskFile}: ${refusal}`);
+    if (!parsed.body.trim()) die(`task file from --task-file is empty: ${taskFile}`);
     let document;
     try {
-      document = parseTaskDocument(fileText);
+      document = parseTaskDocument(parsed.body);
     } catch (err) {
       die(`${taskFile}: ${err.message}`);
     }
@@ -59,11 +65,15 @@ export function readTaskDocument(opts) {
     if (document.verify !== undefined && opts.verify !== undefined) {
       die('verification command was supplied through both --verify and the task file; choose exactly one channel');
     }
-    return document;
+    return { ...document, header: parsed };
   }
   if (!stdinText.trim()) die('task text on stdin is empty');
+  const parsed = parseTaskHeader(stdinText);
+  const refusal = taskHeaderRefusal(parsed);
+  if (refusal) die(refusal);
+  if (!parsed.body.trim()) die('task text on stdin is empty');
   try {
-    return parseTaskDocument(stdinText);
+    return { ...parseTaskDocument(parsed.body), header: parsed };
   } catch (err) {
     die(err.message);
   }

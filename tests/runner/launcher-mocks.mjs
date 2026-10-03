@@ -31,7 +31,7 @@ function fakeCodexOnPath() {
 
 /** Plan_59 D6: existing build fixtures exercise mechanical work, without choosing a design. */
 export function fixtureTask(agent, text) {
-  return agent === 'codex-build' ? `${text}\nadvice: mechanical\n` : text;
+  return agent === 'codex-build' ? `advice: mechanical\n\n${text}` : text;
 }
 
 export function launcherProcessMocks({ worker, probe }) {

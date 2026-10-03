@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { continuationRefusal } from '../../src/home/lib/runner/continuation.mjs';
 import { chainRuns, startedRuns, taskFingerprint } from '../../src/home/lib/write-meta.mjs';
-import { parseContinuationGrant } from '../../src/home/lib/required-inputs.mjs';
+import { parseTaskHeader } from '../../src/home/lib/task-header.mjs';
 
 function fixture(t) {
   const root = makeTempTree('continuation-');
@@ -120,11 +120,12 @@ test('OW-049: adding a grant under a new order keeps the finished FAIL run in th
     repo, slug: 'old-slug', order_id: 'o1', task_hash: taskFingerprint(task),
     started_at: '2026-10-03T00:01:00Z',
   });
-  const continuedTask = `continue: A — why\n${task}`;
-  const continuationGrant = parseContinuationGrant(continuedTask);
-  const chain = chainRuns(runsRoot, repo, 'new-slug', taskFingerprint(continuedTask), 'o2', continuationGrant?.run);
+  // Plan_75 D5: the grant lives in the header, and the hash sees only the body below it.
+  const continued = parseTaskHeader(`continue: A — why\n\n${task}`);
+  const continuationGrant = continued.grant;
+  const chain = chainRuns(runsRoot, repo, 'new-slug', taskFingerprint(continued.body), 'o2', continuationGrant?.run);
 
-  assert.equal(taskFingerprint(continuedTask), taskFingerprint(task));
+  assert.equal(taskFingerprint(continued.body), taskFingerprint(task));
   assert.deepEqual(chain, ['A']);
   assert.equal(continuationRefusal(runsRoot, startedRuns(runsRoot, chain), true, 'o2', continuationGrant), null);
 });

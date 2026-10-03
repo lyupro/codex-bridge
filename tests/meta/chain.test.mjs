@@ -7,8 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
-import { chainRuns, chainBaseline, taskFingerprint } from '../../src/home/lib/meta/chain.mjs';
-import { taskTextWithoutGrants } from '../../src/home/lib/required-inputs.mjs';
+import { chainRuns, chainBaseline, taskFingerprint, TASK_HASH_SCHEME } from '../../src/home/lib/meta/chain.mjs';
 import { makeChainRoot, CHAIN_REPO, CHAIN_SLUG } from './test-fixtures.mjs';
 
 test('chainRuns collects the passes of one task and nothing else', () => {
@@ -91,37 +90,23 @@ test('a different order id does not chain a different slug and hash', () => {
 });
 
 test('the fingerprint ignores rewrapping but not rewording', () => {
-  assert.equal(taskFingerprint('Do  X\n\nand Y'), taskFingerprint('do x and y'));
+  assert.equal(taskFingerprint(' \tDo  X\r\n\nand Y\t '), taskFingerprint('do x and y'));
   assert.notEqual(taskFingerprint('do x'), taskFingerprint('do z'));
   assert.equal(taskFingerprint('   '), '');
 });
 
-test('grant lines do not change the fingerprint, while prose mentioning continue does', () => {
+test('a body line beginning with continue counts toward the fingerprint', () => {
+  // Plan_75 D5: stripping a prose line as a grant made different bodies share an identity.
   const task = 'Finish the task.\nKeep its behavior.';
-  for (const line of [
-    'continue: A — why',
-    'retry: A — why',
-    '- *continue*: A — why',
-    '* _RETRY_: A — why',
-    '`Continue`: A — why',
-    // Every separator extractValue accepts: a grant it reads must never count toward the hash.
-    'continue — A — why',
-    'retry = A — why',
-  ]) {
-    assert.equal(taskFingerprint(`${line}\n${task}`), taskFingerprint(task), line);
-  }
-  assert.notEqual(taskFingerprint(`We should continue after review.\n${task}`), taskFingerprint(task));
-  assert.notEqual(taskFingerprint(`continue later: A\n${task}`), taskFingerprint(task));
-  // extractValue does not read a double-wrapped label, so it is not a grant and stays in the hash.
-  assert.notEqual(taskFingerprint(`- **continue:** A — why\n${task}`), taskFingerprint(task));
+  assert.notEqual(
+    taskFingerprint(`${task}\ncontinue: A — why`),
+    taskFingerprint(`${task}\ncontinue: B — why`),
+  );
+  assert.notEqual(taskFingerprint(`${task}\ncontinue: A — why`), taskFingerprint(task));
 });
 
-test('removing all grant lines preserves every byte of the other lines', () => {
-  const task = '  Task café.\r\n\r\nKeep\tspacing.\nLast line';
-  const withGrants = 'continue: A — why\r\n  Task café.\r\n\r\n- *retry*: A — why\nKeep\tspacing.\nLast line\ncontinue: B — why';
-  assert.equal(taskTextWithoutGrants(withGrants), `${task}\n`);
-  assert.equal(taskTextWithoutGrants(task), task);
-  assert.equal(taskFingerprint('continue: A — why\nretry: A — why'), '');
+test('the task hash scheme identifies the header-free body contract', () => {
+  assert.equal(TASK_HASH_SCHEME, 2);
 });
 
 test('a named run adds its saved handles alongside all original handles', () => {

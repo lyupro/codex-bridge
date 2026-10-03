@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { parseContinuationGrant } from '../../src/home/lib/required-inputs.mjs';
 import { resolveProjectRunsDir } from '../../src/home/lib/runner/project-dir.mjs';
-import { fixtureTask, launcherProcessMocks } from './launcher-mocks.mjs';
+import { launcherProcessMocks } from './launcher-mocks.mjs';
 
 const RUN_CODEX = fileURLToPath(new URL('../../src/home/lib/run-codex.mjs', import.meta.url));
 const AGENT = 'codex-build';
@@ -28,7 +28,7 @@ function runner(args, input, runsRoot, repo) {
   return spawnSync(process.execPath, [RUN_CODEX, ...args], {
     cwd: repo,
     env: { ...process.env, CODEX_RUNS_ROOT: runsRoot },
-    input: fixtureTask(AGENT, input),
+    input,
     encoding: 'utf8',
   });
 }
@@ -46,7 +46,7 @@ function mockedRunner(args, input, runsRoot, repo) {
   return spawnSync(process.execPath, ['--input-type=module', '-e', script, '--', ...args], {
     cwd: repo,
     env: { ...process.env, CODEX_RUNS_ROOT: runsRoot },
-    input: fixtureTask(AGENT, input),
+    input,
     encoding: 'utf8',
   });
 }
@@ -97,7 +97,7 @@ test('a grant without --continue refuses before attach and names the repair deta
   const project = resolveProjectRunsDir(runsRoot, repo).dir;
   createPriorRun(project, repo);
 
-  const output = runner(args(repo), `The order needs a second pass.\ncontinue: ${LAST_RUN} — ${GRANT_REASON}\n`, runsRoot, repo);
+  const output = runner(args(repo), `continue: ${LAST_RUN} — ${GRANT_REASON}\nadvice: test-only\n\nThe order needs a second pass.\n`, runsRoot, repo);
 
   assert.equal(output.status, 2, output.stderr);
   assert.match(output.stderr, /--continue is required/);
@@ -106,6 +106,26 @@ test('a grant without --continue refuses before attach and names the repair deta
   assert.match(output.stderr, new RegExp(`Ready grant line: continue: ${LAST_RUN} — ${GRANT_REASON}`));
   assert.doesNotMatch(output.stdout, /ATTACH=/);
   assert.deepEqual(runFolders(project), [LAST_RUN]);
+});
+
+// Plan_75 D5: the old grant-after-prose layout must refuse before spending quota.
+test('a grant after prose is refused for free as misplaced metadata and names its line', (t) => {
+  const root = fixture(t);
+  const repo = path.join(root, 'repo');
+  const runsRoot = path.join(root, 'runs');
+  fs.mkdirSync(path.join(repo, 'src'), { recursive: true });
+  fs.writeFileSync(path.join(repo, 'src', 'existing.mjs'), 'export default 1;\n');
+
+  const output = runner(args(repo, true),
+    `advice: test-only\n\nThe order needs a second pass.\ncontinue: ${LAST_RUN} — ${GRANT_REASON}\n`,
+    runsRoot, repo);
+
+  assert.equal(output.status, 2, output.stderr);
+  assert.equal(output.stdout, '');
+  assert.match(output.stderr, /line 4: misplaced continue metadata/);
+  assert.ok(output.stderr.includes(`continue: ${LAST_RUN} — ${GRANT_REASON}`), output.stderr);
+  assert.match(output.stderr, /The run folder was not created; quota was not spent\.\s*$/);
+  assert.equal(fs.existsSync(runsRoot), false);
 });
 
 test('a --continue flag without a grant keeps the existing refusal', (t) => {
@@ -117,7 +137,7 @@ test('a --continue flag without a grant keeps the existing refusal', (t) => {
   const project = resolveProjectRunsDir(runsRoot, repo).dir;
   createPriorRun(project, repo);
 
-  const output = runner(args(repo, true), 'The order asks for the existing work only.\n', runsRoot, repo);
+  const output = runner(args(repo, true), 'advice: test-only\n\nThe order asks for the existing work only.\n', runsRoot, repo);
 
   assert.equal(output.status, 2, output.stderr);
   assert.match(output.stderr, /did not provide a `continue:` grant/);
@@ -134,7 +154,7 @@ test('repeating a --continue command attaches to its run without creating anothe
   const project = resolveProjectRunsDir(runsRoot, repo).dir;
   createPriorRun(project, repo);
   const command = args(repo, true);
-  const input = `The order needs a second pass.\ncontinue: ${LAST_RUN} — ${GRANT_REASON}\n`;
+  const input = `continue: ${LAST_RUN} — ${GRANT_REASON}\nadvice: test-only\n\nThe order needs a second pass.\n`;
 
   const first = mockedRunner(command, input, runsRoot, repo);
 
