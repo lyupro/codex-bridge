@@ -186,6 +186,31 @@ test('an explicit continuation grant permits a refined task under the same order
   assert.equal(result.stdout, '');
 });
 
+// Plan_75 D1, TradeForge capacity incident: a retry must reach the runner under its own order id.
+test('retry and conflicting grants pass an order owned by a different-hash run to the runner', async (t) => {
+  const root = await fixture(t);
+  const repo = path.join(root, 'project');
+  const taskFile = path.join(root, 'task.md');
+  await fs.writeFile(taskFile, 'Repeated task\n');
+  await createStoredRun(root, repo, 'failed-run', {
+    order_id: 'retry-order',
+    task_hash: taskFingerprint('Original task'),
+    task_hash_scheme: 2,
+    slug: 'failed-run',
+    started_at: '2026-10-03T17:20:17.000Z',
+  });
+
+  for (const extra of [
+    '\nretry: failed-run — model at capacity, same pass again',
+    '\ncontinue: failed-run — next pass\nretry: failed-run — same pass again',
+  ]) {
+    const prompt = validPrompt('retry-order', taskFile, extra);
+    const result = runGate(root, payload('codex-review', prompt, 'Agent', repo));
+    assert.equal(result.status, 0);
+    assert.equal(result.stdout, '', extra);
+  }
+});
+
 test('order collision diagnostics fail open on unreadable or absent disk state', async (t) => {
   const root = await fixture(t);
   const repo = path.join(root, 'project');

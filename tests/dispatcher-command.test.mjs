@@ -2,6 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { canonicalRunCommand, sameCommand } from '../src/home/lib/dispatcher-command.mjs';
+import { REQUIRED_INPUTS } from '../src/home/lib/required-inputs.mjs';
 
 const taskFile = 'C:/scratch/plan-62-task.md';
 
@@ -53,6 +54,33 @@ test('a valid continuation grant adds one bare continue flag', () => {
     canonicalRunCommand('codex-scout', prompt).command,
     'codex-bridge run --agent codex-scout --repo "." --order-id "plan-62-build-20260924" --task-file "C:/scratch/plan-62-task.md" --continue',
   );
+});
+
+// Plan_75 D1, TradeForge capacity incident: the same failed pass needs the runner's explicit flag.
+test('a retry grant adds one bare continue flag for every dispatcher', () => {
+  for (const agentType of Object.keys(REQUIRED_INPUTS)) {
+    const prompt = promptFor(agentType, { retry: 'failed-run — model at capacity; same pass again' });
+    const original = canonicalRunCommand(agentType, promptFor(agentType)).command;
+    assert.deepEqual(canonicalRunCommand(agentType, prompt), { command: `${original} --continue` });
+  }
+});
+
+test('both grants still add one continue flag so the runner can issue its refusal', () => {
+  for (const agentType of Object.keys(REQUIRED_INPUTS)) {
+    const prompt = promptFor(agentType, {
+      continue: 'scope-run — next pass',
+      retry: 'failed-run — same pass again',
+    });
+    const original = canonicalRunCommand(agentType, promptFor(agentType)).command;
+    assert.deepEqual(canonicalRunCommand(agentType, prompt), { command: `${original} --continue` });
+  }
+});
+
+test('no grant leaves the continue flag absent for every dispatcher', () => {
+  for (const agentType of Object.keys(REQUIRED_INPUTS)) {
+    const result = canonicalRunCommand(agentType, promptFor(agentType));
+    assert.equal(result.command.includes('--continue'), false, agentType);
+  }
 });
 
 test('the same prompt deterministically produces the same command', () => {

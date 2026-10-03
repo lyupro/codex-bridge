@@ -6,7 +6,7 @@ import path from 'node:path';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import {
   CONTINUATION_INPUT, RETRY_INPUT, parseContinuationGrant, parseRetryGrant, parseGrant,
-  requiredInputsFor,
+  REQUIRED_INPUTS, requiredInputsFor,
 } from '../../src/home/lib/required-inputs.mjs';
 import {
   continuationRefusal, retryRefusal, readyGrantLines,
@@ -32,7 +32,7 @@ const dead = () => false;
 const unexpectedLiveness = () => assert.fail('an earlier retry gate must refuse before liveness');
 const noQuota = (message) => assert.match(message, /The run folder was not created; quota was not spent\.$/);
 
-test('retry input has the continuation shape and remains outside per-agent lists until P4', () => {
+test('retry input has the continuation shape and is inside every list with continue, right after it', () => {
   assert.deepEqual(Object.keys(RETRY_INPUT), Object.keys(CONTINUATION_INPUT));
   assert.equal(RETRY_INPUT.label, 'retry');
   assert.equal(RETRY_INPUT.source, 'the orchestrator');
@@ -40,8 +40,12 @@ test('retry input has the continuation shape and remains outside per-agent lists
   assert.equal(RETRY_INPUT.example, '2026-10-03_172017_cc-d66-advisor — model at capacity, same pass again');
   assert.equal(RETRY_INPUT.conditional, 'when --continue is passed');
   assert.ok(Object.isFrozen(RETRY_INPUT));
-  for (const agent of ['codex-scout', 'codex-build', 'codex-review', 'codex-advisor']) {
-    assert.equal(requiredInputsFor(agent).some((input) => input.label === 'retry'), false);
+  for (const agent of Object.keys(REQUIRED_INPUTS)) {
+    const inputs = requiredInputsFor(agent);
+    const continuationIndex = inputs.findIndex((input) => input.label === 'continue');
+    if (continuationIndex === -1) continue;
+    assert.equal(inputs[continuationIndex + 1], RETRY_INPUT, agent);
+    assert.equal(inputs.filter((input) => input.label === 'retry').length, 1, agent);
   }
 });
 

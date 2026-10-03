@@ -62,6 +62,7 @@ export const REQUIRED_INPUTS = Object.freeze({
     },
     TASK_FILE_INPUT,
     CONTINUATION_INPUT,
+    RETRY_INPUT,
   ]),
   'codex-build': freezeEntries([
     {
@@ -78,6 +79,7 @@ export const REQUIRED_INPUTS = Object.freeze({
     },
     TASK_FILE_INPUT,
     CONTINUATION_INPUT,
+    RETRY_INPUT,
   ]),
   'codex-review': freezeEntries([
     {
@@ -88,6 +90,7 @@ export const REQUIRED_INPUTS = Object.freeze({
     },
     TASK_FILE_INPUT,
     CONTINUATION_INPUT,
+    RETRY_INPUT,
   ]),
   // Plan_59 D7: the caller must name the phase and authorize the continued decision pass.
   'codex-advisor': freezeEntries([
@@ -99,6 +102,7 @@ export const REQUIRED_INPUTS = Object.freeze({
     },
     TASK_FILE_INPUT,
     CONTINUATION_INPUT,
+    RETRY_INPUT,
     {
       label: 'phase',
       source: 'the orchestrator',

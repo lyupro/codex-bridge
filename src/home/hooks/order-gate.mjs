@@ -20,7 +20,7 @@ import {
   diagnoseInput,
   extractValue,
   missingInputs,
-  parseContinuationGrant,
+  parseGrant,
   shellUnsafeInputs,
 } from '../lib/required-inputs.mjs';
 import { SUBAGENT_TOOLS } from '../lib/hook-definitions.mjs';
@@ -116,7 +116,9 @@ const readStatus = (file) => {
 
 const orderId = extractValue(toolInput.prompt, 'order id');
 const taskFile = extractValue(toolInput.prompt, 'task file');
-if (!orderId || !taskFile || parseContinuationGrant(toolInput.prompt)) pass();
+// Plan_75 D1, TradeForge capacity incident: retries keep their order; the runner owns conflicting-grant refusal.
+const grant = parseGrant(toolInput.prompt);
+if (!orderId || !taskFile || grant?.kind || grant?.error) pass();
 
 let rawTask;
 try {

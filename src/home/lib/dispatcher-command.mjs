@@ -4,7 +4,7 @@ import {
   extractValue,
   isAbsoluteTaskFilePath,
   isInputPlaceholder,
-  parseContinuationGrant,
+  parseGrant,
   REQUIRED_INPUTS,
 } from './required-inputs.mjs';
 import { firstShellUnsafeSequence } from './shell-unsafe.mjs';
@@ -69,7 +69,9 @@ export function canonicalRunCommand(agentType, promptText) {
   tokens.push('--order-id', quote(inputs.get('order id')));
   tokens.push('--task-file', quote(inputs.get('task file')));
   if (inputs.get('effort')) tokens.push('--effort', quote(inputs.get('effort')));
-  if (parseContinuationGrant(promptText)) tokens.push('--continue');
+  // Plan_75 D1, TradeForge capacity incident: forward either grant; the runner owns conflicting-grant refusal.
+  const grant = parseGrant(promptText);
+  if (grant?.kind || grant?.error) tokens.push('--continue');
   return { command: tokens.join(' ') };
 }
 
