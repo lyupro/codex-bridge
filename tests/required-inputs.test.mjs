@@ -10,6 +10,7 @@ import { renderStopSummary } from '../src/home/lib/stop-contract.mjs';
 import {
   CONTINUATION_INPUT,
   REQUIRED_INPUTS,
+  RETRY_INPUT,
   diagnoseInput,
   isAbsoluteTaskFilePath,
   missingInputs,
@@ -40,8 +41,8 @@ test('the immutable table lists each dispatcher input', () => {
     assert.equal(Object.isFrozen(entries), true);
     for (const entry of entries) assert.equal(Object.isFrozen(entry), true);
   }
-  assert.deepEqual(REQUIRED_INPUTS['codex-build'].map((entry) => entry.label), ['order id', 'scope', 'task file', 'continue']);
-  assert.deepEqual(REQUIRED_INPUTS['codex-advisor'].map((entry) => entry.label), ['order id', 'task file', 'continue', 'phase']);
+  assert.deepEqual(REQUIRED_INPUTS['codex-build'].map((entry) => entry.label), ['order id', 'scope', 'task file', 'continue', 'retry']);
+  assert.deepEqual(REQUIRED_INPUTS['codex-advisor'].map((entry) => entry.label), ['order id', 'task file', 'continue', 'retry', 'phase']);
 });
 
 test('missingInputs reports every required value for every dispatcher', () => {
@@ -134,7 +135,7 @@ test('conditional continuation entries stay out of the order-gate input contract
   for (const [agentType, entries] of Object.entries(REQUIRED_INPUTS)) {
     const unconditional = entries.filter((entry) => !entry.conditional);
     const conditional = entries.filter((entry) => entry.conditional);
-    assert.deepEqual(conditional, [CONTINUATION_INPUT]);
+    assert.deepEqual(conditional, [CONTINUATION_INPUT, RETRY_INPUT]);
     assert.deepEqual(missingInputs(agentType, '').map((entry) => entry.label), unconditional.map((entry) => entry.label));
     assert.deepEqual(
       missingInputs(agentType, `continue: ${CONTINUATION_INPUT.example}`).map((entry) => entry.label),
