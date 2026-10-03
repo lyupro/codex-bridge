@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { CONTINUATION_INPUT, parseContinuationGrant } from '../required-inputs.mjs';
 import { readJson } from '../write-meta.mjs';
+import { workerMayBeAlive } from '../meta/run-liveness.mjs';
 
 // One comparison of run names for the grant gate and for attach, so a repeat and a grant can never
 // disagree about whether two spellings name the same folder.
@@ -48,7 +49,20 @@ function lastRunOutcome(runsRootPath, chain) {
   const meta = readJson(path.join(runsRootPath, run, 'meta.json')) || {};
   const outcomeStatus = String(meta.status ?? status.status ?? status.state ?? 'unknown').trim() || 'unknown';
   const outcomeReason = String(meta.reason ?? status.reason ?? 'reason not recorded').trim() || 'reason not recorded';
-  return { run, status: outcomeStatus, reason: outcomeReason };
+  return { run, status: outcomeStatus, reason: outcomeReason, verdict: meta.status, orderId: status.order_id };
+}
+
+export function readyGrantLines(runsRootPath, chain, grantReason) {
+  const last = lastRunOutcome(runsRootPath, chain);
+  if (!last) return 'Ready grant line: none (there is no run to continue).';
+  const reason = String(grantReason ?? last.reason).trim() || last.reason;
+  const continuation = `Ready grant line: continue: ${last.run} — ${reason}.`;
+  // Plan_75 D1: the TradeForge failed advise spent its continuation, so show the same-pass repair.
+  // A run without order_id cannot be retried (retryRefusal step d), so it gets no retry line.
+  const orderId = String(last.orderId ?? '').trim();
+  if (!last.verdict || last.verdict === 'OK' || !orderId) return continuation;
+  return continuation +
+    ` Ready retry line: retry: ${last.run} — ${last.reason} (repeats that pass under order ${orderId}).`;
 }
 
 function lastRunHints(runsRootPath, chain, grantReason) {
@@ -56,9 +70,8 @@ function lastRunHints(runsRootPath, chain, grantReason) {
   if (!last) {
     return 'Last run: none. Outcome: none. Ready grant line: none (there is no run to continue).';
   }
-  const reason = String(grantReason ?? last.reason).trim() || last.reason;
   return `Last run: ${last.run}. Outcome: ${last.status} — ${last.reason}. ` +
-    `Ready grant line: continue: ${last.run} — ${reason}.`;
+    readyGrantLines(runsRootPath, chain, grantReason);
 }
 
 /**
@@ -86,6 +99,7 @@ export function continuationRefusal(runsRootPath, chain, isContinue, orderId, gr
   if (!continuation) {
     return (
       '--continue is refused: the orchestrator did not provide a `continue:` grant in the task text. ' +
+      `${lastRunHints(runsRootPath, chain)} ` +
       `${grantExample} ${grantAction} The run folder was not created; quota was not spent.`
     );
   }
@@ -109,19 +123,23 @@ export function continuationRefusal(runsRootPath, chain, isContinue, orderId, gr
       `--continue is refused: grant ${continuation.run} is not the LAST run of this task's chain; ` +
       `the current last run is ${last || 'none'}. A continuation is single-use: continuing the ` +
       'last run appends a later run, so the old grant stops matching by itself — no counter or new ' +
-      `state is used. ${grantExample} ${grantAction} The run folder was not created; quota was not spent.`
+      `state is used. ${lastRunHints(runsRootPath, chain, continuation.reason)} ` +
+      `${grantExample} ${grantAction} The run folder was not created; quota was not spent.`
     );
   }
 
   const wanted = String(orderId ?? '').trim();
-  const ofThisOrder = chain.filter(
-    (run) => String(readJson(path.join(runsRootPath, run, 'status.json'))?.order_id ?? '').trim() === wanted,
-  );
+  // Plan_75 D1, TradeForge capacity incident: a retry spends no new pass, even after an OK verdict.
+  const ofThisOrder = chain.filter((run) => {
+    const status = readJson(path.join(runsRootPath, run, 'status.json'));
+    return String(status?.order_id ?? '').trim() === wanted && !String(status?.retry_of ?? '').trim();
+  });
   if (ofThisOrder.length === 0) return null;
   if (ofThisOrder.length > 1) {
     const spent = ofThisOrder.map((run) => path.join(runsRootPath, run)).join(', ');
     return (
       `--continue is refused: order “${wanted}” already spent its allowed continuation on ${spent}. ` +
+      `${lastRunHints(runsRootPath, chain, continuation.reason)} ` +
       'A further pass needs a new order id from the orchestrator. The run folder was not ' +
       'created; quota was not spent.'
     );
@@ -132,9 +150,43 @@ export function continuationRefusal(runsRootPath, chain, isContinue, orderId, gr
   if (!meta?.status || status?.state === 'running') {
     return (
       `--continue is refused: previous run ${previous} has no finished verdict and may still ` +
-      'be editing the worktree. Repeat without --continue to attach to it. The run folder was ' +
+      'be editing the worktree. Repeat without --continue to attach to it. ' +
+      `${lastRunHints(runsRootPath, chain, continuation.reason)} The run folder was ` +
       'not created; quota was not spent.'
     );
+  }
+  return null;
+}
+
+export function retryRefusal(runsRootPath, chain, isContinue, orderId, grant, liveness = workerMayBeAlive) {
+  const refuse = (message) => `${message} The run folder was not created; quota was not spent.`;
+  if (!isContinue) {
+    return refuse('--continue is required for a `retry:` grant: the orchestrator deliberately repeats the same pass.');
+  }
+  const runDir = namedRunDirectory(runsRootPath, grant?.run);
+  if (!runDir) {
+    return refuse(`Retry is refused: ${grant?.run || 'none'} is not a bare existing run folder in ${runsRootPath}.`);
+  }
+  const last = chain[chain.length - 1];
+  // Plan_75 D1: appending the TradeForge retry makes this grant single-use without a new counter.
+  if (!last || !sameRun(runsRootPath, grant.run, last)) {
+    return refuse(`Retry is refused: grant ${grant.run} is not the LAST run of this task's chain; a retry is single-use.`);
+  }
+  const status = readJson(path.join(runDir, 'status.json'));
+  const wanted = String(orderId ?? '').trim();
+  const previousOrder = String(status?.order_id ?? '').trim();
+  if (!previousOrder || previousOrder !== wanted) {
+    return refuse(`Retry is refused: run ${grant.run} order_id ${previousOrder || '(missing)'} differs from order ${wanted}. ` +
+      'A retry repeats its own order; a run without order_id predates orders — start a new order.');
+  }
+  const meta = readJson(path.join(runDir, 'meta.json'));
+  // Plan_75 D1: a verdict alone must not let a retry overlap the failed advise's live writer.
+  if (!meta?.status || liveness({ runDir, status })) {
+    return refuse(`Retry is refused: run ${grant.run} has no finished verdict or its worker may still be alive and writing. ` +
+      'Repeat without --continue to attach to it.');
+  }
+  if (meta.status === 'OK') {
+    return refuse(`Retry is refused: run ${grant.run} ended OK. A retry repeats a failed pass; use continue: for the next pass.`);
   }
   return null;
 }

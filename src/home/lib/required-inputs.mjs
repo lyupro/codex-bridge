@@ -23,6 +23,15 @@ export const CONTINUATION_INPUT = Object.freeze({
   conditional: 'when --continue is passed',
 });
 
+export const RETRY_INPUT = Object.freeze({
+  label: 'retry',
+  source: 'the orchestrator',
+  explanation:
+    'The failed run this pass repeats, followed by why the orchestrator pays for the same pass again. A retry repeats that failed pass under its own order; it does not authorize the next pass.',
+  example: '2026-10-03_172017_cc-d66-advisor — model at capacity, same pass again',
+  conditional: 'when --continue is passed',
+});
+
 /**
  * The task statement reaches the runner as a file because every other channel puts the invocation
  * back into the multi-line form that no permission rule can cover — a heredoc on stdin, or a
@@ -201,10 +210,10 @@ export function diagnoseInput(promptText, label) {
   return { line, reason: `expected \`${label}: value\` with a separator immediately after the label` };
 }
 
-/** Keeps the 2026-08-05 continuation incident's run and reason in the shared input parser. */
-export function parseContinuationGrant(promptText) {
+// Plan_75 D1, TradeForge capacity incident (2026-10-03): both grants need the same run/reason grammar.
+function parseLabelledGrant(promptText, label) {
   const prompt = typeof promptText === 'string' ? promptText : '';
-  const value = extractValue(prompt, CONTINUATION_INPUT.label);
+  const value = extractValue(prompt, label);
   if (isPlaceholder(value)) return null;
 
   for (const separator of [/\s+—\s+/, /\s+-\s+/, /\s*:\s*/]) {
@@ -215,6 +224,26 @@ export function parseContinuationGrant(promptText) {
     if (isPlaceholder(run) || isPlaceholder(reason)) return null;
     return { run, reason };
   }
+  return null;
+}
+
+/** Keeps the 2026-08-05 continuation incident's run and reason in the shared input parser. */
+export function parseContinuationGrant(promptText) {
+  return parseLabelledGrant(promptText, CONTINUATION_INPUT.label);
+}
+
+export function parseRetryGrant(promptText) {
+  return parseLabelledGrant(promptText, RETRY_INPUT.label);
+}
+
+export function parseGrant(promptText) {
+  const continuation = parseContinuationGrant(promptText);
+  const retry = parseRetryGrant(promptText);
+  if (continuation && retry) {
+    return { error: 'exactly one grant per task: remove either the continue: or the retry: line' };
+  }
+  if (continuation) return { kind: 'continue', ...continuation };
+  if (retry) return { kind: 'retry', ...retry };
   return null;
 }
 

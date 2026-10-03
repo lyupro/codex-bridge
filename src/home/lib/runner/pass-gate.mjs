@@ -11,8 +11,8 @@ import { chainRuns, startedRuns, taskFingerprint, readJson } from '../write-meta
 import { die } from './args.mjs';
 import { EXIT } from './exit-codes.mjs';
 import { attach } from './attach.mjs';
-import { parseContinuationGrant } from '../required-inputs.mjs';
-import { continuationRefusal } from './continuation.mjs';
+import { parseGrant } from '../required-inputs.mjs';
+import { continuationRefusal, readyGrantLines } from './continuation.mjs';
 import { advisorTaskOrRefuse } from './advise-carry.mjs';
 import { scopeRunRefusal } from './preflight.mjs';
 
@@ -27,7 +27,9 @@ export async function passGate({ opts, taskText, projectRunsRoot, repoRoot }) {
   // the identical order as `<slug>-v2` and spent 46k on it. Refused before the folder exists,
   // like --scope.
   const taskHash = taskFingerprint(taskText);
-  const continuationGrant = parseContinuationGrant(taskText);
+  const grant = parseGrant(taskText);
+  if (grant?.error) die(`${grant.error}. The run folder was not created; quota was not spent.`);
+  const continuationGrant = grant?.kind === 'continue' ? grant : null;
   const chain = chainRuns(projectRunsRoot, repoRoot, opts.slug, taskHash, opts.orderId, continuationGrant?.run);
   const startedChain = startedRuns(projectRunsRoot, chain);
   const attachExistingRun = () => attach({
@@ -76,6 +78,7 @@ export async function passGate({ opts, taskText, projectRunsRoot, repoRoot }) {
         'A repeat run is allowed, but the orchestrator decides, not the runner: it read the ' +
         'previous response and knows whether work remains. Add --continue if you are finishing ' +
         'the same task; changing --slug with the same task text does not stop it being a repeat. ' +
+        `${readyGrantLines(projectRunsRoot, startedChain)} ` +
         'The run folder was not created; quota was not spent.',
     );
   }
