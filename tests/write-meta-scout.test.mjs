@@ -12,7 +12,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { collect } from '../src/home/lib/write-meta.mjs';
-import { questionsFromFlags } from '../src/home/lib/runner/launcher.mjs';
+import { questionsFromTexts } from '../src/home/lib/runner/question-kind.mjs';
 import { COMPLETED_COMMAND, makeRun } from './meta/test-fixtures.mjs';
 
 const RUN_CODEX = new URL('../src/home/lib/run-codex.mjs', import.meta.url).href;
@@ -73,9 +73,9 @@ test('repeatable flags build questions.json entries in the given order', () => {
     'Second wording is preserved exactly.',
   ]);
   assert.equal(code, 0);
-  assert.deepEqual(questionsFromFlags(opts.questions), [
-    { id: 'Q1', text: 'First wording is preserved.' },
-    { id: 'Q2', text: 'Second wording is preserved exactly.' },
+  assert.deepEqual(questionsFromTexts(opts.questions), [
+    { id: 'Q1', text: 'First wording is preserved.', kind: 'code-required' },
+    { id: 'Q2', text: 'Second wording is preserved exactly.', kind: 'code-required' },
   ]);
 });
 

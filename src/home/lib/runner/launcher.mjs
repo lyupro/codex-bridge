@@ -25,6 +25,7 @@ import { setRun } from './run-context.mjs';
 import { loadRunEnv, RUN_ENV } from './run-env.mjs';
 import { parseArgs, die } from './args.mjs';
 import { settleTaskInput } from './task-input.mjs';
+import { questionsFromTexts, QUESTION_KIND } from './question-kind.mjs';
 import { parseContinuationGrant } from '../required-inputs.mjs';
 import { continuationRefusal } from './continuation.mjs';
 import { advisorTaskOrRefuse, adviseSection } from './advise-carry.mjs';
@@ -50,8 +51,6 @@ import {
  * below is the CLI entry one level up — not this module, which has no command line of its own.
  */
 const RUNNER_ENTRY = fileURLToPath(new URL('../run-codex.mjs', import.meta.url));
-export const questionsFromFlags = (questionTexts = []) =>
-  questionTexts.map((text, i) => ({ id: `Q${i + 1}`, text }));
 
 const stamp = () => {
   const d = new Date();
@@ -274,7 +273,7 @@ export async function launcher(argv = process.argv.slice(2)) {
   // The sub-questions this run will be graded against come only from the orchestrator's
   // repeatable flags. They are written before the task is assembled so the prompt and verdict
   // read the same ordered list, including a valid one-question order.
-  const questions = opts.agent === 'codex-scout' ? questionsFromFlags(opts.questions) : [];
+  const questions = opts.agent === 'codex-scout' ? questionsFromTexts(opts.questions) : [];
   if (opts.agent === 'codex-scout') {
     fs.writeFileSync(path.join(runDir, 'questions.json'), `${JSON.stringify(questions, null, 2)}\n`);
   }
@@ -300,7 +299,8 @@ export async function launcher(argv = process.argv.slice(2)) {
       [
         '## Sub-questions, each requires a separate response',
         '',
-        questions.map((q) => `${q.id}: ${q.text}`).join('\n'),
+        questions.map((q) =>
+          `${q.id}${q.kind === QUESTION_KIND.STARTUP_CONTEXT ? ' [context-only]' : ''}: ${q.text}`).join('\n'),
         '',
         'A missed sub-question fails the run; a response containing only coordinates counts as missed.',
       ].join('\n'),

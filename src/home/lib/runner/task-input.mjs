@@ -8,6 +8,7 @@
  * questions in the file got refused for not passing --question.
  */
 import { die, readTaskDocument } from './args.mjs';
+import { questionKindRefusal } from './question-kind.mjs';
 
 export function settleTaskInput(opts) {
   const { task, questions: fileQuestions, verify: fileVerify } = readTaskDocument(opts);
@@ -21,6 +22,14 @@ export function settleTaskInput(opts) {
         'under a `Questions` heading in the task file, or repeat --question for manual calls. ' +
         'The runner will not infer questions from the task text; no quota was spent.',
     );
+  }
+  if (opts.agent === 'codex-scout') {
+    const refusal = questionKindRefusal(opts.questions);
+    if (refusal) {
+      die(
+        `${refusal}; the marker is exactly [context-only] followed by a space and the question; no quota was spent.`,
+      );
+    }
   }
   return task;
 }

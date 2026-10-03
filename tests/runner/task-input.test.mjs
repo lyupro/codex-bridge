@@ -117,3 +117,18 @@ test('the direct file and package run command share the runner crash reply and e
   assert.match(command.stdout, /^FAIL — Codex runner crashed before creating the run folder:/);
   assert.equal(command.stderr, direct.stderr);
 });
+
+test('a malformed scout marker refuses before any run folder or quota is spent', (t) => {
+  const root = fixture(t);
+  const taskFile = path.join(root, 'task.md');
+  fs.writeFileSync(taskFile, 'Scout the startup context.\n\n## Questions\n- [Context-Only] What were you handed?\n');
+  const result = run(RUNNER, [
+    '--agent', 'codex-scout', '--repo', root, '--order-id', 'bad-marker', '--task-file', taskFile,
+  ], root);
+  assert.ifError(result.error);
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /Q1/);
+  assert.match(result.stderr, /\[context-only\]/);
+  assert.match(result.stderr, /no quota was spent/);
+  assert.equal(fs.existsSync(path.join(root, 'runs')), false);
+});
