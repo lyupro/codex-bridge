@@ -11,6 +11,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { startedRuns } from './pre-start.mjs';
 import { normalizePath, readJson } from './paths.mjs';
+import { taskTextWithoutGrants } from '../required-inputs.mjs';
 
 /**
  * What makes two runs the same task when their names disagree.
@@ -21,9 +22,10 @@ import { normalizePath, readJson } from './paths.mjs';
  * built to refuse. Whitespace and case are normalized away because the same order re-sent
  * through a shell is rewrapped, not rewritten; anything more forgiving would tie together
  * tasks that merely look alike.
+ * Grant lines do not change task identity (OW-049 and TradeForge case 4, 2026-10-03).
  */
 export const taskFingerprint = (taskText) => {
-  const normalized = String(taskText ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const normalized = taskTextWithoutGrants(taskText).replace(/\s+/g, ' ').trim().toLowerCase();
   return normalized ? createHash('sha256').update(normalized).digest('hex').slice(0, 16) : '';
 };
 
@@ -35,14 +37,19 @@ export const taskFingerprint = (taskText) => {
  * honestly, changed nothing and was told it had done no work. Folder names rather than
  * full paths; the current run joins the list as soon as its status.json exists.
  */
-export function chainRuns(runsRoot, repo, slug, taskHash = '', orderId = '') {
+export function chainRuns(runsRoot, repo, slug, taskHash = '', orderId = '', grantRun = '') {
   const wantedRepo = normalizePath(repo);
-  const wantedSlug = String(slug ?? '').trim().toLowerCase();
-  const wantedHash = String(taskHash ?? '').trim().toLowerCase();
-  const wantedOrderId = String(orderId ?? '').trim();
+  if (!wantedRepo) return [];
+  const namedStatus = typeof grantRun === 'string' && grantRun &&
+    !/[\\/]/.test(grantRun) && grantRun !== '.' && grantRun !== '..'
+    ? readJson(path.join(runsRoot, grantRun, 'status.json')) : null;
+  const namedRun = namedStatus && normalizePath(namedStatus.repo) === wantedRepo ? namedStatus : null;
+  const wantedSlugs = new Set([slug, namedRun?.slug].map((value) => String(value ?? '').trim().toLowerCase()).filter(Boolean));
+  const wantedHashes = new Set([taskHash, namedRun?.task_hash].map((value) => String(value ?? '').trim().toLowerCase()).filter(Boolean));
+  const wantedOrderIds = new Set([orderId, namedRun?.order_id].map((value) => String(value ?? '').trim()).filter(Boolean));
   // No handle on the task, or no repo, means nothing to chain — an empty context must find
   // nothing rather than fall back to "every run in this folder".
-  if (!wantedRepo || (!wantedSlug && !wantedHash && !wantedOrderId)) return [];
+  if (!wantedSlugs.size && !wantedHashes.size && !wantedOrderIds.size) return [];
   let entries;
   try {
     entries = fs.readdirSync(runsRoot, { withFileTypes: true });
@@ -56,9 +63,9 @@ export function chainRuns(runsRoot, repo, slug, taskHash = '', orderId = '') {
     if (!status) continue;
     // Either handle identifies the task. The hash catches a repeat that renamed itself; the
     // slug still catches the follow-up whose wording the orchestrator edited on purpose.
-    const sameSlug = Boolean(wantedSlug) && String(status.slug ?? '').trim().toLowerCase() === wantedSlug;
-    const sameTask = Boolean(wantedHash) && String(status.task_hash ?? '').trim().toLowerCase() === wantedHash;
-    const sameOrder = Boolean(wantedOrderId) && String(status.order_id ?? '').trim() === wantedOrderId;
+    const sameSlug = wantedSlugs.has(String(status.slug ?? '').trim().toLowerCase());
+    const sameTask = wantedHashes.has(String(status.task_hash ?? '').trim().toLowerCase());
+    const sameOrder = wantedOrderIds.has(String(status.order_id ?? '').trim());
     if (!sameSlug && !sameTask && !sameOrder) continue;
     if (normalizePath(status.repo) !== wantedRepo) continue;
     runs.push({ name: entry.name, at: String(status.started_at || '') });

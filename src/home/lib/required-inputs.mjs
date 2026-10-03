@@ -122,13 +122,16 @@ export function isPlaceholder(value) {
 export const isInputPlaceholder = (value, label) =>
   !(label === 'phase' && cleanValue(value) === 'scope') && isPlaceholder(value);
 
-export function extractValue(promptText, label) {
+// One spelling of a labelled line for reading a value and for dropping grant lines from the task
+// hash: a grant the parser accepts but the hash still counted would bring back OW-049.
+const labelledLine = (label) => {
   const labelPattern = escapeRegExp(label).replaceAll('\\ ', '\\s+');
+  return `(?:[-*]\\s*)?(?:[*_` + '`' + `]?${labelPattern}[*_` + '`' + `]?)\\s*(?::|=|—|-)`;
+};
+
+export function extractValue(promptText, label) {
   const flag = `--${label.replaceAll(/\s+/g, '-')}`;
-  const direct = new RegExp(
-    `(?:^|\\r?\\n)\\s*(?:[-*]\\s*)?(?:[*_` + '`' + `]?${labelPattern}[*_` + '`' + `]?)\\s*(?::|=|—|-)\\s*([^\\r\\n]*)`,
-    'im',
-  );
+  const direct = new RegExp(`(?:^|\\r?\\n)\\s*${labelledLine(label)}\\s*([^\\r\\n]*)`, 'im');
   const directMatch = promptText.match(direct);
   if (directMatch) return cleanValue(directMatch[1]);
 
@@ -139,6 +142,16 @@ export function extractValue(promptText, label) {
   const flagMatch = promptText.match(flagPattern);
   if (!flagMatch) return null;
   return cleanValue(flagMatch[1] ?? flagMatch[2] ?? flagMatch[3]);
+}
+
+// OW-049 and TradeForge case 4 (2026-10-03): grants authorize passes without changing task identity.
+const GRANT_LINE = new RegExp(
+  `^[ \\t]*(?:${labelledLine('continue')}|${labelledLine('retry')})[^\\r\\n]*(?:\\r\\n|\\n|\\r|$)`,
+  'gim',
+);
+
+export function taskTextWithoutGrants(text) {
+  return String(text ?? '').replace(GRANT_LINE, '');
 }
 
 const MAX_DIAGNOSIS_LINE_LENGTH = 160;

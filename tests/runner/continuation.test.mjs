@@ -6,7 +6,8 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { continuationRefusal } from '../../src/home/lib/runner/continuation.mjs';
-import { startedRuns } from '../../src/home/lib/write-meta.mjs';
+import { chainRuns, startedRuns, taskFingerprint } from '../../src/home/lib/write-meta.mjs';
+import { parseContinuationGrant } from '../../src/home/lib/required-inputs.mjs';
 
 function fixture(t) {
   const root = makeTempTree('continuation-');
@@ -109,6 +110,23 @@ test('an explicit grant for the current finished run permits the first continuat
   run(runsRoot, name);
 
   assert.equal(continuationRefusal(runsRoot, [name], true, 'order-1', grant(name)), null);
+});
+
+test('OW-049: adding a grant under a new order keeps the finished FAIL run in the chain', (t) => {
+  const runsRoot = fixture(t);
+  const repo = '/repo/ow-049';
+  const task = 'Finish the ordered task.';
+  run(runsRoot, 'A', {
+    repo, slug: 'old-slug', order_id: 'o1', task_hash: taskFingerprint(task),
+    started_at: '2026-10-03T00:01:00Z',
+  });
+  const continuedTask = `continue: A — why\n${task}`;
+  const continuationGrant = parseContinuationGrant(continuedTask);
+  const chain = chainRuns(runsRoot, repo, 'new-slug', taskFingerprint(continuedTask), 'o2', continuationGrant?.run);
+
+  assert.equal(taskFingerprint(continuedTask), taskFingerprint(task));
+  assert.deepEqual(chain, ['A']);
+  assert.equal(continuationRefusal(runsRoot, startedRuns(runsRoot, chain), true, 'o2', continuationGrant), null);
 });
 
 test('a retroactive pre-start folder leaves the same order eligible for its first launch', (t) => {

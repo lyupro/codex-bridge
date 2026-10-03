@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
 import { chainRuns, chainBaseline, taskFingerprint } from '../../src/home/lib/meta/chain.mjs';
+import { taskTextWithoutGrants } from '../../src/home/lib/required-inputs.mjs';
 import { makeChainRoot, CHAIN_REPO, CHAIN_SLUG } from './test-fixtures.mjs';
 
 test('chainRuns collects the passes of one task and nothing else', () => {
@@ -93,6 +94,64 @@ test('the fingerprint ignores rewrapping but not rewording', () => {
   assert.equal(taskFingerprint('Do  X\n\nand Y'), taskFingerprint('do x and y'));
   assert.notEqual(taskFingerprint('do x'), taskFingerprint('do z'));
   assert.equal(taskFingerprint('   '), '');
+});
+
+test('grant lines do not change the fingerprint, while prose mentioning continue does', () => {
+  const task = 'Finish the task.\nKeep its behavior.';
+  for (const line of [
+    'continue: A — why',
+    'retry: A — why',
+    '- *continue*: A — why',
+    '* _RETRY_: A — why',
+    '`Continue`: A — why',
+    // Every separator extractValue accepts: a grant it reads must never count toward the hash.
+    'continue — A — why',
+    'retry = A — why',
+  ]) {
+    assert.equal(taskFingerprint(`${line}\n${task}`), taskFingerprint(task), line);
+  }
+  assert.notEqual(taskFingerprint(`We should continue after review.\n${task}`), taskFingerprint(task));
+  assert.notEqual(taskFingerprint(`continue later: A\n${task}`), taskFingerprint(task));
+  // extractValue does not read a double-wrapped label, so it is not a grant and stays in the hash.
+  assert.notEqual(taskFingerprint(`- **continue:** A — why\n${task}`), taskFingerprint(task));
+});
+
+test('removing all grant lines preserves every byte of the other lines', () => {
+  const task = '  Task café.\r\n\r\nKeep\tspacing.\nLast line';
+  const withGrants = 'continue: A — why\r\n  Task café.\r\n\r\n- *retry*: A — why\nKeep\tspacing.\nLast line\ncontinue: B — why';
+  assert.equal(taskTextWithoutGrants(withGrants), `${task}\n`);
+  assert.equal(taskTextWithoutGrants(task), task);
+  assert.equal(taskFingerprint('continue: A — why\nretry: A — why'), '');
+});
+
+test('a named run adds its saved handles alongside all original handles', () => {
+  const root = makeChainRoot([
+    { name: 'A', at: '2026-10-03T00:01:00Z', slug: 'old-slug', taskHash: 'OLD-HASH', orderId: 'o1' },
+    { name: 'B-slug', at: '2026-10-03T00:02:00Z', slug: ' OLD-SLUG ', taskHash: 'b', orderId: 'b' },
+    { name: 'C-hash', at: '2026-10-03T00:03:00Z', slug: 'c', taskHash: ' old-hash ', orderId: 'c' },
+    { name: 'D-order', at: '2026-10-03T00:04:00Z', slug: 'd', taskHash: 'd', orderId: ' o1 ' },
+    { name: 'E-original-slug', at: '2026-10-03T00:05:00Z', slug: 'new-slug', taskHash: 'e', orderId: 'e' },
+    { name: 'F-original-hash', at: '2026-10-03T00:06:00Z', slug: 'f', taskHash: 'new-hash', orderId: 'f' },
+    { name: 'G-original-order', at: '2026-10-03T00:07:00Z', slug: 'g', taskHash: 'g', orderId: 'o2' },
+    { name: 'H-unrelated', at: '2026-10-03T00:08:00Z', slug: 'h', taskHash: 'h', orderId: 'h' },
+    { name: 'I-foreign', at: '2026-10-03T00:09:00Z', repo: '/other/repo', slug: 'old-slug', orderId: 'o1' },
+  ]);
+  assert.deepEqual(chainRuns(root, CHAIN_REPO, 'new-slug', 'new-hash', 'o2', 'A'), [
+    'A', 'B-slug', 'C-hash', 'D-order', 'E-original-slug', 'F-original-hash', 'G-original-order',
+  ]);
+  assert.deepEqual(chainRuns(root, CHAIN_REPO, '', '', '', 'A'), ['A', 'B-slug', 'C-hash', 'D-order']);
+});
+
+test('foreign, missing and invalid named runs add no handles', () => {
+  const root = makeChainRoot([
+    { name: 'A', at: '2026-10-03T00:01:00Z', slug: 'old-slug', taskHash: 'old-hash', orderId: 'o1' },
+    { name: 'foreign', at: '2026-10-03T00:02:00Z', repo: '/other/repo', slug: 'old-slug', taskHash: 'old-hash', orderId: 'o1' },
+    { name: 'original', at: '2026-10-03T00:03:00Z', slug: 'new-slug' },
+  ]);
+  for (const name of ['foreign', 'missing', '../A', '..\\A', '.', '..', 'A/status.json', 'A\\status.json']) {
+    assert.deepEqual(chainRuns(root, CHAIN_REPO, 'new-slug', 'new-hash', 'o2', name), ['original'], name);
+    assert.deepEqual(chainRuns(root, CHAIN_REPO, '', '', '', name), [], name);
+  }
 });
 
 test('runs from before the fingerprint existed still chain by slug', () => {

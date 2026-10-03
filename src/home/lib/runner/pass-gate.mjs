@@ -27,9 +27,9 @@ export async function passGate({ opts, taskText, projectRunsRoot, repoRoot }) {
   // the identical order as `<slug>-v2` and spent 46k on it. Refused before the folder exists,
   // like --scope.
   const taskHash = taskFingerprint(taskText);
-  const chain = chainRuns(projectRunsRoot, repoRoot, opts.slug, taskHash, opts.orderId);
-  const startedChain = startedRuns(projectRunsRoot, chain);
   const continuationGrant = parseContinuationGrant(taskText);
+  const chain = chainRuns(projectRunsRoot, repoRoot, opts.slug, taskHash, opts.orderId, continuationGrant?.run);
+  const startedChain = startedRuns(projectRunsRoot, chain);
   const attachExistingRun = () => attach({
     runsRoot: projectRunsRoot, repo: repoRoot, slug: opts.slug, taskHash, orderId: opts.orderId, chain,
     grantRun: continuationGrant?.run, isContinue: opts.continue, noWait: opts.noWait,
