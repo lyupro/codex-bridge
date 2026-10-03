@@ -54,14 +54,21 @@ the first matching branch determines the status. The order is therefore part of 
     field are judged by it — see “Run age” below.
 11. **Scout coverage.** First, a run that left an events stream must show at least one executed command:
     an `item.completed` event whose item is a `command_execution`, with any status and exit code (a grep
-    that finds nothing still read the code). Without one the run is `FAIL` — no answer can rest on
-    reading code nobody read. On 2026-09-16 a dead Codex sandbox refused every tool call, those refusals
+    that finds nothing still read the code). Without one the run is `FAIL` unless every question in
+    `questions.json` is `startup-context`; mixed runs and archived questions without `kind` keep the
+    no-command rule. On 2026-09-22 two honest scouts fully answered questions about their own startup
+    context and were failed with “scout executed no command.” The orderer's `[context-only]` marker
+    permits that answer without weakening the rule for code questions: no answer can rest on reading
+    code nobody read. On 2026-09-16 a dead Codex sandbox refused every tool call, those refusals
     never reach the stream, and a scout whose `evidence` explained that the files were unreadable was
     graded `OK`. Across 99 earlier successful scout runs this fact was missing exactly twice, both on
     that dead sandbox; requiring evidence to name an existing file instead would have failed 64 of 151.
     An archived run without a stream is not judged by it. Then multiple extracted questions require
     separate answers, enough substantive text, and at least one evidence link for each question. For a
-    single question, the overall `answer` is checked for substance.
+    single question, the overall `answer` is checked for substance. Finally, each marked question's answer must cite `startup:<source>` evidence or the run is `FAIL`.
+    With zero executed commands, any repository `path:line` in answers' evidence or findings' `where`
+    also produces `FAIL`: an address cited without reading is invented, so a code question marked by
+    mistake still fails.
 12. **Advisor contract.** After scout checks and before the build-only scope check, the advisor judge
     validates the result against `advisor-task.json` and the phase context. It returns `FAIL` if the run
     executed no command; a scope result has an empty `taken_on_trust`, says `sufficient: false` without

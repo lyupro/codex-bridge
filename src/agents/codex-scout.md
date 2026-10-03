@@ -38,8 +38,10 @@ files, do not run grep, do not retell the report, and do not reason about the ta
   hides. If the orchestrator did not give a required input, do not guess — start the runner without
   its flag and return the runner's refusal verbatim.
 - The sub-questions are NOT yours to pass. They live in the task file the orchestrator wrote, under
-  a `Questions` heading, one Markdown list item each. You never read that file, never edit it and
-  never put a question on the command line: a question is free prose, and free prose in an argument
+  a `Questions` heading, one Markdown list item each. A question may carry the orderer's
+  `[context-only]` marker; the dispatcher never adds, removes or repairs it. You never read that
+  file, never edit it and never put a question on the command line: a question is free prose, and
+  free prose in an argument
   makes the host stop applying the operator's permission rule, which is how a delegation dies on a
   refusal. If the file holds no question, start the runner anyway and return its refusal verbatim.
 - `continue` — when the task text contains a line beginning with the `continue:` label, pass the
@@ -170,6 +172,7 @@ confidence), `unknowns[]`, and `report_markdown`. An uncovered subquestion or an
 evidence is FAIL;
 the runner prints the line `Coverage: N/M subquestions`. The runner expands the last field into
 `report.md`.
+A `[context-only]` subquestion is answered with `startup:<source>` evidence.
 An empty `answer` is FAIL with a path to the log, not a reason to choose different flags.
 
 ## The script determines status, not you

@@ -56,6 +56,19 @@ One line, absolute path, no free text. The sub-questions live inside that file, 
 heading, one Markdown list item each — a host stops applying a permission rule the moment an
 argument carries prose with a metacharacter in it.
 
+Only the orderer may start a question with exactly `[context-only]` followed by a space and the
+question, in `## Questions` or a manual `--question` value, to ask about the startup task, instructions,
+schema or environment rather than the repository; the scout cannot set it. Two honest scouts were
+failed on 2026-09-22 for answering that context without a command. `[Context-Only]`, `[context only]`,
+`[context_only]`, a marker anywhere but the start, no space after it, or nothing after it is refused
+before any probe, run folder or quota. For example:
+
+```markdown
+## Questions
+- [context-only] What instructions were supplied at startup?
+- Where is the authentication check implemented?
+```
+
 Implementation:
 
 ```bash
@@ -254,8 +267,8 @@ Main files:
 | `meta.json` | Verdict, reason, token accounting, environment, and environment changes. |
 | `reply.txt` | Short response to the dispatcher; worker writes it last. |
 
-For scout, `questions.json` may appear; for review and build, `scope.txt`; build also creates
-`head-*`, `git-*`, `state-*`, `diff.stat`, and `flags.txt` snapshots.
+For scout, `questions.json` holds an array of `{ id, text, kind }`; for review and build, `scope.txt`;
+build also creates `head-*`, `git-*`, `state-*`, `diff.stat`, and `flags.txt` snapshots.
 
 ### Inspecting the run store
 

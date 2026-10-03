@@ -113,6 +113,23 @@ This branch has no `carried_from_earlier_run` or `environment_changes`: the requ
 result might not yet have existed. Consumers must distinguish an absent field from `false` or an
 empty list.
 
+## `questions.json`
+
+The launcher writes the parsed questions for scout runs only, before assembling `task.md`, as an
+array of `{ id, text, kind }`. The verdict reads this saved input rather than parsing `task.md` again,
+because that file also contains runner-generated instructions. The orderer's `[context-only]` marker
+preserves the distinction missed on 2026-09-22, when two honest startup-context answers were failed
+for executing no command.
+
+| Field | Value |
+| --- | --- |
+| `id` | Assigned subquestion identifier, such as `Q1`. |
+| `text` | Question text with the leading `[context-only]` marker stripped, when present. |
+| `kind` | `startup-context` for a marked question about the task, instructions, schema or environment supplied at startup; `code-required` otherwise. Only the orderer sets the marker, never the scout. |
+
+An archived entry without `kind` is read as `code-required`; it does not gain the no-command
+exemption. The task's sub-question list renders a marked question as `Q1 [context-only]: …`.
+
 ## `advisor-task.json`
 
 The launcher writes the parsed advisor choices from the orchestrator's task file before assembling
