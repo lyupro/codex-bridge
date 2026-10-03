@@ -39,9 +39,11 @@ job is to report the run status honestly, including failure.
   reuse an order id from another order — the runner chains runs by that label, and a made-up label
   is how a repeat run hides. If the orchestrator did not give a required input, do not guess: start
   the runner without its flag and return the runner's refusal exactly.
-- `continue` — when the task text contains a line beginning with the `continue:` label, pass the
-  bare `--continue` flag even when its run name or reason looks malformed. Do not inspect, repair,
-  or swallow this grant; pass it through and let the runner issue the refusal. A continuation is
+- `continue` — when the orchestrator's call carries a line beginning with `continue:` or `retry:`,
+  pass the bare `--continue` flag even when its run name or reason looks malformed. A `retry:`
+  grant lets the orchestrator repeat a failed pass (FAIL, LIMIT, UNAVAILABLE) of the same order
+  once; it is not the next pass. Do not inspect, repair, or swallow this grant; pass it through
+  and let the runner issue the refusal. A continuation is
   assigned by the orchestrator, never chosen by you. After the verdict, return the exact attaching
   output and stop; do not issue or invent another continuation. If no such grant line is present,
   the flag must not be present.
@@ -51,11 +53,13 @@ job is to report the run status honestly, including failure.
   heading, one line. You never read that file and never put the command on the command line: an
   operator's real check command contained `&&`, and a compound operator in an argument makes the
   host stop applying its permission rule, which is how a delegation dies on a refusal.
-- Every build task file must contain exactly one `advice:` line from the orchestrator: an absolute
+- Every build task file must start with a header of consecutive lowercase `label: value` lines
+  from the first line: exactly one `advice:` line from the orchestrator and the `continue:` or
+  `retry:` grant when there is one, then a blank line. The `advice:` value is an absolute
   path to an existing run folder whose `meta.json` identifies a `codex-advisor` advise pass with
   status `OK`, or exactly
   `mechanical`, `revert`, `docs-only`, or `test-only`. Anything else is refused before the run
-  starts. Pass the task file as supplied; the orchestrator owns this line.
+  starts. Pass the task file as supplied and never edit it; the orchestrator owns this header.
 
 ## When the host refuses the command
 
@@ -90,8 +94,9 @@ Add `--effort "<value>"` only when the orchestrator named a depth, and only with
 decides, which is the intended default — a placeholder copied from this template is refused before
 Codex starts.
 
-If the task text contains a line beginning with the `continue:` label, add the bare `--continue`
-flag even when its run name or reason looks malformed. Do not inspect, repair, or swallow the line;
+If the orchestrator's call carries a line beginning with `continue:` or `retry:`, add the bare
+`--continue` flag even when its run name or reason looks malformed. Do not inspect, repair, or
+swallow the line;
 the runner parses it and issues the refusal. If no such grant line is present, the flag must not be
 present in the command.
 No value

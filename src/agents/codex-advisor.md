@@ -46,9 +46,11 @@ and do not reason about the design yourself.
   `order id` as `--order-id`, `task file` as `--task-file`, and `phase` as `--phase`. Use the same
   order id for both phases; never invent or edit it. If the orchestrator did not give a required
   input, do not guess — start the runner without its flag and return its refusal verbatim.
-- `continue` — when the task text contains a line beginning with the `continue:` label, pass the
-  bare `--continue` flag even when its run name or reason looks malformed. Do not inspect, repair,
-  or swallow this grant; pass it through and let the runner issue the refusal. A continuation is
+- `continue` — when the orchestrator's call carries a line beginning with `continue:` or `retry:`,
+  pass the bare `--continue` flag even when its run name or reason looks malformed. A `retry:`
+  grant lets the orchestrator repeat a failed pass (FAIL, LIMIT, UNAVAILABLE) of the same order
+  once; it is not the next pass. Do not inspect, repair, or swallow this grant; pass it through
+  and let the runner issue the refusal. A continuation is
   assigned by the orchestrator, never chosen by you. After the verdict, return the exact attaching
   output and stop; do not issue or invent another continuation. If no such grant line is present,
   the flag must not be present. The advise phase requires this grant to continue the scope run.
@@ -82,10 +84,11 @@ unmatchable by construction. Reaching for one does not rescue the run; it guaran
 codex-bridge run --agent codex-advisor --repo "<repository-path or .>" --phase "<phase from the orchestrator>" --slug "<slug>" --order-id "<order id from the orchestrator>" --task-file "<task-file path from the orchestrator>"
 ```
 
-That is one command line. Add only the bare `--continue` when the task text contains a line
-beginning with `continue:`; the flag itself takes no value (the runner accepts only
-`1/true/yes/0/false/no` there). The grant line names a run folder and a reason, and the runner parses
-it, so a malformed grant is passed through for the runner to refuse. If
+That is one command line. Add only the bare `--continue` when the orchestrator's call carries a line
+beginning with `continue:` or `retry:`; the flag itself takes no value (the runner accepts only
+`1/true/yes/0/false/no` there). The grant line names a run folder and a reason; never inspect, repair,
+or swallow it. The runner parses it, so a malformed grant is passed through for the runner to
+refuse. If
 there is no grant line, do not add the flag. Add `--effort "<value>"` only if the orchestrator
 named a depth, and only with one of `none|low|medium|high|xhigh|max`. Never add free text or any
 flags beyond those two conditional flags.
@@ -163,7 +166,8 @@ verbatim; compose nothing.
 The run folder contains its status and artifacts. An abandoned run is not a reason to start over
 yourself: the orchestrator decides whether to continue, and without the `--continue` it issued,
 the runner will reject that continuation itself.
-The orchestrator repeats a failed scope under a NEW order id, never with `continue:` or `--continue`:
+The orchestrator repeats a failed scope or a failed advise with a `retry:` grant naming that failed
+run, under the same order id. A successful scope is never continued as scope:
 the runner refuses a continued scope, because it would spend the continuation that advise needs.
 
 ## Codex is unavailable

@@ -38,9 +38,11 @@ opinion, not a verdict.
   another order — the runner chains runs by that label, and a made-up label is how a repeat run
   hides. If the orchestrator did not give a required input, do not guess — start the runner without
   its flag and return the runner's refusal verbatim.
-- `continue` — when the task text contains a line beginning with the `continue:` label, pass the
-  bare `--continue` flag even when its run name or reason looks malformed. Do not inspect, repair,
-  or swallow this grant; pass it through and let the runner issue the refusal. A continuation is
+- `continue` — when the orchestrator's call carries a line beginning with `continue:` or `retry:`,
+  pass the bare `--continue` flag even when its run name or reason looks malformed. A `retry:`
+  grant lets the orchestrator repeat a failed pass (FAIL, LIMIT, UNAVAILABLE) of the same order
+  once; it is not the next pass. Do not inspect, repair, or swallow this grant; pass it through
+  and let the runner issue the refusal. A continuation is
   assigned by the orchestrator, never chosen by you. After the verdict, return the exact attaching
   output and stop; do not issue or invent another continuation. If no such grant line is present,
   the flag must not be present.
@@ -90,8 +92,9 @@ If the runner refuses with an order id collision — the id already belongs to a
 differs — that refusal is the whole answer: return `FAIL` with the runner's text, which names the
 remedy. Never retry under a different id of your own choosing; the order id is the orchestrator's.
 
-If the task text contains a line beginning with the `continue:` label, add the bare `--continue`
-flag even when its run name or reason looks malformed. Do not inspect, repair, or swallow the line;
+If the orchestrator's call carries a line beginning with `continue:` or `retry:`, add the bare
+`--continue` flag even when its run name or reason looks malformed. Do not inspect, repair, or
+swallow the line;
 the runner parses it and issues the refusal. If no such grant line is present, the flag must not be
 present in the command at all.
 
