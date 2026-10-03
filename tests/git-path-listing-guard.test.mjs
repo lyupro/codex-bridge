@@ -21,17 +21,17 @@ const listingArguments = new Set([
 // File + literal + complete line, not a file-wide or core.quotepath exception.
 const allowedSites = [
   {
-    file: 'src/home/lib/runner/launcher.mjs', literal: '--porcelain',
+    file: 'src/home/lib/runner/build-evidence.mjs', literal: '--porcelain',
     line: "fs.writeFileSync(path.join(runDir, 'git-before.txt'), git(repoRoot, ['-c', 'core.quotepath=false', 'status', '--porcelain']).stdout || '');",
     reason: 'Plan_73 D1: git-before.txt is human-readable only (docs/artifact-formats.md).',
   },
   {
-    file: 'src/home/lib/runner/worker.mjs', literal: '--porcelain',
+    file: 'src/home/lib/runner/build-evidence.mjs', literal: '--porcelain',
     line: "fs.writeFileSync(path.join(runDir, 'git-after.txt'), git(repoRoot, ['-c', 'core.quotepath=false', 'status', '--porcelain']).stdout || '');",
     reason: 'Plan_73 D1: git-after.txt is human-readable only (docs/artifact-formats.md).',
   },
   {
-    file: 'src/home/lib/runner/worker.mjs', literal: '--stat',
+    file: 'src/home/lib/runner/build-evidence.mjs', literal: '--stat',
     line: "fs.writeFileSync(path.join(runDir, 'diff.stat'), git(repoRoot, ['-c', 'core.quotepath=false', 'diff', '--stat']).stdout || '');",
     reason: 'Plan_73 D1: diff.stat is human-readable only (docs/artifact-formats.md).',
   },
@@ -116,7 +116,7 @@ test('the guard reports direct, helper, bound-array and unconfigured display pla
     { file: 'cli/helper.mjs', source: "/* ignored\ncomment */\ngit(repo, ['diff', '--name-only', x]);" },
     { file: 'bin/bound.mjs', source: "const args = ['status', '--porcelain'];\nspawnSync('git', args);" },
     {
-      file: 'src/home/lib/runner/worker.mjs',
+      file: 'src/home/lib/runner/build-evidence.mjs',
       source: "\nfs.writeFileSync(path.join(runDir, 'diff.stat'), git(repoRoot, ['diff', '--stat']).stdout || '');",
     },
   ];
@@ -124,7 +124,7 @@ test('the guard reports direct, helper, bound-array and unconfigured display pla
     { file: 'bin/bound.mjs', line: 1, literal: '--porcelain' },
     { file: 'cli/helper.mjs', line: 3, literal: '--name-only' },
     { file: 'src/direct.mjs', line: 2, literal: 'ls-files' },
-    { file: 'src/home/lib/runner/worker.mjs', line: 2, literal: '--stat' },
+    { file: 'src/home/lib/runner/build-evidence.mjs', line: 2, literal: '--stat' },
   ];
   assert.deepEqual(offenders(tree), expected);
   assert.throws(() => assertCentralized(tree), (error) => {

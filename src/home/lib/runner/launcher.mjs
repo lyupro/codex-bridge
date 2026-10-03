@@ -31,7 +31,8 @@ import { continuationRefusal } from './continuation.mjs';
 import { advisorTaskOrRefuse, adviseSection } from './advise-carry.mjs';
 import { schemaFor } from './schemas.mjs';
 import { INSTRUCTIONS } from './prompts.mjs';
-import { git, headSha, branchName, worktreeSnapshot, reviewScope } from './git-state.mjs';
+import { git, branchName, worktreeSnapshot, reviewScope } from './git-state.mjs';
+import { writeBuildBefore } from './build-evidence.mjs';
 import { agentRole } from '../agents.mjs';
 import { codexArgs, runProfile } from './codex-args.mjs';
 import { writeWorkerOrder } from './worker-order.mjs';
@@ -329,12 +330,7 @@ export async function launcher(argv = process.argv.slice(2)) {
     `${JSON.stringify(schemaFor(opts.agent, opts.phase), null, 2)}\n`,
   );
 
-  if (opts.agent === 'codex-build') {
-    fs.writeFileSync(path.join(runDir, 'head-before.txt'), `${isGitRepo ? headSha(repoRoot) : ''}\n`);
-    fs.writeFileSync(path.join(runDir, 'branch-before.txt'), `${isGitRepo ? branchName(repoRoot) : ''}\n`);
-    fs.writeFileSync(path.join(runDir, 'git-before.txt'), git(repoRoot, ['-c', 'core.quotepath=false', 'status', '--porcelain']).stdout || '');
-    fs.writeFileSync(path.join(runDir, 'state-before.txt'), worktreeSnapshot(repoRoot));
-  }
+  if (opts.agent === 'codex-build') writeBuildBefore({ runDir, repoRoot, isGitRepo });
 
   // The worker's entire order, on disk. Not passed as arguments: the launcher may be gone
   // when the worker needs to know what it is doing, and a folder that explains itself is

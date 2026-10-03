@@ -16,7 +16,7 @@ import { readJsonFileSync } from '../json-file.mjs';
 import { collect, exitCodeFor, AGENTS } from '../write-meta.mjs';
 import { writeStatus } from '../meta/run-state.mjs';
 import { setRun, emitReply } from './run-context.mjs';
-import { git, headSha, branchName, worktreeSnapshot, findFakeDone } from './git-state.mjs';
+import { writeBuildAfter } from './build-evidence.mjs';
 import { runCodex } from './codex-cmd.mjs';
 
 /**
@@ -52,14 +52,7 @@ export async function worker(runDir) {
     stdio_drained: run.stdioDrained,
   });
 
-  if (cfg.agent === 'codex-build') {
-    fs.writeFileSync(path.join(runDir, 'head-after.txt'), `${cfg.is_git_repo ? headSha(repoRoot) : ''}\n`);
-    fs.writeFileSync(path.join(runDir, 'branch-after.txt'), `${cfg.is_git_repo ? branchName(repoRoot) : ''}\n`);
-    fs.writeFileSync(path.join(runDir, 'git-after.txt'), git(repoRoot, ['-c', 'core.quotepath=false', 'status', '--porcelain']).stdout || '');
-    fs.writeFileSync(path.join(runDir, 'state-after.txt'), worktreeSnapshot(repoRoot));
-    fs.writeFileSync(path.join(runDir, 'diff.stat'), git(repoRoot, ['-c', 'core.quotepath=false', 'diff', '--stat']).stdout || '');
-    fs.writeFileSync(path.join(runDir, 'flags.txt'), findFakeDone(repoRoot));
-  }
+  if (cfg.agent === 'codex-build') writeBuildAfter({ runDir, repoRoot, isGitRepo: cfg.is_git_repo });
 
   // Human-readable report is carried inside the schema: a read-only scout cannot write
   // files itself, so the runner unpacks it.
