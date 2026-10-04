@@ -38,6 +38,7 @@ older global package were registered and every shell call on the machine was ref
 
 `codex-review` supports the `uncommitted`, `base:<branch>`, and `commit:<sha>` scopes through
 `--changeset`. By default, it reviews uncommitted changes.
+A dispatcher call passes this value with the `changeset:` label.
 
 ## Running
 
@@ -134,6 +135,7 @@ was discovered only in the verdict—the 2026-08-09 run with an absolute path co
 someone else's quota and received `FAIL` for work it had completed.
 
 A file that does not exist yet is declared separately: `--scope-new "src/new-module.mjs"`.
+In a dispatcher call, this is the `scope new:` label.
 These paths enter scope alongside the others and are exempt only from the existence check; the
 flag is accepted by `codex-build`, the only agent that creates files.
 
@@ -576,13 +578,20 @@ unconfirmed response cannot pass silently.
 
 ## Order gate
 
-`hooks/order-gate.mjs` is the `PreToolUse` hook on the tool that launches a dispatcher. It refuses
-the call while it can still be corrected for free: when a required input is missing or still a
-template placeholder, when a labelled value carries a shell sequence that would make the command
-unmatchable by a permission rule, and when the ordered order id already belongs to a run whose task
-body hash differs — the collision the runner also refuses, caught one step earlier, before Codex is
-invoked at all. An explicit `continue:` or `retry:` header grant permits another pass. The gate also
-applies the runner's malformed-header and misplaced-metadata refusals.
+`hooks/order-gate.mjs` is the `PreToolUse` hook on the tool that launches a dispatcher. The `prompt`
+of an Agent call to `codex-scout`, `codex-build`, `codex-review`, or `codex-advisor` contains only
+exact `label: value` lines from one input registry, in any order; blank lines are allowed. The hook
+refuses prose, unknown or another agent's labels, decorated or hyphenated spellings (`scope-new:`,
+`order-id:`, `- **order id:**`), `--flag value` lines, duplicates even with identical values, empty
+values, missing required labels, placeholders, relative task-file paths, and shell-unsafe values.
+The refusal is free and happens before the dispatcher starts: it names the offending line, the
+exact spelling and every label of that agent, and says "Free text belongs in the task file."
+`parseDispatcherCall` in `lib/dispatcher-call.mjs` is the shared reader for this hook, the canonical
+command's dispatcher gate and the reply guard's transcript order id; grant values (`continue`,
+`retry`) are left to the runner. The hook also refuses an order id already owned by a run with a
+different task-body hash, before Codex is invoked. An explicit `continue:` or `retry:` header grant
+permits another pass. The gate also applies the runner's malformed-header and misplaced-metadata
+refusals.
 
 The gate and the runner share one definition of which task owns an order id
 (`lib/runner/order-owner.mjs`); a second copy would drift, and drift between two such lists is what

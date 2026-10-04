@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- A dispatcher call contains only exact `label: value` lines from the agent's input registry, in any
+  order, with blank lines allowed. Prose, unknown or another agent's labels, decorated or hyphenated
+  spellings, `--flag value` lines, duplicates, empty values, missing required labels, placeholders,
+  relative task-file paths and shell-unsafe values are refused for free before the dispatcher starts.
+  The refusal names the line, the exact spelling and every label of the agent, and says "Free text
+  belongs in the task file." Of 405 measured past calls, 47 began with prose, 112 carried lines outside
+  the registry, 18 passed values as `--order-id x`, and 1 duplicated a label.
+  Migration cost: a call written in an older form gets one free refusal naming the fix.
+
+### Fixed
+
+- `changeset:` reaches the runner, so `base:<branch>` and `commit:<sha>` review the requested changes
+  instead of silently reviewing uncommitted work.
+- `scope-new:` is refused with the exact `scope new:` spelling; it can no longer be dropped or read as
+  `scope`.
+- A `Repository root:` line is refused before the haiku dispatcher starts. It used to make the
+  dispatcher prepend `cd … &&` and leave without delegating.
+
 ## [0.6.10] - 2026-10-04
 
 ### Added

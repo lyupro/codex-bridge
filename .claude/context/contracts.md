@@ -54,6 +54,16 @@ here. Nothing was reworded on the way out.
   read by all three layers that police this: the order gate, the runner and
   `tests/shell-unsafe-arguments.test.mjs`, which also checks the examples in `docs/overview.md` and
   `README.md` for continuations and relative task-file paths. Never restate the list anywhere.
+- **The dispatcher call is only exact `label: value` lines of one registry, and
+  `src/home/lib/dispatcher-call.mjs` is its only reader** (Plan_76 D1). The labels — required, conditional and
+  `OPTIONAL_INPUTS`, each with its agents and runner flag — live in `src/home/lib/required-inputs.mjs`
+  (`callInputsFor`); the order gate hook, the canonical command of the dispatcher gate and the reply guard's
+  transcript order id all take `parseDispatcherCall`, and the generated prompt text lists the same labels. Any other
+  line is a free refusal before the dispatcher starts. A new label is one registry entry with a flag (a label without
+  effect on the command is refused by a test), never a regex in a consumer; never add a synonym spelling. Why: on
+  2026-10-04 `scope-new: src/` was silently dropped and, placed above `scope:`, became `--scope "new: src/"`, and a
+  `Repository root:` prose line made the haiku dispatcher prepend `cd … &&` and leave without delegating — the loose
+  reader accepted a label on any line.
 - **Every child process in `src` or `cli` hides its console window: `windowsHide: true` at the call
   site.** The run worker is spawned detached, so on Windows it owns no console, and each console program
   it starts without the flag opens a visible window — on 2026-09-24 the before/after `git` snapshots
