@@ -4,6 +4,57 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.10] - 2026-10-04
+
+### Added
+
+- `UNAVAILABLE` is a status of its own, with exit code `5`. Before any quota is spent, a bounded
+  `codex --version` and `codex login status` tell a missing or signed-out Codex from an unclear answer.
+  Only a missing or signed-out Codex refuses as `UNAVAILABLE`, without a run folder. After the start,
+  only a measured sample (a final `401 Unauthorized` turn failure) ends a run `UNAVAILABLE`. Any other
+  error stays `FAIL` with its raw text, so a lost subscription is never mistaken for a failed task.
+- A failed pass can be repeated once: `retry: <failed run> — <reason>` in the task header, with `--continue`.
+  The retry is accepted only for the last run of the chain, with a finished non-`OK` verdict and a worker
+  proven dead. It keeps the order id, agent, phase and continuation base, and does not spend another
+  continuation of the order. The reply says `Attempt: N of this pass`. Refusals met at a failed last run
+  print a ready `retry:` line.
+- One order id admits one paid worker. A launcher takes a kernel-held claim on the project's run store and
+  the exact order id (named pipe on Windows, abstract socket on Linux). It holds the claim until its worker is
+  registered, and the worker admits itself under the same claim before Codex starts. A second launch of the
+  same order attaches to the first run instead of paying again. A claim that stays busy for 60 seconds is a
+  free refusal, never a second start. On 2026-09-24 two launchers of one order started 2.8 s apart and
+  both paid.
+- A scout question can be marked `[context-only]` by its orderer. Such questions are about startup
+  context and pass without commands. An answer must cite `startup:<source>`, and a repository `path:line`
+  read by no command fails as an unread address. `questions.json` records `{id, text, kind}`.
+- The build reply adds a `Flags coverage: incomplete` line when the start content of a file could not be
+  judged. The status stays as it is.
+
+### Changed
+
+- Every runner exit code comes from one table, and a guard ties it to the docs and the prompts:
+  `0` OK, `1` FAIL, `2` usage error, `3` LIMIT, `4` still running or no run (`--no-wait`), `5` UNAVAILABLE.
+- Service lines of a task file live only in its header: consecutive `advice:`, `continue:` and `retry:`
+  lines from the first line. One parser serves the runner, the task hash and the `order-gate` hook. The task
+  hash covers the body only, and new runs record `task_hash_scheme: 2`. A label line below the header that
+  looks like metadata is refused for free, with its line number and the repair. **Orchestrators that write
+  `advice:` further down a build task must move it to the top.**
+- TODO, FIXME, skip and only flags judge only the lines a build run added. Before the run, the start content
+  of every dirty and untracked file is recorded, and only that run's additions are compared. Before this
+  change, a run was accused of markers it found in the tree.
+- A scope refusal names the flag the pattern came from (`--scope` or `--scope-new`). When git cannot list
+  the folder the run started in, the refusal says so instead of claiming a tracked file does not exist.
+
+### Fixed
+
+- A grant line no longer changes the task hash, so a run named in `continue:` is found again under a new
+  order id (it used to answer "the current last run is none").
+- An order owned by a run from before the task header is refused truthfully, not as a different task.
+- `codex-bridge read` on a run refused before Codex started now names that refusal. It no longer says
+  the run predates the event stream.
+- A reply no longer repeats its verdict (`OK — OK —`) when the model began its own summary with one.
+- An unparsable scope pattern is named in its refusal instead of printing `undefined`.
+
 ## [0.6.9] - 2026-10-02
 
 ### Added
