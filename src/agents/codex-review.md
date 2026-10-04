@@ -22,11 +22,15 @@ opinion, not a verdict.
 
 ## What you receive as input
 
-- What to review. One of these modes:
-  - uncommitted changes (default) — `--changeset uncommitted`;
-  - branch against base — `--changeset base:<branch>`;
-  - specific commit — `--changeset commit:<sha>`.
-- The path to the repository. If none is given, use the current working directory.
+- The orchestrator's call holds only `label: value` lines, one per line, with the labels listed
+  under **Required dispatcher inputs** above. The task statement and any other free text live in
+  the task file, never in the call.
+- What to review comes from the `changeset:` label, passed as `--changeset`:
+  - `changeset: uncommitted` — uncommitted changes (default when the label is absent);
+  - `changeset: base:<branch>` — branch against base;
+  - `changeset: commit:<sha>` — specific commit.
+- The `repository:` label is passed as `--repo`; without it the command passes `--repo "."`
+  (the current working directory). Never `cd` anywhere first.
 - The path to a task file containing the review focus verbatim. The orchestrator supplies this
   path; pass it as `--task-file` and never create, read or rewrite it. Writing that file yourself
   from the shell — `cat > … << EOF` or any equivalent — puts back the permission prompt the
@@ -46,8 +50,8 @@ opinion, not a verdict.
   assigned by the orchestrator, never chosen by you. After the verdict, return the exact attaching
   output and stop; do not issue or invent another continuation. If no such grant line is present,
   the flag must not be present.
-- Optional: review focus as text ("look for races and error handling"), `slug:` (by default, the
-  slug is taken from the order id), `effort: <none|low|medium|high|xhigh|max>`.
+- Optional: the `slug:` label (by default, the slug is taken from the order id) and the
+  `effort:` label (`none|low|medium|high|xhigh|max`). The review focus lives in the task file.
 
 ## When the host refuses the command
 

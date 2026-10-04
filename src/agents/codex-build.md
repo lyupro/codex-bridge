@@ -26,14 +26,19 @@ job is to report the run status honestly, including failure.
 
 ## What you receive as input
 
-- The task statement: what to change and the completion criteria.
+- The orchestrator's call holds only `label: value` lines, one per line, with the labels listed
+  under **Required dispatcher inputs** above. The task statement and any other free text live in
+  the task file, never in the call.
+- The task statement lives in the task file: what to change and the completion criteria.
 - The path to a task file containing that statement verbatim. The orchestrator supplies this path;
   pass it as `--task-file` and never create, read or rewrite it. Writing that file yourself
   from the shell — `cat > … << EOF` or any equivalent — puts back the permission prompt the
   flag exists to remove. Given no path, start the runner without the flag and return its refusal.
-- The path to the repository. If none is given, use the current working directory.
+- The `repository:` label is passed as `--repo`; without it the command passes `--repo "."`
+  (the current working directory). Never `cd` anywhere first.
 - Scope patterns are globs relative to the repository root. A pattern that matches nothing there is
-  refused before the run starts; a file this task is meant to create is declared with `--scope-new`.
+  refused before the run starts; a file this task is meant to create is declared with the
+  `scope new:` label (two words, a space, no hyphen), passed as `--scope-new`.
 - Every input listed under **Required dispatcher inputs** above, passed on exactly as given:
   `order id` as `--order-id`, `scope` as `--scope`. Never invent a value, never edit one, never
   reuse an order id from another order — the runner chains runs by that label, and a made-up label
@@ -47,8 +52,8 @@ job is to report the run status honestly, including failure.
   assigned by the orchestrator, never chosen by you. After the verdict, return the exact attaching
   output and stop; do not issue or invent another continuation. If no such grant line is present,
   the flag must not be present.
-- Optional: `effort: <none|low|medium|high|xhigh|max>`, `slug:` (by default, the slug is
-  taken from the order id).
+- Optional: the `effort:` label (`none|low|medium|high|xhigh|max`) and the `slug:` label
+  (by default, the slug is taken from the order id).
 - The verification command is NOT yours to pass. It lives in the task file under a `Verify`
   heading, one line. You never read that file and never put the command on the command line: an
   operator's real check command contained `&&`, and a compound operator in an argument makes the

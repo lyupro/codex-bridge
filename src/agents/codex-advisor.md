@@ -20,12 +20,16 @@ and do not reason about the design yourself.
 
 ## What you receive as input
 
-- The task statement: the design question, candidate options, and completion criteria.
+- The orchestrator's call holds only `label: value` lines, one per line, with the labels listed
+  under **Required dispatcher inputs** above. The task statement and any other free text live in
+  the task file, never in the call.
+- The task statement lives in the task file: the design question, options, and completion criteria.
 - The path to a task file containing the question and its context. The orchestrator supplies this
   path; pass it as `--task-file` and never create, read or rewrite it. Writing that file yourself
   from the shell — `cat > … << EOF` or any equivalent — puts back the permission prompt the flag
   exists to remove. Given no path, start the runner without the flag and return its refusal.
-- The path to the repository. If none is given, use the current working directory.
+- The `repository:` label is passed as `--repo`; without it the command passes `--repo "."`
+  (the current working directory). Never `cd` anywhere first.
 - `phase` is exactly `scope` or `advise`, supplied by the orchestrator and passed as `--phase`.
   Run `scope` first. Run `advise` only as the continuation of that same order's successful advisor
   scope run. Never choose or change the phase yourself.
@@ -54,9 +58,9 @@ and do not reason about the design yourself.
   assigned by the orchestrator, never chosen by you. After the verdict, return the exact attaching
   output and stop; do not issue or invent another continuation. If no such grant line is present,
   the flag must not be present. The advise phase requires this grant to continue the scope run.
-- Optional: `slug: <short-name>` for the run folder; by default, the slug is taken from the order
-  id. Optional: `effort: <none|low|medium|high|xhigh|max>` only when the orchestrator named a
-  depth.
+- Optional: the `slug:` label (`<short-name>`) for the run folder; by default, it uses the order
+  id. Optional: the `effort:` label (`none|low|medium|high|xhigh|max`) only when the orchestrator
+  named a depth.
 
 ## When the host refuses the command
 

@@ -21,16 +21,20 @@ files, do not run grep, do not retell the report, and do not reason about the ta
 
 ## What you receive as input
 
-- The task statement (what to find out / what to diagnose / what to review).
+- The orchestrator's call holds only `label: value` lines, one per line, with the labels listed
+  under **Required dispatcher inputs** above. The task statement and any other free text live in
+  the task file, never in the call.
+- The task statement lives in the task file (what to find out / what to diagnose / what to review).
 - The path to a task file containing that statement verbatim. The orchestrator supplies this path;
   pass it as `--task-file` and never create, read or rewrite it. Writing that file yourself
   from the shell — `cat > … << EOF` or any equivalent — puts back the permission prompt the
   flag exists to remove. Given no path, start the runner without the flag and return its refusal.
-- The path to the repository. If none is given, work in the current working directory.
+- The `repository:` label is passed as `--repo`; without it the command passes `--repo "."`
+  (the current working directory). Never `cd` anywhere first.
 - Scope patterns are globs relative to the repository root. A pattern that matches nothing there is
   refused before the run starts.
-- Optional: `effort: <none|low|medium|high|xhigh|max>` — Codex reasoning depth.
-- Optional: `slug: <short-name>` for the run folder; by default, the slug is taken from the order
+- Optional: the `effort:` label (`none|low|medium|high|xhigh|max`) — Codex reasoning depth.
+- Optional: the `slug:` label (`<short-name>`) for the run folder; by default, it uses the order
   id.
 - Every input listed under **Required dispatcher inputs** above, passed on exactly as given:
   `order id` as `--order-id`. Never invent a value, never edit one, never reuse an order id from
