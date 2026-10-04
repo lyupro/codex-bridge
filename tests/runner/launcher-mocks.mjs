@@ -34,9 +34,13 @@ export function fixtureTask(agent, text) {
   return agent === 'codex-build' ? `advice: mechanical\n\n${text}` : text;
 }
 
-export function launcherProcessMocks({ worker, probe }) {
+export function launcherProcessMocks({ worker, probe, workerPid = 999999, probeDelayMs = 0 }) {
   if (!WORKER_MODES.includes(worker)) throw new TypeError(`Unknown worker mock: ${worker}`);
   if (!PROBE_MODES.includes(probe)) throw new TypeError(`Unknown probe mock: ${probe}`);
+  if (workerPid !== 999999 && workerPid !== 'parent') throw new TypeError(`Unknown worker pid mock: ${workerPid}`);
+  if (!Number.isInteger(probeDelayMs) || probeDelayMs < 0 || probeDelayMs > 2147483647) {
+    throw new TypeError(`Unknown probe delay mock: ${probeDelayMs}`);
+  }
   const fakeBin = probe === 'real' ? null : fakeCodexOnPath();
 
   return `
@@ -47,6 +51,8 @@ const launcherMocksRealSpawn = childProcess.spawn;
 const launcherMocksRealSpawnSync = childProcess.spawnSync;
 const launcherMocksWorker = ${JSON.stringify(worker)};
 const launcherMocksProbe = ${JSON.stringify(probe)};
+const launcherMocksWorkerPid = ${JSON.stringify(workerPid)};
+const launcherMocksProbeDelayMs = ${JSON.stringify(probeDelayMs)};
 const launcherMocksFakeBin = ${JSON.stringify(fakeBin)};
 if (launcherMocksFakeBin) {
   const launcherMocksPathKey = Object.keys(process.env).find((key) => key.toUpperCase() === 'PATH') || 'PATH';
@@ -64,6 +70,10 @@ childProcess.spawnSync = (command, args = [], options) => {
     return { status: 0, signal: null, error: null, stderr: '', stdout: launcherMocksProbe === 'marker' ? 'codex-bridge-sandbox-ok' : '' };
   }
   if (launcherMocksProbe === 'forbidden') throw new Error('A skipped probe must not spawn Codex');
+  // Plan_60 D4: the 2026-09-24 double billing happened while the winner was still probing.
+  if (launcherMocksProbeDelayMs) {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, launcherMocksProbeDelayMs);
+  }
   return { status: 0, signal: null, error: null, stderr: '', stdout: 'codex-bridge-sandbox-ok' };
 };
 
@@ -71,7 +81,8 @@ childProcess.spawn = (command, args = [], options) => {
   if (args.includes('--worker')) {
     if (launcherMocksWorker === 'forbidden') throw new Error('unexpected worker spawn');
     const worker = new LauncherMocksEventEmitter();
-    worker.pid = 999999;
+    // Plan_60 D4: a live parent prevents the contender mistaking the fixture for an abandoned run.
+    worker.pid = launcherMocksWorkerPid === 'parent' ? process.ppid : launcherMocksWorkerPid;
     worker.unref = () => {};
     queueMicrotask(() => {
       if (launcherMocksWorker === 'error') worker.emit('error', new Error('fixture worker spawn failure'));
@@ -89,7 +100,10 @@ childProcess.spawn = (command, args = [], options) => {
   child.stdout = new LauncherMocksPassThrough();
   child.stderr = new LauncherMocksPassThrough();
   child.kill = () => true;
-  setImmediate(() => {
+  // Plan_60 D4: keep the claim held through the incident's slow probe, not availability checks.
+  const finishProbe = launcherMocksIsProbe(args) && launcherMocksProbeDelayMs
+    ? (finish) => setTimeout(finish, launcherMocksProbeDelayMs) : setImmediate;
+  finishProbe(() => {
     child.emit('spawn');
     child.stdout.end(launcherMocksIsProbe(args) ? 'codex-bridge-sandbox-ok\\n' : '');
     child.stderr.end();
