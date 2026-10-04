@@ -104,6 +104,10 @@ hand-edited files stop the run unless `--force`.
 - `no-self-execution.mjs` is the first block of all four agent prompts, rendered through
   `{{CODEX_NO_SELF_EXECUTION}}`. One copy, because a dispatcher that could not start its run once
   did the work itself on the Claude quota.
+- `kernel-lock.mjs` is the one lock the kernel releases on its holder's death (named pipe on Windows, abstract
+  socket on Linux), shared by the install lifecycle lock in `cli/` and `runner/order-claim.mjs`, which admits one paid
+  worker per order id: the launcher holds the claim until the worker is registered, `runner/worker-admission.mjs`
+  re-takes it before Codex starts (Plan_60 D4). It lives in the home because the runner may not import `cli/`.
 - `retention.mjs` owns the list of transport files and the age rule, because `cli/` is not copied
   into the host and the runner could not import the pruning planner otherwise.
 

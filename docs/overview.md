@@ -171,6 +171,11 @@ the agent's generic name. If such a chain already exists, a new run without `--c
 create a new directory or spend quota: an ordinary repeat attaches to the existing response or
 wait. This protects against accidental repetition.
 
+If another launcher or worker holds the claim for this project run store and exact order id, the
+invocation waits up to 60 seconds. A claim that stays busy is a free refusal with exit code `1`, naming
+what the holder answered (or that it did not answer): no run folder is created and no quota is spent.
+Repeat the same command later; it attaches to that run instead of starting another one.
+
 Directories created before this rule with a generic slug such as `build` are not renamed: the
 chain still finds them by the stored order label or task fingerprint.
 

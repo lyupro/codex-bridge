@@ -62,18 +62,34 @@ complete job before detaching from the launcher.
    the requirement to exist — and only from that one, because the exemption is what let a bare directory
    through on 2026-09-19 and failed a finished run for the files it created inside it. The repository root
    is needed before validation, which is why this check belongs here rather than in `parseArgs()`.
-5. `markAbandoned()` closes earlier directories with `state=running` if their pid is already dead. Such
+5. Immediately after resolving the project run folder, the launcher takes one claim for that run
+   store and the exact, case-sensitive order id. The store is identified by `dev:ino`, so path aliases
+   share the claim. `kernel-lock.mjs` supplies the same primitive as the install/update lifecycle lock:
+   a named pipe on Windows, an abstract socket on Linux, and no kernel lock on other platforms. The
+   kernel releases the lock when its holder dies. The claim must come before `markAbandoned()`: a
+   contender must not close a run whose worker is admitting itself. On 2026-09-24 two launchers of one
+   order started 2.8 seconds apart and both ran and billed (Plan_60 D4).
+   A waiter waits up to 60 seconds; if the claim stays busy, startup refuses with exit 1, naming the
+   holder's answer (or saying it did not answer), with no run folder, no Codex launch and no quota spent.
+   The answer diagnoses contention; it does not authorize a launch. Repeat the same command later.
+   The claim is held through the pass gate, availability check, sandbox probe, preflight, retention,
+   `makeRunDir()`, both `status.json` writes and the worker spawn. It is released in the launcher's
+   `finally`, including on refusals; `attach.mjs` releases it through `beforeWait` before a live reply wait.
+   On platforms without a kernel lock, `unclaimedRaceRefusal()` re-reads the chain just before
+   registration, after retention. If another launch of this exact order appeared during preparation,
+   it refuses with exit 1, no run folder and no quota spent; this narrows the race but is not a lock.
+6. `markAbandoned()` closes earlier directories with `state=running` if their pid is already dead. Such
    a directory receives not only a marker but also a verdict: `meta.json` with status `FAIL` and a reason
    listing the files by which the current tree differs from that run's `state-before.txt`. The tree
    snapshot is passed as an argument — `meta/` intentionally makes no git calls. The list is honest but
    does not prove authorship: the comparison happens at the start of a later run, so it may include
    someone else's work, and the reason says so. The directory remains in `abandoned` state; otherwise
    the detached HEAD protection would stop seeing it.
-6. `abandonedBranchDrift()` checks whether an abandoned run left the repository in detached HEAD. If it
+7. `abandonedBranchDrift()` checks whether an abandoned run left the repository in detached HEAD. If it
    did, startup is rejected for all three modes, prints `git checkout <branch>`, and does not execute it.
    A branch-name difference is not a refusal: switching branches is normal operator work. The block
    clears itself as soon as the repository is back on a branch.
-7. If `--slug` is absent, the runner takes it from the mandatory job label and applies the sanitizer
+8. If `--slug` is absent, the runner takes it from the mandatory job label and applies the sanitizer
    `[^A-Za-z0-9._-]+` → `-`; a result with no letters or digits is rejected before creating a directory.
    Then `chainRuns()` finds runs from the same repository by three signals: the same `slug`, the same
    header-free task-body fingerprint, or the same job label. A matching chain without `--continue` stops startup
@@ -84,7 +100,7 @@ complete job before detaching from the launcher.
    and the rejected run remains visible in it. An `advise` continuation is additionally refused before
    folder creation unless the named run's `meta.json` records `agent: codex-advisor`, `phase: scope`,
    and `status: OK`; an `advise` retry carries the original `OK` scope instead.
-8. First, `codexAvailabilityRefusal()` (`runner/preflight.mjs`, built on `runner/codex-availability.mjs`)
+9. First, `codexAvailabilityRefusal()` (`runner/preflight.mjs`, built on `runner/codex-availability.mjs`)
    looks `codex` up on PATH and asks `codex login status` (10-second deadline each, through
    `spawnCaptured()`). A missing binary or the measured `Not logged in` answer produces an `UNAVAILABLE`
    block on stdout, exit 5, no folder, no quota; an unclear probe produces the ordinary
@@ -103,7 +119,7 @@ complete job before detaching from the launcher.
    Ubuntu 23.10+ server rather than an accident: no directory is created, retention does not run, no
    quota is spent. Every other outcome lets the run continue, including `inconclusive` — a timeout, a
    spawn error, rejected arguments, or flags this Codex version no longer accepts — and the whole result
-   is written to `status.json#sandbox_probe` in step 10. Why this exists: on 2026-09-16 an unclean
+   is written to `status.json#sandbox_probe` in step 11. Why this exists: on 2026-09-16 an unclean
    Windows shutdown corrupted the sandbox helper's state file, and every run started on a dead sandbox,
    spent quota and executed no command.
    Each attempt has a 30-second deadline and runs through `spawnCaptured()` (`runner/codex-cmd.mjs`), not
@@ -114,41 +130,41 @@ complete job before detaching from the launcher.
    settles.
    Only then comes the pre-flight pass (`runner/preflight.mjs`): for build, a live writing run in the
    same repository. The order matters: the probe takes
-   seconds, and between the busy check and this run registering itself in step 10 nothing slow may run,
+   seconds, and between the busy check and this run registering itself in step 11 nothing slow may run,
    or a second writer can enter the same tree unseen (review of 2026-09-17). A busy build therefore
    waits for the probe before it is refused. The refusal leaves the worktree untouched and exits 1 —
    the order was correct, the host or the tree was not — because on 2026-09-19 a busy refusal created
    its folder first, and inside `~/.claude`, where run folders live in the worktree, the live writer's
    witness spent every tool call demanding the orchestrator revert a directory the tool itself had
    created. The module is given no run directory at all, so a check added there cannot leave one.
-9. A unique `<date_time>_<slug>` directory is created; on a name collision, `-2`, `-3`, and so on is
-   appended.
-10. The first artifact written is `status.json` with `state=running` and the launcher pid. Stdout then
+10. A unique `<date_time>_<slug>` directory is created; on a name collision, `-2`, `-3`, and so on is
+    appended.
+11. The first artifact written is `status.json` with `state=running` and the launcher pid. Stdout then
     receives the line `RUN=<directory> order-id=<id>`. The id travels with the folder because a
     reply naming a run cannot otherwise be checked against the order that was placed.
-11. An argument `cmd.exe` cannot carry, or a worker that fails to spawn, is closed through `meta.json`
+12. An argument `cmd.exe` cannot carry, or a worker that fails to spawn, is closed through `meta.json`
     and `status.json` with status `FAIL` and state `aborted_pre_start`; no paid call has occurred. These
-    two are the only refusals left after registration: by then the tree snapshot and the worker order
+    two are the only launcher refusals left after registration: by then the tree snapshot and the worker order
     are already in the folder, so the folder can explain itself. The separate state is not cosmetic: it
     lets the next startup distinguish an empty directory from a run backed by spent quota. A busy tree
-    and an unavailable CLI are refused earlier, in step 8, and leave nothing behind.
-12. For review, the diff area is computed and written to `scope.txt`. For scout, subquestions passed via
+    and an unavailable CLI are refused earlier, in step 9, and leave nothing behind.
+13. For review, the diff area is computed and written to `scope.txt`. For scout, subquestions passed via
     `--question` are written to `questions.json` in the same order (`Q1..Qn`); the task text is not the
     source of this list. For build, `--scope` patterns are written to `scope.txt`.
-13. `env.json` is written, followed by `task.md` and `schema.json`. `schema.json` is not only the Codex
+14. `env.json` is written, followed by `task.md` and `schema.json`. `schema.json` is not only the Codex
     response format: it tells the verdict whether the run was required to declare an outcome (`outcome`
     in `required`), so an old directory is judged by the contract of its own day — see
     [verdict.md](verdict.md).
-14. For build, `head-before.txt`, `branch-before.txt`, `git-before.txt`, and `state-before.txt` are
+15. For build, `head-before.txt`, `branch-before.txt`, `git-before.txt`, and `state-before.txt` are
     captured. The launcher also copies start-dirty tracked and untracked files into `flags-baseline/`
     and writes `flags-baseline.json` before the run starts, so earlier uncommitted work is not
     attributed to this run. An empty `branch-before.txt` means detached HEAD, not missing data.
-15. argv for `codex exec` is assembled; an argument unsafe for `cmd.exe` produces an artifacted `FAIL`
+16. argv for `codex exec` is assembled; an argument unsafe for `cmd.exe` produces an artifacted `FAIL`
     before Codex is invoked.
-16. `worker.json` is written — the complete job for the second half.
-17. Detachment point: the launcher creates a detached worker with `stdio: ignore`, calls `unref()`, and
+17. `worker.json` is written — the complete job for the second half.
+18. Detachment point: the launcher creates a detached worker with `stdio: ignore`, calls `unref()`, and
     updates `status.json`, replacing the active `pid` with the worker pid and adding `runner_pid`.
-18. The launcher prints a `STARTED` line with the mode, slug, job label, and worker pid, followed by
+19. The launcher prints a `STARTED` line with the mode, slug, job label, and worker pid, followed by
     instructions for returning for the verdict, then exits with code `0`. It no longer waits here.
 
 ## Attaching by job label
@@ -159,7 +175,7 @@ Changing only header metadata does not change this identity.
 
 A repeated invocation with the same label does not create a second run. The check occurs before
 directory creation, immediately after finding the chain and before the `--continue is required` refusal
-(step 7):
+(step 8):
 
 - **A run with this label already has `reply.txt`** — the verdict is printed from disk; the repeat
   responds rather than refusing. `--no-wait` does not change this branch or its existing verdict exit
@@ -178,7 +194,8 @@ directory creation, immediately after finding the chain and before the `--contin
   that the run is already in progress, no new work was started, and this invocation is waiting for its
   verdict. When `reply.txt` already exists, the next line instead says this is the answer from the
   previous run and no new work was started. Codex is not invoked and quota is not spent. An interrupted
-  repeat damages nothing: the next invocation attaches to the same run.
+  repeat damages nothing: the next invocation attaches to the same run. Before waiting, the attaching
+  invocation gives up the claim through `beforeWait`, because the worker needs it to admit itself.
 - **There is no `reply.txt`, the pid is alive, and `--no-wait` was passed** — the invocation prints
   `ATTACH=<directory> order-id=<id> started=<time>`, reports how long the run has been in progress, and returns exit
   code `4` immediately. This is a call outcome, not a run status; a later ordinary repeat still waits
@@ -326,7 +343,7 @@ worker still owns its `meta.json`. `codex-bridge stop <run>` kills the process t
 the failure — the sole writer in the correct order.
 
 `codex-bridge unlock` is the manual intermediate step between a targeted `stop` and the automatic
-`markAbandoned()` check at the start of the next run (launcher step 5). With no argument, it checks only
+`markAbandoned()` check at the start of the next run (launcher step 6). With no argument, it checks only
 the current repository; with a name, one project; `--all` explicitly traverses all storage. Only
 `state=running` records with `dead` or `foreign` identity are closed; `alive` is never closed, and the
 output names `codex-bridge stop <run>`. `unverified` remains in place with an explanation. For every
@@ -344,22 +361,29 @@ than the work of a long-dead run. If a file list is needed, close the run throug
 
 ## Point of no return
 
-In practical terms, the boundary comes after the detached worker starts successfully. Before it, the
-launcher can refuse without invoking Codex. After it, the worker owns the run, starts `runCodex()`, and
+In practical terms, the boundary comes after the detached worker is admitted under the claim. Before
+it, startup can refuse without invoking Codex. After it, the worker owns the run, starts `runCodex()`, and
 must close the directory regardless of what happens to the calling shell. Repeating the same command
 after this point is safe and starts nothing — it attaches to the active run. The dangerous case is a
 repeat with a changed job label: that is a second paid run in the same tree.
 
 The external invocation itself starts in the worker at `runCodex()`. A created directory therefore does
-not prove quota use: early failures after step 10 also leave `status.json` and `meta.json`. Such
-directories receive `aborted_pre_start` precisely so that “a directory exists” is not read as “a task
+not prove quota use: early failures after step 11 also leave `status.json` and `meta.json`. Launcher
+refusals receive `aborted_pre_start` precisely so that “a directory exists” is not read as “a task
 pass occurred.”
 
 ## Worker sequence
 
-1. The worker reads `worker.json`, takes `repo`, `agent`, `args`, `is_git_repo`, and `budget_minutes`,
+1. The worker reads `worker.json`, takes `repo`, `agent`, `args`, `is_git_repo`, `budget_minutes`, and `order_id`,
    and registers the current directory with the crash handler.
-2. `runCodex()` receives the full `task.md` through stdin. The run uses `--json`, so stdout is a JSONL
+2. Before Codex starts, `admitWorker()` takes the same project-store and exact-order claim, waiting up
+   to 60 seconds. Admission requires `status.json#state` to be `running` and no `meta.json`. Under the
+   claim, the worker records its own `pid`, `runner_pid` and start identity (`process_started_at`), then
+   releases the claim in `finally` before `runCodex()`. A closed run makes the worker exit with code 1
+   without Codex and without writing anything. A claim that stays busy produces `FAIL` with
+   `run worker was not admitted: the order claim stayed busy`, naming the holder's answer; the worker
+   exits with code 1, Codex was not started and quota was not spent.
+3. `runCodex()` receives the full `task.md` through stdin. The run uses `--json`, so stdout is a JSONL
    event stream written to `events.jsonl`, while stderr goes to `stderr.log`; each file has its own
    256 MiB limit, and exceeding it truncates the file rather than killing the run. `events.jsonl` is
    truncated on a line boundary: half a JSON line is not parsed, and the reader must skip unreadable
@@ -374,21 +398,21 @@ pass occurred.”
    process tree, the killing is recorded as `stopped_on_deadline` in `status.json`, and the worker closes
    the directory with a normal verdict. What Codex has already said survives because it is streamed to
    disk rather than accumulated in memory.
-3. Immediately after `runCodex()` returns, the worker appends `stopped_on_deadline` and `elapsed_ms` to
+4. Immediately after `runCodex()` returns, the worker appends `stopped_on_deadline` and `elapsed_ms` to
    `status.json` — before `collect()` computes the verdict. The log line remains for people, but the
    verdict uses these fields: `status.json` is outside the repository covered by `workspace-write`, so
    Codex cannot forge it.
-4. After Codex finishes, build writes `head-after.txt`, `branch-after.txt`, `git-after.txt`,
+5. After Codex finishes, build writes `head-after.txt`, `branch-after.txt`, `git-after.txt`,
    `state-after.txt`, `diff.stat`, `flags.txt`, and `flags-coverage.txt`, in that order. Flags judge
    lines added since the start baseline; coverage gaps name files that could not be judged. The
    worker removes the `flags-baseline/` copies immediately after the scan, leaving the manifest.
-5. For scout and build, the worker reads the structured result and, if `report_markdown` is present,
+6. For scout and build, the worker reads the structured result and, if `report_markdown` is present,
    writes `report.md`. Review leaves its report in `review.json`.
-6. `collect()` reads the artifacts, computes the verdict, and writes `meta.json`.
-7. After `meta.json`, the same `collect()` updates `status.json` to `state=finished`.
-8. `emitReply()` creates `reply.txt`. This is the final required file: its presence means that
+7. `collect()` reads the artifacts, computes the verdict, and writes `meta.json`.
+8. After `meta.json`, the same `collect()` updates `status.json` to `state=finished`.
+9. `emitReply()` creates `reply.txt`. This is the final required file: its presence means that
    `meta.json` and the final state are already on disk.
-9. The worker exits with the code corresponding to the verdict.
+10. The worker exits with the code corresponding to the verdict.
 
 ## Crashes and abandoned runs
 
@@ -400,3 +424,8 @@ response to a file; the launcher writes it to stdout.
 If the process dies before the handler runs, the next launcher checks the previous `status.json`. A dead
 pid without `meta.json` becomes `abandoned` with `tree_after=false`; a dead pid with an existing
 `meta.json` is recovered as `finished`.
+
+A launcher killed between spawning the worker and recording its pid frees the kernel claim. Whoever
+claims it first decides the run's fate: a contender that closes the run as abandoned makes the late
+worker exit without Codex and without writing anything; a worker that admits itself first records its
+own identity, and the contender attaches to that live run instead of launching another paid one.

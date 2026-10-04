@@ -146,6 +146,15 @@ here. Nothing was reworded on the way out.
   glob that can also match ordinary files (`**/*.md`) is not refused. Why: on 2026-09-22 an order scoped
   to `.claude/context/architecture.md` passed preflight, worked 22 minutes, wrote every file correctly
   and was failed for that one — the gate and the judge were two measures of one tree.
+- **One order id admits one paid worker at a time, through a claim the kernel holds** (Plan_60 D4/D4c).
+  `src/home/lib/runner/order-claim.mjs` keys it by the run store's `dev:ino` plus the exact order id and builds it on
+  `src/home/lib/kernel-lock.mjs` (named pipe on Windows, abstract socket on Linux — the primitive the lifecycle lock
+  shares). The launcher takes it before `markAbandoned()` and holds it to the worker's recorded pid; `attach()` gives it
+  up (`beforeWait`) before waiting for a reply; the worker re-takes it in `worker-admission.mjs` and starts Codex only
+  while its run is `running` without `meta.json`. A claim that stays busy refuses for free — a timeout or a silent
+  holder never authorizes a launch — and nothing on disk is ever deleted to take it. Where the kernel offers no such
+  name (macOS) the chain is re-read just before `makeRunDir`. Why: on 2026-09-24 two launchers of one order started
+  2.8 s apart, both waited out the sandbox probe on an empty chain, and both billed.
 - **`makeRunDir()` is the single registration boundary, and a refusal decided before it leaves nothing
   in the worktree.** Everything that can refuse without spending quota — bad arguments, an impossible
   scope, a detached tree, a chain that needs `--continue`, a dead sandbox, a busy tree, a missing Codex
