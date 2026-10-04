@@ -170,15 +170,18 @@ export function validateScope(repoRoot, patterns, scopeNewPatterns = []) {
   const declared = patternList(patterns, 'patterns');
   const newPaths = patternList(scopeNewPatterns, 'scopeNewPatterns');
   const allPatterns = [...declared, ...newPaths];
+  const newPathKeys = new Set(newPaths.map((pattern) => normalizePath(pattern)));
 
-  for (const [index, pattern] of allPatterns.entries()) {
-    const flag = index < declared.length ? '--scope' : '--scope-new';
+  // The flag is decided by --scope-new membership, not list position: args.mjs merges every --scope-new
+  // pattern into the declared list, so position named --scope for a directory given only to --scope-new
+  // (OW-042 B1, caught on the live runner 2026-10-04 after the unit test passed separate lists).
+  for (const pattern of allPatterns) {
+    const flag = newPathKeys.has(normalizePath(pattern)) ? '--scope-new' : '--scope';
     const refusal = structuralRefusal(repoRoot, pattern);
     if (refusal) return { pattern, flag, ...refusal };
     if (!pattern) return { ...noMatchRefusal(pattern), flag };
   }
 
-  const newPathKeys = new Set(newPaths.map((pattern) => normalizePath(pattern)));
   const required = allPatterns.filter((pattern) => !newPathKeys.has(normalizePath(pattern)));
   if (!required.length) return null;
 

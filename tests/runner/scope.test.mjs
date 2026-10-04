@@ -146,7 +146,7 @@ test('structural refusals in either list precede the declared existence check', 
     assert.equal(refusal.flag, scopeNew ? '--scope-new' : '--scope');
   }
   assert.equal(validateScope(repo, ['src'], ['/absolute/file.mjs']).pattern, 'src');
-  assert.equal(validateScope(repo, ['src'], ['src']).flag, '--scope');
+  assert.equal(validateScope(repo, ['src'], ['src']).flag, '--scope-new');
 });
 
 test('scope patterns inside service directories are refused before glob matching', (t) => {
