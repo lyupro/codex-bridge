@@ -57,12 +57,15 @@ export function parseClaimHolder(line) {
   }
 }
 
-export function orderClaimBusyText(orderId, holder) {
-  // Plan_60 D4/D4c: a holder answer diagnoses contention but cannot authorize another launch.
-  const owner = holder === null
+// Plan_60 D4/D4c: a holder answer diagnoses contention but cannot authorize anything.
+export function orderClaimHolderText(holder) {
+  return holder === null
     ? 'a process that did not answer (unverified)'
     : `${holder.role} pid ${holder.pid} since ${holder.acquiredAt}`;
-  return `order id "${orderId}" is being launched by ${owner}; repeat the same command later — `
+}
+
+export function orderClaimBusyText(orderId, holder) {
+  return `order id "${orderId}" is being launched by ${orderClaimHolderText(holder)}; repeat the same command later — `
     + 'it attaches to that run instead of starting another. The run folder was not created; quota was not spent.';
 }
 

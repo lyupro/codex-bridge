@@ -3,7 +3,7 @@
  *
  * It takes its whole order from worker.json, written by launcher.mjs into the run folder —
  * after the split that file is the only connection between the two halves. Read here:
- * `repo`, `agent`, `args`, `is_git_repo`, `budget_minutes`. Written there: those five plus
+ * `repo`, `agent`, `args`, `is_git_repo`, `budget_minutes`, `order_id`. Written there: those six plus
  * `phase`, `slug`, `launcher_pid` and `scope_new`, which nothing here needs but a run folder read back
  * months later does. The launcher must write the selected phase's budget into worker.json before
  * spawning this half, so the worker never re-reads config.json and one run cannot acquire two
@@ -13,11 +13,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { readJsonFileSync } from '../json-file.mjs';
-import { collect, exitCodeFor, AGENTS } from '../write-meta.mjs';
+import { collect, exitCodeFor, AGENTS, writeFailure } from '../write-meta.mjs';
 import { writeStatus } from '../meta/run-state.mjs';
 import { setRun, emitReply } from './run-context.mjs';
 import { writeBuildAfter } from './build-evidence.mjs';
 import { runCodex } from './codex-cmd.mjs';
+import { admitWorker } from './worker-admission.mjs';
+import { orderClaimHolderText } from './order-claim.mjs';
+import { EXIT } from './exit-codes.mjs';
 
 /**
  * Runs the order in runDir and answers into reply.txt, never to a console — nothing here
@@ -27,13 +30,18 @@ export async function worker(runDir) {
   const cfg = readJsonFileSync(path.join(runDir, 'worker.json'));
   const repoRoot = cfg.repo;
   setRun(runDir, cfg.agent);
-  // The launcher cannot know this detached process's clock origin; takeover must record the
-  // worker's own identity before it starts producing the run's artifacts.
-  writeStatus(runDir, {
-    pid: process.pid,
-    runner_pid: process.pid,
-    process_started_at: performance.timeOrigin,
-  });
+  const admission = await admitWorker({ runDir, orderId: cfg.order_id });
+  if (!admission.admitted) {
+    // Plan_60 A4 r4: a replacement launcher may have closed this run while the worker was starting.
+    if (admission.reason === 'claim-timeout') {
+      const { reply } = writeFailure(
+        runDir, cfg.agent, 'run worker was not admitted: the order claim stayed busy',
+        [`Claim held by ${orderClaimHolderText(admission.holder)}`, 'Codex was not started; quota was not spent'],
+      );
+      emitReply(reply);
+    }
+    process.exit(EXIT.FAIL);
+  }
 
   const run = await runCodex(
     cfg.args,
