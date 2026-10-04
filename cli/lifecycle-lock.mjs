@@ -17,12 +17,14 @@
  * the holder must fail, or the platform did not give exclusivity and the call refuses rather than
  * switch protocols. What the holder answers a waiter is diagnosis only — it never grants anything.
  */
-import { createHash, randomUUID } from 'node:crypto';
-import fs from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import fsp from 'node:fs/promises';
 import net from 'node:net';
 import path from 'node:path';
 import { createHomeWriter } from '../src/home/lib/home-write.mjs';
+import {
+  acquireKernelLock, directoryDigest, kernelLockAddress, kernelLockStrategy,
+} from '../src/home/lib/kernel-lock.mjs';
 import { parseJsonText } from '../src/home/lib/json-file.mjs';
 import { processIdentity } from '../src/home/lib/process-identity.mjs';
 
@@ -46,25 +48,23 @@ function validateOptions(homeRoot, { command, hostRoot, waitMs, retryMs, answerT
 
 function statIdentity(homeRoot) {
   try {
-    const stat = fs.statSync(homeRoot, { bigint: true });
-    if (!stat.isDirectory()) throw new Error(`lifecycle lock home is not a directory: ${homeRoot}`);
-    return createHash('sha256').update(`${stat.dev}:${stat.ino}`).digest('hex');
+    return directoryDigest(homeRoot);
   } catch (error) {
-    if (error && error.code !== 'ENOENT') throw error;
-    return null;
+    if (error.message === `${homeRoot} is not a directory`) {
+      throw new Error(`lifecycle lock home is not a directory: ${homeRoot}`);
+    }
+    throw error;
   }
 }
 
 export function lifecycleLockStrategy(platform = process.platform) {
-  if (platform === 'win32') return 'named-pipe';
-  return platform === 'linux' ? 'abstract-socket' : 'file';
+  return kernelLockStrategy(platform) ?? 'file';
 }
 
 function lockAddress(homeRoot, digest, platform) {
   const strategy = lifecycleLockStrategy(platform);
-  if (strategy === 'named-pipe') return { strategy, address: `\\\\.\\pipe\\codex-bridge-lifecycle-${digest}` };
-  if (strategy === 'abstract-socket') return { strategy, address: `\0codex-bridge-lifecycle-${digest}` };
-  return { strategy, address: path.join(homeRoot, LOCK_NAME) };
+  const address = kernelLockAddress('lifecycle', digest, platform);
+  return { strategy, address: address ?? path.join(homeRoot, LOCK_NAME) };
 }
 
 export function lifecycleLockAddress(homeRoot, { platform = process.platform } = {}) {
@@ -85,73 +85,6 @@ async function prepareHome(homeRoot) {
     if (digest === null) throw new Error(`home adapter did not create lifecycle lock home: ${homeRoot}`);
   }
   return { writer, digest };
-}
-
-function listen(server, address) {
-  return new Promise((resolve, reject) => {
-    const listening = () => { server.removeListener('error', failed); resolve(); };
-    const failed = (error) => { server.removeListener('listening', listening); reject(error); };
-    server.once('listening', listening);
-    server.once('error', failed);
-    try {
-      server.listen(address);
-    } catch (error) {
-      server.removeListener('listening', listening);
-      server.removeListener('error', failed);
-      reject(error);
-    }
-  });
-}
-
-function closeServer(server) {
-  if (!server) return Promise.resolve();
-  return new Promise((resolve, reject) => {
-    try {
-      server.close((error) => {
-        if (error && error.code !== 'ERR_SERVER_NOT_RUNNING') reject(error);
-        else resolve();
-      });
-    } catch (error) {
-      if (error.code === 'ERR_SERVER_NOT_RUNNING') resolve();
-      else reject(error);
-    }
-  });
-}
-
-async function closeQuietly(server) {
-  try { await closeServer(server); } catch { /* Preserve the original failure. */ }
-}
-
-async function selfCheck(server, address, createServer) {
-  let probe;
-  let detail;
-  try {
-    probe = createServer();
-    await listen(probe, address);
-    detail = 'a second listener succeeded';
-  } catch (error) {
-    if (!error || error.code !== 'EADDRINUSE') detail = (error && (error.code || error.message)) || String(error);
-  }
-  if (detail === undefined) {
-    await closeQuietly(probe);
-    return;
-  }
-  await Promise.all([closeQuietly(probe), closeQuietly(server)]);
-  throw new Error(`lifecycle lock self-check failed: ${detail}`);
-}
-
-export async function tryHoldSocket(address, createServer = net.createServer) {
-  const server = createServer((socket) => socket.destroy());
-  try {
-    await listen(server, address);
-    await selfCheck(server, address, createServer);
-    let releasePromise;
-    return () => (releasePromise ??= closeServer(server));
-  } catch (error) {
-    await closeQuietly(server);
-    if (error?.code === 'EADDRINUSE') return 'in-use';
-    throw error;
-  }
 }
 
 function validHolder(value) {
@@ -188,29 +121,6 @@ function busyMessage(homeRoot, holder, hint = '') {
   return new Error(`lifecycle lock busy for ${homeRoot}: ${details}; nothing was changed${hint}`);
 }
 
-function readSocketHolder(address, timeoutMs) {
-  return new Promise((resolve) => {
-    let data = '';
-    let settled = false;
-    const socket = net.createConnection(address);
-    const timer = setTimeout(() => finish(null), timeoutMs);
-    const finish = (holder) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      socket.destroy();
-      resolve(holder);
-    };
-    socket.on('data', (chunk) => {
-      data += chunk.toString('utf8');
-      const newline = data.indexOf('\n');
-      if (newline !== -1) finish(parseHolder(data.slice(0, newline)));
-    });
-    socket.once('end', () => finish(parseHolder(data)));
-    socket.once('error', () => finish(null));
-  });
-}
-
 function lockResult(token, strategy, releaseAction) {
   let releasePromise;
   return {
@@ -226,36 +136,13 @@ function lockResult(token, strategy, releaseAction) {
 async function acquireSocketLock(homeRoot, holder, {
   address, strategy, waitMs, retryMs, answerTimeoutMs, createServer,
 }) {
-  const accepted = new Set();
-  const onConnection = (socket) => {
-    accepted.add(socket);
-    socket.once('close', () => accepted.delete(socket));
-    socket.end(`${JSON.stringify(holder)}\n`);
-  };
-  const deadline = Date.now() + waitMs;
-
-  for (;;) {
-    const server = createServer(onConnection);
-    try {
-      await listen(server, address);
-      holder.acquiredAt = new Date().toISOString();
-      await selfCheck(server, address, createServer);
-      server.unref();
-      return lockResult(holder.token, strategy, async () => {
-        const closing = closeServer(server);
-        for (const socket of accepted) socket.destroy();
-        await closing;
-      });
-    } catch (error) {
-      await closeQuietly(server);
-      if (!error || error.code !== 'EADDRINUSE') throw error;
-      const remaining = deadline - Date.now();
-      if (remaining <= 0) break;
-      await wait(Math.min(retryMs, remaining));
-    }
-  }
-
-  throw busyMessage(homeRoot, await readSocketHolder(address, answerTimeoutMs));
+  const result = await acquireKernelLock({
+    address, holder, waitMs, retryMs, answerTimeoutMs, createServer,
+    parseAnswer: parseHolder,
+    label: 'lifecycle lock',
+  });
+  if (!result.held) throw busyMessage(homeRoot, result.holder);
+  return lockResult(holder.token, strategy, result.release);
 }
 
 async function acquireFileLock(homeRoot, writer, holder, { waitMs, retryMs }) {

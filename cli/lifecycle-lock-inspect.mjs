@@ -5,8 +5,9 @@
  */
 import fsp from 'node:fs/promises';
 import net from 'node:net';
+import { tryHoldSocket } from '../src/home/lib/kernel-lock.mjs';
 import {
-  holderLiveness, lifecycleLockAddress, lifecycleLockStrategy, parseHolder, tryHoldSocket,
+  holderLiveness, lifecycleLockAddress, lifecycleLockStrategy, parseHolder,
 } from './lifecycle-lock.mjs';
 
 const refusedCodes = new Set(['ECONNREFUSED', 'ENOENT']);
@@ -81,7 +82,7 @@ export async function inspectLifecycleLock(homeRoot, {
     const answer = await readSocketAnswer(target.address, answerTimeoutMs, createConnection);
     if (answer.kind === 'answer') return result({ state: 'held', holder: answer.holder });
     if (answer.kind !== 'refused') return result({ state: 'unverified', reason: answer.reason });
-    const release = await tryHoldSocket(target.address, createServer);
+    const release = await tryHoldSocket(target.address, createServer, 'lifecycle lock');
     if (release === 'in-use') return result({ state: 'held', holder: null });
     await release();
     return result({ state: 'free' });
