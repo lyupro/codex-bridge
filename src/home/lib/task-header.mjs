@@ -10,6 +10,7 @@
  */
 import path from 'node:path';
 import { splitGrantValue } from './required-inputs.mjs';
+import { ALL_ORDER_LABELS } from './order-schema.mjs';
 
 const BARE_RUN = /^(?!\.{1,2}$)[A-Za-z0-9._-]+$/;
 const MISPLACED_GRANT = /^[A-Za-z0-9._-]+(?:$| — | - |:)/;
@@ -52,7 +53,19 @@ const LABELS = Object.freeze([
   descriptor('retry', validateGrant, (value) => MISPLACED_GRANT.test(value)),
 ]);
 
-const HEADER_LINE = new RegExp(`^(${LABELS.map(({ label }) => label).join('|')}):[ \\t]*(\\S.*?)[ \\t]*$`);
+const HEADER_LABELS = Object.freeze([...ALL_ORDER_LABELS, 'advice']);
+const GUARDED_LABELS = Object.freeze(LABELS.map(({ label }) => label));
+const ORDER_ONLY_LABELS = Object.freeze(HEADER_LABELS.filter((label) => !GUARDED_LABELS.includes(label)));
+const HEADER_LINE = new RegExp(`^(${HEADER_LABELS.join('|')}):[ \\t]*(\\S.*?)[ \\t]*$`);
+
+function normalizedHeaderLabel(line) {
+  const colon = line.indexOf(':');
+  if (colon === -1) return null;
+  return line.slice(0, colon).trim().toLowerCase()
+    .replace(/^[-*][ \t]+/, '')
+    .replace(/^[*`_]+|[*`_]+$/g, '')
+    .replace(/[-_]/g, ' ').replace(/\s+/g, ' ').trim();
+}
 
 export function parseTaskHeader(text) {
   const lines = text.replace(/^\uFEFF/, '').split(/\r\n|\n|\r/);
@@ -63,7 +76,21 @@ export function parseTaskHeader(text) {
 
   for (const line of lines) {
     const match = line.match(HEADER_LINE);
-    if (!match) break;
+    if (!match) {
+      // Plan_63 D1/D3: a misspelled or unknown order line must not silently turn into task prose. The
+      // header still closes here (Plan_75 D5), and grant/advice spellings stay with the misplaced guard.
+      const label = normalizedHeaderLabel(line);
+      const rawLabel = line.slice(0, line.indexOf(':')).trim();
+      let reason = null;
+      if (ORDER_ONLY_LABELS.includes(label)) {
+        reason = line.trimEnd() === `${label}:` ? `header label "${label}" has an empty value`
+          : `write the header label exactly as "${label}:"`;
+      } else if (!GUARDED_LABELS.includes(label) && entries.length && /^[a-z][a-z _-]*:[ \t]*\S/.test(line)) {
+        reason = `unknown header label "${rawLabel}"; known labels: ${HEADER_LABELS.join(', ')}`;
+      }
+      if (reason) problems.push({ lineNo: headerEnd + 1, line, reason });
+      break;
+    }
     const [, label, value] = match;
     const entry = { label, value, lineNo: headerEnd + 1, line };
     if (Object.hasOwn(fields, label)) {
@@ -89,6 +116,7 @@ export function parseTaskHeader(text) {
   let advice = null;
   for (const entry of entries) {
     const definition = LABELS.find(({ label }) => label === entry.label);
+    if (!definition) continue;
     const reason = definition.validate(entry.value);
     if (reason) {
       problems.push({ lineNo: entry.lineNo, line: entry.line, reason: `${entry.label}: ${reason}` });
@@ -117,7 +145,10 @@ export function parseTaskHeader(text) {
   }
 
   problems.sort((a, b) => a.lineNo - b.lineNo);
-  return { fields, grant, advice, body: lines.slice(headerEnd).join('\n'), problems };
+  const parsed = { fields, grant, advice, body: lines.slice(headerEnd).join('\n'), problems };
+  // Plan_63 C1: retain source locations for schema diagnostics without changing serialized results.
+  Object.defineProperty(parsed, 'entries', { value: entries });
+  return parsed;
 }
 
 export function taskHeaderRefusal(parsed) {

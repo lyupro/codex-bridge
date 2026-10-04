@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseTaskHeader, taskHeaderRefusal } from '../src/home/lib/task-header.mjs';
+import { ALL_ORDER_LABELS } from '../src/home/lib/order-schema.mjs';
 
 const advice = 'C:\\scratch\\advisor run';
 const run = '2026-10-03_1_x';
@@ -147,7 +148,10 @@ test('the first non-header line closes the header for good', () => {
     assert.equal(parsed.advice, 'mechanical');
     assert.equal(parsed.grant, null);
     assert.equal(parsed.body, `${terminator}\n${line}`);
-    assert.equal(parsed.problems.length, 1);
+    // Plan_63 D3: a lowercase unknown label right below the header is refused, and still closes it.
+    const unknown = terminator === 'unknown: value';
+    assert.equal(parsed.problems.length, unknown ? 2 : 1);
+    if (unknown) assertProblem(parsed, 2, terminator, /unknown header label "unknown"/);
     assertProblem(parsed, 3, line, /misplaced retry/);
   }
 });
@@ -249,4 +253,78 @@ test('refusal reports every problem with original lines and the no-quota stateme
   assert.equal(taskHeaderRefusal(parsed), parsed.problems
     .map(({ lineNo, line, reason }) => `line ${lineNo}: ${reason}: ${line}`)
     .join('\n') + '\nThe run folder was not created; quota was not spent.');
+});
+
+test('order labels populate fields and leave the header out of body without creating a grant', () => {
+  const parsed = parseTaskHeader('order id: plan-63\nscope: src/**\nadvice: mechanical\n## Task');
+  assert.deepEqual(parsed.fields, { 'order id': 'plan-63', scope: 'src/**', advice: 'mechanical' });
+  assert.equal(parsed.body, '## Task');
+  assert.equal(parsed.grant, null);
+  assert.equal(parsed.advice, 'mechanical');
+  assert.deepEqual(parsed.problems, []);
+  assert.deepEqual(Object.keys(parsed), ['fields', 'grant', 'advice', 'body', 'problems']);
+  assert.deepEqual(JSON.parse(JSON.stringify(parsed)), {
+    fields: parsed.fields, grant: null, advice: 'mechanical', body: '## Task', problems: [],
+  });
+});
+
+test('every order label uses the strict spelling and leaves new values unvalidated', () => {
+  for (const label of ALL_ORDER_LABELS.filter((label) => !['continue', 'retry'].includes(label))) {
+    const parsed = parseTaskHeader(`${label}: todo\n## Task`);
+    assert.deepEqual(parsed.fields, { [label]: 'todo' });
+    assert.equal(parsed.grant, null);
+    assert.equal(parsed.body, '## Task');
+    assert.deepEqual(parsed.problems, []);
+    const empty = parseTaskHeader(`${label}:\n## Task`);
+    assert.deepEqual(empty.fields, {});
+    assert.equal(empty.body, `${label}:\n## Task`);
+    assert.deepEqual(empty.problems, [{ lineNo: 1, line: `${label}:`,
+      reason: `header label "${label}" has an empty value` }]);
+  }
+});
+
+test('misspelled order labels close the header and name their exact spelling', () => {
+  for (const [line, label] of [
+    ['scope-new: x', 'scope new'], ['scope_new: x', 'scope new'],
+    ['Order ID: y', 'order id'], ['- **Order_ID**: y', 'order id'],
+    ['* `order id`: y', 'order id'], ['_scope new_: x', 'scope new'],
+    ['order  id: y', 'order id'], [' order id: y', 'order id'],
+  ]) {
+    for (const prefix of ['', 'order id: plan-63\n']) {
+      const parsed = parseTaskHeader(`${prefix}${line}\nslug: pass\n## Task`);
+      // Plan_75 D5 keeps the first non-header line as the end of the header; the refusal still names the fix.
+      assert.deepEqual(parsed.fields, prefix ? { 'order id': 'plan-63' } : {});
+      assert.equal(parsed.body, `${line}\nslug: pass\n## Task`);
+      assert.deepEqual(parsed.problems, [{ lineNo: prefix ? 2 : 1, line,
+        reason: `write the header label exactly as "${label}:"` }]);
+    }
+  }
+});
+
+test('unknown lowercase labels after an accepted header line are refused and close the header', () => {
+  const parsed = parseTaskHeader('order id: y\nbudget: 25\nslug: pass\n## Task');
+  assert.deepEqual(parsed.fields, { 'order id': 'y' });
+  assert.equal(parsed.body, 'budget: 25\nslug: pass\n## Task');
+  assert.deepEqual(parsed.problems, [{ lineNo: 2, line: 'budget: 25',
+    reason: `unknown header label "budget"; known labels: ${[...ALL_ORDER_LABELS, 'advice'].join(', ')}` }]);
+});
+
+test('unknown first lines, capitalized notes and headings remain task body', () => {
+  for (const line of ['Note: something', 'budget: 25', '# Task', '## Task', 'Do the work.']) {
+    const parsed = parseTaskHeader(line);
+    assert.equal(parsed.body, line);
+    assert.deepEqual(parsed.fields, {});
+    assert.deepEqual(parsed.problems, []);
+  }
+  const parsed = parseTaskHeader('order id: y\nNote: something\nscope: ordinary prose');
+  assert.equal(parsed.body, 'Note: something\nscope: ordinary prose');
+  assert.deepEqual(parsed.problems, []);
+});
+
+test('the misplaced guard does not widen to any order-only label in prose', () => {
+  const body = ['## Task', ...ALL_ORDER_LABELS.filter((label) =>
+    !['continue', 'retry'].includes(label)).map((label) => `${label}: prose`)].join('\n');
+  const parsed = parseTaskHeader(`order id: y\n${body}`);
+  assert.equal(parsed.body, body);
+  assert.deepEqual(parsed.problems, []);
 });
