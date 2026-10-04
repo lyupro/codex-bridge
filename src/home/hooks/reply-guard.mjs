@@ -228,7 +228,7 @@ if (runDir && !fs.existsSync(runDir)) {
   blockForm(nonexistentRunReason);
 }
 
-const orderedOrderId = transcriptOrderId(input.agent_transcript_path);
+const orderedOrderId = transcriptOrderId(input.agent_transcript_path, input.agent_type);
 
 if (!runDir && !claimed) {
   // A reply that pronounces nothing cannot contradict the disk. It stays on the old, softer path:

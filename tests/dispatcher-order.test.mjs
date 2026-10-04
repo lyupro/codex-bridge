@@ -62,7 +62,37 @@ test('transcriptOrderId retains order extraction and the empty fail-open result'
   await withTempTree('dispatcher-order-', async (directory) => {
     const transcriptPath = path.join(directory, 'valid.jsonl');
     fs.writeFileSync(transcriptPath, `${JSON.stringify({ type: 'user', message: { content: 'order id: plan-62-order' } })}\n`);
-    assert.equal(transcriptOrderId(transcriptPath), 'plan-62-order');
-    assert.equal(transcriptOrderId(path.join(directory, 'missing.jsonl')), '');
+    assert.equal(transcriptOrderId(transcriptPath, 'codex-scout'), 'plan-62-order');
+    assert.equal(transcriptOrderId(path.join(directory, 'missing.jsonl'), 'codex-scout'), '');
+    const malformedPath = path.join(directory, 'malformed.jsonl');
+    fs.writeFileSync(malformedPath, 'not-json\n');
+    assert.equal(transcriptOrderId(malformedPath, 'codex-scout'), '');
+  });
+});
+
+test('transcriptOrderId ignores a decorated order id line', async () => {
+  await withTempTree('dispatcher-order-', async (directory) => {
+    const transcriptPath = path.join(directory, 'decorated.jsonl');
+    const entry = { type: 'user', message: { content: '- **order id:** x' } };
+    fs.writeFileSync(transcriptPath, `${JSON.stringify(entry)}\n`);
+    assert.equal(transcriptOrderId(transcriptPath, 'codex-scout'), '');
+  });
+});
+
+test('transcriptOrderId retains the exact order id despite extra prose', async () => {
+  await withTempTree('dispatcher-order-', async (directory) => {
+    const transcriptPath = path.join(directory, 'prose.jsonl');
+    const entry = { type: 'user', message: { content: 'order id: plan-76-B2c\nPlease run this order.' } };
+    fs.writeFileSync(transcriptPath, `${JSON.stringify(entry)}\n`);
+    assert.equal(transcriptOrderId(transcriptPath, 'codex-scout'), 'plan-76-B2c');
+  });
+});
+
+test('transcriptOrderId returns an empty result for an unknown agent type', async () => {
+  await withTempTree('dispatcher-order-', async (directory) => {
+    const transcriptPath = path.join(directory, 'unknown-agent.jsonl');
+    const entry = { type: 'user', message: { content: 'order id: plan-76-B2c' } };
+    fs.writeFileSync(transcriptPath, `${JSON.stringify(entry)}\n`);
+    assert.equal(transcriptOrderId(transcriptPath, 'unknown-agent'), '');
   });
 });

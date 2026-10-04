@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseJsonText } from './json-file.mjs';
-import { extractValue } from './required-inputs.mjs';
+import { parseDispatcherCall } from './dispatcher-call.mjs';
 
 /** Implements Plan_62 D7: keeps untrusted ids from redirecting the host-owned subagent transcript path. */
 export function ownTranscriptPath(payload) {
@@ -37,9 +37,13 @@ export function transcriptPrompt(transcriptPath) {
   return entry?.type === 'user' ? entry.text : null;
 }
 
-/** The reply guard's transcript is diagnostic evidence, so it keeps the fail-open, type-agnostic read. */
-export function transcriptOrderId(transcriptPath) {
-  return String(extractValue(firstEntry(transcriptPath)?.text ?? '', 'order id') || '').trim();
+/**
+ * The reply guard's transcript is diagnostic evidence, so the read stays fail-open: any doubt gives ''.
+ * Plan_76 D1: the same call parser as the order gate and the canonical command, so the three cannot disagree.
+ */
+export function transcriptOrderId(transcriptPath, agentType) {
+  const text = firstEntry(transcriptPath)?.text ?? '';
+  return parseDispatcherCall(agentType, text).inputs.get('order id') ?? '';
 }
 
 /** On 2026-08-15 another order's saved reply was returned as the current run's verdict. */
