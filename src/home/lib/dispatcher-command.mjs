@@ -1,25 +1,10 @@
 /** Owns the canonical dispatcher command because the 2026-09-23 TradeForge and 2026-09-24 local incidents let haiku ignore its prompt and register two paid runs for one order id. */
 import { CLI_NAMES } from './cli-names.mjs';
-import {
-  extractValue,
-  isAbsoluteTaskFilePath,
-  isInputPlaceholder,
-  parseGrant,
-  REQUIRED_INPUTS,
-} from './required-inputs.mjs';
-import { firstShellUnsafeSequence } from './shell-unsafe.mjs';
+import { parseDispatcherCall } from './dispatcher-call.mjs';
+import { REQUIRED_INPUTS } from './required-inputs.mjs';
 
 function refusal(reason) {
   return { refusal: `Refused: ${reason}.` };
-}
-
-function unsafeValueReason(value, label) {
-  const sequence = firstShellUnsafeSequence(value);
-  if (sequence !== null) return `input "${label}" contains unsafe shell sequence ${JSON.stringify(sequence)}`;
-  if (value.includes('"') || value.includes('\r') || value.includes('\n')) {
-    return `input "${label}" contains a double quote or line break`;
-  }
-  return null;
 }
 
 function quote(value) {
@@ -33,33 +18,17 @@ export function canonicalRunCommand(agentType, promptText) {
   }
   if (typeof promptText !== 'string') return refusal('prompt text is missing or is not text');
 
-  const inputs = new Map();
-  for (const entry of REQUIRED_INPUTS[agentType]) {
-    if (entry.conditional) continue;
-    const value = extractValue(promptText, entry.label);
-    if (isInputPlaceholder(value, entry.label)) {
-      return refusal(`required input "${entry.label}" is missing or is a placeholder`);
-    }
-    const unsafe = unsafeValueReason(value, entry.label);
-    if (unsafe) return refusal(unsafe);
-    if (entry.label === 'task file' && !isAbsoluteTaskFilePath(value)) {
-      return refusal('input "task file" must be an absolute path');
-    }
-    inputs.set(entry.label, value);
-  }
-
-  // The continuation grant never reaches the command line (`--continue` is bare), so its free-text
-  // reason is not screened: the live grant "…five risks; advise settles them" would have been refused.
-  const optionalLabels = ['repository', 'scope new', 'slug', 'effort'];
-  for (const label of optionalLabels) {
-    const value = extractValue(promptText, label);
-    if (value === null) continue;
-    const unsafe = unsafeValueReason(value, label);
-    if (unsafe) return refusal(unsafe);
-    inputs.set(label, value);
+  // Plan_76 D1: the strict shared parser prevents scope-new from becoming a scope value.
+  const { inputs, problems } = parseDispatcherCall(agentType, promptText);
+  if (problems.length) {
+    const reasons = problems.map(({ line, reason }) => line === null ? reason : `line ${line}: ${reason}`);
+    return refusal(`the call text must be only label: value lines: ${reasons.join('; ')}`);
   }
 
   const tokens = [CLI_NAMES[0], 'run', '--agent', agentType, '--repo', quote(inputs.get('repository') || '.')];
+  if (agentType === 'codex-review' && inputs.has('changeset')) {
+    tokens.push('--changeset', quote(inputs.get('changeset')));
+  }
   if (agentType === 'codex-advisor') tokens.push('--phase', quote(inputs.get('phase')));
   if (agentType === 'codex-build') {
     tokens.push('--scope', quote(inputs.get('scope')));
@@ -70,8 +39,7 @@ export function canonicalRunCommand(agentType, promptText) {
   tokens.push('--task-file', quote(inputs.get('task file')));
   if (inputs.get('effort')) tokens.push('--effort', quote(inputs.get('effort')));
   // Plan_75 D1, TradeForge capacity incident: forward either grant; the runner owns conflicting-grant refusal.
-  const grant = parseGrant(promptText);
-  if (grant?.kind || grant?.error) tokens.push('--continue');
+  if (inputs.has('continue') || inputs.has('retry')) tokens.push('--continue');
   return { command: tokens.join(' ') };
 }
 

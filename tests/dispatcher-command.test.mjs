@@ -37,9 +37,66 @@ test('optional values add flags in fixed order and are absent when omitted', () 
   });
   for (const agentType of ['codex-scout', 'codex-review', 'codex-advisor']) {
     const result = canonicalRunCommand(agentType, `${promptFor(agentType)}\nscope new: src/new/**`);
-    assert.equal(result.command.includes('--scope-new'), false, agentType);
+    assert.match(result.refusal, /scope new.*not accepted/, agentType);
+    assert.equal(result.command, undefined, agentType);
   }
   assert.equal(canonicalRunCommand('codex-build', promptFor('codex-build')).command.includes('--scope-new'), false);
+});
+
+test('review changesets follow the repo pair before the remaining flags', () => {
+  for (const changeset of ['base:main', 'commit:abc123']) {
+    const prompt = promptFor('codex-review', { changeset, slug: 'review-run', effort: 'high' });
+    assert.deepEqual(canonicalRunCommand('codex-review', prompt), {
+      command: `codex-bridge run --agent codex-review --repo "." --changeset "${changeset}"`
+        + ' --slug "review-run" --order-id "plan-62-build-20260924"'
+        + ' --task-file "C:/scratch/plan-62-task.md" --effort "high"',
+    });
+  }
+});
+
+test('a build call refuses changeset labels', () => {
+  const result = canonicalRunCommand('codex-build', promptFor('codex-build', { changeset: 'base:main' }));
+  assert.match(result.refusal, /changeset.*not accepted.*codex-build/);
+  assert.equal(result.command, undefined);
+});
+
+// Plan_76 D1: the live scope-new line above scope must never become --scope "new: src/".
+test('a hyphenated scope-new label above scope is refused', () => {
+  const prompt = promptFor('codex-build').replace('\nscope:', '\nscope-new: src/\nscope:');
+  const result = canonicalRunCommand('codex-build', prompt);
+  assert.match(result.refusal, /line 3: write the label exactly as `scope new:`/);
+  assert.equal(result.command, undefined);
+});
+
+test('prose in an otherwise valid call is refused as free text', () => {
+  const result = canonicalRunCommand('codex-scout', `${promptFor('codex-scout')}\nPlease inspect the repository.`);
+  assert.match(result.refusal, /^Refused: the call text must be only label: value lines: line 3:.*free text/);
+  assert.equal(result.command, undefined);
+});
+
+test('duplicate labels are refused with their line numbers', () => {
+  const result = canonicalRunCommand('codex-scout', `${promptFor('codex-scout')}\norder id: second-order`);
+  assert.equal(result.refusal,
+    'Refused: the call text must be only label: value lines: '
+      + 'line 3: label `order id` is given twice (line 1 and line 3).');
+  assert.equal(result.command, undefined);
+});
+
+test('parser problems with and without line numbers share the dispatcher refusal', () => {
+  const result = canonicalRunCommand('codex-scout', 'Please inspect the repository.');
+  assert.equal(result.refusal,
+    'Refused: the call text must be only label: value lines: '
+      + 'line 1: not a `label: value` line; free text belongs in the task file; '
+      + 'missing required label `order id`; missing required label `task file`.');
+  assert.equal(result.command, undefined);
+});
+
+test('non-string prompts retain the missing-text refusal', () => {
+  for (const prompt of [undefined, null, 42, {}]) {
+    assert.deepEqual(canonicalRunCommand('codex-scout', prompt), {
+      refusal: 'Refused: prompt text is missing or is not text.',
+    });
+  }
 });
 
 // Plan_62 B1 acceptance: the live 2026-09-24 advise grant carried a semicolon in its reason.
@@ -102,7 +159,7 @@ test('unsafe shell sequences, quotes, and line breaks in values are refused', ()
     assert.match(canonicalRunCommand('codex-scout', promptFor('codex-scout', { 'order id': orderId })).refusal, /order id/);
   }
   const multilineFlag = `--order-id "first line\nsecond line"\ntask file: ${taskFile}`;
-  assert.match(canonicalRunCommand('codex-scout', multilineFlag).refusal, /order id.*line break/);
+  assert.match(canonicalRunCommand('codex-scout', multilineFlag).refusal, /line 1:.*free text/);
 });
 
 test('sameCommand allows outer whitespace and rejects every internal text difference', () => {
