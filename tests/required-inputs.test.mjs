@@ -9,6 +9,7 @@ import { renderNoSelfExecution } from '../src/home/lib/no-self-execution.mjs';
 import { renderStopSummary } from '../src/home/lib/stop-contract.mjs';
 import {
   CONTINUATION_INPUT,
+  OPTIONAL_INPUTS,
   REQUIRED_INPUTS,
   RETRY_INPUT,
   diagnoseInput,
@@ -210,6 +211,55 @@ test('valid values pass and the renderer uses the same entries', () => {
       `${entry.label} must be rendered from its own table entry`,
     );
   }
+});
+
+// Plan_76 D1: the 2026-10-04 scope-new typo had no generated spelling for the caller to copy.
+test('every summary preserves required inputs and lists only its optional labels in registry order', () => {
+  for (const [agentType, entries] of Object.entries(REQUIRED_INPUTS)) {
+    const summary = renderRequiredInputSummary(agentType);
+    const labels = entries.map((entry) => {
+      const label = `\`${entry.label}\``;
+      return entry.conditional ? `${label} (${entry.conditional})` : label;
+    });
+    const required = `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}`;
+    assert.ok(summary.startsWith(`Requires ${entries[0].source}-provided ${required}. `));
+    assert.ok(summary.includes('The call is only `label: value` lines; optional labels: '));
+    let previousIndex = -1;
+    for (const entry of OPTIONAL_INPUTS) {
+      const index = summary.indexOf(`\`${entry.label}\``);
+      if (entry.agents.includes(agentType)) {
+        assert.ok(index > previousIndex, `${agentType} must list ${entry.label} in registry order`);
+        previousIndex = index;
+      } else {
+        assert.equal(index, -1, `${agentType} must not list ${entry.label}`);
+      }
+    }
+    const optionalLabels = OPTIONAL_INPUTS.filter((entry) => entry.agents.includes(agentType))
+      .map((entry) => `\`${entry.label}\``);
+    const optional = `${optionalLabels.slice(0, -1).join(', ')} and ${optionalLabels.at(-1)}`;
+    assert.ok(summary.includes(`optional labels: ${optional}.`));
+    assert.ok(summary.endsWith('Free text belongs in the task file.'));
+  }
+  assert.equal(renderRequiredInputSummary('unknown-agent'), '');
+});
+
+test('every input block appends its optional table entries and the labels-only rule', () => {
+  for (const [agentType, entries] of Object.entries(REQUIRED_INPUTS)) {
+    const rendered = renderRequiredInputs(agentType);
+    const required = entries.map((entry) => {
+      const condition = entry.conditional ? ` Condition: ${entry.conditional}.` : '';
+      return `- ${entry.label}: ${entry.explanation} Example: \`${entry.example}\`.${condition}`;
+    }).join('\n');
+    const optional = OPTIONAL_INPUTS.filter((entry) => entry.agents.includes(agentType)).map((entry) =>
+      `- ${entry.label} (optional): ${entry.explanation} Example: \`${entry.label}: ${entry.example}\`.`,
+    );
+    for (const line of optional) assert.ok(rendered.includes(line), `${agentType} must render ${line}`);
+    const labelsOnly = "The orchestrator's call holds only these `label: value` lines, one per line; "
+      + 'the order gate refuses any other line before you start.';
+    assert.ok(rendered.endsWith(labelsOnly));
+    assert.equal(rendered, [required, ...optional, labelsOnly].join('\n'));
+  }
+  assert.equal(renderRequiredInputs('unknown-agent'), '');
 });
 
 test('every dispatcher markdown file carries the shared no-self-execution placeholder first', async () => {

@@ -351,15 +351,29 @@ export function renderRequiredInputSummary(agentType) {
   const rendered = labels.length > 1
     ? `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}`
     : labels[0];
-  return `Requires ${entries[0].source}-provided ${rendered}.`;
+  const optionalLabels = OPTIONAL_INPUTS.filter((entry) => entry.agents.includes(agentType))
+    .map((entry) => `\`${entry.label}\``);
+  const optionalRendered = optionalLabels.length > 1
+    ? `${optionalLabels.slice(0, -1).join(', ')} and ${optionalLabels[optionalLabels.length - 1]}`
+    : optionalLabels[0];
+  return `Requires ${entries[0].source}-provided ${rendered}.`
+    + ` The call is only \`label: value\` lines; optional labels: ${optionalRendered}.`
+    + ' Free text belongs in the task file.';
 }
 
 /** Renders the same contract for pass 2 agent instructions. */
 export function renderRequiredInputs(agentType) {
-  return requiredInputsFor(agentType)
+  const required = requiredInputsFor(agentType)
     .map((entry) => {
       const condition = entry.conditional ? ` Condition: ${entry.conditional}.` : '';
       return `- ${entry.label}: ${entry.explanation} Example: \`${entry.example}\`.${condition}`;
     })
     .join('\n');
+  if (!required) return '';
+  const optional = OPTIONAL_INPUTS.filter((entry) => entry.agents.includes(agentType))
+    .map((entry) => `- ${entry.label} (optional): ${entry.explanation} Example: \`${entry.label}: ${entry.example}\`.`);
+  return [required, ...optional,
+    "The orchestrator's call holds only these `label: value` lines, one per line; "
+      + 'the order gate refuses any other line before you start.',
+  ].join('\n');
 }
