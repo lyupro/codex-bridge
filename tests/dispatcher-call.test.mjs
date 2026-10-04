@@ -205,7 +205,9 @@ test('an exact empty label is diagnosed and is absent from accepted inputs', () 
     const result = parseDispatcherCall('codex-scout', `${text}\ntask file: C:/scratch/task.md`);
     lineProblem(result, 1, text, 'label `order id` has an empty value');
     assert.equal(result.inputs.has('order id'), false);
-    assert.deepEqual(result.problems[1], { line: null, text: '', reason: 'missing required label `order id`' });
+    assert.deepEqual(result.problems[1], {
+      line: null, text: '', label: 'order id', reason: 'missing required label `order id`',
+    });
   }
 });
 
@@ -214,7 +216,9 @@ test('missing unconditional labels are reported in registry order with no source
     const result = parseDispatcherCall(agent, ' \n\t');
     assert.equal(result.inputs.size, 0);
     assert.deepEqual(result.problems, requiredInputsFor(agent).filter((entry) => !entry.conditional)
-      .map((entry) => ({ line: null, text: '', reason: `missing required label \`${entry.label}\`` })));
+      .map((entry) => ({
+        line: null, text: '', label: entry.label, reason: `missing required label \`${entry.label}\``,
+      })));
   }
 });
 

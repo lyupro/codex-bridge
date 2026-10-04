@@ -16,13 +16,7 @@ import path from 'node:path';
 import { AGENTS } from '../lib/agents.mjs';
 import { recordHookDiagnostic } from '../lib/hook-diagnostics.mjs';
 import { readJsonFileSync } from '../lib/json-file.mjs';
-import {
-  diagnoseInput,
-  extractValue,
-  missingInputs,
-  parseGrant,
-  shellUnsafeInputs,
-} from '../lib/required-inputs.mjs';
+import { parseDispatcherCall, renderCallRefusal } from '../lib/dispatcher-call.mjs';
 import { SUBAGENT_TOOLS } from '../lib/hook-definitions.mjs';
 import { taskFingerprint } from '../lib/meta/chain.mjs';
 import { conflictingOrderOwner, orderOwnerConflictText } from '../lib/runner/order-owner.mjs';
@@ -83,28 +77,9 @@ if (teammateField) {
   );
 }
 
-const missing = missingInputs(toolInput.subagent_type, toolInput.prompt);
-const unsafe = shellUnsafeInputs(toolInput.subagent_type, toolInput.prompt);
-if (missing.length || unsafe.length) {
-  const reason = missing.length
-    ? [
-        'Order gate denied the Agent call because required dispatcher input(s) are missing or still placeholders.',
-        'Write each value in tool_input.prompt using `label: value` before launching the dispatcher:',
-        ...missing.flatMap((entry) => {
-          const lines = [`- ${entry.label}: ${entry.explanation} Example: \`${entry.example}\`.`];
-          const diagnosis = diagnoseInput(toolInput.prompt, entry.label);
-          if (diagnosis) lines.push(`  found \`${diagnosis.line}\`, ${diagnosis.reason}`);
-          return lines;
-        }),
-      ].join('\n')
-    : [
-        'Order gate denied the Agent call because labelled dispatcher input(s) contain forbidden shell sequences.',
-        'Correct each field before launching the dispatcher:',
-        ...unsafe.map(({ entry, sequence }) =>
-          `- ${entry.label}: found ${JSON.stringify(sequence)}; put free text in the task file and pass only a short command-line value.`),
-      ].join('\n');
-  deny(reason);
-}
+// Plan_76 D1: exact registry labels prevent the scope-new and repository-prose incident of 2026-10-04.
+const call = parseDispatcherCall(toolInput.subagent_type, toolInput.prompt);
+if (call.problems.length) deny(renderCallRefusal(toolInput.subagent_type, call.problems));
 
 const readStatus = (file) => {
   try {
@@ -114,11 +89,11 @@ const readStatus = (file) => {
   }
 };
 
-const orderId = extractValue(toolInput.prompt, 'order id');
-const taskFile = extractValue(toolInput.prompt, 'task file');
+const orderId = call.inputs.get('order id');
+const taskFile = call.inputs.get('task file');
 // Plan_75 D1, TradeForge capacity incident: retries keep their order; the runner owns conflicting-grant refusal.
-const grant = parseGrant(toolInput.prompt);
-if (!orderId || !taskFile || grant?.kind || grant?.error) pass();
+const grant = call.inputs.has('continue') || call.inputs.has('retry');
+if (!orderId || !taskFile || grant) pass();
 
 let rawTask;
 try {

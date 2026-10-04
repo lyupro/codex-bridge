@@ -75,7 +75,7 @@ export function parseDispatcherCall(agentType, promptText) {
 
   for (const entry of entries) {
     if (!entry.conditional && !entry.optional && !inputs.has(entry.label)) {
-      problems.push({ line: null, text: '', reason: `missing required label \`${entry.label}\`` });
+      problems.push({ line: null, text: '', label: entry.label, reason: `missing required label \`${entry.label}\`` });
     }
   }
   for (const [label, value] of inputs) {
@@ -100,10 +100,14 @@ export function parseDispatcherCall(agentType, promptText) {
 /** Names each refused line and the agent's full label list, so one free refusal carries its own repair. */
 export function renderCallRefusal(agentType, problems) {
   const lines = ['Order gate denied the Agent call: the call text must be only `label: value` lines.'];
-  for (const { line, text, reason } of problems) {
-    lines.push(line === null ? `- ${reason}` : `- line ${line}: \`${text}\` — ${reason}`);
+  const entries = callInputsFor(agentType);
+  for (const { line, text, reason, label } of problems) {
+    const entry = line === null && reason === `missing required label \`${label}\``
+      ? entries.find((entry) => entry.label === label) : undefined;
+    const detail = entry ? ` — ${entry.explanation} Example: \`${entry.label}: ${entry.example}\`.` : '';
+    lines.push(line === null ? `- ${reason}${detail}` : `- line ${line}: \`${text}\` — ${reason}`);
   }
-  const labels = callInputsFor(agentType).map((entry) => {
+  const labels = entries.map((entry) => {
     const status = entry.optional ? 'optional' : entry.conditional || 'required';
     return `\`${entry.label}\` (${status})`;
   });

@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { AGENTS } from '../../src/home/lib/agents.mjs';
 import { HOOK_DEFINITIONS, SUBAGENT_TOOLS } from '../../src/home/lib/hook-definitions.mjs';
 import { taskFingerprint } from '../../src/home/lib/meta/chain.mjs';
 import { createStoredRun, fixture, payload, runGate, validPrompt } from './order-gate-fixtures.mjs';
@@ -14,11 +15,14 @@ test('missing dispatcher inputs are denied with actionable details', async (t) =
   const decision = JSON.parse(result.stdout).hookSpecificOutput;
   assert.equal(decision.hookEventName, 'PreToolUse');
   assert.equal(decision.permissionDecision, 'deny');
+  assert.equal(decision.permissionDecisionReason.split('\n')[0],
+    'Order gate denied the Agent call: the call text must be only `label: value` lines.');
+  assert.match(decision.permissionDecisionReason, /missing required label `scope` — .+ Example: `scope: /);
   assert.match(decision.permissionDecisionReason, /order id/);
   assert.match(decision.permissionDecisionReason, /scope/);
   assert.match(decision.permissionDecisionReason, /plan-13-build-20260804/);
   assert.match(decision.permissionDecisionReason, /src\/home\/lib\/runner\/\*\*/);
-  assert.match(decision.permissionDecisionReason, /tool_input\.prompt/);
+  assert.match(decision.permissionDecisionReason, /Free text belongs in the task file/);
   assert.doesNotMatch(decision.permissionDecisionReason, /found `/);
 });
 
@@ -82,10 +86,11 @@ test('a relative task file is denied before the dispatcher starts', async (t) =>
   ));
   const decision = JSON.parse(result.stdout).hookSpecificOutput;
   assert.equal(decision.permissionDecision, 'deny');
-  assert.match(decision.permissionDecisionReason, /found `task file: task\.md`, value `task\.md` is not an absolute path/);
+  assert.match(decision.permissionDecisionReason, /task file/);
+  assert.match(decision.permissionDecisionReason, /absolute path/);
 });
 
-test('diagnosis appears only beneath the missing entry whose label has a candidate', async (t) => {
+test('scope prose and its bullet are refused as lines, with required labels still missing', async (t) => {
   const root = await fixture(t);
   const result = runGate(root, payload(
     'codex-build',
@@ -93,13 +98,64 @@ test('diagnosis appears only beneath the missing entry whose label has a candida
   ));
   const decision = JSON.parse(result.stdout).hookSpecificOutput;
   const reason = decision.permissionDecisionReason;
-  const scopeEntry = reason.indexOf('- scope:');
-  const diagnosis = reason.indexOf('found `scope (you may create/modify ONLY these):`, expected `scope:` with nothing between the label and the colon');
   assert.equal(decision.permissionDecision, 'deny');
-  assert.match(reason, /- order id:/);
-  assert.ok(scopeEntry >= 0);
-  assert.ok(diagnosis > scopeEntry);
-  assert.equal(reason.indexOf('found `order id'), -1);
+  assert.match(reason, /line 1: `scope \(you may create\/modify ONLY these\):` — not a `label: value` line/);
+  assert.match(reason, /line 2: `- assets\/vault\/\.claude\/lib\/sessions\.py \(new\)` — not a `label: value` line/);
+  assert.match(reason, /missing required label `order id`/);
+  assert.match(reason, /missing required label `scope`/);
+});
+
+// Plan_76 D1, 2026-10-04: aliases and repository prose must be refused before dispatch.
+test('non-registry call lines and duplicate order ids are denied', async (t) => {
+  const root = await fixture(t);
+  const prompt = `${validPrompt('a1', 'C:/abs/task.md')}\nscope: src/`;
+  for (const [line, expected] of [
+    ['scope-new: src/', /write the label exactly as `scope new:`/],
+    ['Repository root: C:/x', /not a `label: value` line; free text belongs in the task file/],
+    ['order-id: a1', /write the label exactly as `order id:`/],
+    ['order id: a2', /label `order id` is given twice/],
+  ]) {
+    const result = runGate(root, payload('codex-build', `${prompt}\n${line}`));
+    assert.equal(result.status, 0, line);
+    const decision = JSON.parse(result.stdout).hookSpecificOutput;
+    assert.equal(decision.permissionDecision, 'deny', line);
+    assert.match(decision.permissionDecisionReason, expected, line);
+  }
+});
+
+test('changeset is accepted for review and refused for scout', async (t) => {
+  const root = await fixture(t);
+  const prompt = validPrompt('changeset-order', 'C:/abs/task.md', '\nchangeset: base:main');
+  const review = runGate(root, payload('codex-review', prompt));
+  assert.equal(review.status, 0);
+  assert.equal(review.stdout, '');
+  const scout = runGate(root, payload('codex-scout', prompt));
+  assert.equal(scout.status, 0);
+  const decision = JSON.parse(scout.stdout).hookSpecificOutput;
+  assert.equal(decision.permissionDecision, 'deny');
+  assert.match(decision.permissionDecisionReason, /label `changeset` is not accepted by `codex-scout`/);
+});
+
+test('every agent accepts shared optional labels and only build accepts scope new', async (t) => {
+  const root = await fixture(t);
+  for (const type of Object.keys(AGENTS)) {
+    let prompt = validPrompt('optional-order', 'C:/abs/task.md');
+    if (type === 'codex-build') prompt += '\nscope: src/';
+    if (type === 'codex-advisor') prompt += '\nphase: scope';
+    prompt += '\nrepository: C:/x\nslug: optional-labels\neffort: medium';
+    const shared = runGate(root, payload(type, prompt));
+    assert.equal(shared.status, 0, type);
+    assert.equal(shared.stdout, '', type);
+    const scopeNew = runGate(root, payload(type, `${prompt}\nscope new: src/new.mjs`));
+    assert.equal(scopeNew.status, 0, type);
+    if (type === 'codex-build') {
+      assert.equal(scopeNew.stdout, '', type);
+    } else {
+      const decision = JSON.parse(scopeNew.stdout).hookSpecificOutput;
+      assert.equal(decision.permissionDecision, 'deny', type);
+      assert.match(decision.permissionDecisionReason, /label `scope new` is not accepted by/);
+    }
+  }
 });
 
 test('a valid dispatcher call passes and keeps the last payload', async (t) => {
