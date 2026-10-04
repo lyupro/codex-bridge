@@ -15,7 +15,7 @@ import { continuationRefusal, retryRefusal, readyGrantLines } from './continuati
 import { advisorTaskOrRefuse } from './advise-carry.mjs';
 import { scopeRunRefusal } from './preflight.mjs';
 
-export async function passGate({ opts, taskText, header, projectRunsRoot, repoRoot }) {
+export async function passGate({ opts, taskText, header, projectRunsRoot, repoRoot, beforeWait }) {
   // A second pass at the same task is a real need — after a timeout or a LIMIT the work has
   // to be finished — so it is allowed and made visible rather than forbidden. What is
   // forbidden is repeating by accident: the orchestrator saw the previous reply, the runner
@@ -41,7 +41,7 @@ export async function passGate({ opts, taskText, header, projectRunsRoot, repoRo
   const attachExistingRun = () => attach({
     runsRoot: projectRunsRoot, repo: repoRoot, slug: opts.slug, taskHash, orderId: opts.orderId, chain,
     grantRun: continuationGrant?.run, isContinue: opts.continue, noWait: opts.noWait,
-    retryRun: retryOf ?? undefined,
+    retryRun: retryOf ?? undefined, beforeWait,
   });
   let attachedExitCode = opts.continue ? await attachExistingRun() : null;
   if (attachedExitCode !== null) return { exitCode: attachedExitCode };

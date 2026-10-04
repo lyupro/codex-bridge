@@ -25,6 +25,18 @@ const PASS_GATE = read('pass-gate.mjs');
  */
 const REFUSALS = [
   {
+    name: 'a busy order claim',
+    side: 'before',
+    marker: 'die(orderClaimBusyText(opts.orderId, claim.holder), EXIT.FAIL)',
+    why: 'Plan_60 D4c: contention must refuse for free rather than launch a second paid run',
+  },
+  {
+    name: 'another same-order launch registered without a kernel claim',
+    side: 'before',
+    marker: 'if (text) die(text, EXIT.FAIL)',
+    why: 'Plan_60 D4: unsupported platforms re-read immediately before registration to avoid double billing',
+  },
+  {
     name: 'a biased advisor task or missing build advice',
     side: 'before',
     marker: 'if (taskGate.refusal) die(taskGate.refusal, EXIT.FAIL)',

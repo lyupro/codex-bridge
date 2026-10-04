@@ -38,6 +38,7 @@ import { cleanupRetention } from '../retention.mjs';
 import { renderConventions } from './conventions.mjs';
 import { validateScope } from './scope-check.mjs';
 import { probeSandbox, sandboxRefusal } from './sandbox-probe.mjs';
+import { acquireOrderClaim, orderClaimBusyText, unclaimedRaceRefusal } from './order-claim.mjs';
 import {
   codexAvailabilityRefusal, preflightRefusal, resolveRunPhase, taskPreflight,
 } from './preflight.mjs';
@@ -112,224 +113,241 @@ export async function launcher(argv = process.argv.slice(2)) {
     );
   }
   const projectRunsRoot = resolveProjectRunsDir(runsRoot(), repoRoot).dir;
+  // Plan_60 D4c, 2026-09-24: two launchers of one order both billed. The claim comes before markAbandoned, or a
+  // contender could close a run whose worker is admitting itself and start a second paid one.
+  const claim = await acquireOrderClaim({ projectRunsRoot, orderId: opts.orderId, role: 'launcher' });
+  if (claim.busy) die(orderClaimBusyText(opts.orderId, claim.holder), EXIT.FAIL);
+  try {
+    // Folders left behind by a runner that was killed mid-run get an explicit state before
+    // anything else happens. One order produced four of them, and without this pass an
+    // abandoned folder is indistinguishable from a run still working: neither has meta.json.
+    // The snapshot is passed in because meta/ makes no git calls of its own: it is the only way an
+    // abandoned run can be closed with the files it left behind rather than with a bare label.
+    markAbandoned(projectRunsRoot, isGitRepo ? worktreeSnapshot(repoRoot) : undefined);
 
-  // Folders left behind by a runner that was killed mid-run get an explicit state before
-  // anything else happens. One order produced four of them, and without this pass an
-  // abandoned folder is indistinguishable from a run still working: neither has meta.json.
-  // The snapshot is passed in because meta/ makes no git calls of its own: it is the only way an
-  // abandoned run can be closed with the files it left behind rather than with a bare label.
-  markAbandoned(projectRunsRoot, isGitRepo ? worktreeSnapshot(repoRoot) : undefined);
+    if (isGitRepo) {
+      const drift = abandonedBranchDrift(projectRunsRoot, repoRoot, branchName(repoRoot));
+      if (drift) {
+        die(
+          `repository is detached after abandoned run ${drift.run}, which recorded branch ${drift.branch}. ` +
+            `Return with: git checkout ${drift.branch}. No run folder was created and no quota was spent.`,
+        );
+      }
+    }
 
-  if (isGitRepo) {
-    const drift = abandonedBranchDrift(projectRunsRoot, repoRoot, branchName(repoRoot));
-    if (drift) {
-      die(
-        `repository is detached after abandoned run ${drift.run}, which recorded branch ${drift.branch}. ` +
-          `Return with: git checkout ${drift.branch}. No run folder was created and no quota was spent.`,
+    // The pass gate lives in pass-gate.mjs, Plan_75 P0.
+    const gate = await passGate({ opts, taskText, header, projectRunsRoot, repoRoot, beforeWait: claim.release });
+    if ('exitCode' in gate) return gate.exitCode;
+    const { taskHash, chain, startedChain, continuationGrant, advisorTask, retryOf } = gate;
+
+    // Plan_60 D2: a missing or signed-out Codex answers UNAVAILABLE (exit 5) before the paid sandbox probe.
+    const availability = await codexAvailabilityRefusal();
+    if (availability?.unavailable) { process.stdout.write(`${availability.text}\n`); return EXIT.UNAVAILABLE; }
+    if (availability) die(availability.text, EXIT.FAIL);
+    // Review 2026-09-17: probe before the busy check so it sees writers that registered while the slow
+    // probe waited; the dead refusal stays before retention to preserve old run artifacts.
+    const sandboxProbe = await probeSandbox({ agent: opts.agent, repo: repoRoot });
+    if (sandboxProbe.outcome === 'dead') die(sandboxRefusal(sandboxProbe));
+
+    // Everything that can refuse without touching the tree is asked here, after the probe so the
+    // busy check sees writers that registered while it waited, and before makeRunDir below: on
+    // 2026-09-19 a busy refusal left its folder inside ~/.claude and the live run's witness spent
+    // every tool call demanding the orchestrator revert a directory the tool itself had created.
+    // Exit 1, not the usage code 2: the order was correct, the host or the tree was not.
+    const preflightError = preflightRefusal({ agent: opts.agent, projectRunsRoot, repoRoot });
+    if (preflightError) die(preflightError, EXIT.FAIL);
+
+    let retention = null;
+    try {
+      retention = cleanupRetention(projectRunsRoot, RUN_ENV?.retention);
+    } catch {
+      // Plan_17 step 4 makes retention advisory housekeeping: one broken filesystem call must never
+      // block a new run.
+      retention = null;
+    }
+
+    if (claim.unsupported) {
+      const text = unclaimedRaceRefusal({
+        projectRunsRoot, repoRoot, slug: opts.slug, taskHash, orderId: opts.orderId,
+        grantRun: header.grant?.run, chainBefore: chain,
+      });
+      if (text) die(text, EXIT.FAIL);
+    }
+    const runDir = makeRunDir(runDirPath(projectRunsRoot, opts.slug));
+    setRun(runDir, opts.agent);
+
+    // Written before the worker can start. From here on a killed runner leaves a folder that
+    // says what it was and whose pid to check, instead of a folder that says nothing — the run
+    // itself takes 20-25 minutes, far longer than the caller's default timeout, so being killed
+    // mid-run is the normal way for this to end, not the exotic one.
+    //
+    // `pid` is the launcher's only until the worker exists, and the worker's from then on:
+    // activeRun(), markAbandoned() and the reply guard all read `pid` as "the process whose
+    // death means this run is abandoned", and after the spawn that process is the worker.
+    writeStatus(runDir, {
+      state: 'running',
+      pid: process.pid,
+      launcher_pid: process.pid,
+      process_started_at: performance.timeOrigin,
+      agent: opts.agent,
+      slug: opts.slug,
+      order_id: opts.orderId,
+      phase: opts.phase,
+      ...(taskGate.advice === undefined ? {} : { advice: taskGate.advice }),
+      // Fingerprint of the order, so a later run of the same task finds this one whatever it
+      // calls itself. Written here, before Codex starts, like everything the chain reads.
+      task_hash: taskHash,
+      task_hash_scheme: TASK_HASH_SCHEME,
+      repo: repoRoot,
+      started_at: new Date().toISOString(),
+      // Which run of this task started the chain — the base every later pass is measured
+      // against. Absent means this is the first pass.
+      ...(startedChain.length ? { continues: startedChain[0] } : {}),
+      // `continued_from` is the exact run the orchestrator named; `continues` above remains the chain base.
+      ...(continuationGrant ? { continued_from: continuationGrant.run } : {}),
+      // Plan_75: the repeated failed run; pass accounting skips runs carrying it.
+      ...(retryOf ? { retry_of: retryOf } : {}),
+      ...(retention ? { retention } : {}),
+      sandbox_probe: sandboxProbe,
+    });
+
+    // Printed before anything can go wrong: even a dispatcher that dies mid-run leaves the
+    // orchestrator with a folder to look into.
+    console.log(`RUN=${runDir} order-id=${opts.orderId}`);
+
+    const scope = opts.agent === 'codex-review' ? reviewScope(repoRoot, opts.changeset) : null;
+    if (scope) {
+      fs.writeFileSync(
+        path.join(runDir, 'scope.txt'),
+        `${scope.label}\n${scope.diffCommand}\n${scope.files.join('\n')}\n`,
       );
     }
-  }
 
-  // The pass gate lives in pass-gate.mjs, Plan_75 P0.
-  const gate = await passGate({ opts, taskText, header, projectRunsRoot, repoRoot });
-  if ('exitCode' in gate) return gate.exitCode;
-  const { taskHash, chain, startedChain, continuationGrant, advisorTask, retryOf } = gate;
+    // The sub-questions this run will be graded against come only from the orchestrator's
+    // repeatable flags. They are written before the task is assembled so the prompt and verdict
+    // read the same ordered list, including a valid one-question order.
+    const questions = opts.agent === 'codex-scout' ? questionsFromTexts(opts.questions) : [];
+    if (opts.agent === 'codex-scout') {
+      fs.writeFileSync(path.join(runDir, 'questions.json'), `${JSON.stringify(questions, null, 2)}\n`);
+    }
+    if (advisorTask) {
+      fs.writeFileSync(path.join(runDir, 'advisor-task.json'), `${JSON.stringify(advisorTask, null, 2)}\n`);
+    }
 
-  // Plan_60 D2: a missing or signed-out Codex answers UNAVAILABLE (exit 5) before the paid sandbox probe.
-  const availability = await codexAvailabilityRefusal();
-  if (availability?.unavailable) { process.stdout.write(`${availability.text}\n`); return EXIT.UNAVAILABLE; }
-  if (availability) die(availability.text, EXIT.FAIL);
-  // Review 2026-09-17: probe before the busy check so it sees writers that registered while the slow
-  // probe waited; the dead refusal stays before retention to preserve old run artifacts.
-  const sandboxProbe = await probeSandbox({ agent: opts.agent, repo: repoRoot });
-  if (sandboxProbe.outcome === 'dead') die(sandboxRefusal(sandboxProbe));
+    if (opts.agent === 'codex-build') {
+      fs.writeFileSync(path.join(runDir, 'scope.txt'), `${opts.scopePatterns.join('\n')}\n`);
+    }
 
-  // Everything that can refuse without touching the tree is asked here, after the probe so the
-  // busy check sees writers that registered while it waited, and before makeRunDir below: on
-  // 2026-09-19 a busy refusal left its folder inside ~/.claude and the live run's witness spent
-  // every tool call demanding the orchestrator revert a directory the tool itself had created.
-  // Exit 1, not the usage code 2: the order was correct, the host or the tree was not.
-  const preflightError = preflightRefusal({ agent: opts.agent, projectRunsRoot, repoRoot });
-  if (preflightError) die(preflightError, EXIT.FAIL);
+    // Which environment this run actually got. Without it a replay months later cannot tell
+    // whether the operator's hooks were in play, and that is the first question a run that
+    // wandered off task raises.
+    fs.writeFileSync(path.join(runDir, 'env.json'), `${JSON.stringify(RUN_ENV, null, 2)}\n`);
 
-  let retention = null;
-  try {
-    retention = cleanupRetention(projectRunsRoot, RUN_ENV?.retention);
-  } catch {
-    // Plan_17 step 4 makes retention advisory housekeeping: one broken filesystem call must never
-    // block a new run.
-    retention = null;
-  }
-
-  const runDir = makeRunDir(runDirPath(projectRunsRoot, opts.slug));
-  setRun(runDir, opts.agent);
-
-  // Written before the worker can start. From here on a killed runner leaves a folder that
-  // says what it was and whose pid to check, instead of a folder that says nothing — the run
-  // itself takes 20-25 minutes, far longer than the caller's default timeout, so being killed
-  // mid-run is the normal way for this to end, not the exotic one.
-  //
-  // `pid` is the launcher's only until the worker exists, and the worker's from then on:
-  // activeRun(), markAbandoned() and the reply guard all read `pid` as "the process whose
-  // death means this run is abandoned", and after the spawn that process is the worker.
-  writeStatus(runDir, {
-    state: 'running',
-    pid: process.pid,
-    launcher_pid: process.pid,
-    process_started_at: performance.timeOrigin,
-    agent: opts.agent,
-    slug: opts.slug,
-    order_id: opts.orderId,
-    phase: opts.phase,
-    ...(taskGate.advice === undefined ? {} : { advice: taskGate.advice }),
-    // Fingerprint of the order, so a later run of the same task finds this one whatever it
-    // calls itself. Written here, before Codex starts, like everything the chain reads.
-    task_hash: taskHash,
-    task_hash_scheme: TASK_HASH_SCHEME,
-    repo: repoRoot,
-    started_at: new Date().toISOString(),
-    // Which run of this task started the chain — the base every later pass is measured
-    // against. Absent means this is the first pass.
-    ...(startedChain.length ? { continues: startedChain[0] } : {}),
-    // `continued_from` is the exact run the orchestrator named; `continues` above remains the chain base.
-    ...(continuationGrant ? { continued_from: continuationGrant.run } : {}),
-    // Plan_75: the repeated failed run; pass accounting skips runs carrying it.
-    ...(retryOf ? { retry_of: retryOf } : {}),
-    ...(retention ? { retention } : {}),
-    sandbox_probe: sandboxProbe,
-  });
-
-  // Printed before anything can go wrong: even a dispatcher that dies mid-run leaves the
-  // orchestrator with a folder to look into.
-  console.log(`RUN=${runDir} order-id=${opts.orderId}`);
-
-  const scope = opts.agent === 'codex-review' ? reviewScope(repoRoot, opts.changeset) : null;
-  if (scope) {
+    // The extra sections carry the two things prose could not enforce: what has to be answered,
+    // and what may be edited. Both also go to disk as questions.json / scope.txt, so the verdict
+    // is computed from the same list Codex was handed, not from a second reading of the wording.
+    const sections = [`## Operator task (verbatim)\n\n${taskText}`];
+    const scopeResults = adviseSection(advisorTask);
+    if (scopeResults) sections.push(scopeResults);
+    if (questions.length) {
+      sections.push(
+        [
+          '## Sub-questions, each requires a separate response',
+          '',
+          questions.map((q) =>
+            `${q.id}${q.kind === QUESTION_KIND.STARTUP_CONTEXT ? ' [context-only]' : ''}: ${q.text}`).join('\n'),
+          '',
+          'A missed sub-question fails the run; a response containing only coordinates counts as missed.',
+        ].join('\n'),
+      );
+    }
+    if (opts.agent === 'codex-build') {
+      sections.push(
+        [
+          '## Scope (hard boundary)',
+          '',
+          'Only these may be changed:',
+          opts.scopePatterns.map((p) => `- ${p}`).join('\n'),
+          '',
+          'Do not touch any file outside this list — even if it blocks the work or looks broken.',
+          'Put the obstacle in leftovers instead of changing the file. The touched worktree is',
+          'checked against this list after the run.',
+        ].join('\n'),
+      );
+    }
+    const conventions = renderConventions(repoRoot);
+    if (conventions) sections.push(conventions);
+    sections.push(`## Instructions for Codex\n\n${INSTRUCTIONS[opts.agent](opts, scope, questions)}`);
+    fs.writeFileSync(path.join(runDir, 'task.md'), `${sections.join('\n\n')}\n`);
     fs.writeFileSync(
-      path.join(runDir, 'scope.txt'),
-      `${scope.label}\n${scope.diffCommand}\n${scope.files.join('\n')}\n`,
+      path.join(runDir, 'schema.json'),
+      `${JSON.stringify(schemaFor(opts.agent, opts.phase), null, 2)}\n`,
     );
-  }
 
-  // The sub-questions this run will be graded against come only from the orchestrator's
-  // repeatable flags. They are written before the task is assembled so the prompt and verdict
-  // read the same ordered list, including a valid one-question order.
-  const questions = opts.agent === 'codex-scout' ? questionsFromTexts(opts.questions) : [];
-  if (opts.agent === 'codex-scout') {
-    fs.writeFileSync(path.join(runDir, 'questions.json'), `${JSON.stringify(questions, null, 2)}\n`);
-  }
-  if (advisorTask) fs.writeFileSync(path.join(runDir, 'advisor-task.json'), `${JSON.stringify(advisorTask, null, 2)}\n`);
+    if (opts.agent === 'codex-build') writeBuildBefore({ runDir, repoRoot, isGitRepo });
 
-  if (opts.agent === 'codex-build') {
-    fs.writeFileSync(path.join(runDir, 'scope.txt'), `${opts.scopePatterns.join('\n')}\n`);
-  }
-
-  // Which environment this run actually got. Without it a replay months later cannot tell
-  // whether the operator's hooks were in play, and that is the first question a run that
-  // wandered off task raises.
-  fs.writeFileSync(path.join(runDir, 'env.json'), `${JSON.stringify(RUN_ENV, null, 2)}\n`);
-
-  // The extra sections carry the two things prose could not enforce: what has to be answered,
-  // and what may be edited. Both also go to disk as questions.json / scope.txt, so the verdict
-  // is computed from the same list Codex was handed, not from a second reading of the wording.
-  const sections = [`## Operator task (verbatim)\n\n${taskText}`];
-  const scopeResults = adviseSection(advisorTask);
-  if (scopeResults) sections.push(scopeResults);
-  if (questions.length) {
-    sections.push(
-      [
-        '## Sub-questions, each requires a separate response',
-        '',
-        questions.map((q) =>
-          `${q.id}${q.kind === QUESTION_KIND.STARTUP_CONTEXT ? ' [context-only]' : ''}: ${q.text}`).join('\n'),
-        '',
-        'A missed sub-question fails the run; a response containing only coordinates counts as missed.',
-      ].join('\n'),
-    );
-  }
-  if (opts.agent === 'codex-build') {
-    sections.push(
-      [
-        '## Scope (hard boundary)',
-        '',
-        'Only these may be changed:',
-        opts.scopePatterns.map((p) => `- ${p}`).join('\n'),
-        '',
-        'Do not touch any file outside this list — even if it blocks the work or looks broken.',
-        'Put the obstacle in leftovers instead of changing the file. The touched worktree is',
-        'checked against this list after the run.',
-      ].join('\n'),
-    );
-  }
-  const conventions = renderConventions(repoRoot);
-  if (conventions) sections.push(conventions);
-  sections.push(`## Instructions for Codex\n\n${INSTRUCTIONS[opts.agent](opts, scope, questions)}`);
-  fs.writeFileSync(path.join(runDir, 'task.md'), `${sections.join('\n\n')}\n`);
-  fs.writeFileSync(
-    path.join(runDir, 'schema.json'),
-    `${JSON.stringify(schemaFor(opts.agent, opts.phase), null, 2)}\n`,
-  );
-
-  if (opts.agent === 'codex-build') writeBuildBefore({ runDir, repoRoot, isGitRepo });
-
-  // The worker's entire order, on disk. Not passed as arguments: the launcher may be gone
-  // when the worker needs to know what it is doing, and a folder that explains itself is
-  // also the only way to read a run back months later.
-  const codexArgv = codexArgs({ ...opts, repo: repoRoot }, runDir, isGitRepo);
-  const unsafe = process.platform === 'win32' ? unsafeForCmd(codexArgv) : undefined;
-  if (unsafe) {
-    const { reply } = writeFailure(
-      runDir,
-      opts.agent,
-      `argument cannot be passed through cmd.exe (contains % or "): ${unsafe}`,
-      ['Codex was not started; quota was not spent'],
-      true,
-    );
-    console.log(reply);
-    return EXIT.FAIL;
-  }
-  writeWorkerOrder(runDir, {
-    agent: opts.agent,
-    slug: opts.slug,
-    orderId: opts.orderId,
-    repo: repoRoot,
-    isGitRepo,
-    launcherPid: process.pid,
-    phase: opts.phase,
-    budgetMinutes: RUN_ENV.budgets[agentRole(opts.agent)][opts.phase],
-    scopeNew: opts.scopeNewPatterns,
-    profile: runProfile({ ...opts, repo: repoRoot }),
-    args: codexArgv,
-  });
-
-  // detached + unref + no stdio: the worker leaves the caller's process group, so a Ctrl+C
-  // or a timeout kill aimed at the dispatcher's shell does not reach it, and it holds no
-  // pipe that could fill up and stall once nobody is reading.
-  const worker = spawn(process.execPath, [RUNNER_ENTRY, '--worker', runDir], {
-    detached: true,
-    stdio: 'ignore',
-    windowsHide: true,
-    cwd: repoRoot,
-  });
-  const started = await new Promise((resolve) => {
-    worker.once('spawn', () => resolve(true));
-    worker.once('error', (err) => {
-      const { reply } = writeFailure(runDir, opts.agent, `run worker process failed to start: ${err.message}`, [
-        'Codex was not started; quota was not spent',
-      ], true);
+    // The worker's entire order, on disk. Not passed as arguments: the launcher may be gone
+    // when the worker needs to know what it is doing, and a folder that explains itself is
+    // also the only way to read a run back months later.
+    const codexArgv = codexArgs({ ...opts, repo: repoRoot }, runDir, isGitRepo);
+    const unsafe = process.platform === 'win32' ? unsafeForCmd(codexArgv) : undefined;
+    if (unsafe) {
+      const { reply } = writeFailure(
+        runDir,
+        opts.agent,
+        `argument cannot be passed through cmd.exe (contains % or "): ${unsafe}`,
+        ['Codex was not started; quota was not spent'],
+        true,
+      );
       console.log(reply);
-      resolve(false);
+      return EXIT.FAIL;
+    }
+    writeWorkerOrder(runDir, {
+      agent: opts.agent,
+      slug: opts.slug,
+      orderId: opts.orderId,
+      repo: repoRoot,
+      isGitRepo,
+      launcherPid: process.pid,
+      phase: opts.phase,
+      budgetMinutes: RUN_ENV.budgets[agentRole(opts.agent)][opts.phase],
+      scopeNew: opts.scopeNewPatterns,
+      profile: runProfile({ ...opts, repo: repoRoot }),
+      args: codexArgv,
     });
-  });
-  if (!started) return EXIT.FAIL;
-  worker.unref();
-  writeStatus(runDir, { pid: worker.pid, runner_pid: worker.pid, process_started_at: null });
 
-  console.log(
-    `STARTED agent=${opts.agent} slug=${opts.slug} order-id=${opts.orderId} worker-pid=${worker.pid}`,
-  );
-  console.log(
-    'To get the verdict, repeat the identical command with the same --order-id; it will attach to this run and will not start a second run.',
-  );
-  return EXIT.OK;
+    // detached + unref + no stdio: the worker leaves the caller's process group, so a Ctrl+C
+    // or a timeout kill aimed at the dispatcher's shell does not reach it, and it holds no
+    // pipe that could fill up and stall once nobody is reading.
+    const worker = spawn(process.execPath, [RUNNER_ENTRY, '--worker', runDir], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+      cwd: repoRoot,
+    });
+    const started = await new Promise((resolve) => {
+      worker.once('spawn', () => resolve(true));
+      worker.once('error', (err) => {
+        const { reply } = writeFailure(runDir, opts.agent, `run worker process failed to start: ${err.message}`, [
+          'Codex was not started; quota was not spent',
+        ], true);
+        console.log(reply);
+        resolve(false);
+      });
+    });
+    if (!started) return EXIT.FAIL;
+    worker.unref();
+    writeStatus(runDir, { pid: worker.pid, runner_pid: worker.pid, process_started_at: null });
+
+    console.log(
+      `STARTED agent=${opts.agent} slug=${opts.slug} order-id=${opts.orderId} worker-pid=${worker.pid}`,
+    );
+    console.log(
+      'To get the verdict, repeat the identical command with the same --order-id; it will attach to this run and will not start a second run.',
+    );
+    return EXIT.OK;
+  } finally {
+    // Plan_60 D4c: release on refusals too; a registered worker must be able to claim admission.
+    await claim.release();
+  }
 }

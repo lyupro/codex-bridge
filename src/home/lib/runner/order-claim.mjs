@@ -4,10 +4,12 @@
  * and both ran and billed; a kernel-held claim queues preparation and dies with its holder.
  */
 import { randomUUID } from 'node:crypto';
+import path from 'node:path';
 import {
   acquireKernelLock, directoryDigest, kernelLockAddress, kernelLockStrategy,
 } from '../kernel-lock.mjs';
 import { parseJsonText } from '../json-file.mjs';
+import { chainRuns, readJson } from '../write-meta.mjs';
 
 // Plan_60 D4/D4c: preparation takes seconds; expiry must refuse rather than permit double billing.
 export const ORDER_CLAIM_TIMING = Object.freeze({ waitMs: 60_000, retryMs: 100, answerTimeoutMs: 1_000 });
@@ -62,4 +64,18 @@ export function orderClaimBusyText(orderId, holder) {
     : `${holder.role} pid ${holder.pid} since ${holder.acquiredAt}`;
   return `order id "${orderId}" is being launched by ${owner}; repeat the same command later — `
     + 'it attaches to that run instead of starting another. The run folder was not created; quota was not spent.';
+}
+
+/**
+ * Plan_60 D4, 2026-09-24: macOS has no kernel claim, so re-read just before registration.
+ * This shrinks the double-billing window to milliseconds and never waits on another launch.
+ */
+export function unclaimedRaceRefusal({ projectRunsRoot, repoRoot, slug, taskHash, orderId, grantRun, chainBefore }) {
+  const chain = chainRuns(projectRunsRoot, repoRoot, slug, taskHash, orderId, grantRun);
+  const before = new Set(chainBefore);
+  const appeared = chain.find((run) => !before.has(run)
+    && readJson(path.join(projectRunsRoot, run, 'status.json'))?.order_id === orderId);
+  if (!appeared) return null;
+  return `another launch of order id "${orderId}" registered ${appeared} while this one was preparing; `
+    + 'repeat the same command — it attaches to that run. The run folder was not created; quota was not spent.';
 }
