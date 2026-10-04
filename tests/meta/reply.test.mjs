@@ -5,7 +5,42 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { collect } from '../../src/home/lib/write-meta.mjs';
+import { AGENTS } from '../../src/home/lib/meta/reply.mjs';
 import { buildResult, COMPLETED_COMMAND, makeRun } from './test-fixtures.mjs';
+
+for (const [agent, field] of [['codex-build', 'summary'], ['codex-scout', 'answer']]) {
+  test(`${agent} strips one leading model verdict and preserves all other reply rows`, () => {
+    const dir = makeRun({
+      args: ['exec', '--json'],
+      events: [{ type: 'thread.started', thread_id: 'reply-model-verdict' }],
+      result: buildResult([]),
+    });
+    const ctx = { runDir: dir, file: (name) => path.join(dir, name), result: { [field]: 'probe waited' } };
+    const baseline = AGENTS[agent].reply(ctx);
+    const cases = [
+      ['OK — probe waited', 'probe waited'],
+      ['FAIL: x', 'x'],
+      ['fixed OK — y', 'fixed OK — y'],
+      ['OK — OK — probe waited', 'OK — probe waited'],
+      ['ok — probe waited', 'ok — probe waited'],
+      ['OK', 'OK'],
+      ['OK:probe waited', 'OK:probe waited'],
+      ['OK -probe waited', 'OK -probe waited'],
+      ['OKAY — probe waited', 'OKAY — probe waited'],
+      ['prefix\nOK — probe waited', 'prefix OK — probe waited'],
+    ];
+    for (const verdict of ['OK', 'FAIL', 'LIMIT', 'UNAVAILABLE']) {
+      for (const separator of [' — ', ' - ', ': ']) {
+        cases.push([`${verdict}${separator}probe waited`, 'probe waited']);
+      }
+    }
+    for (const [text, expected] of cases) {
+      const rows = AGENTS[agent].reply({ ...ctx, result: { [field]: text } });
+      assert.equal(rows[0], `OK — ${expected}`, text);
+      assert.deepEqual(rows.slice(1), baseline.slice(1), text);
+    }
+  });
+}
 
 test('successful replies use the read command instead of a raw file path', () => {
   const dir = makeRun({

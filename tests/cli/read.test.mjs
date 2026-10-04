@@ -113,7 +113,44 @@ test('read refuses a run from before the event stream was added', (t) => {
 
   assert.equal(result.exitCode, 1);
   assert.equal(result.output.split(/\r?\n/).length, 1);
-  assert.match(result.output, /no events\.jsonl.*predates the event stream/i);
+  assert.equal(result.output, `Run ${dir} has no events.jsonl; it predates the event stream.`);
+});
+
+test('read names a refusal before Codex started when the event stream is missing', (t) => {
+  const data = fixture(t);
+  const dir = runDir(data, '2026-09-06_090000_refused');
+  fs.writeFileSync(path.join(dir, 'status.json'), JSON.stringify({ state: 'aborted_pre_start' }));
+
+  const result = read({ run: path.basename(dir), cwd: data.project, runsRootPath: data.runsRoot });
+
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.output,
+    `Run ${dir} was refused before Codex started (state aborted_pre_start), so it has no events.jsonl.`);
+});
+
+test('read asks the operator to retry a running run without an event stream', (t) => {
+  const data = fixture(t);
+  const dir = runDir(data);
+  fs.writeFileSync(path.join(dir, 'status.json'), JSON.stringify({ state: 'running' }));
+
+  const result = read({ run: path.basename(dir), cwd: data.project, runsRootPath: data.runsRoot });
+
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.output,
+    `Run ${dir} has no events.jsonl yet: Codex has not started; repeat the command shortly.`);
+});
+
+test('read keeps the legacy missing-stream explanation for other states and unreadable status', (t) => {
+  for (const status of ['{"state":"completed"}', '{', 'null']) {
+    const data = fixture(t);
+    const dir = runDir(data);
+    fs.writeFileSync(path.join(dir, 'status.json'), status);
+
+    const result = read({ run: path.basename(dir), cwd: data.project, runsRootPath: data.runsRoot });
+
+    assert.equal(result.exitCode, 1);
+    assert.equal(result.output, `Run ${dir} has no events.jsonl; it predates the event stream.`);
+  }
 });
 
 /**

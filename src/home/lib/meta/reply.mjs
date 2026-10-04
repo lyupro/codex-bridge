@@ -25,6 +25,11 @@ const runChanges = (runDir) =>
 
 const readCommand = (runDir) => `codex-bridge read ${runDir}`;
 
+function stripVerdict(value) {
+  // Run 2026-10-01_114244_plan72-r3q-live-probe-20261001 repeated OK because the model prefixed its summary.
+  return String(value ?? '').replace(/^(?:OK|FAIL|LIMIT|UNAVAILABLE)(?: — | - |: )/, '');
+}
+
 export const AGENTS = {
   'codex-scout': {
     ...AGENT_DEFINITIONS['codex-scout'],
@@ -55,7 +60,7 @@ function scoutReply(ctx) {
   const unknowns = (r.unknowns || []).filter(Boolean);
   const coverage = scoutCoverage(ctx.runDir, r);
   return [
-    `OK — ${line(r.answer, 160)}`,
+    `OK — ${line(stripVerdict(r.answer), 160)}`,
     // Any explicit question gets a coverage line, including a valid one-question order.
     ...(coverage ? [`Coverage: ${coverage}`] : []),
     `Key finding: ${top ? `${line(top.fact, 130)} (${line(top.where, 60)})` : 'no findings listed'}`,
@@ -92,7 +97,7 @@ function buildReply(ctx) {
     ? `${paths ? `${paths} · ` : ''}changes were made by an earlier run of this task`
     : paths || 'worktree untouched';
   return [
-    `OK — ${line(r.summary, 300)}`,
+    `OK — ${line(stripVerdict(r.summary), 300)}`,
     `Files: ${touchedPaths.length} changed · ${files}`,
     // Only when something outside the run wrote to the tree. Subtracting those paths from the
     // verdict without naming them would hide a real edit behind a pattern.

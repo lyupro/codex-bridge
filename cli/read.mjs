@@ -1,4 +1,6 @@
 /** Renders a run's structured Codex transport as a readable event-by-event report. */
+import path from 'node:path';
+import { readJsonFileSync } from '../src/home/lib/json-file.mjs';
 import { readEvents } from '../src/home/lib/meta/events.mjs';
 import { safeSlice } from '../src/home/lib/meta/paths.mjs';
 import { runsRoot } from '../src/home/lib/runner/runs-root.mjs';
@@ -92,6 +94,24 @@ export function read({ run, cwd = process.cwd(), runsRootPath = runsRoot() } = {
   // run from before the event stream existed has no file, while a run killed before the CLI
   // spoke has an empty one. Reporting both as "predates this change" would hide the second.
   if (!eventData.hasStream) {
+    let state;
+    try {
+      state = readJsonFileSync(path.join(lookup.runDir, 'status.json'))?.state;
+    } catch {
+      // The 2026-09-06 refusal needs its state; unreadable status keeps the legacy explanation.
+    }
+    if (state === 'aborted_pre_start') {
+      return result(
+        1,
+        `Run ${lookup.runDir} was refused before Codex started (state aborted_pre_start), so it has no events.jsonl.`,
+      );
+    }
+    if (state === 'running') {
+      return result(
+        1,
+        `Run ${lookup.runDir} has no events.jsonl yet: Codex has not started; repeat the command shortly.`,
+      );
+    }
     return result(1, `Run ${lookup.runDir} has no events.jsonl; it predates the event stream.`);
   }
   if (!eventData.hasEvents) {
