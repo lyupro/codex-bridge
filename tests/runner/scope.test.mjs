@@ -120,6 +120,7 @@ test('scope preflight checks file and directory intent in both scope lists', (t)
       } else {
         assert.ok(refusal, context);
         assert.equal(refusal.pattern, pattern, context);
+        assert.equal(refusal.flag, scopeNew ? '--scope-new' : '--scope', context);
         assert.match(refusal.reason, expected, context);
         if (action) assert.equal(refusal.action, action, context);
         else assert.match(refusal.action, /path|replace|remove|forward/i, context);
@@ -142,8 +143,10 @@ test('structural refusals in either list precede the declared existence check', 
     const refusal = validateScope(repo, ['missing.mjs', ...(scopeNew ? [] : ['src'])], scopeNew ? ['src'] : []);
     assert.equal(refusal.pattern, 'src');
     assert.equal(refusal.reason, 'names a directory rather than a file');
+    assert.equal(refusal.flag, scopeNew ? '--scope-new' : '--scope');
   }
   assert.equal(validateScope(repo, ['src'], ['/absolute/file.mjs']).pattern, 'src');
+  assert.equal(validateScope(repo, ['src'], ['src']).flag, '--scope');
 });
 
 test('scope patterns inside service directories are refused before glob matching', (t) => {
@@ -157,10 +160,10 @@ test('scope patterns inside service directories are refused before glob matching
     '.claude/context/architecture.md', '.git/config', 'node_modules/x/index.js',
     '.omx/state/a.json', '.claude/**', '.CLAUDE/x.md',
   ]) {
-    assert.deepEqual(validateScope(repo, [pattern], []), { pattern, reason, action });
+    assert.deepEqual(validateScope(repo, [pattern], []), { pattern, flag: '--scope', reason, action });
   }
   assert.deepEqual(validateScope(repo, [], ['.claude/context/architecture.md']), {
-    pattern: '.claude/context/architecture.md', reason, action,
+    pattern: '.claude/context/architecture.md', flag: '--scope-new', reason, action,
   });
   assert.equal(validateScope(repo, ['**/*.md'], []), null);
   assert.equal(validateScope(repo, ['docs/.claude-notes.md'], []), null);
@@ -195,6 +198,11 @@ test('scope preflight refuses an empty or unmatched pattern', (t) => {
     assert.equal(refusal.pattern, pattern);
     assert.match(refusal.reason, /does not match any existing path/i);
   }
+  // OW-042: parsing must name the string that failed, rather than a property of that string.
+  t.mock.method(globalThis, 'RegExp', function () { throw new SyntaxError('invalid scope glob'); });
+  const refusal = validateScope(repo, ['unparsable*.mjs'], []);
+  assert.equal(refusal.pattern, 'unparsable*.mjs');
+  assert.equal(refusal.reason, 'could not parse the pattern: invalid scope glob');
 });
 
 test('scope-new exempts only its path while an ordinary typo still fails', (t) => {
@@ -365,7 +373,16 @@ test('a scout scope is checked too: an impossible pattern never reaches Codex', 
 test('the file list comes from git, so an ignored path cannot satisfy a pattern', (t) => {
   const { repo } = repository(t, 'git-list');
   const git = (...args) => spawnSync('git', ['-C', repo, ...args], { encoding: 'utf8' });
+  // OW-042: a miss outside git must explain the walk, while a git-listed miss keeps its wording.
+  fs.writeFileSync(path.join(repo, 'a.txt'), 'A.\n');
+  assert.deepEqual(validateScope(repo, ['b.txt'], []), {
+    pattern: 'b.txt', flag: '--scope', reason: `does not match any existing path under ${repo}; ` +
+      'git could not list that folder as a repository, so it was walked instead',
+    action: 'start the run from the repository root (cd into it, or pass --repo <repository root>); ' +
+      'if this folder is the intended one, correct the pattern',
+  });
   assert.equal(git('init').status, 0);
+  assert.equal(validateScope(repo, ['b.txt'], []).reason, 'does not match any existing path in the repository');
   fs.writeFileSync(path.join(repo, '.gitignore'), 'build/\n');
   fs.mkdirSync(path.join(repo, 'build'));
   fs.writeFileSync(path.join(repo, 'build', 'generated.mjs'), 'export default 2;\n');

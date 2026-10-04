@@ -108,7 +108,8 @@ export async function launcher(argv = process.argv.slice(2)) {
   const scopeRefusal = validateScope(repoRoot, opts.scopePatterns, opts.scopeNewPatterns);
   if (scopeRefusal) {
     die(
-      `--scope pattern ${JSON.stringify(scopeRefusal.pattern)} refused: ${scopeRefusal.reason}. ` +
+      `${scopeRefusal.flag} pattern ${JSON.stringify(scopeRefusal.pattern)} refused: ` +
+        `${scopeRefusal.reason}. ` +
         `Action: ${scopeRefusal.action}. The run folder was not created; quota was not spent.`,
     );
   }
