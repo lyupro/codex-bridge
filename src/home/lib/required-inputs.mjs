@@ -16,6 +16,7 @@ const freezeEntries = (entries) => Object.freeze(entries.map((entry) => Object.f
 
 export const CONTINUATION_INPUT = Object.freeze({
   label: 'continue',
+  flag: '--continue',
   source: 'the orchestrator',
   explanation:
     'The run folder this pass is ordered to continue, followed by why the orchestrator is spending another pass. A continuation is assigned by the orchestrator; after a verdict, the dispatcher returns it and stops.',
@@ -25,6 +26,7 @@ export const CONTINUATION_INPUT = Object.freeze({
 
 export const RETRY_INPUT = Object.freeze({
   label: 'retry',
+  flag: '--continue',
   source: 'the orchestrator',
   explanation:
     'The failed run this pass repeats, followed by why the orchestrator pays for the same pass again. A retry repeats that failed pass under its own order; it does not authorize the next pass.',
@@ -47,6 +49,7 @@ export const RETRY_INPUT = Object.freeze({
  */
 export const TASK_FILE_INPUT = Object.freeze({
   label: 'task file',
+  flag: '--task-file',
   source: 'the orchestrator',
   explanation: 'Absolute path to a file holding the task statement verbatim, written by the orchestrator with its file tool. The dispatcher passes it as --task-file and never creates, reads or rewrites it: writing it from the shell reintroduces the permission prompt this flag exists to remove. Given no path, start the runner without the flag and return its refusal.',
   example: 'C:/Users/me/AppData/Local/Temp/claude/<session>/scratchpad/task-plan-13.md',
@@ -56,6 +59,7 @@ export const REQUIRED_INPUTS = Object.freeze({
   'codex-scout': freezeEntries([
     {
       label: 'order id',
+      flag: '--order-id',
       source: 'the orchestrator',
       explanation: 'The label this order is known by. Repeating a call with the same label joins the run already in flight and costs no quota; a different piece of work needs a new label, never a reused one.',
       example: 'plan-13-scout-20260804',
@@ -67,12 +71,14 @@ export const REQUIRED_INPUTS = Object.freeze({
   'codex-build': freezeEntries([
     {
       label: 'order id',
+      flag: '--order-id',
       source: 'the orchestrator',
       explanation: 'The label this order is known by. Repeating a call with the same label joins the run already in flight and costs no quota; a different piece of work needs a new label, never a reused one.',
       example: 'plan-13-build-20260804',
     },
     {
       label: 'scope',
+      flag: '--scope',
       source: 'the orchestrator',
       explanation: 'Comma-separated globs relative to the repository root, listing every file the run may touch — including each caller of what changes, not only the file being edited. Anything outside the list fails the run.',
       example: 'src/home/lib/runner/**,tests/runner/**',
@@ -84,6 +90,7 @@ export const REQUIRED_INPUTS = Object.freeze({
   'codex-review': freezeEntries([
     {
       label: 'order id',
+      flag: '--order-id',
       source: 'the orchestrator',
       explanation: 'The label this order is known by. Repeating a call with the same label joins the run already in flight and costs no quota; a different piece of work needs a new label, never a reused one.',
       example: 'plan-13-review-20260804',
@@ -96,6 +103,7 @@ export const REQUIRED_INPUTS = Object.freeze({
   'codex-advisor': freezeEntries([
     {
       label: 'order id',
+      flag: '--order-id',
       source: 'the orchestrator',
       explanation: 'The label this design order is known by. Keep the same order id for scope and advise so phase 2 can settle the risks predicted in phase 1.',
       example: 'plan-59-advisor-20260922',
@@ -105,12 +113,68 @@ export const REQUIRED_INPUTS = Object.freeze({
     RETRY_INPUT,
     {
       label: 'phase',
+      flag: '--phase',
       source: 'the orchestrator',
       explanation: 'Pass scope first to predict risks and check the reading boundary, then advise with --continue and a continuation grant naming the scope run of the same order.',
       example: 'scope',
     },
   ]),
 });
+
+const allDispatcherAgents = Object.freeze(Object.keys(REQUIRED_INPUTS));
+
+export const OPTIONAL_INPUTS = freezeEntries([
+  {
+    label: 'repository',
+    agents: allDispatcherAgents,
+    flag: '--repo',
+    source: 'the orchestrator',
+    explanation: 'The repository the runner works in. Pass its path as a labelled value so the dispatcher needs no cd.',
+    example: 'C:/work/codex-bridge',
+  },
+  {
+    label: 'scope new',
+    agents: Object.freeze(['codex-build']),
+    flag: '--scope-new',
+    source: 'the orchestrator',
+    explanation: 'Comma-separated globs for new files this build may create, relative to the repository root.',
+    example: 'src/home/lib/dispatcher-call.mjs,tests/dispatcher-call.test.mjs',
+  },
+  {
+    label: 'slug',
+    agents: allDispatcherAgents,
+    flag: '--slug',
+    source: 'the orchestrator',
+    explanation: 'The readable name used for the run folder. It names this pass without replacing the order id.',
+    example: 'plan-76-parser',
+  },
+  {
+    label: 'effort',
+    agents: allDispatcherAgents,
+    flag: '--effort',
+    source: 'the orchestrator',
+    explanation: 'The reasoning effort assigned to this pass. The runner checks which effort values it accepts.',
+    example: 'high',
+  },
+  {
+    label: 'changeset',
+    agents: Object.freeze(['codex-review']),
+    flag: '--changeset',
+    source: 'the orchestrator',
+    explanation: 'The changes to review: uncommitted, base:<branch>, or commit:<sha>. Name only the ordered changeset.',
+    example: 'base:main',
+  },
+]);
+
+/** Returns the single label registry for required, conditional and optional dispatcher inputs. */
+export function callInputsFor(agentType) {
+  if (!Object.hasOwn(REQUIRED_INPUTS, agentType)) return [];
+  return [
+    ...requiredInputsFor(agentType),
+    ...OPTIONAL_INPUTS.filter((entry) => entry.agents.includes(agentType))
+      .map((entry) => Object.freeze({ ...entry, optional: true })),
+  ];
+}
 
 const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
