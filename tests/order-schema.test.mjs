@@ -90,6 +90,14 @@ test('placeholder checks apply to order values; a placeholder grant is refused o
   })));
 });
 
+test('effort none is a real value in the header, unlike none in other labels', () => {
+  // Plan_63 D5: the flag channel accepted --effort none; the header channel must not refuse it.
+  const result = orderFromHeader('codex-scout', parseTaskHeader('order id: plan-63\neffort: none\nslug: none'));
+  assert.deepEqual(result.order, new Map([['order id', 'plan-63'], ['effort', 'none'], ['slug', 'none']]));
+  assert.deepEqual(result.problems, [{ lineNo: 3, line: 'slug: none',
+    reason: 'label "slug" is still a placeholder' }]);
+});
+
 test('schema validation never repeats header duplicate or grant problems', () => {
   const parsed = parseTaskHeader('order id: plan-63\norder id: another\ncontinue: x');
   assert.equal(parsed.problems.length, 2);

@@ -195,9 +195,11 @@ export function isPlaceholder(value) {
   return PLACEHOLDER_VALUES.has(cleaned.replace(/[.,;:]+$/, '').trim().toLowerCase());
 }
 
-// Plan_59: scope is a real phase value, while it remains a placeholder for existing inputs.
+// Plan_59: scope is a real phase value, while it remains a placeholder for existing inputs. Plan_63 D5: none is a
+// real reasoning effort the flag channel always accepted, so the header channel must not refuse it as a template.
+const REAL_VALUES = Object.freeze({ phase: 'scope', effort: 'none' });
 export const isInputPlaceholder = (value, label) =>
-  !(label === 'phase' && cleanValue(value) === 'scope') && isPlaceholder(value);
+  !(Object.hasOwn(REAL_VALUES, label) && cleanValue(value) === REAL_VALUES[label]) && isPlaceholder(value);
 
 // Plan_75 D5: dispatcher prompts still need one spelling of a labelled line for reading values.
 const labelledLine = (label) => {
