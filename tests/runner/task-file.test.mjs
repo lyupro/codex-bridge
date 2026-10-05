@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { parseTaskDocument } from '../../src/home/lib/runner/task-file.mjs';
+import { orderInvocation } from './order-invocation.mjs';
 
 const RUNNER = fileURLToPath(new URL('../../src/home/lib/run-codex.mjs', import.meta.url));
 
@@ -20,6 +21,7 @@ function fixture(t, text) {
 
 function run(t, text, extra = []) {
   const { root, taskFile } = fixture(t, text);
+  // raw argv: these cases deliberately combine task-file sections with --question or --verify.
   return spawnSync(process.execPath, [
     RUNNER,
     '--agent', 'codex-scout',
@@ -81,26 +83,44 @@ test('an empty section is refused', () => {
 });
 
 test('--question together with a Questions section is refused', (t) => {
+  // raw argv: --question and file questions must both reach the channel-conflict check.
   const result = run(t, '## Task\nDo it\n## Questions\n- From file?', ['--question', 'From flag?']);
   assert.equal(result.status, 2);
   assert.match(result.stderr, /questions were supplied through both --question and the task file/);
 });
 
 test('--verify together with a Verify section is refused', (t) => {
+  // raw argv: --verify and the file Verify section deliberately conflict.
   const result = run(t, '## Task\nDo it\n## Questions\n- Why?\n## Verify\nnpm test', ['--verify', 'npm run lint']);
   assert.equal(result.status, 2);
   assert.match(result.stderr, /verification command was supplied through both --verify and the task file/);
 });
 
 test('a scout run with questions only in the file is accepted', (t) => {
-  const result = run(t, '## Task\nDo it\n## Questions\n- Why?');
+  const { root } = fixture(t, '');
+  const { argv } = orderInvocation({
+    agent: 'codex-scout',
+    order: { repository: root, 'order id': 'task-document', scope: 'C:/absolute-is-refused' },
+    task: 'Do it', questions: ['Why?'], dir: root,
+  });
+  const result = spawnSync(process.execPath, [RUNNER, ...argv], {
+    cwd: root, encoding: 'utf8', env: { ...process.env, CODEX_RUNS_ROOT: path.join(root, 'runs') },
+  });
   assert.equal(result.status, 2);
   assert.match(result.stderr, /--scope pattern/);
   assert.doesNotMatch(result.stderr, /a sub-question is required for codex-scout/);
 });
 
 test('a scout run with questions in neither source is refused', (t) => {
-  const result = run(t, 'Do it');
+  const { root } = fixture(t, '');
+  const { argv } = orderInvocation({
+    agent: 'codex-scout',
+    order: { repository: root, 'order id': 'task-document', scope: 'C:/absolute-is-refused' },
+    task: 'Do it', dir: root,
+  });
+  const result = spawnSync(process.execPath, [RUNNER, ...argv], {
+    cwd: root, encoding: 'utf8', env: { ...process.env, CODEX_RUNS_ROOT: path.join(root, 'runs') },
+  });
   assert.equal(result.status, 2);
   assert.match(result.stderr, /a sub-question is required for codex-scout/);
   assert.doesNotMatch(result.stderr, /--scope pattern/);

@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { main } from '../../bin/codex-bridge.mjs';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { makeHomeImage } from '../home-image.mjs';
+import { orderInvocation } from '../runner/order-invocation.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..', '..');
@@ -39,10 +40,12 @@ test('run forwards runner arguments and returns the runner exit code unchanged',
   const root = makeTempTree('bridge-bin-run-');
   t.after(() => removeTempTree(root));
   const home = await makeHomeImage(t);
-  const taskFile = path.join(root, 'task.md');
-  await fs.writeFile(taskFile, 'check current state\n');
+  const { argv } = orderInvocation({
+    agent: 'codex-review', order: { repository: root, 'order id': 'bin-run' },
+    task: 'check current state', dir: root,
+  });
   const result = run(
-    ['run', '--agent', 'codex-review', '--repo', root, '--order-id', 'bin-run', '--task-file', taskFile, '--no-wait'],
+    ['run', ...argv, '--no-wait'],
     { CODEX_RUNS_ROOT: path.join(root, 'runs'), CODEX_BRIDGE_HOME: home },
   );
   assert.equal(result.status, 4, result.stderr);
@@ -54,17 +57,17 @@ test('run forwards --phase and an undeclared phase leaves no run directory', asy
   const home = await makeHomeImage(t);
   const root = makeTempTree('bridge-bin-phase-');
   const runs = path.join(root, 'runs');
-  const task = path.join(root, 'task.md');
-  await fs.writeFile(task, 'check current state\n');
-  const args = ['run', '--agent', 'codex-review', '--repo', root, '--order-id', 'bin-phase',
-    '--task-file', task, '--no-wait', '--phase'];
+  const args = (phase) => ['run', ...orderInvocation({
+    agent: 'codex-review', order: { repository: root, 'order id': 'bin-phase', phase },
+    task: 'check current state', dir: root,
+  }).argv, '--no-wait'];
   const env = { CODEX_RUNS_ROOT: runs, CODEX_BRIDGE_HOME: home };
-  const invalid = run([...args, 'undeclared'], env);
+  const invalid = run(args('undeclared'), env);
   assert.equal(invalid.status, 2, invalid.stderr);
   assert.match(invalid.stderr, /undeclared --phase "undeclared".*allowed phases: default/);
   assert.match(invalid.stderr, /The run folder was not created; quota was not spent/);
   assert.equal((await fs.readdir(root)).includes('runs'), false);
-  const valid = run([...args, 'default'], env);
+  const valid = run(args('default'), env);
   assert.equal(valid.status, 4, valid.stderr);
   assert.match(valid.stdout, /--no-wait never starts a new run/);
 });

@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { parseArgs } from '../../src/home/lib/runner/args.mjs';
+import { orderInvocation } from './order-invocation.mjs';
 import {
   firstShellUnsafeSequence,
   SHELL_UNSAFE_SEQUENCES,
@@ -24,15 +25,8 @@ function fixture(t, task) {
   return { root, repo, taskFile };
 }
 
-function run({ root, repo, taskFile }, orderId) {
-  return spawnSync(process.execPath, [
-    RUNNER,
-    '--agent', 'codex-scout',
-    '--repo', repo,
-    '--order-id', orderId,
-    '--scope', 'C:/absolute-is-refused',
-    '--task-file', taskFile,
-  ], {
+function run({ root, repo }, argv) {
+  return spawnSync(process.execPath, [RUNNER, ...argv], {
     cwd: repo,
     encoding: 'utf8',
     env: { ...process.env, CODEX_RUNS_ROOT: path.join(root, 'runs') },
@@ -40,9 +34,11 @@ function run({ root, repo, taskFile }, orderId) {
 }
 
 test('the shared predicate and --changeset reject unsafe sequences and accept clean values', () => {
+  // raw argv: this parser test covers unsafe values, defaults, and exact flag spellings.
   const reviewArgs = ['--agent', 'codex-review', '--order-id', 'plan-56-changeset'];
   for (const sequence of SHELL_UNSAFE_SEQUENCES) {
     assert.equal(firstShellUnsafeSequence(`left${sequence}right`), sequence);
+    // raw argv: the unsafe changeset value must reach the command-line parser unchanged.
     assert.throws(() => parseArgs([...reviewArgs, '--changeset', `base:left${sequence}right`]), {
       exitCode: 2,
       message: /--changeset contains forbidden shell sequence/,
@@ -54,14 +50,17 @@ test('the shared predicate and --changeset reject unsafe sequences and accept cl
 
   // Plan_56 D10 changes only the reviewer flag: preserve each selection and its default without an alias.
   for (const changeset of [undefined, 'uncommitted', 'base:main', 'commit:abc1234']) {
+    // raw argv: changeset flag selections and the omitted-value default are the subject.
     const opts = parseArgs([...reviewArgs, ...(changeset === undefined ? [] : ['--changeset', changeset])]);
     assert.equal(opts.changeset, changeset ?? 'uncommitted');
     assert.equal(Object.hasOwn(opts, 'mode'), false);
   }
+  // raw argv: --changeset deliberately has no following value.
   assert.throws(() => parseArgs([...reviewArgs, '--changeset']), {
     exitCode: 2,
     message: /missing value for --changeset/,
   });
+  // raw argv: the obsolete --mode spelling must be refused without an alias.
   assert.throws(() => parseArgs([...reviewArgs, '--mode', 'base:main']), {
     exitCode: 2,
     message: /unknown flag: --mode; use --changeset instead/,
@@ -70,7 +69,11 @@ test('the shared predicate and --changeset reject unsafe sequences and accept cl
 
 test('an unsafe order id is refused before its run folder exists', (t) => {
   const context = fixture(t, 'Ordinary task text.');
-  const result = run(context, 'plan-42;unsafe');
+  // raw argv: the unsafe order-id flag is the refusal boundary under test.
+  const result = run(context, [
+    '--agent', 'codex-scout', '--repo', context.repo, '--order-id', 'plan-42;unsafe',
+    '--scope', 'C:/absolute-is-refused', '--task-file', context.taskFile,
+  ]);
   assert.equal(result.status, 2, result.stderr);
   assert.match(result.stderr, /--order-id contains forbidden shell sequence ";"/);
   assert.match(result.stderr, /put free text in the task file/);
@@ -82,7 +85,13 @@ test('the same unsafe prose is accepted inside the task file', (t) => {
     t,
     '## Task\nExplain `code`, $(syntax), ${values}, a && b || c | d; all as prose.\n## Questions\n- Why?',
   );
-  const result = run(context, 'plan-42-safe-task-file');
+  const { argv } = orderInvocation({
+    agent: 'codex-scout',
+    order: { repository: context.repo, 'order id': 'plan-42-safe-task-file', scope: 'C:/absolute-is-refused' },
+    task: 'Explain `code`, $(syntax), ${values}, a && b || c | d; all as prose.',
+    questions: ['Why?'], dir: context.root,
+  });
+  const result = run(context, argv);
   assert.equal(result.status, 2, result.stderr);
   assert.doesNotMatch(result.stderr, /forbidden shell sequence/);
   assert.match(result.stderr, /--scope pattern/);

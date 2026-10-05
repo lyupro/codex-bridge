@@ -9,6 +9,7 @@ import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { parseContinuationGrant } from '../../src/home/lib/required-inputs.mjs';
 import { resolveProjectRunsDir } from '../../src/home/lib/runner/project-dir.mjs';
 import { launcherProcessMocks } from './launcher-mocks.mjs';
+import { orderInvocation, orderTaskText } from './order-invocation.mjs';
 
 const RUN_CODEX = fileURLToPath(new URL('../../src/home/lib/run-codex.mjs', import.meta.url));
 const AGENT = 'codex-build';
@@ -78,6 +79,7 @@ function runFolders(project) {
 }
 
 function args(repo, withContinue = false) {
+  // raw argv: refusal cases deliberately mismatch the continuation flag and task header.
   return [
     '--agent', AGENT,
     '--repo', repo,
@@ -97,6 +99,7 @@ test('a grant without --continue refuses before attach and names the repair deta
   const project = resolveProjectRunsDir(runsRoot, repo).dir;
   createPriorRun(project, repo);
 
+  // raw argv: a grant without --continue must retain its mismatched flag/header inputs.
   const output = runner(args(repo), `continue: ${LAST_RUN} — ${GRANT_REASON}\nadvice: test-only\n\nThe order needs a second pass.\n`, runsRoot, repo);
 
   assert.equal(output.status, 2, output.stderr);
@@ -116,6 +119,7 @@ test('a grant after prose is refused for free as misplaced metadata and names it
   fs.mkdirSync(path.join(repo, 'src'), { recursive: true });
   fs.writeFileSync(path.join(repo, 'src', 'existing.mjs'), 'export default 1;\n');
 
+  // raw argv: the misplaced grant must remain after prose on stdin with its original line number.
   const output = runner(args(repo, true),
     `advice: test-only\n\nThe order needs a second pass.\ncontinue: ${LAST_RUN} — ${GRANT_REASON}\n`,
     runsRoot, repo);
@@ -137,6 +141,7 @@ test('a --continue flag without a grant keeps the existing refusal', (t) => {
   const project = resolveProjectRunsDir(runsRoot, repo).dir;
   createPriorRun(project, repo);
 
+  // raw argv: --continue without a grant is the command-line refusal under test.
   const output = runner(args(repo, true), 'advice: test-only\n\nThe order asks for the existing work only.\n', runsRoot, repo);
 
   assert.equal(output.status, 2, output.stderr);
@@ -153,8 +158,16 @@ test('repeating a --continue command attaches to its run without creating anothe
   fs.writeFileSync(path.join(repo, 'src', 'existing.mjs'), 'export default 1;\n');
   const project = resolveProjectRunsDir(runsRoot, repo).dir;
   createPriorRun(project, repo);
-  const command = args(repo, true);
-  const input = `continue: ${LAST_RUN} — ${GRANT_REASON}\nadvice: test-only\n\nThe order needs a second pass.\n`;
+  const invocation = {
+    agent: AGENT,
+    order: { repository: repo, slug: SLUG, 'order id': ORDER_ID, scope: 'src/existing.mjs' },
+    grant: { kind: 'continue', run: LAST_RUN, reason: GRANT_REASON },
+    advice: 'test-only', task: 'The order needs a second pass.',
+  };
+  const { argv: command } = orderInvocation({ ...invocation, dir: root });
+  // Plan_63 D5 centralizes the order while this continuation scenario keeps using stdin.
+  command.splice(command.indexOf('--task-file'), 2);
+  const input = orderTaskText(invocation);
 
   const first = mockedRunner(command, input, runsRoot, repo);
 
