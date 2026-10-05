@@ -5,7 +5,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { makeTempTree } from '../temp-tree.mjs';
-import { fixtureTask, launcherProcessMocks } from './launcher-mocks.mjs';
+import { launcherProcessMocks } from './launcher-mocks.mjs';
+import { orderInvocation } from './order-invocation.mjs';
 import { taskPreflight } from '../../src/home/lib/runner/preflight.mjs';
 
 const LAUNCHER = new URL('../../src/home/lib/runner/launcher.mjs', import.meta.url).href;
@@ -23,15 +24,27 @@ function fixture() {
   return { root, repo, home, runs };
 }
 
-function launch(tree, agent, taskText, { refuse = false, taskFile = false } = {}) {
-  const args = ['--agent', agent, '--repo', tree.repo, '--order-id', 'advice-fixture',
-    ...(agent === 'codex-advisor' ? ['--phase', 'scope'] : []),
-    ...(agent === 'codex-build' ? ['--scope', 'source.mjs'] : []),
-    ...(agent === 'codex-scout' ? ['--question', 'What does source.mjs export?'] : [])];
-  if (taskFile) {
-    const file = path.join(tree.root, 'task.md');
-    fs.writeFileSync(file, taskText);
-    args.push('--task-file', file);
+function launch(tree, agent, taskText, { advice, refuse = false, taskFile = false, raw = false } = {}) {
+  let args;
+  if (raw) {
+    // raw argv: header syntax, line numbers, empty bodies and channel checks require the exact task bytes.
+    args = ['--agent', agent, '--repo', tree.repo, '--order-id', 'advice-fixture',
+      ...(agent === 'codex-advisor' ? ['--phase', 'scope'] : []),
+      ...(agent === 'codex-build' ? ['--scope', 'source.mjs'] : []),
+      ...(agent === 'codex-scout' ? ['--question', 'What does source.mjs export?'] : [])];
+    if (taskFile) {
+      const file = path.join(tree.root, 'task.md');
+      fs.writeFileSync(file, taskText);
+      args.push('--task-file', file);
+    }
+  } else {
+    ({ argv: args } = orderInvocation({
+      agent, order: { repository: tree.repo, 'order id': 'advice-fixture',
+        ...(agent === 'codex-advisor' ? { phase: 'scope' } : {}),
+        ...(agent === 'codex-build' ? { scope: 'source.mjs' } : {}) },
+      advice, questions: agent === 'codex-scout' ? ['What does source.mjs export?'] : undefined,
+      task: taskText, dir: tree.root,
+    }));
   }
   const source = `
 import childProcess from 'node:child_process';
@@ -46,7 +59,7 @@ catch (error) {
 }
 `;
   return spawnSync(process.execPath, ['--input-type=module', '-e', source], {
-    cwd: tree.repo, input: taskFile ? '' : taskText, encoding: 'utf8', timeout: 10_000, windowsHide: true,
+    cwd: tree.repo, input: raw && !taskFile ? taskText : '', encoding: 'utf8', timeout: 10_000, windowsHide: true,
     env: { ...process.env, CODEX_BRIDGE_HOME: tree.home, CODEX_RUNS_ROOT: tree.runs },
   });
 }
@@ -70,13 +83,12 @@ function assertFree(tree, output, exitCode = 1) {
 
 for (const advice of ['mechanical', 'revert', 'docs-only', 'test-only']) {
   test(`build accepts ${advice} and persists advice in status`, () => {
-    const text = advice === 'mechanical' ? fixtureTask('codex-build', 'Edit source.') : `advice: ${advice}\n\nEdit source.`;
-    assert.equal(statusFrom(launch(fixture(), 'codex-build', text)).advice, advice);
+    assert.equal(statusFrom(launch(fixture(), 'codex-build', 'Edit source.', { advice })).advice, advice);
   });
 }
 
 test('advice header accepts value whitespace and CRLF, including task files', () => {
-  const output = launch(fixture(), 'codex-build', 'advice: \t docs-only \t\r\n\r\nEdit source.\r\n', { taskFile: true });
+  const output = launch(fixture(), 'codex-build', 'advice: \t docs-only \t\r\n\r\nEdit source.\r\n', { taskFile: true, raw: true });
   assert.equal(statusFrom(output).advice, 'docs-only');
 });
 
@@ -85,13 +97,13 @@ test('an absolute advisor run path with spaces passes and is persisted', () => {
   const advisorRun = path.join(tree.root, 'finished advisor');
   fs.mkdirSync(advisorRun);
   fs.writeFileSync(path.join(advisorRun, 'meta.json'), JSON.stringify(JUDGED_ADVICE));
-  assert.equal(statusFrom(launch(tree, 'codex-build', `advice: ${advisorRun}\n\nEdit source.`)).advice, advisorRun);
+  assert.equal(statusFrom(launch(tree, 'codex-build', 'Edit source.', { advice: advisorRun })).advice, advisorRun);
 });
 
 test('advisor metadata uses the shared BOM-tolerant JSON reader', () => {
   const tree = fixture();
   fs.writeFileSync(path.join(tree.home, 'meta.json'), `\uFEFF${JSON.stringify(JUDGED_ADVICE)}\n`);
-  assert.equal(statusFrom(launch(tree, 'codex-build', `advice: ${tree.home}\n\nEdit source.`)).advice, tree.home);
+  assert.equal(statusFrom(launch(tree, 'codex-build', 'Edit source.', { advice: tree.home })).advice, tree.home);
 });
 
 const invalid = {
@@ -130,7 +142,12 @@ const invalid = {
 for (const [name, task] of Object.entries(invalid)) {
   test(`build refuses ${name} without a probe or run folder`, () => {
     const tree = fixture();
-    const output = launch(tree, 'codex-build', `${task(tree)}\n\nEdit source.`, { refuse: true });
+    const text = task(tree);
+    const raw = ['duplicate', 'empty', 'inline label'].includes(name);
+    const output = launch(tree, 'codex-build', raw ? `${text}\n\nEdit source.` : 'Edit source.', {
+      advice: text.startsWith('advice: ') ? text.slice('advice: '.length) : undefined,
+      refuse: true, raw,
+    });
     const headerError = name === 'duplicate' || name === 'empty';
     assertFree(tree, output, headerError ? 2 : 1);
     if (headerError) {
@@ -177,7 +194,7 @@ for (const taskFile of [false, true]) {
   for (const [name, text, reason] of malformedHeaders) {
     test(`build refuses ${name} from ${channel} before any probe or run folder`, () => {
       const tree = fixture();
-      const output = launch(tree, 'codex-build', text, { refuse: true, taskFile });
+      const output = launch(tree, 'codex-build', text, { refuse: true, taskFile, raw: true });
       assertFree(tree, output, 2);
       assert.match(output.stderr, reason);
       if (taskFile) assert.ok(output.stderr.startsWith(`run-codex: ${path.join(tree.root, 'task.md')}: line `));
@@ -185,7 +202,7 @@ for (const taskFile of [false, true]) {
   }
   test(`a header-only ${channel} is refused as an empty task`, () => {
     const tree = fixture();
-    const output = launch(tree, 'codex-build', 'advice: mechanical\n\n', { refuse: true, taskFile });
+    const output = launch(tree, 'codex-build', 'advice: mechanical\n\n', { refuse: true, taskFile, raw: true });
     assert.equal(output.status, 2, output.stderr || output.error?.message);
     assert.match(output.stderr, taskFile ? /task file from --task-file is empty/ : /task text on stdin is empty/);
     assert.equal(output.stdout, '');

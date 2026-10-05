@@ -9,7 +9,8 @@ import { fileURLToPath } from 'node:url';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { resolveProjectRunsDir } from '../../src/home/lib/runner/project-dir.mjs';
 import { SANDBOX_PROBE_MARKER } from '../../src/home/lib/runner/sandbox-probe.mjs';
-import { fixtureTask, launcherProcessMocks } from './launcher-mocks.mjs';
+import { launcherProcessMocks } from './launcher-mocks.mjs';
+import { orderInvocation } from './order-invocation.mjs';
 
 const RUN_CODEX = fileURLToPath(new URL('../../src/home/lib/run-codex.mjs', import.meta.url));
 const LAUNCHER = new URL('../../src/home/lib/runner/launcher.mjs', import.meta.url).href;
@@ -71,16 +72,18 @@ function calls(root) {
 }
 
 function baseArgs(agent, repo) {
-  return [
-    '--agent', agent, '--repo', repo, '--slug', 'sandbox-gate', '--order-id', 'sandbox-gate-order',
-    ...(agent === 'codex-build' ? ['--scope', 'src/existing.mjs'] : []),
-    ...(agent === 'codex-scout' ? ['--question', 'What does the existing module export?'] : []),
-  ];
+  return orderInvocation({
+    agent, order: { repository: repo, slug: 'sandbox-gate', 'order id': 'sandbox-gate-order',
+      ...(agent === 'codex-build' ? { scope: 'src/existing.mjs' } : {}) },
+    advice: agent === 'codex-build' ? 'mechanical' : undefined,
+    questions: agent === 'codex-scout' ? ['What does the existing module export?'] : undefined,
+    task: 'sandbox gate fixture', dir: path.dirname(repo),
+  }).argv;
 }
 
 function runner(args, env, cwd) {
   return spawnSync(process.execPath, [RUN_CODEX, ...args], {
-    cwd, env, input: fixtureTask(args[args.indexOf('--agent') + 1], 'sandbox gate fixture'), encoding: 'utf8', timeout: 20_000, windowsHide: true,
+    cwd, env, input: '', encoding: 'utf8', timeout: 20_000, windowsHide: true,
   });
 }
 
@@ -105,7 +108,7 @@ try {
 }
 `;
   return spawnSync(process.execPath, ['--input-type=module', '-e', script], {
-    cwd, env, input: fixtureTask(args[args.indexOf('--agent') + 1], 'sandbox gate fixture'), encoding: 'utf8', timeout: 20_000, windowsHide: true,
+    cwd, env, input: '', encoding: 'utf8', timeout: 20_000, windowsHide: true,
   });
 }
 

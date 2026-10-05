@@ -5,7 +5,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { makeTempTree } from '../temp-tree.mjs';
-import { fixtureTask, launcherProcessMocks } from './launcher-mocks.mjs';
+import { launcherProcessMocks } from './launcher-mocks.mjs';
+import { orderInvocation } from './order-invocation.mjs';
 import { resolveRunPhase } from '../../src/home/lib/runner/preflight.mjs';
 
 const AGENTS = new URL('../../src/home/lib/agents.mjs', import.meta.url).href;
@@ -20,14 +21,24 @@ function launch({ budget = 15, phase, overrides, refuse = false, agent = 'codex-
   fs.mkdirSync(repo);
   fs.mkdirSync(home);
   fs.writeFileSync(path.join(repo, 'source.mjs'), 'export default 1;\n');
-  const task = path.join(root, 'task.md');
-  fs.writeFileSync(task, taskText ?? fixtureTask(agent, 'Inspect the fixture source.\n'));
   if (overrides) fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ budgets: overrides }));
-  const args = ['--agent', agent, '--repo', repo, '--order-id', 'phase-fixture', '--task-file', task,
-    ...(agent === 'codex-scout' ? ['--question', 'What does the source export?'] : []),
-    ...(agent === 'codex-build' ? ['--scope', 'source.mjs'] : []),
-    ...(isContinue ? ['--continue'] : []),
-    ...(phase === undefined ? [] : ['--phase', phase])];
+  let args;
+  if (isContinue) {
+    // raw argv: OW-040 exercises --continue without a header grant; the helper requires a grant pair.
+    const task = path.join(root, 'task.md');
+    fs.writeFileSync(task, taskText);
+    args = ['--agent', agent, '--repo', repo, '--order-id', 'phase-fixture', '--task-file', task,
+      '--continue', '--phase', phase];
+  } else {
+    ({ argv: args } = orderInvocation({
+      agent, order: { repository: repo, 'order id': 'phase-fixture',
+        ...(agent === 'codex-build' ? { scope: 'source.mjs' } : {}),
+        ...(phase === undefined ? {} : { phase }) },
+      advice: agent === 'codex-build' ? 'mechanical' : undefined,
+      questions: agent === 'codex-scout' ? ['What does the source export?'] : undefined,
+      task: taskText ?? 'Inspect the fixture source.\n', dir: root,
+    }));
+  }
   const source = `
 import childProcess from 'node:child_process';
 import { syncBuiltinESMExports } from 'node:module';

@@ -6,7 +6,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { validateScope } from '../../src/home/lib/runner/scope-check.mjs';
-import { fixtureTask, launcherProcessMocks } from './launcher-mocks.mjs';
+import { launcherProcessMocks } from './launcher-mocks.mjs';
+import { orderInvocation } from './order-invocation.mjs';
 
 const RUN_CODEX = new URL('../../src/home/lib/run-codex.mjs', import.meta.url).href;
 const LAUNCHER = new URL('../../src/home/lib/runner/launcher.mjs', import.meta.url).href;
@@ -26,7 +27,7 @@ function repository(t, suffix = 'repo') {
   return { root, repo };
 }
 
-function mockedLauncher(source, args, input, env, cwd) {
+function mockedLauncher(source, args, env, cwd, input = '') {
   const script = `
 import childProcess from 'node:child_process';
 import { syncBuiltinESMExports } from 'node:module';
@@ -45,22 +46,19 @@ try {
   return spawnSync(process.execPath, ['--input-type=module', '-e', script], {
     cwd,
     env: { ...process.env, ...env },
-    input: fixtureTask(args[args.indexOf('--agent') + 1], input),
+    input,
     encoding: 'utf8',
   });
 }
 
 const SUCCESS_SOURCE = launcherProcessMocks({ worker: 'spawn', probe: 'marker' });
 
-function buildArgs(repo, orderId, scope = 'src/existing.mjs', extra = []) {
-  return [
-    '--agent', 'codex-build',
-    '--repo', repo,
-    '--scope', scope,
-    '--slug', 'scope-test',
-    '--order-id', orderId,
-    ...extra,
-  ];
+function buildArgs(repo, orderId, task, scope = 'src/existing.mjs', { order = {}, extra = [] } = {}) {
+  return [...orderInvocation({
+    agent: 'codex-build',
+    order: { repository: repo, scope, slug: 'scope-test', 'order id': orderId, ...order },
+    advice: 'mechanical', task, dir: path.dirname(repo),
+  }).argv, ...extra];
 }
 
 function runPath(output) {
@@ -222,7 +220,7 @@ test('launcher refuses an invalid scope before creating the run folder', (t) => 
   const { root, repo } = repository(t, 'launcher-refusal');
   const runsRoot = path.join(root, 'runs');
   const pattern = '/absolute/src/existing.mjs';
-  const output = mockedLauncher('', buildArgs(repo, 'invalid-order', pattern), 'invalid scope', {
+  const output = mockedLauncher('', buildArgs(repo, 'invalid-order', 'invalid scope', pattern), {
     CODEX_RUNS_ROOT: runsRoot,
   }, repo);
 
@@ -239,8 +237,7 @@ test('--no-wait exits 4 without launching a missing order', (t) => {
   const runsRoot = path.join(root, 'runs');
   const output = mockedLauncher(
     SUCCESS_SOURCE,
-    buildArgs(repo, 'missing-order', 'src/existing.mjs', ['--no-wait']),
-    'inspect a run without starting one',
+    buildArgs(repo, 'missing-order', 'inspect a run without starting one', 'src/existing.mjs', { extra: ['--no-wait'] }),
     { CODEX_RUNS_ROOT: runsRoot },
     repo,
   );
@@ -258,12 +255,15 @@ test('--no-wait exits 4 without launching a missing order', (t) => {
 test('--no-wait cannot be combined with --continue', (t) => {
   const { root, repo } = repository(t, 'no-wait-continue');
   const runsRoot = path.join(root, 'runs');
+  // raw argv: this parser refusal depends on conflicting flags and a header-only stdin task.
+  const args = ['--agent', 'codex-build', '--repo', repo, '--scope', 'src/existing.mjs',
+    '--slug', 'scope-test', '--order-id', 'conflicting-order', '--no-wait', '--continue'];
   const output = mockedLauncher(
     SUCCESS_SOURCE,
-    buildArgs(repo, 'conflicting-order', 'src/existing.mjs', ['--no-wait', '--continue']),
-    'continue: previous-run — finish the task',
+    args,
     { CODEX_RUNS_ROOT: runsRoot },
     repo,
+    'advice: mechanical\n\ncontinue: previous-run — finish the task',
   );
 
   assert.equal(output.status, 2, output.stderr);
@@ -276,11 +276,9 @@ test('an honest scope starts and scope-new is persisted in worker.json', (t) => 
   const runsRoot = path.join(root, 'runs');
   const output = mockedLauncher(
     SUCCESS_SOURCE,
-    buildArgs(repo, 'new-order', 'src/existing.mjs', [
-      '--scope-new',
-      'src/new-file.mjs,src/another-new-file.mjs',
-    ]),
-    'start with one new file',
+    buildArgs(repo, 'new-order', 'start with one new file', 'src/existing.mjs', {
+      order: { 'scope new': 'src/new-file.mjs,src/another-new-file.mjs' },
+    }),
     { CODEX_RUNS_ROOT: runsRoot },
     repo,
   );
@@ -302,6 +300,7 @@ test('an honest scope starts and scope-new is persisted in worker.json', (t) => 
 });
 
 test('a missing --scope is still refused in args even with --scope-new', () => {
+  // raw argv: parseArgs must see the missing --scope before any task-input channel is settled.
   const script = `
 import { parseArgs } from ${JSON.stringify(ARGS_MODULE)};
 try { parseArgs(${JSON.stringify([
@@ -333,6 +332,7 @@ test('all dispatcher prompts state the scope rule, and only build offers --scope
 
 test('--scope-new is refused for the agents that never create a file', () => {
   for (const agent of ['codex-scout', 'codex-review', 'codex-advisor']) {
+    // raw argv: parseArgs must reject --scope-new before task-file Questions could change the refusal.
     const script = `
 import { parseArgs } from ${JSON.stringify(ARGS_MODULE)};
 try { parseArgs(${JSON.stringify([
@@ -356,14 +356,12 @@ try { parseArgs(${JSON.stringify([
 test('a scout scope is checked too: an impossible pattern never reaches Codex', (t) => {
   const { root, repo } = repository(t, 'scout-scope');
   const runsRoot = path.join(root, 'runs');
-  const output = mockedLauncher('', [
-    '--agent', 'codex-scout',
-    '--repo', repo,
-    '--scope', 'srcc/**',
-    '--slug', 'scout-scope',
-    '--order-id', 'scout-scope-order',
-    '--question', 'which module owns the scope check?',
-  ], 'scout with a typo in scope', { CODEX_RUNS_ROOT: runsRoot }, repo);
+  const { argv } = orderInvocation({
+    agent: 'codex-scout',
+    order: { repository: repo, scope: 'srcc/**', slug: 'scout-scope', 'order id': 'scout-scope-order' },
+    questions: ['which module owns the scope check?'], task: 'scout with a typo in scope', dir: root,
+  });
+  const output = mockedLauncher('', argv, { CODEX_RUNS_ROOT: runsRoot }, repo);
 
   assert.equal(output.status, 2, output.stderr);
   assert.match(output.stderr, /does not match any existing path/i);

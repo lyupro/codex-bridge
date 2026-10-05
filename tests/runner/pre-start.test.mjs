@@ -15,7 +15,8 @@ import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { resolveProjectRunsDir } from '../../src/home/lib/runner/project-dir.mjs';
-import { fixtureTask, launcherProcessMocks } from './launcher-mocks.mjs';
+import { launcherProcessMocks } from './launcher-mocks.mjs';
+import { orderInvocation } from './order-invocation.mjs';
 
 const RUN_CODEX = fileURLToPath(new URL('../../src/home/lib/run-codex.mjs', import.meta.url));
 const LAUNCHER = new URL('../../src/home/lib/runner/launcher.mjs', import.meta.url).href;
@@ -45,16 +46,16 @@ function installFakeCodex(root, source) {
   return bin;
 }
 
-function runner(args, input, env, cwd) {
+function runner(args, env, cwd) {
   return spawnSync(process.execPath, [RUN_CODEX, ...args], {
     cwd,
     env: { ...process.env, ...env },
-    input: fixtureTask(args[args.indexOf('--agent') + 1], input),
+    input: '',
     encoding: 'utf8',
   });
 }
 
-function mockedLauncher(source, args, input, env, cwd) {
+function mockedLauncher(source, args, env, cwd) {
   const script = `
 import childProcess from 'node:child_process';
 import { syncBuiltinESMExports } from 'node:module';
@@ -76,7 +77,7 @@ try {
   return spawnSync(process.execPath, ['--input-type=module', '-e', script], {
     cwd,
     env: { ...process.env, ...env },
-    input: fixtureTask(args[args.indexOf('--agent') + 1], input),
+    input: '',
     encoding: 'utf8',
   });
 }
@@ -88,14 +89,13 @@ function runStatus(output) {
   return JSON.parse(fs.readFileSync(path.join(runDir, 'status.json'), 'utf8'));
 }
 
-function baseArgs(agent, repo, orderId) {
-  return [
-    '--agent', agent,
-    '--repo', repo,
-    '--slug', 'pre-start-test',
-    '--order-id', orderId,
-    ...(agent === 'codex-build' ? ['--scope', 'src/**'] : []),
-  ];
+function baseArgs(agent, repo, orderId, task) {
+  return orderInvocation({
+    agent, order: { repository: repo, slug: 'pre-start-test', 'order id': orderId,
+      ...(agent === 'codex-build' ? { scope: 'src/**' } : {}) },
+    advice: agent === 'codex-build' ? 'mechanical' : undefined,
+    task, dir: path.dirname(repo),
+  }).argv;
 }
 
 test('the busy refusal reports on stderr without creating a run folder', (t) => {
@@ -132,7 +132,7 @@ else if (command === 'login' && process.argv[3] === 'status') console.log('Logge
 else process.exitCode = 90;
 `);
   const pathKey = Object.keys(process.env).find((key) => key.toUpperCase() === 'PATH') || 'PATH';
-  const output = runner(baseArgs('codex-build', repo, 'busy-order'), 'busy refusal', {
+  const output = runner(baseArgs('codex-build', repo, 'busy-order', 'busy refusal'), {
     CODEX_RUNS_ROOT: runsRoot,
     [pathKey]: [bin, process.env[pathKey]].filter(Boolean).join(path.delimiter),
   }, repo);
@@ -156,7 +156,7 @@ test('the unsafe-for-cmd refusal records aborted_pre_start', (t) => {
   fs.mkdirSync(repo);
   const source = launcherProcessMocks({ worker: 'forbidden', probe: 'marker' });
 
-  const output = mockedLauncher(source, baseArgs('codex-review', repo, 'unsafe-order'), 'unsafe refusal', {
+  const output = mockedLauncher(source, baseArgs('codex-review', repo, 'unsafe-order', 'unsafe refusal'), {
     CODEX_RUNS_ROOT: runsRoot,
   }, repo);
 
@@ -174,7 +174,7 @@ ${launcherProcessMocks({ worker: 'error', probe: 'marker' })}
 const realExit = process.exit;
 process.exit = (code = 0) => { process.exitCode = code; };
 `;
-  const output = mockedLauncher(source, baseArgs('codex-review', repo, 'spawn-order'), 'worker refusal', {
+  const output = mockedLauncher(source, baseArgs('codex-review', repo, 'spawn-order', 'worker refusal'), {
     CODEX_RUNS_ROOT: runsRoot,
   }, repo);
 
@@ -222,7 +222,7 @@ ${launcherProcessMocks({ worker: 'spawn', probe: 'marker' })}
 process.exit = (code = 0) => { process.exitCode = code; };
 `;
 
-  const output = mockedLauncher(source, baseArgs('codex-review', repo, 'gate-order'), 'gate task', {
+  const output = mockedLauncher(source, baseArgs('codex-review', repo, 'gate-order', 'gate task'), {
     CODEX_RUNS_ROOT: runsRoot,
   }, repo);
 
@@ -252,7 +252,7 @@ test('a folder with a Codex session still sends the same order to the continuati
     tokens_reported: true,
   });
 
-  const output = runner(baseArgs('codex-review', repo, 'gate-order'), 'gate task', { CODEX_RUNS_ROOT: runsRoot }, repo);
+  const output = runner(baseArgs('codex-review', repo, 'gate-order', 'gate task'), { CODEX_RUNS_ROOT: runsRoot }, repo);
 
   assert.equal(output.status, 2, output.stderr);
   assert.match(output.stderr, /--continue is required/);
@@ -283,7 +283,7 @@ childProcess.spawn = (command, args = [], options) => {
   return child;
 };
 `;
-  const output = mockedLauncher(source, baseArgs('codex-review', repo, 'signed-out-order'), 'codex refusal', {
+  const output = mockedLauncher(source, baseArgs('codex-review', repo, 'signed-out-order', 'codex refusal'), {
     CODEX_RUNS_ROOT: runsRoot,
   }, repo);
 
@@ -320,7 +320,7 @@ childProcess.spawn = (command, args = [], options) => {
   return child;
 };
 `;
-  const output = mockedLauncher(source, baseArgs('codex-review', repo, 'codex-order'), 'codex refusal', {
+  const output = mockedLauncher(source, baseArgs('codex-review', repo, 'codex-order', 'codex refusal'), {
     CODEX_RUNS_ROOT: runsRoot,
   }, repo);
 

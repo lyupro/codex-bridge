@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { makeTempTree } from '../temp-tree.mjs';
 import { launcherProcessMocks } from './launcher-mocks.mjs';
+import { orderInvocation, orderTaskText } from './order-invocation.mjs';
 import { advisorSchema, schemaFor, SCHEMAS } from '../../src/home/lib/runner/schemas.mjs';
 import { INSTRUCTIONS } from '../../src/home/lib/runner/prompts.mjs';
 import { codexArgs } from '../../src/home/lib/runner/codex-args.mjs';
@@ -29,13 +30,17 @@ function fixture(config = {}) {
   return { root, repo, home, runs };
 }
 
-function launch(tree, { phase, task = TASK, refuse = false, continued = false, taskFile = false } = {}) {
-  const args = ['--agent', 'codex-advisor', '--repo', tree.repo, '--order-id', 'advisor-fixture',
-    ...(phase === undefined ? [] : ['--phase', phase]), ...(continued ? ['--continue'] : [])];
-  if (taskFile) {
-    const file = path.join(tree.root, 'task.md');
-    fs.writeFileSync(file, task);
-    args.push('--task-file', file);
+function launch(tree, { phase, task = TASK, refuse = false, grant, taskFile = true } = {}) {
+  const invocation = {
+    agent: 'codex-advisor', order: { repository: tree.repo, 'order id': 'advisor-fixture',
+      ...(phase === undefined ? {} : { phase }) },
+    grant, task, dir: tree.root,
+  };
+  let { argv: args } = orderInvocation(invocation);
+  if (!taskFile) {
+    // raw argv: the task-gate matrix must still exercise stdin without --task-file.
+    args = ['--agent', invocation.agent, '--repo', tree.repo, '--order-id', 'advisor-fixture',
+      ...(phase === undefined ? [] : ['--phase', phase])];
   }
   const source = `
 import childProcess from 'node:child_process';
@@ -50,7 +55,7 @@ catch (error) {
 }
 `;
   return spawnSync(process.execPath, ['--input-type=module', '-e', source], {
-    cwd: tree.repo, input: taskFile ? '' : task, encoding: 'utf8', timeout: 10_000, windowsHide: true,
+    cwd: tree.repo, input: taskFile ? '' : orderTaskText(invocation), encoding: 'utf8', timeout: 10_000, windowsHide: true,
     env: { ...process.env, CODEX_BRIDGE_HOME: tree.home, CODEX_RUNS_ROOT: tree.runs },
   });
 }
@@ -151,8 +156,8 @@ test('advise continues the scope order with its own schema and budget', () => {
   fs.writeFileSync(path.join(first.dir, 'status.json'), JSON.stringify({ ...first.status, state: 'finished' }));
   fs.writeFileSync(path.join(first.dir, 'meta.json'), JSON.stringify({ agent: 'codex-advisor', status: 'OK', phase: 'scope' }));
   fs.writeFileSync(path.join(first.dir, 'result.json'), JSON.stringify(validScope()));
-  const task = `continue: ${path.basename(first.dir)} — settle the scope predictions\n\n${TASK}`;
-  const second = runFrom(launch(tree, { phase: 'advise', continued: true, task }));
+  const grant = { kind: 'continue', run: path.basename(first.dir), reason: 'settle the scope predictions' };
+  const second = runFrom(launch(tree, { phase: 'advise', grant }));
   assert.notEqual(second.dir, first.dir);
   assert.deepEqual(second.schema, advisorSchema('advise'));
   assert.equal(second.worker.phase, 'advise');
@@ -174,9 +179,9 @@ test('advise refuses for free when the scope result cannot be carried', () => {
   fs.writeFileSync(path.join(first.dir, 'status.json'), JSON.stringify({ ...first.status, state: 'finished' }));
   fs.writeFileSync(path.join(first.dir, 'meta.json'), JSON.stringify({ agent: 'codex-advisor', status: 'OK', phase: 'scope' }));
   fs.writeFileSync(path.join(first.dir, 'result.json'), JSON.stringify({ sufficient: true }));
-  const task = `continue: ${path.basename(first.dir)} — settle the scope predictions\n\n${TASK}`;
+  const grant = { kind: 'continue', run: path.basename(first.dir), reason: 'settle the scope predictions' };
   const before = fs.readdirSync(tree.runs);
-  const output = launch(tree, { phase: 'advise', continued: true, task, refuse: true });
+  const output = launch(tree, { phase: 'advise', grant, refuse: true });
   assert.equal(output.status, 1, output.stdout || output.error?.message);
   assert.equal(output.stdout, '');
   assert.match(output.stderr, /Malformed advise scope result/);
@@ -196,9 +201,9 @@ test('advise refuses for free when the continued run is not an OK scope run', ()
   fs.writeFileSync(path.join(first.dir, 'status.json'), JSON.stringify({ ...first.status, state: 'finished' }));
   fs.writeFileSync(path.join(first.dir, 'meta.json'), JSON.stringify({ agent: 'codex-advisor', status: 'OK', phase: 'advise' }));
   fs.writeFileSync(path.join(first.dir, 'result.json'), JSON.stringify(validScope()));
-  const task = `continue: ${path.basename(first.dir)} — settle the scope predictions\n\n${TASK}`;
+  const grant = { kind: 'continue', run: path.basename(first.dir), reason: 'settle the scope predictions' };
   const before = fs.readdirSync(tree.runs);
-  const output = launch(tree, { phase: 'advise', continued: true, task, refuse: true });
+  const output = launch(tree, { phase: 'advise', grant, refuse: true });
   assert.equal(output.status, 1, output.stdout || output.error?.message);
   assert.equal(output.stdout, '');
   assert.match(output.stderr, /phase must be 'scope'/);
