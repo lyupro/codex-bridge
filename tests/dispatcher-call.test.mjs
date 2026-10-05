@@ -12,6 +12,7 @@ import {
   orderLabelsFor, renderOrderHeaderHelp,
 } from '../src/home/lib/order-schema.mjs';
 import { SHELL_UNSAFE_SEQUENCES } from '../src/home/lib/shell-unsafe.mjs';
+import { canonicalRunCommand } from '../src/home/lib/dispatcher-command.mjs';
 import { AGENTS } from '../src/home/lib/write-meta.mjs';
 import { renderNoSelfExecution } from '../src/home/lib/no-self-execution.mjs';
 import { renderStopSummary } from '../src/home/lib/stop-contract.mjs';
@@ -176,9 +177,33 @@ test('task file accepts Windows, UNC and POSIX absolute paths and rejects relati
       { line: 1, text, reason: 'label `task file` must be an absolute path' },
     ]);
   }
-  for (const value of [taskFile, 'C:\\scratch\\task.md', '\\\\host\\share\\task.md', '/tmp/task.md']) {
+  for (const value of [taskFile, 'C:\\scratch\\task.md', '//host/share/task.md', '/tmp/task.md']) {
     assert.deepEqual(parseDispatcherCall('codex-scout', `task file: ${value}`).problems, [], value);
   }
+});
+
+test('a task path the shell would rewrite inside double quotes is refused, so gate and runner read one file', () => {
+  const cases = [
+    ['C:/scratch/$HOME/task.md', '$'],
+    ['C:/scratch/$env:TEMP/task.md', '$'],
+    ['\\\\host\\share\\task.md', '\\\\'],
+    ['C:\\scratch\\\\task.md', '\\\\'],
+    ['C:\\scratch\\', '\\'],
+  ];
+  for (const agent of ORDER_AGENTS) {
+    for (const [value, sequence] of cases) {
+      const text = `task file: ${value}`;
+      assert.deepEqual(parseDispatcherCall(agent, text).problems, [{
+        line: 1,
+        text,
+        reason: `label \`task file\` contains ${JSON.stringify(sequence)}, which the shell rewrites inside double quotes; `
+          + 'write the path with forward slashes and without `$`',
+      }], value);
+    }
+  }
+  const refused = canonicalRunCommand('codex-scout', 'task file: C:/scratch/$HOME/task.md');
+  assert.equal(refused.command, undefined);
+  assert.match(refused.refusal, /shell rewrites inside double quotes/);
 });
 
 test('shell sequences, double quotes and embedded CR are refused in task paths', () => {

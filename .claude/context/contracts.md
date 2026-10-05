@@ -61,7 +61,9 @@ here. Nothing was reworded on the way out.
   grammar of one value by `src/home/lib/order-values.mjs`, a leaf that imports neither. Any former order label in the
   call (`order id:`, `continue: none`, any spelling) is a free refusal "moved to the task-file header" with the agent's
   header template. The canonical command is `codex-bridge run --agent <type> --task-file "<path>"`, built without reading
-  the file. The order gate refuses the header's problems and `orderFromHeader`'s problems before it looks at a grant;
+  the file. The path is refused, never escaped, when the dispatcher's shell would rewrite it inside the double quotes
+  (`$`, `\\`, a final `\`): otherwise the gate validates the literal file and the runner opens another (review of
+  `4ed0fd4`). The order gate refuses the header's problems and `orderFromHeader`'s problems before it looks at a grant;
   only a valid header grant skips the different-task owner check (OW-054). A new order input is one registry entry in
   `order-schema.mjs`; `tests/order-header-consumption.test.mjs` fails a label nothing consumes, and the nine retired
   flags stay a frozen negative list in `tests/order-spelling-scan.mjs`. Never add a synonym spelling. Why: on

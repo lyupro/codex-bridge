@@ -43,6 +43,18 @@ function unsafeSequence(value) {
   return value.indexOf(shell) <= value.indexOf(other) ? shell : other;
 }
 
+// Review of 4ed0fd4: the command quotes the path in double quotes, where Bash still expands `$NAME`,
+// folds `\\` into `\` and lets a final `\` escape the closing quote. The gate would validate the
+// literal file while the runner opened another, so any such path is refused, not escaped.
+function shellRewrittenSequence(value) {
+  return value.match(/\$|\\\\|\\$/)?.[0] ?? null;
+}
+
+function shellRewrittenReason(label, sequence) {
+  return `label \`${label}\` contains ${JSON.stringify(sequence)}, which the shell rewrites inside double quotes; `
+    + 'write the path with forward slashes and without `$`';
+}
+
 /** Returns the accepted label values and every refusal; one reader for the gate, the command and the transcript. */
 export function parseDispatcherCall(agentType, promptText) {
   const entries = callInputsFor(agentType);
@@ -107,6 +119,9 @@ export function parseDispatcherCall(agentType, promptText) {
     if (sequence !== null) {
       const reason = `label \`${label}\` contains ${JSON.stringify(sequence)}; put free text in the task file`;
       problems.push({ ...location, reason });
+    } else {
+      const expanding = shellRewrittenSequence(value);
+      if (expanding !== null) problems.push({ ...location, reason: shellRewrittenReason(label, expanding) });
     }
   }
   return { inputs, problems };

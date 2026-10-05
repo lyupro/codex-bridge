@@ -13,7 +13,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   `changeset`, `repository` — goes in the header at the top of that file, and the dispatcher runs
   `codex-bridge run --agent <type> --task-file "<path>"`. Any former label in the call is refused for
   free with "moved to the task-file header" and the agent's header template. Migration cost: move the
-  label lines from the call into the task file's first lines.
+  label lines from the call into the task file's first lines. A task-file path containing `$`, `\\` or a
+  final `\` is refused, because the shell would rewrite it inside the command's double quotes and the
+  runner would open a different file than the one the gate checked; write it with forward slashes.
 
 - A dispatcher call contains only exact `label: value` lines from the agent's input registry, in any
   order, with blank lines allowed. Prose, unknown or another agent's labels, decorated or hyphenated
