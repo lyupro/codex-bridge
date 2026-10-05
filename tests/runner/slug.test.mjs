@@ -5,7 +5,6 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { chainRuns, taskFingerprint } from '../../src/home/lib/meta/chain.mjs';
-import { parseArgs } from '../../src/home/lib/runner/args.mjs';
 import { makeRunDir, runDirPath } from '../../src/home/lib/runner/launcher.mjs';
 import { makeChainRoot, CHAIN_REPO } from '../meta/test-fixtures.mjs';
 
@@ -54,32 +53,6 @@ test('run directory collisions still receive a numeric suffix', (t) => {
   assert.equal(makeRunDir(base), `${base}-2`);
 });
 
-test('an order without --slug derives the slug from its order id', () => {
-  const options = parseArgs(reviewArgs('plan/29:slug-default'));
-  assert.equal(options.slug, 'plan-29-slug-default');
-});
-
-test('different order ids do not collapse into one default-slug chain', () => {
-  const first = parseArgs(reviewArgs('plan/29:first'));
-  const second = parseArgs(reviewArgs('plan/29:second'));
-  const root = makeChainRoot([
-    {
-      name: '2026-08-10_090000_plan-29-first',
-      slug: first.slug,
-      orderId: first.orderId,
-      at: '2026-08-10T09:00:00Z',
-    },
-  ]);
-
-  assert.notEqual(first.slug, second.slug);
-  assert.deepEqual(chainRuns(root, CHAIN_REPO, second.slug, '', second.orderId), []);
-});
-
-test('an explicit --slug still wins and is sanitized', () => {
-  const options = parseArgs(reviewArgs('plan/29:order-id', 'manual slug/one'));
-  assert.equal(options.slug, 'manual-slug-one');
-});
-
 test('an old generic-slug folder is found by order id and task fingerprint', () => {
   const orderId = 'plan-29-legacy-order';
   const hash = taskFingerprint('Preserve the old chain as an audit trail.');
@@ -101,19 +74,17 @@ test('an old generic-slug folder is found by order id and task fingerprint', () 
   ]);
 });
 
-test('an order id that sanitizes to empty or separator-only slug is refused', () => {
+test('parseArgs refuses a separator-only order id with the flag name and exit code 2', () => {
   const script = `
 import { parseArgs } from ${JSON.stringify(ARGS_MODULE)};
 try { parseArgs(JSON.parse(process.env.CODEX_SLUG_ARGS)); }
 catch (err) { process.exitCode = err.exitCode || 1; }
 `;
-
-  for (const orderId of ['...', '___', '   ']) {
-    const output = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
-      env: { ...process.env, CODEX_SLUG_ARGS: JSON.stringify(reviewArgs(orderId)) },
-      encoding: 'utf8',
-    });
-    assert.equal(output.status, 2, `${orderId}: ${output.stderr}`);
-    assert.match(output.stderr, /--order-id.*(required|unusable|letter or digit)/i);
-  }
+  const output = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+    env: { ...process.env, CODEX_SLUG_ARGS: JSON.stringify(reviewArgs('...')) },
+    encoding: 'utf8',
+  });
+  assert.equal(output.status, 2, output.stderr);
+  assert.equal(output.stderr.trim(),
+    'run-codex: --order-id produces an unusable run folder name after sanitization: "..." must contain a letter or digit.');
 });

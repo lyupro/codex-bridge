@@ -7,12 +7,12 @@
  */
 import { EXIT } from './exit-codes.mjs';
 import fs from 'node:fs';
-import path from 'node:path';
 import { AGENTS } from '../write-meta.mjs';
 import { isAbsoluteTaskFilePath, requiredInputsFor } from '../required-inputs.mjs';
 import { firstShellUnsafeSequence } from '../shell-unsafe.mjs';
 import { parseTaskDocument } from './task-file.mjs';
 import { parseTaskHeader, taskHeaderRefusal } from '../task-header.mjs';
+import { orderOptions } from './order-options.mjs';
 
 export class RunnerUsageError extends Error {
   // 2 says the order itself is wrong and has to be rewritten. A refusal about the state of the
@@ -156,7 +156,18 @@ export function parseArgs(argv) {
   }
   if (!opts.agent) die('--agent is required');
   if (!AGENTS[opts.agent]) die(`unknown --agent ${opts.agent}`);
-  opts.orderId = String(opts['order-id'] ?? '').trim();
+  const order = new Map([
+    ['order id', opts['order-id']],
+    ['scope', opts.scope],
+    ['scope new', opts['scope-new']],
+    ['repository', opts.repo],
+    ['slug', opts.slug],
+    ['effort', opts.effort],
+    ['changeset', opts.changeset],
+    ['phase', opts.phase],
+  ].filter(([, value]) => value !== undefined));
+  const { options, problems } = orderOptions(opts.agent, order);
+  Object.assign(opts, options);
   opts.noWait = Boolean(opts['no-wait']);
   if (opts.noWait && opts.continue) {
     die('--no-wait cannot be combined with --continue: checking an existing run must never authorize a new one.');
@@ -179,38 +190,16 @@ export function parseArgs(argv) {
       die('--question must not be empty for codex-scout; no quota was spent');
     }
   }
-  // Left unset when not given, rather than defaulted here: the role's configured profile is
-  // what fills the gap, and a default applied this early would always win over it.
-  // Plan_56 step 3: support belongs to the live catalogue on write and Codex at run start.
-  if (opts.effort !== undefined && (!opts.effort || /\s/.test(opts.effort))) {
-    die(`--effort must be a non-empty single word with no whitespace; got ${JSON.stringify(opts.effort)}`);
-  }
-  opts.repo = path.resolve(opts.repo || process.cwd());
-  const slugSource = opts.slug ? '--slug' : '--order-id';
-  opts.slug = (opts.slug || opts.orderId).replace(/[^A-Za-z0-9._-]+/g, '-');
-  // Plan_29 incident: the generic `build` slug made an honest order inherit a days-old chain;
-  // reject a value with no alphanumeric anchor instead of creating an empty or dot-only folder.
-  if (!/[A-Za-z0-9]/.test(opts.slug)) {
-    die(
-      `${slugSource} produces an unusable run folder name after sanitization: ` +
-        `${JSON.stringify(opts.slug)} must contain a letter or digit.`,
-    );
-  }
-  opts.changeset = opts.changeset || 'uncommitted';
+  const flagOf = (label) => {
+    // Plan_63 D5 preserves the flag channel's empty --slug fallback to --order-id.
+    if (label === 'order id' || (label === 'slug' && !order.get('slug'))) return 'order-id';
+    return label;
+  };
+  for (const { label, reason } of problems) die(`--${flagOf(label)} ${reason}`);
   // A writing run without a declared scope is how `!Plans/*.md` got edited by a run that was
   // told in prose not to touch them: prose does not bind, a file list does. Required rather
   // than defaulted to "everything", and checked here — before the folder exists and before a
   // single token of someone else's quota is spent.
-  const declaredScopePatterns = String(opts.scope || '')
-    .split(',')
-    .map((p) => p.trim())
-    .filter(Boolean);
-  opts.scopeNewPatterns = String(opts['scope-new'] || '')
-    .split(',')
-    .map((p) => p.trim())
-    .filter(Boolean);
-  // Plan_27 keeps ordinary patterns strict: only paths named explicitly as new may be absent.
-  opts.scopePatterns = [...declaredScopePatterns, ...opts.scopeNewPatterns];
   // Only the writing agent creates files, so only its scope may name one that does not exist yet.
   // Accepting the flag elsewhere would hand scout and review a way to waive the check for nothing.
   if (opts.agent !== 'codex-build' && opts.scopeNewPatterns.length) {
@@ -219,7 +208,7 @@ export function parseArgs(argv) {
         'Action: drop --scope-new and pass every path through --scope.',
     );
   }
-  if (opts.agent === 'codex-build' && !declaredScopePatterns.length) {
+  if (opts.agent === 'codex-build' && opts.scopePatterns.length === opts.scopeNewPatterns.length) {
     const scopeInput = requiredInput(opts.agent, 'scope');
     die(
       `--scope is required for codex-build: ${scopeInput.source} supplies the ${scopeInput.label}. ` +
