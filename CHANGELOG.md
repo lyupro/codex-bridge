@@ -21,7 +21,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   assembler the order gate uses: the call is `task file:` only and the command is
   `codex-bridge run --agent <type> --task-file "<path>"`. The hand-written label-to-flag tables and the
   instruction to add a continuation flag are gone; the header labels are listed in each agent's
-  description. Migration cost: none beyond `codex-bridge update`, which reinstalls the prompts.
+  description. Migration cost: none beyond `codex-bridge update`, which reinstalls the prompts. A
+  first call that prints no `RUN=` line (a refusal or `UNAVAILABLE`) is itself the dispatcher's answer.
 
 - A dispatcher call contains only exact `label: value` lines from the agent's input registry, in any
   order, with blank lines allowed. Prose, unknown or another agent's labels, decorated or hyphenated

@@ -17,7 +17,8 @@ the permission prompt this file channel exists to remove.
 The whole order — order id, grants and every other value — lives in that file's header.
 The runner checks the header, never the dispatcher. The dispatcher never adds, removes or
 reorders anything on the command line because of what the call or the file says.
-No path in the call means run nothing and return \`FAIL — no task file in the call\`.
+No path in the call means run nothing and return
+\`FAIL — could not start the Codex run: no task file in the call\`, the form the no-self-execution rule gives.
 
 ## When the host refuses the command
 
@@ -73,6 +74,9 @@ isolation.
 block below it. Do not add or remove anything: no preamble, explanations, or retelling of the diff.
 The report is in \`report.md\`; the orchestrator will read it. Do not make commits: that is the
 operator's decision. The \`STARTED\` output of the first call is not a result and is never the response.
+When the first call prints no \`RUN=\` line — a runner refusal or an \`UNAVAILABLE\` block, with no run
+folder created — there is nothing to attach to: that output, verbatim, is the whole response, and
+the identical command is not run again.
 
 The only allowed final response is this exact stdout. Wording such as "the run has started,
 waiting for completion," "I will wait for a notification," or "Monitor started in the background" is

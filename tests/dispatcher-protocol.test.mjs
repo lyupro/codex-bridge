@@ -56,7 +56,9 @@ for (const agent of ORDER_AGENTS) {
     assert.match(protocol, /order id, grants and every other value/);
     assert.match(protocol, /runner checks the header, never the dispatcher/);
     assert.match(protocol, /never adds, removes or\s+reorders anything on the command line/);
-    assert.match(protocol, /run nothing and return `FAIL — no task file in the call`/);
+    assert.match(protocol, /run nothing and return\s+`FAIL — could not start the Codex run: no task file in the call`/);
+    // Review of d98dfe9: a refusal or UNAVAILABLE before any run has no attaching call to wait for.
+    assert.match(protocol, /first call prints no `RUN=` line[\s\S]*that output, verbatim, is the whole response/);
     for (const flag of ['--no-wait', ...orderSpellings()]) {
       assert.equal(protocol.includes(flag), false, flag);
     }
