@@ -9,7 +9,7 @@
  * or silently ignored.
  */
 import path from 'node:path';
-import { splitGrantValue } from './required-inputs.mjs';
+import { splitGrantValue } from './order-values.mjs';
 import { ALL_ORDER_LABELS } from './order-schema.mjs';
 
 const BARE_RUN = /^(?!\.{1,2}$)[A-Za-z0-9._-]+$/;

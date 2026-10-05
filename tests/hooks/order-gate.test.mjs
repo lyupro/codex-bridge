@@ -6,38 +6,40 @@ import path from 'node:path';
 import { AGENTS } from '../../src/home/lib/agents.mjs';
 import { HOOK_DEFINITIONS, SUBAGENT_TOOLS } from '../../src/home/lib/hook-definitions.mjs';
 import { taskFingerprint } from '../../src/home/lib/meta/chain.mjs';
-import { createStoredRun, fixture, payload, runGate, validPrompt } from './order-gate-fixtures.mjs';
+import { createStoredRun, fixture, payload, runGate, validPrompt, writeTaskFile } from './order-gate-fixtures.mjs';
 
-test('missing dispatcher inputs are denied with actionable details', async (t) => {
+test('missing header order id and scope are denied with actionable details', async (t) => {
   const root = await fixture(t);
-  const result = runGate(root, payload('codex-build', ''));
+  const taskFile = await writeTaskFile(root, 'advice: mechanical', 'Requested task\n');
+  const result = runGate(root, payload('codex-build', validPrompt(taskFile)));
   assert.equal(result.status, 0);
   const decision = JSON.parse(result.stdout).hookSpecificOutput;
   assert.equal(decision.hookEventName, 'PreToolUse');
   assert.equal(decision.permissionDecision, 'deny');
-  assert.equal(decision.permissionDecisionReason.split('\n')[0],
-    'Order gate denied the Agent call: the call text must be only `label: value` lines.');
-  assert.match(decision.permissionDecisionReason, /missing required label `scope` — .+ Example: `scope: /);
+  assert.equal(decision.permissionDecisionReason.split('\n')[0], 'missing required header label "order id:"; example: order id: plan-13-build-20260804');
+  assert.match(decision.permissionDecisionReason, /missing required header label "scope:"; example: scope: /);
   assert.match(decision.permissionDecisionReason, /order id/);
   assert.match(decision.permissionDecisionReason, /scope/);
   assert.match(decision.permissionDecisionReason, /plan-13-build-20260804/);
   assert.match(decision.permissionDecisionReason, /src\/home\/lib\/runner\/\*\*/);
-  assert.match(decision.permissionDecisionReason, /Free text belongs in the task file/);
+  assert.match(decision.permissionDecisionReason, /The run folder was not created; quota was not spent\./);
   assert.doesNotMatch(decision.permissionDecisionReason, /found `/);
 });
 
 // Plan_59 C2: registry-derived gates must recognize advisor and accept its real scope phase.
 test('advisor requires a phase at the order gate and accepts scope as a concrete input', async (t) => {
   const root = await fixture(t);
-  const taskFile = path.join(root, 'task.md');
-  await fs.writeFile(taskFile, '## Options\n- keep: Keep it.\n- split: Split it.\n## Paths\n- source.mjs\n');
-  const prompt = validPrompt('advisor-order', taskFile);
+  const body = '## Options\n- keep: Keep it.\n- split: Split it.\n## Paths\n- source.mjs\n';
+  const taskFile = await writeTaskFile(root, 'order id: advisor-order', body);
+  const prompt = validPrompt(taskFile);
   const missing = runGate(root, payload('codex-advisor', prompt));
   assert.equal(missing.status, 0);
   const decision = JSON.parse(missing.stdout).hookSpecificOutput;
   assert.equal(decision.permissionDecision, 'deny');
-  assert.match(decision.permissionDecisionReason, /phase/);
-  const present = runGate(root, payload('codex-advisor', `${prompt}\nphase: scope`));
+  assert.match(decision.permissionDecisionReason, /missing required header label "phase:"/);
+  assert.match(decision.permissionDecisionReason, /phase: scope/);
+  await writeTaskFile(root, 'order id: advisor-order\nphase: scope', body);
+  const present = runGate(root, payload('codex-advisor', prompt));
   assert.equal(present.status, 0);
   assert.equal(present.stdout, '');
 });
@@ -68,29 +70,25 @@ test('the PreToolUse matcher matches exactly the tool names the gate answers to'
 
 test('placeholder values are denied as missing inputs', async (t) => {
   const root = await fixture(t);
-  const result = runGate(root, payload(
-    'codex-build',
-    'order id: <order id from the orchestrator>\nscope: TODO',
-  ));
+  const taskFile = await writeTaskFile(root, 'order id: <order id from the orchestrator>\nscope: TODO', 'Requested task\n');
+  const result = runGate(root, payload('codex-build', validPrompt(taskFile)));
   const decision = JSON.parse(result.stdout).hookSpecificOutput;
   assert.equal(decision.permissionDecision, 'deny');
   assert.match(decision.permissionDecisionReason, /order id/);
   assert.match(decision.permissionDecisionReason, /scope/);
+  assert.match(decision.permissionDecisionReason, /still a placeholder/);
 });
 
 test('a relative task file is denied before the dispatcher starts', async (t) => {
   const root = await fixture(t);
-  const result = runGate(root, payload(
-    'codex-review',
-    'order id: relative-task-file\ntask file: task.md',
-  ));
+  const result = runGate(root, payload('codex-review', 'task file: task.md'));
   const decision = JSON.parse(result.stdout).hookSpecificOutput;
   assert.equal(decision.permissionDecision, 'deny');
   assert.match(decision.permissionDecisionReason, /task file/);
   assert.match(decision.permissionDecisionReason, /absolute path/);
 });
 
-test('scope prose and its bullet are refused as lines, with required labels still missing', async (t) => {
+test('scope prose and its bullet are refused as call lines, with task file still missing', async (t) => {
   const root = await fixture(t);
   const result = runGate(root, payload(
     'codex-build',
@@ -101,19 +99,20 @@ test('scope prose and its bullet are refused as lines, with required labels stil
   assert.equal(decision.permissionDecision, 'deny');
   assert.match(reason, /line 1: `scope \(you may create\/modify ONLY these\):` — not a `label: value` line/);
   assert.match(reason, /line 2: `- assets\/vault\/\.claude\/lib\/sessions\.py \(new\)` — not a `label: value` line/);
-  assert.match(reason, /missing required label `order id`/);
-  assert.match(reason, /missing required label `scope`/);
+  assert.match(reason, /missing required label `task file`/);
 });
 
 // Plan_76 D1, 2026-10-04: aliases and repository prose must be refused before dispatch.
-test('non-registry call lines and duplicate order ids are denied', async (t) => {
+test('non-registry and former order call lines are denied', async (t) => {
   const root = await fixture(t);
-  const prompt = `${validPrompt('a1', 'C:/abs/task.md')}\nscope: src/`;
+  const prompt = validPrompt('C:/abs/task.md');
   for (const [line, expected] of [
-    ['scope-new: src/', /write the label exactly as `scope new:`/],
+    ['scope-new: src/', /moved to the task-file header/],
     ['Repository root: C:/x', /not a `label: value` line; free text belongs in the task file/],
-    ['order-id: a1', /write the label exactly as `order id:`/],
-    ['order id: a2', /label `order id` is given twice/],
+    ['order-id: a1', /moved to the task-file header/],
+    ['order id: a2', /moved to the task-file header/],
+    ['scope: src/', /moved to the task-file header/],
+    ['task file: C:/abs/other.md', /label `task file` is given twice/],
   ]) {
     const result = runGate(root, payload('codex-build', `${prompt}\n${line}`));
     assert.equal(result.status, 0, line);
@@ -125,7 +124,8 @@ test('non-registry call lines and duplicate order ids are denied', async (t) => 
 
 test('changeset is accepted for review and refused for scout', async (t) => {
   const root = await fixture(t);
-  const prompt = validPrompt('changeset-order', 'C:/abs/task.md', '\nchangeset: base:main');
+  const taskFile = await writeTaskFile(root, 'order id: changeset-order\nchangeset: base:main', 'Requested task\n');
+  const prompt = validPrompt(taskFile);
   const review = runGate(root, payload('codex-review', prompt));
   assert.equal(review.status, 0);
   assert.equal(review.stdout, '');
@@ -133,38 +133,38 @@ test('changeset is accepted for review and refused for scout', async (t) => {
   assert.equal(scout.status, 0);
   const decision = JSON.parse(scout.stdout).hookSpecificOutput;
   assert.equal(decision.permissionDecision, 'deny');
-  assert.match(decision.permissionDecisionReason, /label `changeset` is not accepted by `codex-scout`/);
+  assert.match(decision.permissionDecisionReason, /label "changeset" is not accepted by codex-scout/);
 });
 
 test('every agent accepts shared optional labels and only build accepts scope new', async (t) => {
   const root = await fixture(t);
   for (const type of Object.keys(AGENTS)) {
-    let prompt = validPrompt('optional-order', 'C:/abs/task.md');
-    if (type === 'codex-build') prompt += '\nscope: src/';
-    if (type === 'codex-advisor') prompt += '\nphase: scope';
-    prompt += '\nrepository: C:/x\nslug: optional-labels\neffort: medium';
+    let header = 'order id: optional-order';
+    if (type === 'codex-build') header += '\nscope: src/';
+    if (type === 'codex-advisor') header += '\nphase: scope';
+    header += '\nrepository: C:/x\nslug: optional-labels\neffort: medium';
+    const taskFile = await writeTaskFile(root, header, 'Requested task\n');
+    const prompt = validPrompt(taskFile);
     const shared = runGate(root, payload(type, prompt));
     assert.equal(shared.status, 0, type);
     assert.equal(shared.stdout, '', type);
-    const scopeNew = runGate(root, payload(type, `${prompt}\nscope new: src/new.mjs`));
+    await writeTaskFile(root, `${header}\nscope new: src/new.mjs`, 'Requested task\n');
+    const scopeNew = runGate(root, payload(type, prompt));
     assert.equal(scopeNew.status, 0, type);
     if (type === 'codex-build') {
       assert.equal(scopeNew.stdout, '', type);
     } else {
       const decision = JSON.parse(scopeNew.stdout).hookSpecificOutput;
       assert.equal(decision.permissionDecision, 'deny', type);
-      assert.match(decision.permissionDecisionReason, /label `scope new` is not accepted by/);
+      assert.match(decision.permissionDecisionReason, /label "scope new" is not accepted by/);
     }
   }
 });
 
 test('a valid dispatcher call passes and keeps the last payload', async (t) => {
   const root = await fixture(t);
-  const input = payload(
-    'codex-build',
-    'order id: plan-13-build-20260804\nscope: src/home/hooks/order-gate.mjs\n'
-      + 'task file: C:/Users/me/AppData/Local/Temp/claude/s/scratchpad/task-plan-13.md',
-  );
+  const taskFile = await writeTaskFile(root, 'order id: plan-13-build-20260804\nscope: src/home/hooks/order-gate.mjs', 'Requested task\n');
+  const input = payload('codex-build', validPrompt(taskFile));
   const result = runGate(root, input);
   assert.equal(result.status, 0);
   assert.equal(result.stdout, '');
@@ -177,135 +177,36 @@ test('a valid dispatcher call passes and keeps the last payload', async (t) => {
   await assert.rejects(fs.access(path.join(root, '.claude', 'logs')), { code: 'ENOENT' });
 });
 
-test('a conditional continuation grant is not an order-gate requirement', async (t) => {
-  const root = await fixture(t);
-  const result = runGate(
-    root,
-    payload(
-      'codex-build',
-      'order id: plan-13-build-20260804\nscope: src/home/hooks/order-gate.mjs\n'
-        + 'task file: C:/Users/me/AppData/Local/Temp/claude/s/scratchpad/task-plan-13.md\ncontinue: TODO',
-    ),
-  );
-  assert.equal(result.status, 0);
-  assert.equal(result.stdout, '');
-});
-
-test('an order id owned by a different task is denied before dispatch', async (t) => {
-  const root = await fixture(t);
-  const repo = path.join(root, 'project');
-  const taskFile = path.join(root, 'task.md');
-  await fs.writeFile(taskFile, '# Task\nRequested task\n');
-  const run = await createStoredRun(root, repo, 'run-two', {
-    order_id: 'plan-43-step-3',
-    task_hash: taskFingerprint('Different task'),
-    task_hash_scheme: 2,
-    slug: 'plan43-run-two',
-    started_at: '2026-08-15T09:00:00.000Z',
-  });
-
-  const result = runGate(root, payload(
-    'codex-review',
-    validPrompt('plan-43-step-3', taskFile),
-    'Agent',
-    repo,
-  ));
-  const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
-  assert.match(reason, /plan-43-step-3/);
-  assert.match(reason, new RegExp(run.replaceAll('\\', '\\\\')));
-  assert.match(reason, /plan43-run-two/);
-  assert.match(reason, /2026-08-15T09:00:00\.000Z/);
-  assert.match(reason, /new order id/);
-  assert.match(reason, /with a different task/);
-  assert.match(reason, /continue:\/retry: header line/);
-  assert.doesNotMatch(reason, /cannot be compared/);
-});
-
-test('an explicit continuation grant permits a refined task under the same order id', async (t) => {
-  const root = await fixture(t);
-  const repo = path.join(root, 'project');
-  const taskFile = path.join(root, 'task.md');
-  await fs.writeFile(taskFile, 'Refined task\n');
-  await createStoredRun(root, repo, 'continued-run', {
-    order_id: 'continued-order',
-    task_hash: taskFingerprint('Original task'),
-    slug: 'continued-run',
-    started_at: '2026-08-15T09:02:00.000Z',
-  });
-
-  const prompt = validPrompt(
-    'continued-order',
-    taskFile,
-    '\ncontinue: continued-run — finish the remaining tests',
-  );
-  const result = runGate(root, payload('codex-review', prompt, 'Agent', repo));
-  assert.equal(result.stdout, '');
-});
-
-// Plan_75 D1, TradeForge capacity incident: a retry must reach the runner under its own order id.
-test('retry and conflicting grants pass an order owned by a different-hash run to the runner', async (t) => {
-  const root = await fixture(t);
-  const repo = path.join(root, 'project');
-  const taskFile = path.join(root, 'task.md');
-  await fs.writeFile(taskFile, 'Repeated task\n');
-  await createStoredRun(root, repo, 'failed-run', {
-    order_id: 'retry-order',
-    task_hash: taskFingerprint('Original task'),
-    task_hash_scheme: 2,
-    slug: 'failed-run',
-    started_at: '2026-10-03T17:20:17.000Z',
-  });
-
-  for (const extra of [
-    '\nretry: failed-run — model at capacity, same pass again',
-    '\ncontinue: failed-run — next pass\nretry: failed-run — same pass again',
-  ]) {
-    const prompt = validPrompt('retry-order', taskFile, extra);
-    const result = runGate(root, payload('codex-review', prompt, 'Agent', repo));
-    assert.equal(result.status, 0);
-    assert.equal(result.stdout, '', extra);
-  }
-});
-
 test('order collision diagnostics fail open on unreadable or absent disk state', async (t) => {
   const root = await fixture(t);
   const repo = path.join(root, 'project');
   const missingTask = path.join(root, 'missing-task.md');
-  const unreadableTask = runGate(
-    root,
-    payload('codex-review', validPrompt('unreadable-task', missingTask), 'Agent', repo),
-  );
+  const unreadableTask = runGate(root, payload('codex-review', validPrompt(missingTask), 'Agent', repo));
   assert.equal(unreadableTask.stdout, '');
 
-  const taskFile = path.join(root, 'task.md');
-  await fs.writeFile(taskFile, 'Readable task\n');
-  const missingRuns = runGate(
-    root,
-    payload('codex-review', validPrompt('no-runs-directory', taskFile), 'Agent', repo),
-  );
+  const taskFile = await writeTaskFile(root, 'order id: no-runs-directory', 'Readable task\n');
+  const missingRuns = runGate(root, payload('codex-review', validPrompt(taskFile), 'Agent', repo));
   assert.equal(missingRuns.stdout, '');
 });
 
 test('a stored run without task_hash does not claim a different task', async (t) => {
   const root = await fixture(t);
   const repo = path.join(root, 'project');
-  const taskFile = path.join(root, 'task.md');
-  await fs.writeFile(taskFile, 'Current task\n');
+  const taskFile = await writeTaskFile(root, 'order id: legacy-order', 'Current task\n');
   await createStoredRun(root, repo, 'legacy-run', {
     order_id: 'legacy-order',
     slug: 'legacy-run',
     started_at: '2026-08-15T09:03:00.000Z',
   });
 
-  const result = runGate(root, payload('codex-review', validPrompt('legacy-order', taskFile), 'Agent', repo));
+  const result = runGate(root, payload('codex-review', validPrompt(taskFile), 'Agent', repo));
   assert.equal(result.stdout, '');
 });
 
 test('a folder without status.json does not disarm the collision check', async (t) => {
   const root = await fixture(t);
   const repo = path.join(root, 'project');
-  const taskFile = path.join(root, 'task.md');
-  await fs.writeFile(taskFile, 'Current task\n');
+  const taskFile = await writeTaskFile(root, 'order id: guarded-order', 'Current task\n');
   const run = await createStoredRun(root, repo, 'owner-run', {
     order_id: 'guarded-order',
     task_hash: taskFingerprint('Another task'),
@@ -317,7 +218,7 @@ test('a folder without status.json does not disarm the collision check', async (
   // leftovers besides. Reading them all in one try made a single such folder switch the gate off.
   await fs.mkdir(path.join(root, 'runs', 'project', 'half-written-run'), { recursive: true });
 
-  const result = runGate(root, payload('codex-review', validPrompt('guarded-order', taskFile), 'Agent', repo));
+  const result = runGate(root, payload('codex-review', validPrompt(taskFile), 'Agent', repo));
   const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
   assert.match(reason, new RegExp(run.replaceAll('\\', '\\\\')));
 });
@@ -346,7 +247,8 @@ test('non-subagent tools pass silently', async (t) => {
 // Plan_62 D7: a teammate's agent_type is its name, so the dispatcher gate would not recognise it.
 test('a dispatcher launched as a teammate is refused before it starts', async (t) => {
   const root = await fixture(t);
-  const prompt = validPrompt('plan62-teammate-20260924', 'C:/abs/task.md');
+  const taskFile = await writeTaskFile(root, 'order id: plan62-teammate-20260924', 'Requested task\n');
+  const prompt = validPrompt(taskFile);
   for (const field of ['name', 'team_name']) {
     const input = JSON.stringify({
       hook_event_name: 'PreToolUse',

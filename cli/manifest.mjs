@@ -7,7 +7,7 @@ import { HOOK_DEFINITIONS } from '../src/home/lib/hook-definitions.mjs';
 import {
   renderRequiredInputSummary,
   renderRequiredInputs,
-} from '../src/home/lib/required-inputs.mjs';
+} from '../src/home/lib/dispatcher-call.mjs';
 import { renderNoSelfExecution } from '../src/home/lib/no-self-execution.mjs';
 import { renderStopSummary } from '../src/home/lib/stop-contract.mjs';
 import { readJsonFile } from '../src/home/lib/json-file.mjs';

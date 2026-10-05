@@ -6,7 +6,8 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
-import { parseContinuationGrant } from '../../src/home/lib/required-inputs.mjs';
+import { parseTaskHeader } from '../../src/home/lib/task-header.mjs';
+import { continuationRefusal } from '../../src/home/lib/runner/continuation.mjs';
 import { resolveProjectRunsDir } from '../../src/home/lib/runner/project-dir.mjs';
 import { launcherProcessMocks } from './launcher-mocks.mjs';
 import { orderInvocation, orderTaskText } from './order-invocation.mjs';
@@ -191,5 +192,17 @@ test('repeating a header continuation attaches to its run without creating anoth
 
 test('prose mentioning the continuation label is not a grant', () => {
   const prose = 'The word continue: is discussed here, but this paragraph does not order a continuation.';
-  assert.equal(parseContinuationGrant(prose), null);
+  assert.equal(parseTaskHeader(prose).grant, null);
+});
+
+// Plan_63 D9: loose prompt strings can no longer authorize continuation.
+test('continuationRefusal treats a grant string as no grant', (t) => {
+  const root = fixture(t);
+  const text = `continue: ${LAST_RUN} — ${GRANT_REASON}`;
+  for (const isContinue of [false, true]) {
+    assert.equal(continuationRefusal(root, [LAST_RUN], isContinue, ORDER_ID, text), null);
+    assert.equal(continuationRefusal(root, [LAST_RUN], isContinue, ORDER_ID, text),
+      continuationRefusal(root, [LAST_RUN], isContinue, ORDER_ID, null));
+  }
+  assert.deepEqual(fs.readdirSync(root), []);
 });

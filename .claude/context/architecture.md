@@ -32,7 +32,7 @@ hand-edited files stop the run unless `--force`.
   override or the default. `run-config.mjs` and `cli/hosts.mjs` ask it; nothing derives that path
   from its own module location any more.
 - `task-header.mjs` reads the orchestrator's metadata header of a task (`advice:`, `continue:`, `retry:`) for the
-  runner and the producer hook alike (Plan_75 D5); it sits beside `required-inputs.mjs` rather than under `runner/`
+  runner and the producer hook alike (Plan_75 D5); it sits beside `order-schema.mjs` and `order-values.mjs` rather than under `runner/`
   because the hook needs the same answer before a runner exists.
 - `runner/` is one concern per module: `run-context` holds the run in progress, `run-env` reads
   `run-config.json`, `args` refuses the command line, `pass-gate` decides before registration whether a

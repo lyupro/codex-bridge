@@ -1,6 +1,6 @@
 /**
- * Plan_63 D7: runner refusals and replies obtain order-input spellings from the schema, so
- * changing the input channel only changes orderInputName instead of leaving stale instructions.
+ * Plan_63 D7/D9: hooks and dispatcher commands join the runner guard at C3/C4, so
+ * retired command-line inputs cannot return when orders move into task-file headers.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -9,7 +9,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { findSpellings, orderSpellings } from '../order-spelling-scan.mjs';
 
-const LIB = fileURLToPath(new URL('../../src/home/lib/', import.meta.url));
+const HOME = fileURLToPath(new URL('../../src/home/', import.meta.url));
+// Plan_63 D9: the host-refusal recognizer must read historical refusal text, never emit an order flag.
+const ALLOW_LIST = new Map([
+  ['src/home/lib/host-refusal.mjs', 'Recognizes the retired order-id spelling in a host refusal transcript.'],
+]);
 
 function scan(source, file) {
   return findSpellings(source, file).map(({ file, line, spelling }) =>
@@ -24,15 +28,27 @@ function moduleFiles(directory) {
   });
 }
 
-test('runner and meta code take every order-input spelling from the schema', () => {
-  const findings = ['runner', 'meta'].flatMap((directory) =>
-    moduleFiles(path.join(LIB, directory)).flatMap((file) => {
-      const relative = path.relative(LIB, file).split(path.sep).join('/');
+test('all library and hook code keep retired order flags dead', () => {
+  const findings = ['lib', 'hooks'].flatMap((directory) =>
+    moduleFiles(path.join(HOME, directory)).flatMap((file) => {
+      const relative = `src/home/${path.relative(HOME, file).split(path.sep).join('/')}`;
+      if (ALLOW_LIST.has(relative)) {
+        assert.ok(ALLOW_LIST.get(relative).trim(), `${relative}: an exception needs a reason`);
+        return [];
+      }
       // Plan_63 D8: the closed argv parser must not restore an order flag either.
-      return scan(fs.readFileSync(file, 'utf8'), `src/home/lib/${relative}`);
+      return scan(fs.readFileSync(file, 'utf8'), relative);
     }),
   );
   assert.deepEqual(findings, [], findings.join('\n'));
+});
+
+test('the negative inventory is exactly the nine frozen retired order flags', () => {
+  assert.deepEqual(orderSpellings(), [
+    'order-id', 'scope', 'scope-new', 'repo', 'slug', 'effort', 'changeset', 'phase', 'continue',
+  ].map((name) => `--${name}`));
+  assert.ok(Object.isFrozen(orderSpellings()));
+  assert.throws(() => orderSpellings().push('--invented'), TypeError);
 });
 
 test('the scanner reports code spellings, ignores comments and respects whole flags', () => {
@@ -53,6 +69,18 @@ test('the scanner reports code spellings, ignores comments and respects whole fl
     `inline.mjs:1: ${scopeNew} — use orderInputName(label)`,
   ]);
   assert.deepEqual(scan(`'${scope}d' '${scope}-extra' '${scope}1' '${scope}A'`, 'inline.mjs'), []);
+});
+
+test('regex quotes do not turn following comments into code or hide real flags', () => {
+  const [spelling] = orderSpellings();
+  const regex = "/[\x60\"'*]+$/g";
+  const source = regex + '\n/** ' + spelling + ' */\nconst input = "' + spelling + '";';
+  assert.deepEqual(scan(source, 'inline.mjs'), [
+    `inline.mjs:3: ${spelling} — use orderInputName(label)`,
+  ]);
+  assert.deepEqual(scan('/' + spelling + '/i', 'inline.mjs'), [
+    `inline.mjs:1: ${spelling} — use orderInputName(label)`,
+  ]);
 });
 
 test('header labels are not flag spellings: reply text may name scope and phase', () => {

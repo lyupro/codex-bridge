@@ -16,8 +16,8 @@ which were never accounted for at all.
 
 Before the launcher starts, Claude Code invokes the `PreToolUse` hook `order-gate.mjs` on every attempt
 to call a dispatcher. The gate reads the job text from `tool_input.prompt` and checks it against the
-single table in `src/required-inputs.mjs`: `codex-scout` and `codex-review` require a job label, while
-`codex-build` requires a label and full `scope`. A missing value or obvious placeholder (`TODO`,
+order schema in `src/home/lib/order-schema.mjs`: the call is only `task file:`, and the header of that file
+must carry the job label (and full `scope` for `codex-build`). A missing value or obvious placeholder (`TODO`,
 `<label>`, and so on) is rejected here, before either the subagent or Codex starts and before quota is
 spent. A real label and scope allow the call to continue.
 

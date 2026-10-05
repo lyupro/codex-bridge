@@ -2,10 +2,10 @@
 /**
  * PreToolUse gate for the Codex dispatchers (codex-scout / codex-build / codex-review).
  *
- * The runner rejects a dispatcher immediately when order id (and scope for codex-build) is
- * absent, but the old requirement lived only in the prompt read by the dispatcher. The caller
- * therefore had no enforced place to provide it and codex-build died before doing work. This
- * gate checks the producer's task text while it can still be corrected.
+ * Plan_63 D9: the call carries only the task file; order id and grant come from its header.
+ * OW-054: validate the header and order before a grant can skip the order-owner diagnostic,
+ * so a `continue: none` line cannot disarm the check. The producer can still correct the order
+ * before the runner creates a run folder or spends quota.
  *
  * Input is Claude Code's hook JSON on stdin. The last payload is retained for diagnostics so a
  * future host schema change can be inspected instead of guessed at. Any uncertain shape passes
@@ -17,6 +17,7 @@ import { AGENTS } from '../lib/agents.mjs';
 import { recordHookDiagnostic } from '../lib/hook-diagnostics.mjs';
 import { readJsonFileSync } from '../lib/json-file.mjs';
 import { parseDispatcherCall, renderCallRefusal } from '../lib/dispatcher-call.mjs';
+import { orderFromHeader, renderOrderProblems } from '../lib/order-schema.mjs';
 import { SUBAGENT_TOOLS } from '../lib/hook-definitions.mjs';
 import { taskFingerprint } from '../lib/meta/chain.mjs';
 import { conflictingOrderOwner, orderOwnerConflictText } from '../lib/runner/order-owner.mjs';
@@ -89,11 +90,7 @@ const readStatus = (file) => {
   }
 };
 
-const orderId = call.inputs.get('order id');
 const taskFile = call.inputs.get('task file');
-// Plan_75 D1, TradeForge capacity incident: retries keep their order; the runner owns conflicting-grant refusal.
-const grant = call.inputs.has('continue') || call.inputs.has('retry');
-if (!orderId || !taskFile || grant) pass();
 
 let rawTask;
 try {
@@ -105,6 +102,13 @@ try {
 const parsed = parseTaskHeader(rawTask);
 const headerRefusal = taskHeaderRefusal(parsed);
 if (headerRefusal) deny(headerRefusal);
+const { order, problems } = orderFromHeader(toolInput.subagent_type, parsed);
+if (problems.length) {
+  deny(`${renderOrderProblems(toolInput.subagent_type, problems)}\nThe run folder was not created; quota was not spent.`);
+}
+const orderId = order.get('order id');
+// Plan_63 D9 / OW-054: only a validated header grant reaches the runner's grant rules.
+if (parsed.grant) pass();
 let taskHash;
 try {
   taskHash = taskFingerprint(parseTaskDocument(parsed.body).task);

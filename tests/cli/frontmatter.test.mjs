@@ -11,7 +11,7 @@ import { resolveHost } from '../../cli/hosts.mjs';
 import {
   renderRequiredInputSummary,
   renderRequiredInputs,
-} from '../../src/home/lib/required-inputs.mjs';
+} from '../../src/home/lib/dispatcher-call.mjs';
 import { renderNoSelfExecution } from '../../src/home/lib/no-self-execution.mjs';
 import { renderStopSummary } from '../../src/home/lib/stop-contract.mjs';
 
@@ -123,6 +123,12 @@ test('every installed agent frontmatter round-trips the real placeholder substit
     const parsed = parseFrontmatter(emitted);
     assert.deepEqual(parsed, intendedValues(source, item.installationRoot, agentType), agentType);
     assert.equal(parsed.name, agentType);
+    assert.ok(parsed.description.includes(renderRequiredInputSummary(agentType)),
+      `${agentType} frontmatter carries the task-file-only call and header labels`);
+    assert.ok(emitted.includes(renderRequiredInputs(agentType)),
+      `${agentType} body carries the task-file explanation and header examples`);
+    assert.match(parsed.description, /The call is only `task file`/);
+    assert.match(emitted, /The order gate refuses any call line other than `task file: <absolute path>`\./);
     assert.ok(parsed.description.includes(renderStopSummary()), `${agentType} keeps the TaskStop sentence verbatim`);
   }
 });

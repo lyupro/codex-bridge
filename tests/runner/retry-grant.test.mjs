@@ -7,9 +7,10 @@ import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { orderTaskText } from './order-invocation.mjs';
 import { parseArgs } from '../../src/home/lib/runner/args.mjs';
 import {
-  CONTINUATION_INPUT, RETRY_INPUT, parseContinuationGrant, parseRetryGrant, parseGrant,
-  REQUIRED_INPUTS, requiredInputsFor,
-} from '../../src/home/lib/required-inputs.mjs';
+  CONTINUATION_ORDER_INPUT, RETRY_ORDER_INPUT, ORDER_AGENTS, orderLabelsFor,
+} from '../../src/home/lib/order-schema.mjs';
+import { splitGrantValue } from '../../src/home/lib/order-values.mjs';
+import { parseTaskHeader } from '../../src/home/lib/task-header.mjs';
 import {
   continuationRefusal, retryRefusal, readyGrantLines,
 } from '../../src/home/lib/runner/continuation.mjs';
@@ -29,69 +30,76 @@ function run(root, name, status, meta) {
 }
 
 const finished = { state: 'finished', order_id: 'o' };
-const grant = (kind, runName) => parseGrant(orderTaskText({
+const grant = (kind, runName) => parseTaskHeader(orderTaskText({
   order: { 'order id': 'o' },
   grant: { kind, run: runName, reason: 'model at capacity, same pass again' },
-}));
+})).grant;
 const dead = () => false;
 const unexpectedLiveness = () => assert.fail('an earlier retry gate must refuse before liveness');
 const noQuota = (message) => assert.match(message, /The run folder was not created; quota was not spent\.$/);
 
 test('retry input has the continuation shape and is inside every list with continue, right after it', () => {
-  assert.deepEqual(Object.keys(RETRY_INPUT), Object.keys(CONTINUATION_INPUT));
-  assert.equal(RETRY_INPUT.label, 'retry');
-  assert.equal(RETRY_INPUT.source, 'the orchestrator');
-  assert.match(RETRY_INPUT.explanation, /^The failed run this pass repeats, followed by why the orchestrator pays for the same pass again/);
-  assert.equal(RETRY_INPUT.example, '2026-10-03_172017_cc-d66-advisor — model at capacity, same pass again');
-  assert.equal(RETRY_INPUT.conditional, 'when --continue is passed');
-  assert.ok(Object.isFrozen(RETRY_INPUT));
-  for (const agent of Object.keys(REQUIRED_INPUTS)) {
-    const inputs = requiredInputsFor(agent);
+  assert.deepEqual(Object.keys(RETRY_ORDER_INPUT), Object.keys(CONTINUATION_ORDER_INPUT));
+  assert.equal(RETRY_ORDER_INPUT.label, 'retry');
+  assert.match(RETRY_ORDER_INPUT.explanation, /^The failed run this pass repeats, followed by why the orchestrator pays for the same pass again/);
+  assert.equal(RETRY_ORDER_INPUT.example, '2026-10-03_172017_cc-d66-advisor — model at capacity, same pass again');
+  assert.equal(RETRY_ORDER_INPUT.conditional, 'when this pass continues or repeats a named run');
+  assert.ok(Object.isFrozen(RETRY_ORDER_INPUT));
+  for (const agent of ORDER_AGENTS) {
+    const inputs = orderLabelsFor(agent);
     const continuationIndex = inputs.findIndex((input) => input.label === 'continue');
     if (continuationIndex === -1) continue;
-    assert.equal(inputs[continuationIndex + 1], RETRY_INPUT, agent);
+    assert.deepEqual(inputs[continuationIndex + 1], {
+      ...RETRY_ORDER_INPUT, required: false, conditional: true, optional: false,
+    }, agent);
     assert.equal(inputs.filter((input) => input.label === 'retry').length, 1, agent);
   }
 });
 
-test('parseGrant returns null without a grant', () => {
-  for (const text of [undefined, null, '', 'Repeat the failed pass.', 'retry this pass']) {
-    assert.equal(parseGrant(text), null);
+test('header parsing returns no grant without a grant label', () => {
+  for (const text of ['', 'Repeat the failed pass.', 'retry this pass']) {
+    assert.equal(parseTaskHeader(text).grant, null);
   }
+  for (const value of [undefined, null]) assert.equal(splitGrantValue(value), null);
 });
 
-test('parseGrant distinguishes the next pass from the repeated failed pass', () => {
-  assert.deepEqual(parseGrant('continue: S — advise after scope'), {
+test('header grants distinguish the next pass from the repeated failed pass', () => {
+  assert.deepEqual(parseTaskHeader('continue: S — advise after scope').grant, {
     kind: 'continue', run: 'S', reason: 'advise after scope',
   });
-  assert.deepEqual(parseGrant('retry: A — capacity failure'), {
+  assert.deepEqual(parseTaskHeader('retry: A — capacity failure').grant, {
     kind: 'retry', run: 'A', reason: 'capacity failure',
   });
 });
 
-test('parseGrant refuses both grants regardless of their order or run names', () => {
+test('header parsing refuses both grants regardless of their order or run names', () => {
   for (const text of [
     'continue: S — next pass\nretry: A — same pass',
-    '- *retry*: A — same pass\r\ncontinue: A — next pass',
+    'retry: A — same pass\r\ncontinue: A — next pass',
   ]) {
-    assert.deepEqual(parseGrant(text), {
-      error: 'exactly one grant per task: remove either the continue: or the retry: line',
-    });
+    assert.ok(parseTaskHeader(text).problems.some(({ reason }) =>
+      reason === 'continue and retry cannot both be present; keep exactly one grant label'));
   }
+  // Plan_63 D9: the retired loose reader accepted decoration; the strict header refuses it.
+  assert.match(parseTaskHeader('- *retry*: A — same pass\r\ncontinue: A — next pass')
+    .problems[0].reason, /misplaced retry metadata/);
 });
 
-test('retry and continuation share labelled spelling and run/reason separators', () => {
-  for (const text of ['- *retry*: X — why', 'retry: X - why', 'retry: X: why']) {
-    assert.deepEqual(parseRetryGrant(text), { run: 'X', reason: 'why' });
-    assert.deepEqual(parseGrant(text), { kind: 'retry', run: 'X', reason: 'why' });
-    assert.deepEqual(parseContinuationGrant(text.replace('retry', 'continue')), parseRetryGrant(text));
+test('retry and continuation share run/reason separators through the header value grammar', () => {
+  for (const value of ['X — why', 'X - why', 'X: why']) {
+    assert.deepEqual(splitGrantValue(value), { run: 'X', reason: 'why' });
+    for (const kind of ['continue', 'retry']) {
+      assert.deepEqual(parseTaskHeader(`${kind}: ${value}`).grant, { kind, run: 'X', reason: 'why' });
+    }
   }
+  assert.match(parseTaskHeader('- *retry*: X — why').problems[0].reason, /misplaced retry metadata/);
 });
 
 test('grant placeholders and incomplete run/reason pairs remain null', () => {
   for (const label of ['continue', 'retry']) {
     for (const value of ['', '<run> — why', 'X — <why>', 'TODO — why', 'X — TBD', 'X', 'X — ']) {
-      assert.equal(parseGrant(`${label}: ${value}`), null, `${label}: ${value}`);
+      assert.equal(splitGrantValue(value), null, value);
+      assert.equal(parseTaskHeader(`${label}: ${value}`).grant, null, `${label}: ${value}`);
     }
   }
 });
@@ -191,7 +199,7 @@ test('TradeForge: the failed advise can be retried after scope and advise spent 
     status: 'FAIL', reason: 'Selected model is at capacity…',
   });
   const chain = ['S', 'A'];
-  assert.equal(retryRefusal(root, chain, true, 'o', parseGrant('retry: A — model at capacity'), dead), null);
+  assert.equal(retryRefusal(root, chain, true, 'o', parseTaskHeader('retry: A — model at capacity').grant, dead), null);
   assert.match(retryRefusal(root, chain, true, 'o', grant('retry', 'S'), dead), /not the LAST run/);
   const message = continuationRefusal(root, chain, true, 'o', grant('continue', 'A'));
   assert.match(message, /already spent its allowed continuation/);

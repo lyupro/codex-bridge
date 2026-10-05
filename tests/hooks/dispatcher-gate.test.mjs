@@ -12,8 +12,12 @@ import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const GATE = path.join(ROOT, 'src', 'home', 'hooks', 'dispatcher-gate.mjs');
-const ORDER = 'order id: order-62\nscope: src/home\ntask file: C:/abs/task.md';
+const ORDER = 'task file: C:/abs/task.md';
 const COMMAND = canonicalRunCommand('codex-build', ORDER).command;
+
+test('the transcript call has the two-flag canonical runner command', () => {
+  assert.equal(COMMAND, 'codex-bridge run --agent codex-build --task-file "C:/abs/task.md"');
+});
 
 function runGate(root, payload) {
   return spawnSync(process.execPath, [GATE], {

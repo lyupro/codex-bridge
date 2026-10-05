@@ -17,27 +17,27 @@ const EXCLUDED = new Set([
   'tests/order-flag-ratchet.test.mjs',
 ]);
 
-// Plan_63 D8: literal post-F1-F5 counts, never regenerated as part of running the guard.
+// Plan_63 D9 G4: reviewed decreases after the task-file switch; never regenerate at test time.
 const BASELINE = {
   'tests/cli/codex-bridge.test.mjs': 1,
   'tests/cli/commands.test.mjs': 1,
   'tests/cli/model-concurrent-edits.test.mjs': 3,
   'tests/cli/model.test.mjs': 5,
   'tests/cli/uninstall-purge.test.mjs': 1,
-  'tests/dispatcher-call.test.mjs': 11,
-  'tests/dispatcher-command.test.mjs': 33,
-  'tests/dispatcher-gate.test.mjs': 4,
+  'tests/dispatcher-call.test.mjs': 4,
+  'tests/dispatcher-command.test.mjs': 2,
+  'tests/dispatcher-gate.test.mjs': 0,
   'tests/mode-is-not-a-name.test.mjs': 1,
-  'tests/required-inputs.test.mjs': 3,
+  'tests/required-inputs.test.mjs': 0,
   'tests/runner/advisor-run.test.mjs': 1,
   'tests/runner/args-refusal-order.test.mjs': 7,
   'tests/runner/continuation-grant.test.mjs': 3,
   'tests/runner/continuation.test.mjs': 2,
   'tests/runner/phase.test.mjs': 1,
-  'tests/runner/retry-grant.test.mjs': 2,
+  'tests/runner/retry-grant.test.mjs': 1,
   'tests/runner/scope.test.mjs': 5,
   'tests/runner/shell-unsafe.test.mjs': 1,
-  'tests/shell-unsafe-arguments.test.mjs': 2,
+  'tests/shell-unsafe-arguments.test.mjs': 0,
 };
 
 function moduleFiles(directory) {

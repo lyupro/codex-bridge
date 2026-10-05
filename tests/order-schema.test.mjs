@@ -1,36 +1,73 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { REQUIRED_INPUTS, callInputsFor } from '../src/home/lib/required-inputs.mjs';
 import {
-  ORDER_AGENTS, ALL_ORDER_LABELS, orderLabelsFor, orderInputName, orderFromHeader, renderOrderHeaderHelp,
+  ORDER_AGENTS, ALL_ORDER_LABELS, orderLabelsFor, orderInputName, orderFromHeader, renderOrderHeaderHelp, renderOrderProblems,
+  CONTINUATION_ORDER_INPUT, RETRY_ORDER_INPUT,
 } from '../src/home/lib/order-schema.mjs';
 import { parseTaskHeader } from '../src/home/lib/task-header.mjs';
 
-test('order schemas derive every label and its category from the registry minus task file', () => {
-  assert.deepEqual(ORDER_AGENTS, Object.keys(REQUIRED_INPUTS));
+const expectedLabels = {
+  'codex-scout': ['order id', 'continue', 'retry', 'repository', 'slug', 'effort'],
+  'codex-build': ['order id', 'scope', 'continue', 'retry', 'repository', 'scope new', 'slug', 'effort'],
+  'codex-review': ['order id', 'continue', 'retry', 'repository', 'slug', 'effort', 'changeset'],
+  'codex-advisor': ['order id', 'continue', 'retry', 'phase', 'repository', 'slug', 'effort'],
+};
+const expectedOptionalAgents = {
+  repository: ['codex-scout', 'codex-build', 'codex-review', 'codex-advisor'],
+  'scope new': ['codex-build'],
+  slug: ['codex-scout', 'codex-build', 'codex-review', 'codex-advisor'],
+  effort: ['codex-scout', 'codex-build', 'codex-review', 'codex-advisor'],
+  changeset: ['codex-review'],
+};
+
+test('order schemas own the immutable registry without call labels or runner fields (Plan_63 D9)', () => {
+  assert.deepEqual(ORDER_AGENTS, ['codex-scout', 'codex-build', 'codex-review', 'codex-advisor']);
   assert.ok(Object.isFrozen(ORDER_AGENTS));
   for (const agent of ORDER_AGENTS) {
-    const expected = callInputsFor(agent).filter(({ label }) => label !== 'task file');
     const labels = orderLabelsFor(agent);
-    assert.deepEqual(labels, expected.map((entry) => ({
-      label: entry.label,
-      flag: entry.flag,
-      required: !entry.conditional && !entry.optional,
-      conditional: Boolean(entry.conditional),
-      optional: Boolean(entry.optional),
-      example: entry.example,
-    })));
+    assert.deepEqual(labels.map(({ label }) => label), expectedLabels[agent]);
     assert.ok(Object.isFrozen(labels));
     assert.ok(labels.every(Object.isFrozen));
+    for (const entry of labels) {
+      assert.equal(entry.required, ['order id', 'scope', 'phase'].includes(entry.label));
+      assert.equal(entry.conditional, ['continue', 'retry'].includes(entry.label));
+      assert.equal(entry.optional, Object.hasOwn(expectedOptionalAgents, entry.label));
+      assert.equal(Object.hasOwn(entry, 'flag'), false);
+      assert.equal(Object.hasOwn(entry, 'source'), false);
+      assert.ok(entry.explanation.length > 0);
+      assert.ok(entry.example.length > 0);
+      if (entry.optional) {
+        assert.deepEqual(entry.agents, expectedOptionalAgents[entry.label]);
+        assert.ok(Object.isFrozen(entry.agents));
+      }
+    }
   }
-  assert.deepEqual(ALL_ORDER_LABELS, [...new Set(ORDER_AGENTS.flatMap((agent) =>
-    callInputsFor(agent).filter(({ label }) => label !== 'task file').map(({ label }) => label),
-  ))].sort());
+  assert.deepEqual(ALL_ORDER_LABELS, [
+    'changeset', 'continue', 'effort', 'order id', 'phase', 'repository', 'retry', 'scope', 'scope new', 'slug',
+  ]);
+  assert.equal(ALL_ORDER_LABELS.includes('task file'), false);
   assert.ok(Object.isFrozen(ALL_ORDER_LABELS));
   for (const agent of ['unknown', '__proto__', 'constructor']) {
     assert.deepEqual(orderLabelsFor(agent), []);
     assert.ok(Object.isFrozen(orderLabelsFor(agent)));
   }
+});
+
+test('grant and phase explanations name header authorization instead of flags (Plan_63 D9)', () => {
+  for (const [entry, label, example] of [
+    [CONTINUATION_ORDER_INPUT, 'continue', '2026-08-05_092913_plan14-build — LIMIT at step 3, tests unwritten'],
+    [RETRY_ORDER_INPUT, 'retry', '2026-10-03_172017_cc-d66-advisor — model at capacity, same pass again'],
+  ]) {
+    assert.ok(Object.isFrozen(entry));
+    assert.equal(entry.label, label);
+    assert.equal(entry.example, example);
+    assert.equal(entry.conditional, 'when this pass continues or repeats a named run');
+    assert.equal(Object.hasOwn(entry, 'flag'), false);
+    assert.equal(Object.hasOwn(entry, 'source'), false);
+    assert.doesNotMatch(entry.explanation, /(^|\s)--[a-z]/);
+  }
+  assert.equal(orderLabelsFor('codex-advisor').find(({ label }) => label === 'phase').explanation,
+    'Pass scope first to predict risks and check the reading boundary, then advise with a continue: grant naming the scope run of the same order.');
 });
 
 test('order input names use the header label spelling for every order label (Plan_63 D7)', () => {
@@ -60,8 +97,7 @@ test('unknown order input labels throw an Error naming the label', () => {
 for (const agent of ORDER_AGENTS) {
   test(`${agent} reads a complete header without consuming its grant or advice`, () => {
     for (const grantLabel of ['continue', 'retry']) {
-      const labels = callInputsFor(agent).filter(({ label }) =>
-        label !== 'task file' && !['continue', 'retry'].includes(label));
+      const labels = orderLabelsFor(agent).filter(({ label }) => !['continue', 'retry'].includes(label));
       const text = labels.map(({ label, example }) => `${label}: ${example}`)
         .concat(`${grantLabel}: x — y`, 'advice: mechanical', '## Task').join('\n');
       const parsed = parseTaskHeader(text);
@@ -78,7 +114,7 @@ for (const agent of ORDER_AGENTS) {
 
 test('missing required labels name the registry example with no source line', () => {
   for (const [agent, label] of [['codex-build', 'scope'], ['codex-advisor', 'phase']]) {
-    const { example } = callInputsFor(agent).find((entry) => entry.label === label);
+    const { example } = orderLabelsFor(agent).find((entry) => entry.label === label);
     const result = orderFromHeader(agent, parseTaskHeader('order id: plan-63'));
     assert.deepEqual(result.problems, [{ lineNo: null, line: '',
       reason: `missing required header label "${label}:"; example: ${label}: ${example}` }]);
@@ -155,4 +191,13 @@ test('header help lists registry examples in required, conditional, optional ord
     assert.equal(renderOrderHeaderHelp(agent), expected.join('\n'));
   }
   assert.equal(renderOrderHeaderHelp('unknown'), '');
+});
+
+test('order problem rendering preserves runner line diagnostics and the header template byte for byte', () => {
+  const parsed = parseTaskHeader('scope: TODO\n## Task\nRequested task\n');
+  const { problems } = orderFromHeader('codex-build', parsed);
+  assert.equal(renderOrderProblems('codex-build', problems),
+    'line 1: label "scope" is still a placeholder: scope: TODO\n'
+      + 'missing required header label "order id:"; example: order id: plan-13-build-20260804\n'
+      + renderOrderHeaderHelp('codex-build'));
 });

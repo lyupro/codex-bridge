@@ -54,13 +54,17 @@ here. Nothing was reworded on the way out.
   read by all three layers that police this: the order gate, the runner and
   `tests/shell-unsafe-arguments.test.mjs`, which also checks the examples in `docs/overview.md` and
   `README.md` for continuations and relative task-file paths. Never restate the list anywhere.
-- **The dispatcher call is only exact `label: value` lines of one registry, and
-  `src/home/lib/dispatcher-call.mjs` is its only reader** (Plan_76 D1). The labels — required, conditional and
-  `OPTIONAL_INPUTS`, each with its agents and runner flag — live in `src/home/lib/required-inputs.mjs`
-  (`callInputsFor`); the order gate hook and the canonical command of the dispatcher gate take
-  `parseDispatcherCall`, and the generated prompt text lists the same labels. Any other
-  line is a free refusal before the dispatcher starts. A new label is one registry entry with a flag (a label without
-  effect on the command is refused by a test), never a regex in a consumer; never add a synonym spelling. Why: on
+- **The dispatcher call is exactly one line, `task file: <absolute path>`, and `src/home/lib/dispatcher-call.mjs` is
+  its only reader; the whole order lives in that file's header** (Plan_76 D1, Plan_63 D9). The call contract
+  (`TASK_FILE_INPUT`, `callInputsFor`, the prompt renderers) is owned by `dispatcher-call.mjs`; the order registry
+  (labels, agents, required/conditional/optional, examples — no runner flags) by `src/home/lib/order-schema.mjs`; the
+  grammar of one value by `src/home/lib/order-values.mjs`, a leaf that imports neither. Any former order label in the
+  call (`order id:`, `continue: none`, any spelling) is a free refusal "moved to the task-file header" with the agent's
+  header template. The canonical command is `codex-bridge run --agent <type> --task-file "<path>"`, built without reading
+  the file. The order gate refuses the header's problems and `orderFromHeader`'s problems before it looks at a grant;
+  only a valid header grant skips the different-task owner check (OW-054). A new order input is one registry entry in
+  `order-schema.mjs`; `tests/order-header-consumption.test.mjs` fails a label nothing consumes, and the nine retired
+  flags stay a frozen negative list in `tests/order-spelling-scan.mjs`. Never add a synonym spelling. Why: on
   2026-10-04 `scope-new: src/` was silently dropped and, placed above `scope:`, became `--scope "new: src/"`, and a
   `Repository root:` prose line made the haiku dispatcher prepend `cd … &&` and leave without delegating — the loose
   reader accepted a label on any line.

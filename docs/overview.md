@@ -583,19 +583,17 @@ unconfirmed response cannot pass silently.
 ## Order gate
 
 `hooks/order-gate.mjs` is the `PreToolUse` hook on the tool that launches a dispatcher. The `prompt`
-of an Agent call to `codex-scout`, `codex-build`, `codex-review`, or `codex-advisor` contains only
-exact `label: value` lines from one input registry, in any order; blank lines are allowed. The hook
-refuses prose, unknown or another agent's labels, decorated or hyphenated spellings (`scope-new:`,
-`order-id:`, `- **order id:**`), `--flag value` lines, duplicates even with identical values, empty
-values, missing required labels, placeholders, relative task-file paths, and shell-unsafe values.
-The refusal is free and happens before the dispatcher starts: it names the offending line, the
-exact spelling and every label of that agent, and says "Free text belongs in the task file."
-`parseDispatcherCall` in `lib/dispatcher-call.mjs` is the shared reader for this hook and the canonical
-command's dispatcher gate; grant values (`continue`,
-`retry`) are left to the runner. The hook also refuses an order id already owned by a run with a
-different task-body hash, before Codex is invoked. An explicit `continue:` or `retry:` header grant
-permits another pass. The gate also applies the runner's malformed-header and misplaced-metadata
-refusals.
+of an Agent call to `codex-scout`, `codex-build`, `codex-review`, or `codex-advisor` is exactly one
+line, `task file: <absolute path>`; the whole order (order id, scope, phase, grants and the rest) lives
+in the header at the top of that file. The hook refuses prose, every former order label in the call in
+any spelling (`order id:`, `order-id:`, `continue: none` — "moved to the task-file header"), a
+misspelled, duplicated, empty, placeholder, relative or shell-unsafe task file, and names the agent's
+header template in the refusal. It then reads the file: the header's own problems and the order
+schema's problems (missing required label, a label of another agent, a placeholder) are refused before
+any grant is considered. Only a valid `continue:` or `retry:` header grant hands the order to the
+runner's grant rules; otherwise an order id already owned by a run with a different task-body hash is
+refused before Codex is invoked. The canonical command is `codex-bridge run --agent <type> --task-file
+"<path>"`, built by `lib/dispatcher-command.mjs` from the call alone.
 
 The gate and the runner share one definition of which task owns an order id
 (`lib/runner/order-owner.mjs`); a second copy would drift, and drift between two such lists is what

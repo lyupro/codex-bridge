@@ -1,20 +1,32 @@
 /**
- * Parses and explains dispatcher calls using only the shared registry's exact label lines.
- * Plan_76 D1: on 2026-10-04 scope-new was dropped or read as scope, and repository prose caused a cd prefix.
+ * Owns the task-file-only dispatcher call and its repair instructions.
+ * Plan_63 D1/D9, OW-054: order labels in the call must never become runner flags.
  */
 import {
-  OPTIONAL_INPUTS,
-  REQUIRED_INPUTS,
-  callInputsFor,
+  ALL_ORDER_LABELS,
+  CONTINUATION_ORDER_INPUT,
+  ORDER_AGENTS,
+  RETRY_ORDER_INPUT,
+  orderLabelsFor,
+  renderOrderHeaderHelp,
+} from './order-schema.mjs';
+import {
   isAbsoluteTaskFilePath,
   isInputPlaceholder,
-} from './required-inputs.mjs';
+} from './order-values.mjs';
 import { firstShellUnsafeSequence } from './shell-unsafe.mjs';
 
-const knownLabels = new Set([
-  ...Object.values(REQUIRED_INPUTS).flat(),
-  ...OPTIONAL_INPUTS,
-].map((entry) => entry.label));
+export const TASK_FILE_INPUT = Object.freeze({
+  label: 'task file',
+  explanation: 'Absolute path to a file holding the task statement verbatim, written by the orchestrator with its file tool. The dispatcher passes the path to the runner and never creates, reads or rewrites the file: writing it from the shell reintroduces the permission prompt this file channel exists to remove. Given no path, return the refusal.',
+  example: 'C:/Users/me/AppData/Local/Temp/claude/<session>/scratchpad/task-plan-13.md',
+});
+
+export function callInputsFor(agentType) {
+  return ORDER_AGENTS.includes(agentType) ? [TASK_FILE_INPUT] : [];
+}
+
+const knownLabels = new Set(ALL_ORDER_LABELS);
 
 const freeTextReason = 'not a `label: value` line; free text belongs in the task file';
 
@@ -38,6 +50,11 @@ export function parseDispatcherCall(agentType, promptText) {
   const inputs = new Map();
   const problems = [];
   const acceptedLines = new Map();
+
+  if (!ORDER_AGENTS.includes(agentType)) {
+    problems.push({ line: null, text: '', reason: `unknown dispatcher agent ${JSON.stringify(agentType)}` });
+    return { inputs, problems };
+  }
 
   promptText.split(/\r?\n/).forEach((text, index) => {
     const trimmed = text.trim();
@@ -68,7 +85,7 @@ export function parseDispatcherCall(agentType, promptText) {
     if (labels.has(normalised)) {
       reason = `write the label exactly as \`${normalised}:\``;
     } else if (knownLabels.has(normalised)) {
-      reason = `label \`${normalised}\` is not accepted by \`${agentType}\``;
+      reason = `label \`${normalised}\` moved to the task-file header; the call is only \`task file: <absolute path>\``;
     }
     problems.push({ line, text, reason });
   });
@@ -79,8 +96,6 @@ export function parseDispatcherCall(agentType, promptText) {
     }
   }
   for (const [label, value] of inputs) {
-    // The runner owns grant refusals; grant prose never reaches a command-line value (Plan_76 D1).
-    if (label === 'continue' || label === 'retry') continue;
     const location = acceptedLines.get(label);
     if (isInputPlaceholder(value, label)) {
       problems.push({ ...location, reason: `label \`${label}\` is still a placeholder` });
@@ -97,7 +112,7 @@ export function parseDispatcherCall(agentType, promptText) {
   return { inputs, problems };
 }
 
-/** Names each refused line and the agent's full label list, so one free refusal carries its own repair. */
+/** Names each refused line and the agent's header template, so one free refusal carries its own repair. */
 export function renderCallRefusal(agentType, problems) {
   const lines = ['Order gate denied the Agent call: the call text must be only `label: value` lines.'];
   const entries = callInputsFor(agentType);
@@ -107,10 +122,44 @@ export function renderCallRefusal(agentType, problems) {
     const detail = entry ? ` — ${entry.explanation} Example: \`${entry.label}: ${entry.example}\`.` : '';
     lines.push(line === null ? `- ${reason}${detail}` : `- line ${line}: \`${text}\` — ${reason}`);
   }
-  const labels = entries.map((entry) => {
-    const status = entry.optional ? 'optional' : entry.conditional || 'required';
-    return `\`${entry.label}\` (${status})`;
-  });
-  lines.push(`Labels for ${agentType}: ${labels.join(', ')}`, 'Free text belongs in the task file.');
+  lines.push('The call is only `task file: <absolute path>`.',
+    'The order goes in the header at the top of that file:',
+    ...renderOrderHeaderHelp(agentType).split('\n'), 'Free text belongs in the task file.');
   return lines.join('\n');
+}
+
+function headerInputsFor(agentType) {
+  const entries = orderLabelsFor(agentType);
+  return [
+    ...entries.filter(({ required }) => required),
+    ...entries.filter(({ conditional }) => conditional),
+    ...entries.filter(({ optional }) => optional),
+  ];
+}
+
+function conditionFor(entry) {
+  return [CONTINUATION_ORDER_INPUT, RETRY_ORDER_INPUT]
+    .find(({ label }) => label === entry.label)?.conditional;
+}
+
+/** Keeps the caller's short prompt aligned with the header registry, including grant conditions. */
+export function renderRequiredInputSummary(agentType) {
+  if (!ORDER_AGENTS.includes(agentType)) return '';
+  const entries = headerInputsFor(agentType);
+  const required = entries.filter(({ required }) => required).map(({ label }) => `\`${label}\``);
+  const conditional = entries.filter(({ conditional }) => conditional)
+    .map((entry) => `\`${entry.label}\` (${conditionFor(entry)})`);
+  const optional = entries.filter(({ optional }) => optional).map(({ label }) => `\`${label}\``);
+  return `The call is only \`task file\` (an absolute path). The task-file header requires ${required.join(', ')}; `
+    + `conditional labels: ${conditional.join(', ')}; optional labels: ${optional.join(', ')}. `
+    + 'Free text belongs in the task file.';
+}
+
+/** Renders the call input and order-header entries without exposing retired runner flags. */
+export function renderRequiredInputs(agentType) {
+  if (!ORDER_AGENTS.includes(agentType)) return '';
+  return [TASK_FILE_INPUT, ...headerInputsFor(agentType)].map((entry) => {
+    const condition = entry.conditional ? ` Condition: ${conditionFor(entry)}.` : '';
+    return `- ${entry.label}: ${entry.explanation} Example: \`${entry.label}: ${entry.example}\`.${condition}`;
+  }).concat('The order gate refuses any call line other than `task file: <absolute path>`.').join('\n');
 }

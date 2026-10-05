@@ -1,18 +1,22 @@
 /** Plan_63 D5/D7: share the same comment-aware spelling scan across both channel guards. */
-import { ORDER_AGENTS, orderLabelsFor } from '../src/home/lib/order-schema.mjs';
+// Plan_63 D2/D9: these spellings must stay dead in code and tests. This frozen, test-only list
+// is a negative contract, never derived from runtime metadata.
+const RETIRED_ORDER_FLAGS = Object.freeze([
+  '--order-id', '--scope', '--scope-new', '--repo', '--slug', '--effort',
+  '--changeset', '--phase', '--continue',
+]);
 
-// The registry's command-line flags, not orderInputName: at the channel switch orderInputName starts answering
-// with header labels, and these flags are exactly what must then stay dead in code and tests (Plan_63 D7).
 export function orderSpellings() {
-  return [...new Set(ORDER_AGENTS.flatMap((agent) => orderLabelsFor(agent).map(({ flag }) => flag)))];
+  return RETIRED_ORDER_FLAGS;
 }
 
 export function findSpellings(source, file) {
   // Keep quoted text: a flag in a string is precisely the instruction this guard must catch.
+  // Plan_63 C3/C4: regex literals can contain quotes; do not let them swallow a following comment.
   // Mask comments without removing line breaks so diagnostics still name the original line.
   const code = source.replace(
-    /'(?:\\[\s\S]|[^'\\])*'|"(?:\\[\s\S]|[^"\\])*"|`(?:\\[\s\S]|[^`\\])*`|\/\*[\s\S]*?\*\/|\/\/[^\r\n]*/g,
-    (token) => token.startsWith('/') ? token.replace(/[^\r\n]/g, ' ') : token,
+    /\/\*[\s\S]*?\*\/|\/\/[^\r\n]*|\/(?![/*])(?:\\[\s\S]|\[(?:\\[\s\S]|[^\]\\\r\n])*\]|[^/\\[\r\n])+\/[dgimsuvy]*|'(?:\\[\s\S]|[^'\\\r\n])*'|"(?:\\[\s\S]|[^"\\\r\n])*"|\x60(?:\\[\s\S]|[^\x60\\])*\x60/g,
+    (token) => /^(?:\/\/|\/\*)/.test(token) ? token.replace(/[^\r\n]/g, ' ') : token,
   );
   const findings = [];
   for (const spelling of orderSpellings()) {

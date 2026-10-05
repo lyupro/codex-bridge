@@ -8,7 +8,7 @@
 import { EXIT } from './exit-codes.mjs';
 import fs from 'node:fs';
 import { AGENTS } from '../write-meta.mjs';
-import { isAbsoluteTaskFilePath } from '../required-inputs.mjs';
+import { isAbsoluteTaskFilePath } from '../order-values.mjs';
 import { firstShellUnsafeSequence } from '../shell-unsafe.mjs';
 import { parseTaskDocument } from './task-file.mjs';
 import { parseTaskHeader, taskHeaderRefusal } from '../task-header.mjs';

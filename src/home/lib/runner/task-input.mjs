@@ -6,15 +6,14 @@
  */
 import { die, readTaskDocument } from './args.mjs';
 import { questionKindRefusal } from './question-kind.mjs';
-import { orderFromHeader, orderInputName, renderOrderHeaderHelp } from '../order-schema.mjs';
+import { orderFromHeader, orderInputName, renderOrderProblems } from '../order-schema.mjs';
 import { orderOptions } from './order-options.mjs';
 
 export function settleTaskInput(opts, { cwd = process.cwd() } = {}) {
   const { task, header, questions: fileQuestions, verify: fileVerify } = readTaskDocument(opts);
   const { order, problems } = orderFromHeader(opts.agent, header);
   if (problems.length) {
-    die([...problems.map(({ lineNo, line, reason }) => lineNo === null
-      ? reason : `line ${lineNo}: ${reason}: ${line}`), renderOrderHeaderHelp(opts.agent)].join('\n'));
+    die(renderOrderProblems(opts.agent, problems));
   }
   const normalized = orderOptions(opts.agent, order, { cwd });
   if (normalized.problems.length) {

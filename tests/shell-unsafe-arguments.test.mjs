@@ -43,7 +43,7 @@ function runGate(root, prompt) {
   return spawnSync(process.execPath, [GATE], {
     input: payload(prompt),
     encoding: 'utf8',
-    env: { ...process.env, HOME: root, USERPROFILE: root },
+    env: { ...process.env, HOME: root, USERPROFILE: root, CODEX_BRIDGE_HOME: path.join(root, 'home') },
   });
 }
 
@@ -61,28 +61,46 @@ test('dispatcher command arguments contain no new shell-unsafe sequences', async
 
 test('the dispatcher guard catches mutations using every shared forbidden sequence', () => {
   for (const sequence of SHELL_UNSAFE_SEQUENCES) {
-    const mutated = '```bash\ncodex-bridge run --slug "safe' + sequence + 'mutation"\n```';
+    const mutated = '```bash\ncodex-bridge run --task-file "C:/safe' + sequence + 'mutation.md"\n```';
     assert.deepEqual(
       unsafeArguments(mutated, 'mutated.md'),
-      [{ name: 'mutated.md', flag: '--slug', sequence }],
+      [{ name: 'mutated.md', flag: '--task-file', sequence }],
     );
   }
 });
 
-test('the order gate denies an unsafe labelled value and passes clean labelled values', async (t) => {
+test('the order gate denies unsafe header values and passes clean header values', async (t) => {
   const root = makeTempTree('shell-unsafe-gate-');
   t.after(() => removeTempTree(root));
-  const base = 'order id: plan-42-build\ntask file: C:/Temp/task-plan-42.md\n';
-  const denied = runGate(root, `${base}scope: src/**;tests/**`);
+  const taskFile = path.join(root, 'task-plan-42.md');
+  const call = `task file: ${taskFile}`;
+  const header = 'order id: plan-42-build\n';
+  await fs.writeFile(taskFile, `${header}scope: src/**;tests/**\n\n# Task\nVerify the order.\n`);
+  const denied = runGate(root, call);
+  assert.equal(denied.status, 0, denied.stderr);
   const decision = JSON.parse(denied.stdout).hookSpecificOutput;
   assert.equal(decision.permissionDecision, 'deny');
   assert.match(decision.permissionDecisionReason, /scope/);
   assert.match(decision.permissionDecisionReason, /";"/);
   assert.match(decision.permissionDecisionReason, /put free text in the task file/);
 
-  const passed = runGate(root, `${base}scope: src/**,tests/**`);
+  await fs.writeFile(taskFile, `${header}scope: src/**,tests/**\n\n# Task\nVerify the order.\n`);
+  const passed = runGate(root, call);
   assert.equal(passed.status, 0);
   assert.equal(passed.stdout, '');
+});
+
+test('the order gate denies unsafe task-file call values before reading a header', async (t) => {
+  const root = makeTempTree('shell-unsafe-call-');
+  t.after(() => removeTempTree(root));
+  for (const sequence of SHELL_UNSAFE_SEQUENCES) {
+    const denied = runGate(root, `task file: C:/Temp/safe${sequence}mutation.md`);
+    assert.equal(denied.status, 0, denied.stderr);
+    const decision = JSON.parse(denied.stdout).hookSpecificOutput;
+    assert.equal(decision.permissionDecision, 'deny');
+    assert.ok(decision.permissionDecisionReason.includes('label `task file` contains ' + JSON.stringify(sequence)));
+    assert.match(decision.permissionDecisionReason, /put free text in the task file/);
+  }
 });
 
 // Documentation examples were covered by nothing at all, and the commit that made an absolute

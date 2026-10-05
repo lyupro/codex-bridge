@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **Breaking for orchestrator prompts:** a dispatcher call is exactly one line, `task file: <absolute
+  path>`. The order — `order id`, `scope`, `scope new`, `phase`, `continue`/`retry`, `slug`, `effort`,
+  `changeset`, `repository` — goes in the header at the top of that file, and the dispatcher runs
+  `codex-bridge run --agent <type> --task-file "<path>"`. Any former label in the call is refused for
+  free with "moved to the task-file header" and the agent's header template. Migration cost: move the
+  label lines from the call into the task file's first lines.
+
 - A dispatcher call contains only exact `label: value` lines from the agent's input registry, in any
   order, with blank lines allowed. Prose, unknown or another agent's labels, decorated or hyphenated
   spellings, `--flag value` lines, duplicates, empty values, missing required labels, placeholders,

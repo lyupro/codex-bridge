@@ -1,171 +1,147 @@
-/** Verifies canonical dispatcher commands and their fail-closed input boundary. */
+// Verifies Plan_63 D9 canonical commands and the OW-054 fail-closed call boundary.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { canonicalRunCommand, sameCommand } from '../src/home/lib/dispatcher-command.mjs';
-import { REQUIRED_INPUTS } from '../src/home/lib/required-inputs.mjs';
+import { ALL_ORDER_LABELS, ORDER_AGENTS } from '../src/home/lib/order-schema.mjs';
+import { SHELL_UNSAFE_SEQUENCES } from '../src/home/lib/shell-unsafe.mjs';
 
-const taskFile = 'C:/scratch/plan-62-task.md';
+const taskFile = 'C:/scratch/plan-63-task.md';
+const prompt = `task file: ${taskFile}`;
 
-function promptFor(agentType, extra = {}) {
-  const fields = { 'order id': 'plan-62-build-20260924', 'task file': taskFile };
-  if (agentType === 'codex-build') fields.scope = 'src/home/lib/**,tests/**';
-  if (agentType === 'codex-advisor') fields.phase = 'scope';
-  return Object.entries({ ...fields, ...extra }).map(([label, value]) => `${label}: ${value}`).join('\n');
-}
-
-test('each dispatcher produces its exact canonical command', () => {
-  const cases = [
-    ['codex-scout', 'codex-bridge run --agent codex-scout --repo "." --order-id "plan-62-build-20260924" --task-file "C:/scratch/plan-62-task.md"'],
-    ['codex-build', 'codex-bridge run --agent codex-build --repo "." --scope "src/home/lib/**,tests/**" --order-id "plan-62-build-20260924" --task-file "C:/scratch/plan-62-task.md"'],
-    ['codex-review', 'codex-bridge run --agent codex-review --repo "." --order-id "plan-62-build-20260924" --task-file "C:/scratch/plan-62-task.md"'],
-    ['codex-advisor', 'codex-bridge run --agent codex-advisor --repo "." --phase "scope" --order-id "plan-62-build-20260924" --task-file "C:/scratch/plan-62-task.md"'],
-  ];
-  for (const [agentType, expected] of cases) {
-    assert.deepEqual(canonicalRunCommand(agentType, promptFor(agentType)), { command: expected });
-  }
-});
-
-test('optional values add flags in fixed order and are absent when omitted', () => {
-  const prompt = promptFor('codex-build', {
-    repository: 'E:/work/repository',
-    'scope new': 'src/new/**',
-    slug: 'plan-62-run',
-    effort: 'high',
-  });
-  assert.deepEqual(canonicalRunCommand('codex-build', prompt), {
-    command: 'codex-bridge run --agent codex-build --repo "E:/work/repository" --scope "src/home/lib/**,tests/**" --scope-new "src/new/**" --slug "plan-62-run" --order-id "plan-62-build-20260924" --task-file "C:/scratch/plan-62-task.md" --effort "high"',
-  });
-  for (const agentType of ['codex-scout', 'codex-review', 'codex-advisor']) {
-    const result = canonicalRunCommand(agentType, `${promptFor(agentType)}\nscope new: src/new/**`);
-    assert.match(result.refusal, /scope new.*not accepted/, agentType);
-    assert.equal(result.command, undefined, agentType);
-  }
-  assert.equal(canonicalRunCommand('codex-build', promptFor('codex-build')).command.includes('--scope-new'), false);
-});
-
-test('review changesets follow the repo pair before the remaining flags', () => {
-  for (const changeset of ['base:main', 'commit:abc123']) {
-    const prompt = promptFor('codex-review', { changeset, slug: 'review-run', effort: 'high' });
-    assert.deepEqual(canonicalRunCommand('codex-review', prompt), {
-      command: `codex-bridge run --agent codex-review --repo "." --changeset "${changeset}"`
-        + ' --slug "review-run" --order-id "plan-62-build-20260924"'
-        + ' --task-file "C:/scratch/plan-62-task.md" --effort "high"',
+test('each dispatcher produces exactly the agent and task-file command with no other tokens', () => {
+  for (const agent of ORDER_AGENTS) {
+    assert.deepEqual(canonicalRunCommand(agent, prompt), {
+      command: `codex-bridge run --agent ${agent} --task-file "${taskFile}"`,
     });
   }
 });
 
-test('a build call refuses changeset labels', () => {
-  const result = canonicalRunCommand('codex-build', promptFor('codex-build', { changeset: 'base:main' }));
-  assert.match(result.refusal, /changeset.*not accepted.*codex-build/);
-  assert.equal(result.command, undefined);
+test('the command quotes a path with spaces without accessing the task file', () => {
+  for (const agent of ORDER_AGENTS) {
+    const value = 'C:/nonexistent scratch/absent task.md';
+    assert.deepEqual(canonicalRunCommand(agent, `task file: ${value}`), {
+      command: `codex-bridge run --agent ${agent} --task-file "${value}"`,
+    });
+  }
 });
 
-// Plan_76 D1: the live scope-new line above scope must never become --scope "new: src/".
-test('a hyphenated scope-new label above scope is refused', () => {
-  const prompt = promptFor('codex-build').replace('\nscope:', '\nscope-new: src/\nscope:');
-  const result = canonicalRunCommand('codex-build', prompt);
-  assert.match(result.refusal, /line 3: write the label exactly as `scope new:`/);
-  assert.equal(result.command, undefined);
+test('every former label is refused for every dispatcher rather than translated to a flag', () => {
+  for (const agent of ORDER_AGENTS) {
+    for (const label of ALL_ORDER_LABELS) {
+      const result = canonicalRunCommand(agent, `${prompt}\n${label}: value`);
+      assert.deepEqual(result, {
+        refusal: 'Refused: the call text must be only label: value lines: '
+          + `line 2: label \`${label}\` moved to the task-file header; the call is only \`task file: <absolute path>\`.`,
+      });
+    }
+  }
 });
 
-test('prose in an otherwise valid call is refused as free text', () => {
-  const result = canonicalRunCommand('codex-scout', `${promptFor('codex-scout')}\nPlease inspect the repository.`);
-  assert.match(result.refusal, /^Refused: the call text must be only label: value lines: line 3:.*free text/);
-  assert.equal(result.command, undefined);
+// OW-054: the command must never manufacture --continue from a caller's grant or placeholder.
+test('continue none, retry TODO and simultaneous grants produce refusals without commands', () => {
+  for (const agent of ORDER_AGENTS) {
+    for (const extra of [
+      'continue: none', 'retry: TODO',
+      'continue: scope-run — next pass; finish it',
+      'retry: failed-run — model at capacity; same pass',
+      'continue: none\nretry: TODO',
+    ]) {
+      const result = canonicalRunCommand(agent, `${prompt}\n${extra}`);
+      assert.match(result.refusal, /moved to the task-file header/);
+      assert.equal(result.command, undefined);
+      assert.equal(result.refusal.includes('--continue'), false);
+    }
+  }
 });
 
-test('duplicate labels are refused with their line numbers', () => {
-  const result = canonicalRunCommand('codex-scout', `${promptFor('codex-scout')}\norder id: second-order`);
-  assert.equal(result.refusal,
-    'Refused: the call text must be only label: value lines: '
-      + 'line 3: label `order id` is given twice (line 1 and line 3).');
-  assert.equal(result.command, undefined);
+test('hyphenated scope-new and decorated order labels are refused with the header repair', () => {
+  for (const extra of ['scope-new: src/', '- **scope:** src/', 'order-id: a1']) {
+    const result = canonicalRunCommand('codex-build', `${extra}\n${prompt}`);
+    assert.match(result.refusal, /line 1: label .* moved to the task-file header/);
+    assert.equal(result.command, undefined);
+  }
+});
+
+test('prose in an otherwise valid call keeps the existing refusal form', () => {
+  assert.deepEqual(canonicalRunCommand('codex-scout', `${prompt}\nPlease inspect the repository.`), {
+    refusal: 'Refused: the call text must be only label: value lines: '
+      + 'line 2: not a `label: value` line; free text belongs in the task file.',
+  });
+});
+
+test('duplicate task files are refused with source line numbers', () => {
+  assert.deepEqual(canonicalRunCommand('codex-scout', `${prompt}\ntask file: C:/second.md`), {
+    refusal: 'Refused: the call text must be only label: value lines: '
+      + 'line 2: label `task file` is given twice (line 1 and line 2).',
+  });
 });
 
 test('parser problems with and without line numbers share the dispatcher refusal', () => {
-  const result = canonicalRunCommand('codex-scout', 'Please inspect the repository.');
-  assert.equal(result.refusal,
-    'Refused: the call text must be only label: value lines: '
+  assert.deepEqual(canonicalRunCommand('codex-scout', 'Please inspect the repository.'), {
+    refusal: 'Refused: the call text must be only label: value lines: '
       + 'line 1: not a `label: value` line; free text belongs in the task file; '
-      + 'missing required label `order id`; missing required label `task file`.');
-  assert.equal(result.command, undefined);
+      + 'missing required label `task file`.',
+  });
+});
+
+test('missing task file is refused for every agent without demanding header labels in the call', () => {
+  for (const agent of ORDER_AGENTS) {
+    assert.deepEqual(canonicalRunCommand(agent, ''), {
+      refusal: 'Refused: the call text must be only label: value lines: missing required label `task file`.',
+    });
+  }
+});
+
+test('unknown and prototype-named agents retain their explicit refusal', () => {
+  for (const agent of ['codex-haiku', 'toString', 'constructor', '__proto__', undefined, null, 42]) {
+    assert.deepEqual(canonicalRunCommand(agent, prompt), {
+      refusal: `Refused: unknown dispatcher agent ${JSON.stringify(agent)}.`,
+    });
+  }
 });
 
 test('non-string prompts retain the missing-text refusal', () => {
-  for (const prompt of [undefined, null, 42, {}]) {
-    assert.deepEqual(canonicalRunCommand('codex-scout', prompt), {
+  for (const value of [undefined, null, 42, {}]) {
+    assert.deepEqual(canonicalRunCommand('codex-scout', value), {
       refusal: 'Refused: prompt text is missing or is not text.',
     });
   }
 });
 
-// Plan_62 B1 acceptance: the live 2026-09-24 advise grant carried a semicolon in its reason.
-test('a continuation reason with shell punctuation still yields the bare continue flag', () => {
-  const prompt = `${promptFor('codex-scout')}\ncontinue: 2026-09-24_093731_plan62 — eight paths and five risks; advise settles them`;
-  assert.match(canonicalRunCommand('codex-scout', prompt).command, / --continue$/);
-});
-
-test('a valid continuation grant adds one bare continue flag', () => {
-  const prompt = `${promptFor('codex-scout')}\ncontinue: 2026-09-24_101500_plan62 — LIMIT after review`;
-  assert.equal(
-    canonicalRunCommand('codex-scout', prompt).command,
-    'codex-bridge run --agent codex-scout --repo "." --order-id "plan-62-build-20260924" --task-file "C:/scratch/plan-62-task.md" --continue',
-  );
-});
-
-// Plan_75 D1, TradeForge capacity incident: the same failed pass needs the runner's explicit flag.
-test('a retry grant adds one bare continue flag for every dispatcher', () => {
-  for (const agentType of Object.keys(REQUIRED_INPUTS)) {
-    const prompt = promptFor(agentType, { retry: 'failed-run — model at capacity; same pass again' });
-    const original = canonicalRunCommand(agentType, promptFor(agentType)).command;
-    assert.deepEqual(canonicalRunCommand(agentType, prompt), { command: `${original} --continue` });
+test('misspelled labels, placeholders and relative task paths cannot produce commands', () => {
+  for (const [text, reason] of [
+    [`task-file: ${taskFile}`, /write the label exactly as `task file:`/],
+    ['task file: TODO', /task file.*placeholder/],
+    ['task file: task.md', /task file.*absolute/],
+    ['task file:', /empty value.*missing required label/],
+  ]) {
+    const result = canonicalRunCommand('codex-scout', text);
+    assert.match(result.refusal, reason);
+    assert.equal(result.command, undefined);
   }
 });
 
-test('both grants still add one continue flag so the runner can issue its refusal', () => {
-  for (const agentType of Object.keys(REQUIRED_INPUTS)) {
-    const prompt = promptFor(agentType, {
-      continue: 'scope-run — next pass',
-      retry: 'failed-run — same pass again',
-    });
-    const original = canonicalRunCommand(agentType, promptFor(agentType)).command;
-    assert.deepEqual(canonicalRunCommand(agentType, prompt), { command: `${original} --continue` });
+test('shell sequences, quotes and line breaks in task paths are refused', () => {
+  for (const sequence of [...SHELL_UNSAFE_SEQUENCES, '"', '\r']) {
+    const result = canonicalRunCommand('codex-scout', `task file: C:/safe${sequence}tail`);
+    assert.match(result.refusal, /task file.*contains/);
+    assert.equal(result.command, undefined);
   }
-});
-
-test('no grant leaves the continue flag absent for every dispatcher', () => {
-  for (const agentType of Object.keys(REQUIRED_INPUTS)) {
-    const result = canonicalRunCommand(agentType, promptFor(agentType));
-    assert.equal(result.command.includes('--continue'), false, agentType);
-  }
+  assert.match(canonicalRunCommand('codex-scout', `${prompt}\nsmuggled text`).refusal, /line 2:.*free text/);
 });
 
 test('the same prompt deterministically produces the same command', () => {
-  const prompt = promptFor('codex-advisor');
   assert.deepEqual(canonicalRunCommand('codex-advisor', prompt), canonicalRunCommand('codex-advisor', prompt));
 });
 
-test('unknown agents, missing or placeholder inputs, and relative task paths are refused by label', () => {
-  assert.match(canonicalRunCommand('codex-haiku', '').refusal, /unknown dispatcher agent/);
-  assert.match(canonicalRunCommand('codex-scout', `task file: ${taskFile}`).refusal, /order id/);
-  assert.match(canonicalRunCommand('codex-scout', promptFor('codex-scout', { 'order id': 'TODO' })).refusal, /order id/);
-  assert.match(canonicalRunCommand('codex-scout', promptFor('codex-scout', { 'task file': 'task.md' })).refusal, /task file.*absolute/);
-  assert.match(canonicalRunCommand('codex-build', promptFor('codex-build').replace(/\nscope:.*$/, '')).refusal, /scope/);
-  assert.match(canonicalRunCommand('codex-advisor', promptFor('codex-advisor').replace(/\nphase:.*$/, '')).refusal, /phase/);
-});
-
-test('unsafe shell sequences, quotes, and line breaks in values are refused', () => {
-  for (const orderId of ['bad;value', 'bad$(value)', 'bad"value']) {
-    assert.match(canonicalRunCommand('codex-scout', promptFor('codex-scout', { 'order id': orderId })).refusal, /order id/);
-  }
-  const multilineFlag = `--order-id "first line\nsecond line"\ntask file: ${taskFile}`;
-  assert.match(canonicalRunCommand('codex-scout', multilineFlag).refusal, /line 1:.*free text/);
-});
-
 test('sameCommand allows outer whitespace and rejects every internal text difference', () => {
-  const canonical = canonicalRunCommand('codex-scout', promptFor('codex-scout')).command;
+  const canonical = canonicalRunCommand('codex-scout', prompt).command;
   assert.equal(sameCommand(` \t${canonical}\r\n`, canonical), true);
-  assert.equal(sameCommand(canonical.replace('--repo ', '--repo  '), canonical), false);
-  assert.equal(sameCommand(canonical.replace('"plan-62-build-20260924"', "'plan-62-build-20260924'"), canonical), false);
+  assert.equal(sameCommand(canonical.replace('--task-file ', '--task-file  '), canonical), false);
+  assert.equal(sameCommand(canonical.replace(`"${taskFile}"`, `'${taskFile}'`), canonical), false);
   assert.equal(sameCommand(`${canonical} --continue`, canonical), false);
+  for (const value of [null, undefined, 42]) {
+    assert.equal(sameCommand(value, canonical), false);
+    assert.equal(sameCommand(canonical, value), false);
+  }
 });

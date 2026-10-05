@@ -6,8 +6,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { CONTINUATION_INPUT, parseContinuationGrant } from '../required-inputs.mjs';
-import { orderInputName } from '../order-schema.mjs';
+import { CONTINUATION_ORDER_INPUT, orderInputName } from '../order-schema.mjs';
 import { readJson } from '../write-meta.mjs';
 import { workerMayBeAlive } from '../meta/run-liveness.mjs';
 
@@ -30,14 +29,13 @@ function namedRunDirectory(runsRootPath, run) {
 }
 
 function normalizeGrant(grant) {
-  if (typeof grant === 'string') return parseContinuationGrant(grant);
   if (!grant || typeof grant !== 'object') return null;
   const run = String(grant.run ?? '').trim();
   const reason = String(grant.reason ?? '').trim();
   return run && reason ? { run, reason } : null;
 }
 
-const grantExample = `Example: \`continue: ${CONTINUATION_INPUT.example}\`.`;
+const grantExample = `Example: \`continue: ${CONTINUATION_ORDER_INPUT.example}\`.`;
 const grantAction =
   'Action: ask the orchestrator for an explicit grant naming the run and reason; do not invent or reuse a continuation.';
 
@@ -88,7 +86,8 @@ function lastRunHints(runsRootPath, chain, grantReason) {
  */
 export function continuationRefusal(runsRootPath, chain, isContinue, orderId, grant) {
   const continuation = normalizeGrant(grant);
-  if (!isContinue) return null;
+  // Plan_63 D9: only header grant objects authorize a pass; a string is no grant.
+  if (!isContinue || !continuation) return null;
 
   const namedDirectory = namedRunDirectory(runsRootPath, continuation.run);
   if (!namedDirectory) {

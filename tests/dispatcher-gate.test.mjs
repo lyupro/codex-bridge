@@ -20,8 +20,12 @@ import {
   runnerOutput,
 } from '../src/home/lib/dispatcher-gate.mjs';
 
-const prompt = 'order id: order-62\nscope: src/home\ntask file: C:/abs/task.md';
+const prompt = 'task file: C:/abs/task.md';
 const command = canonicalRunCommand('codex-build', prompt).command;
+
+test('the task-file call produces only the two canonical command flags', () => {
+  assert.equal(command, 'codex-bridge run --agent codex-build --task-file "C:/abs/task.md"');
+});
 
 test('the handback tool string literal is defined only in hook-definitions', () => {
   const sourceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src');
@@ -97,8 +101,8 @@ test('decidePreToolUse passes only the canonical foreground Bash command', () =>
   }), { kind: 'pass' });
 
   const reordered = command.replace(
-    '--scope "src/home" --order-id "order-62"',
-    '--order-id "order-62" --scope "src/home"',
+    '--agent codex-build --task-file "C:/abs/task.md"',
+    '--task-file "C:/abs/task.md" --agent codex-build',
   );
   assert.notEqual(reordered, command);
   for (const tool_input of [

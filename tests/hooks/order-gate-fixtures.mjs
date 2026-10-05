@@ -38,8 +38,14 @@ export function payload(subagentType, prompt, toolName = 'Agent', cwd = undefine
   });
 }
 
-export function validPrompt(orderId, taskFile, continuation = '') {
-  return `order id: ${orderId}\ntask file: ${taskFile}${continuation}`;
+export function validPrompt(taskFile) {
+  return `task file: ${taskFile}`;
+}
+
+export async function writeTaskFile(root, header, body) {
+  const taskFile = path.join(root, 'task.md');
+  await fs.writeFile(taskFile, `${header}\n\n${body}`);
+  return taskFile;
 }
 
 export async function createStoredRun(root, repo, name, status) {

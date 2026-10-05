@@ -39,7 +39,7 @@ export const stopText = (headline, observed, runStatus, folder) => {
     'The run will close itself: the worker outlives every caller and completes meta.json and ' +
       'status.json without the dispatcher. Wait for state to change and reread status.json — the ' +
       'verdict will be there; there is no need to ask the dispatcher again. Repeating the same ' +
-      'command with the same --order-id attaches to this run rather than starting another.',
+      'command with the same task file attaches to this run rather than starting another.',
   ].join(' ');
 };
 
@@ -101,7 +101,7 @@ export const omittedSiblingStop = (maxBlocks, dir, status) => stopText(
 export const liveRunReason =
   'Contract violated: status.json says state=running and the process is alive — the run is ' +
   'not finished, but you are already responding. The STARTED output of the starting call ' +
-  'is not a result. Repeat the identical codex-bridge run command, same --order-id, with ' +
+  'is not a result. Repeat the identical codex-bridge run command, same task file, with ' +
   'timeout 1800000: it attaches to this same run, costs no quota, and prints the verdict.';
 
 export const liveRunStop = (maxBlocks, runStatus, runDir) => stopText(
@@ -115,7 +115,7 @@ export const liveRunStop = (maxBlocks, runStatus, runDir) => stopText(
 export const deadRunReason =
   'Contract violated: status.json says state=running, but the process with this pid is dead ' +
   'and meta.json is missing — the run is abandoned. Repeat the identical codex-bridge run ' +
-  'command, same --order-id, with timeout of at least 1800000 and return its stdout verbatim.';
+  'command, same task file, with timeout of at least 1800000 and return its stdout verbatim.';
 
 export const deadRunStop = (maxBlocks, runStatus, runDir) => stopText(
   `The reply guard stopped the session: the dispatcher responded ${maxBlocks} times for a run it did not complete.`,
@@ -129,7 +129,7 @@ export const deadRunStop = (maxBlocks, runStatus, runDir) => stopText(
 
 export const abandonedRunReason =
   'Contract violated: status.json says state=abandoned — the runner died without a verdict. ' +
-  'Repeat the identical codex-bridge run command, same --order-id, with timeout of at least ' +
+  'Repeat the identical codex-bridge run command, same task file, with timeout of at least ' +
   '1800000 and return its stdout verbatim.';
 
 export const abandonedRunStop = (maxBlocks, runStatus, runDir) => stopText(
