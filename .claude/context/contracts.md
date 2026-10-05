@@ -126,6 +126,15 @@ here. Nothing was reworded on the way out.
 - **Agent and command markdown is placeholder-processed** on install: `{{CODEX_BRIDGE_DIR}}` becomes
   the installed runner directory, `~/.lyupro/.codex-bridge/lib/` — not the directory the markdown
   itself lands in. Keep the placeholder, never a real path.
+- **The dispatcher protocol is written once, in code** (Plan_63 D11). The four `src/agents/*.md` carry
+  `{{CODEX_DISPATCHER_PROTOCOL}}`, rendered by `src/home/lib/dispatcher-protocol.mjs`: the `task file` input, the one
+  command fence, the identical-command attach, host and runner refusals. Its command comes from
+  `renderRunCommandTemplate`, which shares one assembler with `canonicalRunCommand` (`dispatcher-command.mjs`), so the
+  prompt and the gate cannot disagree by a byte. A prompt keeps only role prose; the header label list lives in the
+  frontmatter description (`renderRequiredInputSummary`). `tests/agents-command-boundary.test.mjs` reads the RENDERED
+  definitions: exactly one bash fence equal to the canonical command, no retired runner flag anywhere. Why: four
+  hand-written copies drifted after 4ed0fd4 — build still told its dispatcher to add a continuation flag the canonical
+  command does not have.
 - **The sandbox is probed before the run exists, and the probe can never hang the launcher.**
   `probeSandbox()` runs once the tree is free and before retention or the run folder, asks the
   sandbox to echo a marker with exactly the flags the role will get, and calls it dead only on

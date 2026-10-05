@@ -104,6 +104,9 @@ hand-edited files stop the run unless `--force`.
 - `no-self-execution.mjs` is the first block of all four agent prompts, rendered through
   `{{CODEX_NO_SELF_EXECUTION}}`. One copy, because a dispatcher that could not start its run once
   did the work itself on the Claude quota.
+- `dispatcher-protocol.mjs` renders the shared dispatcher protocol (`{{CODEX_DISPATCHER_PROTOCOL}}`): input, the one
+  command, attach, refusals. Its command template and the gate's `canonicalRunCommand` share one assembler in
+  `dispatcher-command.mjs` (Plan_63 D11) — four hand-written copies had drifted from the command the gate accepts.
 - `kernel-lock.mjs` is the one lock the kernel releases on its holder's death (named pipe on Windows, abstract
   socket on Linux), shared by the install lifecycle lock in `cli/` and `runner/order-claim.mjs`, which admits one paid
   worker per order id: the launcher holds the claim until the worker is registered, `runner/worker-admission.mjs`

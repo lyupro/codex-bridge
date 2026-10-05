@@ -5,6 +5,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { resolveHost } from '../../cli/hosts.mjs';
+import { renderDispatcherProtocol } from '../../src/home/lib/dispatcher-protocol.mjs';
+import { ORDER_AGENTS } from '../../src/home/lib/order-schema.mjs';
 import {
   INSTALL_TABLE,
   PACKAGE_ROOT,
@@ -136,6 +138,24 @@ test('placeholder becomes an absolute POSIX agents path', () => {
   const replaced = replacePlaceholders('node "{{CODEX_BRIDGE_DIR}}/run.mjs"', agentsDir);
   assert.equal(replaced, `node "${agentsDir.split(path.sep).join('/')}/run.mjs"`);
   assert.doesNotMatch(replaced, /\{\{CODEX_BRIDGE_DIR\}\}/);
+});
+
+
+test('dispatcher protocol placeholder renders for all four dispatcher definitions', () => {
+  for (const agent of ORDER_AGENTS) {
+    const definition = `---\nname: ${agent}\n---\n\n{{CODEX_DISPATCHER_PROTOCOL}}`;
+    assert.equal(replacePlaceholders(definition, PACKAGE_ROOT),
+      `---\nname: ${agent}\n---\n\n${renderDispatcherProtocol(agent)}`);
+  }
+});
+
+test('dispatcher protocol placeholder stays intact outside dispatcher definitions', () => {
+  for (const name of ['codex-other', 'toString', 'constructor', '__proto__']) {
+    const definition = `---\nname: ${name}\n---\n\n{{CODEX_DISPATCHER_PROTOCOL}}`;
+    assert.equal(replacePlaceholders(definition, PACKAGE_ROOT), definition);
+  }
+  assert.equal(replacePlaceholders('{{CODEX_DISPATCHER_PROTOCOL}}', PACKAGE_ROOT),
+    '{{CODEX_DISPATCHER_PROTOCOL}}');
 });
 
 test('installation record writes and reads after validation', async (t) => {

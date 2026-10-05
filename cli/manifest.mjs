@@ -4,11 +4,10 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { HOOK_DEFINITIONS } from '../src/home/lib/hook-definitions.mjs';
-import {
-  renderRequiredInputSummary,
-  renderRequiredInputs,
-} from '../src/home/lib/dispatcher-call.mjs';
+import { renderRequiredInputSummary } from '../src/home/lib/dispatcher-call.mjs';
 import { renderNoSelfExecution } from '../src/home/lib/no-self-execution.mjs';
+import { renderDispatcherProtocol } from '../src/home/lib/dispatcher-protocol.mjs';
+import { ORDER_AGENTS } from '../src/home/lib/order-schema.mjs';
 import { renderStopSummary } from '../src/home/lib/stop-contract.mjs';
 import { readJsonFile } from '../src/home/lib/json-file.mjs';
 import { normalizeFrontmatter } from './frontmatter.mjs';
@@ -77,7 +76,8 @@ export function replacePlaceholders(content, installationRoot) {
   const replaced = content
     .replaceAll('{{CODEX_BRIDGE_DIR}}', posix(path.resolve(installationRoot)))
     .replaceAll('{{CODEX_REQUIRED_INPUTS_SUMMARY}}', renderRequiredInputSummary(agentType))
-    .replaceAll('{{CODEX_REQUIRED_INPUTS}}', renderRequiredInputs(agentType))
+    .replaceAll('{{CODEX_DISPATCHER_PROTOCOL}}', ORDER_AGENTS.includes(agentType)
+      ? renderDispatcherProtocol(agentType) : '{{CODEX_DISPATCHER_PROTOCOL}}')
     .replaceAll('{{CODEX_NO_SELF_EXECUTION}}', renderNoSelfExecution())
     .replaceAll('{{CODEX_STOP_SUMMARY}}', renderStopSummary());
   return normalizeFrontmatter(replaced);

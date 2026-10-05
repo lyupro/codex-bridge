@@ -169,12 +169,3 @@ export function renderRequiredInputSummary(agentType) {
     + `conditional labels: ${conditional.join(', ')}; optional labels: ${optional.join(', ')}. `
     + 'Free text belongs in the task file.';
 }
-
-/** Renders the call input and order-header entries without exposing retired runner flags. */
-export function renderRequiredInputs(agentType) {
-  if (!ORDER_AGENTS.includes(agentType)) return '';
-  return [TASK_FILE_INPUT, ...headerInputsFor(agentType)].map((entry) => {
-    const condition = entry.conditional ? ` Condition: ${conditionFor(entry)}.` : '';
-    return `- ${entry.label}: ${entry.explanation} Example: \`${entry.label}: ${entry.example}\`.${condition}`;
-  }).concat('The order gate refuses any call line other than `task file: <absolute path>`.').join('\n');
-}

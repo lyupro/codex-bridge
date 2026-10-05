@@ -7,8 +7,17 @@ function refusal(reason) {
   return { refusal: `Refused: ${reason}.` };
 }
 
-function quote(value) {
-  return `"${value}"`;
+function assembleRunCommand(agentType, taskFile) {
+  const tokens = [CLI_NAMES[0], 'run', '--agent', agentType, '--task-file', `"${taskFile}"`];
+  return tokens.join(' ');
+}
+
+/** Plan_63 D11: prompt templates and the gate must use the same command assembler. */
+export function renderRunCommandTemplate(agentType) {
+  if (typeof agentType !== 'string' || !ORDER_AGENTS.includes(agentType)) {
+    throw new Error(`unknown dispatcher agent ${JSON.stringify(agentType)}`);
+  }
+  return assembleRunCommand(agentType, '<task-file path from the orchestrator>');
 }
 
 /** Builds the only permitted run command directly from the immutable order transcript. */
@@ -25,8 +34,7 @@ export function canonicalRunCommand(agentType, promptText) {
     return refusal(`the call text must be only label: value lines: ${reasons.join('; ')}`);
   }
 
-  const tokens = [CLI_NAMES[0], 'run', '--agent', agentType, '--task-file', quote(inputs.get('task file'))];
-  return { command: tokens.join(' ') };
+  return { command: assembleRunCommand(agentType, inputs.get('task file')) };
 }
 
 /** Compares the proposed command as text, allowing whitespace only around its boundary. */

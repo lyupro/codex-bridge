@@ -17,6 +17,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   final `\` is refused, because the shell would rewrite it inside the command's double quotes and the
   runner would open a different file than the one the gate checked; write it with forward slashes.
 
+- The four dispatcher prompts share one protocol section rendered at install from the same command
+  assembler the order gate uses: the call is `task file:` only and the command is
+  `codex-bridge run --agent <type> --task-file "<path>"`. The hand-written label-to-flag tables and the
+  instruction to add a continuation flag are gone; the header labels are listed in each agent's
+  description. Migration cost: none beyond `codex-bridge update`, which reinstalls the prompts.
+
 - A dispatcher call contains only exact `label: value` lines from the agent's input registry, in any
   order, with blank lines allowed. Prose, unknown or another agent's labels, decorated or hyphenated
   spellings, `--flag value` lines, duplicates, empty values, missing required labels, placeholders,

@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { validateScope } from '../../src/home/lib/runner/scope-check.mjs';
+import { renderRequiredInputSummary } from '../../src/home/lib/dispatcher-call.mjs';
 import { launcherProcessMocks } from './launcher-mocks.mjs';
 import { orderInvocation } from './order-invocation.mjs';
 
@@ -310,15 +311,15 @@ test('a missing scope header is still refused even with scope new', (t) => {
   }
 });
 
-test('all dispatcher prompts state the scope rule, and only build offers --scope-new', () => {
-  const wording = '- Scope patterns are globs relative to the repository root. A pattern that matches nothing there is';
-  for (const name of ['codex-scout.md', 'codex-build.md', 'codex-review.md', 'codex-advisor.md']) {
-    const content = fs.readFileSync(new URL(`../../src/agents/${name}`, import.meta.url), 'utf8');
-    assert.equal(content.split(/\r?\n/).filter((line) => line === wording).length, 1, name);
-    // The flag declares a file the run will create, so it belongs to the only agent that writes.
-    // The first Plan_27 pass copied it into all three, promising scout and review a flag their
-    // runs cannot use.
-    assert.equal(content.includes('--scope-new'), name === 'codex-build.md', name);
+test('only build offers scope and scope new in its header summary', () => {
+  // `scope new` declares a file the run will create, so it belongs to the only agent that writes.
+  // The first Plan_27 pass copied it into all three prompts, promising scout and review an input
+  // their runs cannot use. Plan_63 D11: the prompts no longer list inputs; the frontmatter summary
+  // rendered from the order schema is what the orchestrator reads, so the rule is held there.
+  for (const agent of ['codex-scout', 'codex-build', 'codex-review', 'codex-advisor']) {
+    const summary = renderRequiredInputSummary(agent);
+    assert.equal(summary.includes('`scope new`'), agent === 'codex-build', agent);
+    assert.equal(summary.includes('`scope`'), agent === 'codex-build', agent);
   }
 });
 

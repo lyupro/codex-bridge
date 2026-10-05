@@ -2,11 +2,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { replacePlaceholders } from '../cli/manifest.mjs';
+import { canonicalRunCommand, renderRunCommandTemplate } from '../src/home/lib/dispatcher-command.mjs';
+import { orderSpellings } from './order-spelling-scan.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const AGENTS_DIR = path.join(ROOT, 'src', 'agents');
+const INSTALLATION_ROOT = path.join(os.tmpdir(), 'bridge-command-boundary-host');
 
 function commandBlocks(source) {
   return [...source.matchAll(/```(?:bash|sh|shell)\s*\r?\n([\s\S]*?)```/gi)].map((match) => match[1]);
@@ -44,23 +49,51 @@ function assertSafeAgentDefinition(source, name) {
   for (const [pattern, label] of forbidden) {
     assert.doesNotMatch(commands, pattern, `${name} exposes a forbidden ${label}.`);
   }
+
+  // Plan_63 D11: markdown is not JavaScript; never mask comments or prose in installed prompts.
+  for (const spelling of [...orderSpellings(), '--no-wait', '--question', '--verify']) {
+    const escaped = spelling.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pattern = new RegExp(`(?<![A-Za-z0-9-])${escaped}(?![A-Za-z0-9-])`);
+    assert.doesNotMatch(source, pattern, `${name} exposes retired flag ${spelling}.`);
+  }
 }
 
 test('every shipped agent command crosses the codex-bridge run boundary without internal paths', async () => {
   const names = (await fs.readdir(AGENTS_DIR)).filter((name) => name.endsWith('.md')).sort();
-  assert.ok(names.length, 'No shipped agent definitions were found.');
+  assert.equal(names.length, 4, 'All four shipped agent definitions must be checked.');
   for (const name of names) {
     const source = await fs.readFile(path.join(AGENTS_DIR, name), 'utf8');
-    assertSafeAgentDefinition(source, name);
+    const rendered = replacePlaceholders(source, INSTALLATION_ROOT);
+    const agent = path.basename(name, '.md');
+    assertSafeAgentDefinition(rendered, name);
+    const fences = [...rendered.matchAll(/^```bash\r?\n([\s\S]*?)```/gm)];
+    assert.equal(fences.length, 1, `${name} must have exactly one bash command fence.`);
+    const command = fences[0][1].replace(/\r?\n$/, '');
+    assert.equal(command, renderRunCommandTemplate(agent), name);
+    assert.equal(command.replace('<task-file path from the orchestrator>', 'C:/scratch/task.md'),
+      canonicalRunCommand(agent, 'task file: C:/scratch/task.md').command, name);
+    assert.ok(!rendered.includes('{{'), `${name} must not retain placeholders.`);
   }
 });
 
 test('the four dispatcher prompts retry the identical command without --no-wait', async () => {
   for (const name of ['codex-build.md', 'codex-scout.md', 'codex-review.md', 'codex-advisor.md']) {
-    const source = await fs.readFile(path.join(AGENTS_DIR, name), 'utf8');
+    const source = replacePlaceholders(await fs.readFile(path.join(AGENTS_DIR, name), 'utf8'), INSTALLATION_ROOT);
     assert.doesNotMatch(source, /--no-wait/, `${name} must not offer --no-wait.`);
     assert.match(source, /run the identical command again/, `${name} must explain the identical-command retry.`);
   }
+});
+
+test('whole-definition guard rejects a retired flag added to a rendered prompt', async () => {
+  const source = await fs.readFile(path.join(AGENTS_DIR, 'codex-review.md'), 'utf8');
+  const rendered = replacePlaceholders(source, INSTALLATION_ROOT);
+  assertSafeAgentDefinition(rendered, 'codex-review.md');
+  const spelling = orderSpellings().find((flag) => flag.slice(2) === 'continue');
+  assert.ok(spelling, 'The retired spelling registry must include the continuation flag.');
+  assert.throws(
+    () => assertSafeAgentDefinition(`${rendered}\nadd ${spelling}\n`, 'mutated.md'),
+    (err) => err?.name === 'AssertionError' && err.message.includes(spelling),
+  );
 });
 
 test('whole-definition guard rejects command regressions outside tagged shell fences', () => {

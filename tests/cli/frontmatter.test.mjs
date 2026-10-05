@@ -8,10 +8,8 @@ import { plannedContent } from '../../cli/copy.mjs';
 import { normalizeFrontmatter, parseFrontmatter } from '../../cli/frontmatter.mjs';
 import { buildInstallPlan } from '../../cli/manifest.mjs';
 import { resolveHost } from '../../cli/hosts.mjs';
-import {
-  renderRequiredInputSummary,
-  renderRequiredInputs,
-} from '../../src/home/lib/dispatcher-call.mjs';
+import { renderRequiredInputSummary } from '../../src/home/lib/dispatcher-call.mjs';
+import { renderDispatcherProtocol } from '../../src/home/lib/dispatcher-protocol.mjs';
 import { renderNoSelfExecution } from '../../src/home/lib/no-self-execution.mjs';
 import { renderStopSummary } from '../../src/home/lib/stop-contract.mjs';
 
@@ -20,7 +18,7 @@ function intendedValues(source, installationRoot, agentType) {
   const replacements = new Map([
     ['{{CODEX_BRIDGE_DIR}}', path.resolve(installationRoot).split(path.sep).join('/')],
     ['{{CODEX_REQUIRED_INPUTS_SUMMARY}}', renderRequiredInputSummary(agentType)],
-    ['{{CODEX_REQUIRED_INPUTS}}', renderRequiredInputs(agentType)],
+    ['{{CODEX_DISPATCHER_PROTOCOL}}', renderDispatcherProtocol(agentType)],
     ['{{CODEX_NO_SELF_EXECUTION}}', renderNoSelfExecution()],
     ['{{CODEX_STOP_SUMMARY}}', renderStopSummary()],
   ]);
@@ -125,10 +123,9 @@ test('every installed agent frontmatter round-trips the real placeholder substit
     assert.equal(parsed.name, agentType);
     assert.ok(parsed.description.includes(renderRequiredInputSummary(agentType)),
       `${agentType} frontmatter carries the task-file-only call and header labels`);
-    assert.ok(emitted.includes(renderRequiredInputs(agentType)),
-      `${agentType} body carries the task-file explanation and header examples`);
+    assert.ok(emitted.includes(renderDispatcherProtocol(agentType)),
+      `${agentType} body carries the shared dispatcher protocol`);
     assert.match(parsed.description, /The call is only `task file`/);
-    assert.match(emitted, /The order gate refuses any call line other than `task file: <absolute path>`\./);
     assert.ok(parsed.description.includes(renderStopSummary()), `${agentType} keeps the TaskStop sentence verbatim`);
   }
 });

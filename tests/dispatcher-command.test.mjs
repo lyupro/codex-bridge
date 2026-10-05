@@ -1,12 +1,27 @@
 // Verifies Plan_63 D9 canonical commands and the OW-054 fail-closed call boundary.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { canonicalRunCommand, sameCommand } from '../src/home/lib/dispatcher-command.mjs';
+import { canonicalRunCommand, renderRunCommandTemplate, sameCommand } from '../src/home/lib/dispatcher-command.mjs';
 import { ALL_ORDER_LABELS, ORDER_AGENTS } from '../src/home/lib/order-schema.mjs';
 import { SHELL_UNSAFE_SEQUENCES } from '../src/home/lib/shell-unsafe.mjs';
 
 const taskFile = 'C:/scratch/plan-63-task.md';
 const prompt = `task file: ${taskFile}`;
+
+test('each dispatcher template uses the canonical command spelling and quoting', () => {
+  for (const agent of ORDER_AGENTS) {
+    assert.equal(renderRunCommandTemplate(agent),
+      `codex-bridge run --agent ${agent} --task-file "<task-file path from the orchestrator>"`);
+    assert.equal(renderRunCommandTemplate(agent).replace('<task-file path from the orchestrator>', taskFile),
+      canonicalRunCommand(agent, prompt).command);
+  }
+});
+
+test('command templates throw for unknown and missing dispatcher agents', () => {
+  for (const agent of ['codex-haiku', 'toString', 'constructor', '__proto__', undefined, null, 42]) {
+    assert.throws(() => renderRunCommandTemplate(agent), /unknown dispatcher agent/);
+  }
+});
 
 test('each dispatcher produces exactly the agent and task-file command with no other tokens', () => {
   for (const agent of ORDER_AGENTS) {

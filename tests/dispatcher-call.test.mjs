@@ -5,7 +5,7 @@ import path from 'node:path';
 import { replacePlaceholders } from '../cli/manifest.mjs';
 import {
   TASK_FILE_INPUT, callInputsFor, parseDispatcherCall, renderCallRefusal,
-  renderRequiredInputSummary, renderRequiredInputs,
+  renderRequiredInputSummary,
 } from '../src/home/lib/dispatcher-call.mjs';
 import {
   ALL_ORDER_LABELS, CONTINUATION_ORDER_INPUT, ORDER_AGENTS, RETRY_ORDER_INPUT,
@@ -13,6 +13,7 @@ import {
 } from '../src/home/lib/order-schema.mjs';
 import { SHELL_UNSAFE_SEQUENCES } from '../src/home/lib/shell-unsafe.mjs';
 import { canonicalRunCommand } from '../src/home/lib/dispatcher-command.mjs';
+import { renderDispatcherProtocol } from '../src/home/lib/dispatcher-protocol.mjs';
 import { AGENTS } from '../src/home/lib/write-meta.mjs';
 import { renderNoSelfExecution } from '../src/home/lib/no-self-execution.mjs';
 import { renderStopSummary } from '../src/home/lib/stop-contract.mjs';
@@ -280,26 +281,10 @@ test('summary names only agent-owned header labels in required, conditional, opt
       }
     }
     assert.ok(summary.endsWith('Free text belongs in the task file.'));
+    assert.doesNotMatch(summary, /--continue|--order-id|--scope|--task-file/);
   }
   assert.equal(renderRequiredInputSummary('unknown-agent'), '');
-});
-
-test('long renderer uses the task input and every header explanation and labelled example', () => {
-  for (const agent of ORDER_AGENTS) {
-    const lines = renderRequiredInputs(agent).split('\n');
-    const entries = [TASK_FILE_INPUT, ...orderedHeaderEntries(agent)];
-    assert.equal(lines.length, entries.length + 1);
-    entries.forEach((entry, index) => {
-      const grant = [CONTINUATION_ORDER_INPUT, RETRY_ORDER_INPUT].find(({ label }) => label === entry.label);
-      const condition = entry.conditional ? ` Condition: ${grant.conditional}.` : '';
-      assert.equal(lines[index],
-        `- ${entry.label}: ${entry.explanation} Example: \`${entry.label}: ${entry.example}\`.${condition}`);
-    });
-    assert.equal(lines.at(-1), 'The order gate refuses any call line other than `task file: <absolute path>`.');
-    assert.doesNotMatch(renderRequiredInputs(agent), /--continue|--order-id|--scope|--task-file/);
-  }
-  assert.equal(renderRequiredInputs('unknown-agent'), '');
-  assert.match(renderRequiredInputs('codex-advisor'), /scope first.*advise with a continue: grant.*same order/);
+  assert.match(renderRequiredInputSummary('codex-advisor'), /`phase`/);
 });
 
 test('every dispatcher markdown carries the shared no-self-execution placeholder first', async () => {
@@ -320,9 +305,14 @@ test('expanded dispatcher prompts retain no-self-execution and stop guidance wit
     assert.ok(frontmatter, agent);
     assert.ok(frontmatter.includes(renderRequiredInputSummary(agent)), agent);
     assert.ok(frontmatter.includes(renderStopSummary()), agent);
-    assert.ok(rendered.includes(renderRequiredInputs(agent)), agent);
+    assert.ok(rendered.includes(renderDispatcherProtocol(agent)), agent);
+    if (agent === 'codex-advisor') {
+      assert.match(rendered, /`phase: scope` first, then `phase: advise`/);
+      assert.match(rendered, /same order's successful advisor scope run/);
+      assert.match(rendered, /`advise` header includes a `continue:`\s+grant naming the scope run/);
+    }
     assert.ok(rendered.includes(renderNoSelfExecution()), agent);
-    assert.doesNotMatch(rendered, /\{\{CODEX_(?:REQUIRED_INPUTS(?:_SUMMARY)?|NO_SELF_EXECUTION|STOP_SUMMARY)\}\}/);
+    assert.doesNotMatch(rendered, /\{\{/);
     assert.deepEqual(parseDispatcherCall(agent, `task file: ${TASK_FILE_INPUT.example}`).problems, []);
   }
 });

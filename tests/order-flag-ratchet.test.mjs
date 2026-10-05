@@ -35,7 +35,7 @@ const BASELINE = {
   'tests/runner/continuation.test.mjs': 2,
   'tests/runner/phase.test.mjs': 1,
   'tests/runner/retry-grant.test.mjs': 1,
-  'tests/runner/scope.test.mjs': 5,
+  'tests/runner/scope.test.mjs': 3,
   'tests/runner/shell-unsafe.test.mjs': 1,
   'tests/shell-unsafe-arguments.test.mjs': 0,
 };
