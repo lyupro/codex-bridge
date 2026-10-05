@@ -11,6 +11,7 @@ import { makeChainRoot, CHAIN_REPO } from '../meta/test-fixtures.mjs';
 const ARGS_MODULE = new URL('../../src/home/lib/runner/args.mjs', import.meta.url).href;
 const RUN_STAMP = '2026-08-13_235525';
 
+// raw argv: separator-only order ids must reach parseArgs unchanged for its exact refusal.
 function reviewArgs(orderId, slug) {
   return [
     '--agent', 'codex-review',
@@ -75,6 +76,7 @@ test('an old generic-slug folder is found by order id and task fingerprint', () 
 });
 
 test('parseArgs refuses a separator-only order id with the flag name and exit code 2', () => {
+  // raw argv: this case tests the order-id flag refusal rather than an ordinary runner start.
   const script = `
 import { parseArgs } from ${JSON.stringify(ARGS_MODULE)};
 try { parseArgs(JSON.parse(process.env.CODEX_SLUG_ARGS)); }

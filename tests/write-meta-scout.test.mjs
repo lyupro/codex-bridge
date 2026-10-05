@@ -51,6 +51,7 @@ const COORDINATES_ONLY = 'packages/x/src/source.ts:60-79, registry.ts:14';
 // file or stdin is read, so refusing here would reject a perfectly good file-carried order.
 // The refusal is covered end-to-end in tests/runner/task-file.test.mjs.
 test('parsing arguments no longer decides whether a scout has its questions', () => {
+  // raw argv: parsing must accept missing questions before the launcher loads a task file.
   const { code, opts } = parseArgsInChild([
     '--agent',
     'codex-scout',
@@ -62,6 +63,7 @@ test('parsing arguments no longer decides whether a scout has its questions', ()
 });
 
 test('repeatable flags build questions.json entries in the given order', () => {
+  // raw argv: repeated question flags and their ordering are the parser behavior under test.
   const { code, opts } = parseArgsInChild([
     '--agent',
     'codex-scout',

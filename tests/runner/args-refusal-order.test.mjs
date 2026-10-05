@@ -21,6 +21,7 @@ try { parseArgs(JSON.parse(process.env.CODEX_TEST_ARGV)); } catch (err) { proces
 }
 
 test('Plan_63 D5 preserves refusal precedence before the flag channel switches', () => {
+  // raw argv: this table deliberately combines invalid flags to lock parser refusal precedence.
   const cases = [
     { argv: ['--agent', 'unknown', '--order-id', '...'], refusal: 'unknown --agent unknown' },
     { argv: ['--no-wait', '--continue'], refusal: '--agent is required' },

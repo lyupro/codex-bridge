@@ -76,6 +76,7 @@ process.stdout.write('imported');`;
 
 // Every run carries the order label the orchestrator issued, so these cases spell it out
 // rather than testing the --order-id refusal by accident; that refusal has its own cases below.
+// raw argv: these parser cases exercise flag values and refusal precedence before task-file loading.
 const ORDER = ['--order-id', 'ord-1'];
 const SCOUT_QUESTION = ['--question', 'Describe the current implementation.'];
 
@@ -84,6 +85,7 @@ test('parseArgs refuses a run with no order label', () => {
   // itself has no honest source of a new one. So it is required, never defaulted, and never
   // invented by the runner — a runner-issued label would be fresh on a restart and the chain
   // would miss again.
+  // raw argv: missing and whitespace-only order labels must reach the parser unchanged.
   for (const argv of [['--agent', 'codex-scout'], ['--agent', 'codex-scout', '--order-id', '   ']]) {
     const { code, stderr } = parseArgsInChild(argv);
     assert.equal(code, 2, JSON.stringify(argv));
@@ -92,6 +94,7 @@ test('parseArgs refuses a run with no order label', () => {
 });
 
 test('the order label is stored trimmed', () => {
+  // raw argv: padding in the order-id flag is the parser behavior under test.
   const { code, opts } = parseArgsInChild([
     '--agent',
     'codex-scout',
@@ -106,6 +109,7 @@ test('the order label is stored trimmed', () => {
 test('a flag name in place of a value is a missing value, not a value', () => {
   // `--question --continue` recorded `--continue` as the sub-question and satisfied every later
   // check: the run then graded itself against a question nobody asked.
+  // raw argv: malformed value positions must not be normalized by the invocation helper.
   for (const argv of [
     ['--agent', 'codex-scout', ...ORDER, '--question', '--continue'],
     ['--agent', 'codex-scout', ...ORDER, ...SCOUT_QUESTION, '--slug', '--continue'],
@@ -117,12 +121,14 @@ test('a flag name in place of a value is a missing value, not a value', () => {
 });
 
 test('--continue with no value is consent', () => {
+  // raw argv: the parser must recognize a valueless consent flag.
   const { code, opts } = parseArgsInChild(['--agent', 'codex-scout', ...ORDER, ...SCOUT_QUESTION, '--continue']);
   assert.equal(code, 0);
   assert.equal(opts.continue, true);
 });
 
 test('the spelled-out yes and no of --continue are both honoured', () => {
+  // raw argv: explicit consent spellings are the parser contract, not a task-file grant.
   for (const value of ['1', 'true', 'yes']) {
     const { code, opts } = parseArgsInChild([
       '--agent',
@@ -135,6 +141,7 @@ test('the spelled-out yes and no of --continue are both honoured', () => {
     assert.equal(code, 0, `--continue ${value}`);
     assert.equal(opts.continue, true, `--continue ${value}`);
   }
+  // raw argv: explicit negative consent values must remain literal parser inputs.
   for (const value of ['0', 'false', 'no']) {
     const { code, opts } = parseArgsInChild([
       '--agent',
@@ -153,6 +160,7 @@ test('a placeholder left in from the prompt template is not consent', () => {
   // The permissive reading this replaces — "anything but 0/false/no means yes" — turned the
   // agent prompt's own `--continue "<only if the orchestrator provided continue>"` into a silent
   // opt-in, and a repeat run started on someone else's quota. The refusal is exit code 2.
+  // raw argv: invalid consent values must reach the parser rather than helper grant validation.
   for (const value of ['<only if the orchestrator provided continue>', 'maybe', '']) {
     const { code, stderr } = parseArgsInChild([
       '--agent',
@@ -168,6 +176,7 @@ test('a placeholder left in from the prompt template is not consent', () => {
 });
 
 test('--continue does not swallow the flag that follows it', () => {
+  // raw argv: adjacent consent and scope flags exercise value consumption in the parser.
   const { code, opts } = parseArgsInChild([
     '--agent',
     'codex-scout',
@@ -183,6 +192,7 @@ test('--continue does not swallow the flag that follows it', () => {
 });
 
 test('parseArgs refuses a whitespace-containing effort with the flag name and exit code 2', () => {
+  // raw argv: the malformed effort flag and its exact refusal are the subject.
   const { code, stderr } = parseArgsInChild([
     '--agent', 'codex-scout', ...ORDER, ...SCOUT_QUESTION, '--effort', 'two words',
   ]);

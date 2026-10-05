@@ -8,9 +8,9 @@ import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { kernelLockStrategy } from '../../src/home/lib/kernel-lock.mjs';
 import { resolveProjectRunsDir } from '../../src/home/lib/runner/project-dir.mjs';
 import { launcherProcessMocks } from './launcher-mocks.mjs';
+import { orderInvocation } from './order-invocation.mjs';
 
 const LAUNCHER = new URL('../../src/home/lib/runner/launcher.mjs', import.meta.url).href;
-const TASK = 'advice: test-only\n\nProve the same-order launch claim without paid work.\n';
 const REPLY = 'OK — race fixture';
 const PROBE_DELAY_MS = 1500;
 const startedLines = (output) => output.stdout.split(/\r?\n/).filter((line) => /^STARTED\b/.test(line));
@@ -40,9 +40,14 @@ function runFolders(project) {
 }
 
 function launch(tree, orderId) {
-  const args = [
-    '--agent', 'codex-review', '--repo', tree.repo, '--slug', 'order-claim-race', '--order-id', orderId,
-  ];
+  // Plan_63 D5: each contender owns its task file, so simultaneous orders cannot overwrite it.
+  const dir = path.join(path.dirname(tree.repo), `order-${tree.children.length}`);
+  fs.mkdirSync(dir);
+  const { argv: args } = orderInvocation({
+    agent: 'codex-review',
+    order: { repository: tree.repo, slug: 'order-claim-race', 'order id': orderId },
+    advice: 'test-only', task: 'Prove the same-order launch claim without paid work.', dir,
+  });
   const mocks = launcherProcessMocks({
     worker: 'spawn', probe: 'marker', workerPid: 'parent', probeDelayMs: PROBE_DELAY_MS,
   });
@@ -96,7 +101,7 @@ try {
   });
   const handle = { child, output, ready, done };
   tree.children.push(handle);
-  child.stdin.end(TASK);
+  child.stdin.end();
   return handle;
 }
 

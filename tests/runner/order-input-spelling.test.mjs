@@ -7,27 +7,14 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ALL_ORDER_LABELS, orderInputName } from '../../src/home/lib/order-schema.mjs';
+import { orderInputName } from '../../src/home/lib/order-schema.mjs';
+import { findSpellings } from '../order-spelling-scan.mjs';
 
 const LIB = fileURLToPath(new URL('../../src/home/lib/', import.meta.url));
-const SPELLINGS = [...new Set(ALL_ORDER_LABELS.map(orderInputName))];
 
 function scan(source, file) {
-  // Keep quoted text: a flag in a string is precisely the instruction this guard must catch.
-  // Mask comments without removing line breaks so diagnostics still name the original line.
-  const code = source.replace(
-    /'(?:\\[\s\S]|[^'\\])*'|"(?:\\[\s\S]|[^"\\])*"|`(?:\\[\s\S]|[^`\\])*`|\/\*[\s\S]*?\*\/|\/\/[^\r\n]*/g,
-    (token) => token.startsWith('/') ? token.replace(/[^\r\n]/g, ' ') : token,
-  );
-  const findings = [];
-  for (const spelling of SPELLINGS) {
-    const escaped = spelling.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    for (const match of code.matchAll(new RegExp(`${escaped}(?![A-Za-z0-9-])`, 'g'))) {
-      const line = code.slice(0, match.index).split('\n').length;
-      findings.push(`${file}:${line}: ${spelling} — use orderInputName(label)`);
-    }
-  }
-  return findings;
+  return findSpellings(source, file).map(({ file, line, spelling }) =>
+    `${file}:${line}: ${spelling} — use orderInputName(label)`);
 }
 
 function moduleFiles(directory) {
