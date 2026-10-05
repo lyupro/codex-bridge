@@ -82,28 +82,13 @@ function lastRunHints(runsRootPath, chain, grantReason) {
  * also ties runs together by slug and by the fingerprint of the task text, which is what catches a
  * repeat that renamed itself — but counting continuations that way makes the escape hatch
  * unreachable: the operator's rule is "more passes than one need a new order id", and a new order
- * id lands in the same chain through the task hash. A task would then be refused with --continue
- * for having spent its continuation and refused without it for already having runs — permanently
+ * id lands in the same chain through the task hash. A task would then be refused with a grant
+ * for having spent its continuation and refused without one for already having runs — permanently
  * unrunnable, which is a worse failure than the retry storm this limit exists to stop.
  */
 export function continuationRefusal(runsRootPath, chain, isContinue, orderId, grant) {
   const continuation = normalizeGrant(grant);
-  if (!isContinue) {
-    if (!continuation) return null;
-    return (
-      `${orderInputName('continue')} is required when the task text contains a \`continue:\` grant. ` +
-      `${lastRunHints(runsRootPath, chain, continuation.reason)} ` +
-      'The submitted grant was not rewritten. The run folder was not created; quota was not spent.'
-    );
-  }
-
-  if (!continuation) {
-    return (
-      `${orderInputName('continue')} is refused: the orchestrator did not provide a \`continue:\` grant in the task text. ` +
-      `${lastRunHints(runsRootPath, chain)} ` +
-      `${grantExample} ${grantAction} The run folder was not created; quota was not spent.`
-    );
-  }
+  if (!isContinue) return null;
 
   const namedDirectory = namedRunDirectory(runsRootPath, continuation.run);
   if (!namedDirectory) {
@@ -161,9 +146,6 @@ export function continuationRefusal(runsRootPath, chain, isContinue, orderId, gr
 
 export function retryRefusal(runsRootPath, chain, isContinue, orderId, grant, liveness = workerMayBeAlive) {
   const refuse = (message) => `${message} The run folder was not created; quota was not spent.`;
-  if (!isContinue) {
-    return refuse(`${orderInputName('retry')} is required for a \`retry:\` grant: the orchestrator deliberately repeats the same pass.`);
-  }
   const runDir = namedRunDirectory(runsRootPath, grant?.run);
   if (!runDir) {
     return refuse(`Retry is refused: ${grant?.run || 'none'} is not a bare existing run folder in ${runsRootPath}.`);

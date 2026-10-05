@@ -7,6 +7,7 @@ import { makeTempTree } from '../temp-tree.mjs';
 import { validScope } from '../meta/advisor-fixtures.mjs';
 import { passGate } from '../../src/home/lib/runner/pass-gate.mjs';
 import { parseTaskHeader } from '../../src/home/lib/task-header.mjs';
+import { orderTaskText } from './order-invocation.mjs';
 
 const S = '2026-10-03_180000_scope';
 const A = '2026-10-03_180100_advise';
@@ -22,7 +23,7 @@ function fixture() {
   fs.mkdirSync(projectRunsRoot);
   return {
     repoRoot, projectRunsRoot,
-    opts: { agent: 'codex-advisor', phase: 'advise', slug: 'tradeforge', orderId: 'o', continue: true },
+    opts: { agent: 'codex-advisor', phase: 'advise', slug: 'tradeforge', orderId: 'o' },
   };
 }
 
@@ -49,14 +50,22 @@ function tradeforge() {
   return tree;
 }
 
-function taskInput(text) {
-  const header = parseTaskHeader(text);
-  return { header, taskText: header.body.trim() };
+function taskInput(tree, grant, options) {
+  const opts = { ...tree.opts, ...options };
+  const header = parseTaskHeader(orderTaskText({
+    order: { repository: tree.repoRoot, slug: opts.slug, 'order id': opts.orderId,
+      ...(opts.phase === undefined ? {} : { phase: opts.phase }) },
+    grant, task: TASK,
+  }));
+  assert.deepEqual(header.problems, []);
+  return { header, taskText: header.body.trim(), opts: {
+    agent: opts.agent, phase: header.fields.phase, slug: header.fields.slug,
+    orderId: header.fields['order id'], continue: Boolean(header.grant),
+  } };
 }
 
 const retry = (tree, name = A, opts = {}) => passGate({
-  ...tree, opts: { ...tree.opts, ...opts },
-  ...taskInput(`retry: ${name} \u2014 model at capacity\n\n${TASK}`),
+  ...tree, ...taskInput(tree, { kind: 'retry', run: name, reason: 'model at capacity' }, opts),
 });
 
 function refusal(message) {
@@ -91,7 +100,7 @@ for (const [verdict, exitCode] of [['FAIL', 1], ['OK', 0]]) {
     t.mock.method(console, 'log', (...values) => lines.push(values.join(' ')));
 
     assert.deepEqual(await passGate({
-      ...tree, opts: tree.opts, ...taskInput(`continue: ${S} — scope approved\n\n${TASK}`),
+      ...tree, ...taskInput(tree, { kind: 'continue', run: S, reason: 'scope approved' }, {}),
     }), { exitCode });
     assert.equal(lines[0], `ATTACH=${dir} order-id=o started=2026-10-03T18:00:00.000Z`);
     if (verdict === 'FAIL') {
@@ -113,7 +122,7 @@ test('an older saved TradeForge failure prints no repair for the newer retry', a
   t.mock.method(console, 'log', (...values) => lines.push(values.join(' ')));
 
   assert.deepEqual(await passGate({
-    ...tree, opts: tree.opts, ...taskInput(`continue: ${S} — scope approved\n\n${TASK}`),
+    ...tree, ...taskInput(tree, { kind: 'continue', run: S, reason: 'scope approved' }, {}),
   }), { exitCode: 1 });
   assert.equal(lines.at(-1), 'FAIL — original advise');
   assert.doesNotMatch(lines.join('\n'), /Ready/);
@@ -143,7 +152,7 @@ test('retry refuses changing either the named run agent or its phase', async () 
   }
 });
 
-test('failed first scope retries with --continue and has no continuation base', async () => {
+test('failed first scope retries with a retry: grant alone and has no continuation base', async () => {
   const tree = fixture();
   run(tree, S, {}, 'FAIL');
   const gate = await retry(tree, S, { phase: 'scope' });
@@ -158,16 +167,25 @@ test('scope continuation still refuses with OW-040 before reading the chain', as
   // OW-040: even a missing runs root must not hide the scope continuation refusal.
   const missingRoot = path.join(tree.projectRunsRoot, 'missing');
   await assert.rejects(passGate({
-    ...tree, projectRunsRoot: missingRoot, opts: { ...tree.opts, phase: 'scope' },
-    ...taskInput(`continue: ${S} \u2014 repeat scope\n\n${TASK}`),
-  }), refusal(/codex-advisor --phase scope refuses --continue:.*a scope run that failed is repeated with a `retry:` grant instead/));
+    ...tree, projectRunsRoot: missingRoot,
+    ...taskInput(tree, { kind: 'continue', run: S, reason: 'repeat scope' }, { phase: 'scope' }),
+  }), refusal(/codex-advisor `phase:` scope refuses `continue:`:.*a scope run that failed is repeated with a `retry:` grant instead/));
   assert.deepEqual(fs.readdirSync(tree.projectRunsRoot), []);
 });
 
-test('retry without --continue refuses before attaching an older saved reply', async () => {
+test('a retry: grant alone authorizes retry before attaching an older saved reply', async (t) => {
   const tree = tradeforge();
   fs.writeFileSync(path.join(tree.projectRunsRoot, A, 'reply.txt'), 'FAIL \u2014 original advise\n');
-  await assert.rejects(retry(tree, A, { continue: false }), refusal(/--continue is required for a `retry:` grant/));
+  const lines = [];
+  t.mock.method(console, 'log', (...values) => lines.push(values.join(' ')));
+  const input = taskInput(tree, { kind: 'retry', run: A, reason: 'model at capacity' }, {});
+  assert.equal(Object.hasOwn(tree.opts, 'continue'), false);
+  assert.equal(input.opts.continue, true);
+  const gate = await passGate({ ...tree, ...input });
+  assert.equal(gate.retryOf, A);
+  assert.deepEqual(gate.continuationGrant, { run: S, reason: 'model at capacity' });
+  assert.doesNotMatch(lines.join('\n'), /^ATTACH=/m);
+  assert.deepEqual(fs.readdirSync(tree.projectRunsRoot), [S, A]);
 });
 
 test('matching absent phases can retry a failed single-phase agent run', async () => {
@@ -190,7 +208,9 @@ test('a pre-phase run folder retries under the resolved default phase', async ()
 
 test('ordinary first passes have no retry provenance', async () => {
   const tree = fixture();
-  const gate = await passGate({ ...tree, opts: { ...tree.opts, phase: 'scope', continue: false }, ...taskInput(TASK) });
+  const input = taskInput(tree, undefined, { phase: 'scope' });
+  assert.equal(input.opts.continue, false);
+  const gate = await passGate({ ...tree, ...input });
   assert.equal(gate.retryOf, null);
   assert.equal(gate.continuationGrant, null);
 });

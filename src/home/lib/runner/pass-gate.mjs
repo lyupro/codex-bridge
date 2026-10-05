@@ -25,7 +25,7 @@ export async function passGate({ opts, taskText, header, projectRunsRoot, repoRo
   // The task is identified by its text as well as by its slug, because the slug is chosen by
   // whoever repeats the run: on 2026-08-02 a dispatcher whose launcher was killed restarted
   // the identical order as `<slug>-v2` and spent 46k on it. Refused before the folder exists,
-  // like --scope.
+  // like an impossible scope.
   const taskHash = taskFingerprint(taskText);
   const grant = header.grant;
   // OW-040, 2026-09-30: only a retry repeats failed scope without spending advise's continuation.
@@ -47,11 +47,12 @@ export async function passGate({ opts, taskText, header, projectRunsRoot, repoRo
   let attachedExitCode = opts.continue ? await attachExistingRun() : null;
   if (attachedExitCode !== null) return { exitCode: attachedExitCode };
 
-  // The 2026-08-10_220535_plan25-2-install-table-two-roots incident exposed this ordering:
-  // a grant without its flag must refuse before attach can print an older run's verdict.
+  // The 2026-08-10_220535_plan25-2-install-table-two-roots incident exposed this ordering: an
+  // invalid grant must refuse before attach can print an older run's verdict (Plan_63 D8: the
+  // grant alone means continuation, so "grant without flag" no longer exists).
   // markAbandoned() ran before this gate, so a dead runner already has meta.json with FAIL.
   // A run without a verdict can therefore only still be in flight; ordinary repeats go through
-  // attach() after this gate. Repeated --continue calls attach first because their grant is spent.
+  // attach() after this gate. Repeated continuation calls attach first because their grant is spent.
   if (grant?.kind === 'retry') {
     const retryError = retryRefusal(projectRunsRoot, startedChain, opts.continue, opts.orderId, grant);
     if (retryError) die(retryError);

@@ -7,7 +7,13 @@ import path from 'node:path';
 import { continuationRefusal } from '../../src/home/lib/runner/continuation.mjs';
 import { chainRuns } from '../../src/home/lib/meta/chain.mjs';
 import { orderOwnerConflictText } from '../../src/home/lib/runner/order-owner.mjs';
+import { parseTaskHeader } from '../../src/home/lib/task-header.mjs';
+import { orderTaskText } from './order-invocation.mjs';
 import { attaching, deadPid, fixture, order, run, running } from './attach-fixtures.mjs';
+
+const grant = (runName, reason) => parseTaskHeader(orderTaskText({
+  grant: { kind: 'continue', run: runName, reason }, task: 'Continue the ordered task.',
+})).grant;
 
 test('an order with no runs at all starts one', async (t) => {
   const runsRoot = fixture(t);
@@ -83,7 +89,7 @@ test('a run that already answered replies from disk rather than refusing the rep
   assert.match(lines[2], /OK — done/);
 });
 
-test('--continue starts a new pass when no run of this order continues its grant', async (t) => {
+test('a continue: grant starts a new pass when no run of this order continues it', async (t) => {
   const runsRoot = fixture(t);
   const repo = path.join(runsRoot, 'repo');
   const first = '2026-08-04_090000_async-start';
@@ -92,7 +98,8 @@ test('--continue starts a new pass when no run of this order continues its grant
     'reply.txt': 'OK — the first pass\n',
   });
 
-  const { code } = await attaching(order(runsRoot, repo, { isContinue: true, grantRun: first }));
+  const headerGrant = grant(first, 'Finish the next pass');
+  const { code } = await attaching(order(runsRoot, repo, { isContinue: Boolean(headerGrant), grantRun: headerGrant.run }));
 
   assert.equal(code, null);
 });
@@ -128,7 +135,7 @@ test('a reused order id with the identical normalized task hash still attaches',
   assert.equal(lines[2], 'OK — same task');
 });
 
-test('a reused order id with a different task is not refused under --continue', async (t) => {
+test('a reused order id with a different task is not refused with a continue: grant', async (t) => {
   const runsRoot = fixture(t);
   const repo = path.join(runsRoot, 'repo');
   const name = '2026-08-15_090000_continue';
@@ -138,8 +145,9 @@ test('a reused order id with a different task is not refused under --continue', 
     'meta.json': JSON.stringify({ status: 'OK' }),
   });
 
+  const headerGrant = grant(grantRun, 'Finish the next pass');
   const { code, lines } = await attaching(
-    order(runsRoot, repo, { taskHash: 'new-hash', isContinue: true, grantRun }),
+    order(runsRoot, repo, { taskHash: 'new-hash', isContinue: Boolean(headerGrant), grantRun: headerGrant.run }),
   );
 
   assert.equal(code, 0);
@@ -161,7 +169,7 @@ test('a stored run without task_hash keeps the legacy attach behavior', async (t
   assert.equal(lines[2], 'OK — legacy run');
 });
 
-test('the first --continue is allowed after exactly one finished run', (t) => {
+test('the first continue: grant is allowed after exactly one finished run', (t) => {
   const runsRoot = fixture(t);
   const repo = path.join(runsRoot, 'repo');
   const name = '2026-08-04_090000_async-start';
@@ -169,10 +177,10 @@ test('the first --continue is allowed after exactly one finished run', (t) => {
     'meta.json': JSON.stringify({ status: 'LIMIT' }),
   });
 
-  assert.equal(continuationRefusal(runsRoot, [name], true, 'order-1', { run: name, reason: 'LIMIT' }), null);
+  assert.equal(continuationRefusal(runsRoot, [name], true, 'order-1', grant(name, 'LIMIT')), null);
 });
 
-test('a second --continue names the runs already spent and requires a new order id', (t) => {
+test('a second continue: grant names the runs already spent and requires a new order id', (t) => {
   const runsRoot = fixture(t);
   const repo = path.join(runsRoot, 'repo');
   const first = '2026-08-04_090000_async-start';
@@ -183,10 +191,8 @@ test('a second --continue names the runs already spent and requires a new order 
     });
   }
 
-  const message = continuationRefusal(runsRoot, [first, second], true, 'order-1', {
-    run: second,
-    reason: 'FAIL requires another pass',
-  });
+  const message = continuationRefusal(runsRoot, [first, second], true, 'order-1',
+    grant(second, 'FAIL requires another pass'));
 
   assert.match(message, new RegExp(first));
   assert.match(message, new RegExp(second));
@@ -196,7 +202,7 @@ test('a second --continue names the runs already spent and requires a new order 
 /**
  * The escape hatch the refusal itself points at has to actually work. The chain also matches runs
  * by the task fingerprint, so a fresh order id lands in the same chain — counted over the chain
- * rather than over the order, a task would be refused with --continue and refused without it.
+ * rather than over the order, a task would be refused with a continue: grant and refused without it.
  */
 test('a fresh order id is not charged for the runs of the previous one', (t) => {
   const runsRoot = fixture(t);
@@ -210,27 +216,23 @@ test('a fresh order id is not charged for the runs of the previous one', (t) => 
   }
 
   assert.equal(
-    continuationRefusal(runsRoot, [first, second], true, 'order-2', {
-      run: second,
-      reason: 'FAIL requires another pass',
-    }),
+    continuationRefusal(runsRoot, [first, second], true, 'order-2',
+      grant(second, 'FAIL requires another pass')),
     null,
   );
 });
 
-test('--continue behind a run without a verdict is refused before another folder is made', (t) => {
+test('a continue: grant behind a run without a verdict is refused before another folder is made', (t) => {
   const runsRoot = fixture(t);
   const repo = path.join(runsRoot, 'repo');
   const name = '2026-08-04_090000_async-start';
   run(runsRoot, name, running(repo));
 
-  const message = continuationRefusal(runsRoot, [name], true, 'order-1', {
-    run: name,
-    reason: 'continue the unfinished work',
-  });
+  const message = continuationRefusal(runsRoot, [name], true, 'order-1',
+    grant(name, 'continue the unfinished work'));
 
   assert.match(message, /no finished verdict/);
-  assert.match(message, /Repeat without --continue to attach/);
+  assert.match(message, /Repeat without `continue:` to attach/);
   assert.deepEqual(fs.readdirSync(runsRoot), [name]);
 });
 
@@ -328,7 +330,7 @@ test('the same order in another repository is a different run', async (t) => {
   assert.equal(code, null);
 });
 
-// An order gets a second run when the orchestrator spends its one --continue. Answering a repeat
+// An order gets a second run when the orchestrator spends its one continue: grant. Answering a repeat
 // from the earlier run — which is what happened until 2026-08-04 — hands back the previous pass's
 // verdict as if it were this one's, and the caller has no way to tell.
 test('the newest run of an order answers the repeat, not the pass before it', async (t) => {

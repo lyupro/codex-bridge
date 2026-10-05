@@ -4,7 +4,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { ALL_ORDER_LABELS, orderInputName } from '../../src/home/lib/order-schema.mjs';
+import { ALL_ORDER_LABELS } from '../../src/home/lib/order-schema.mjs';
 
 // The schema also lists grants; D5 represents those separately from the order fields.
 const ORDER_LABELS = ALL_ORDER_LABELS.filter((label) => label !== 'continue' && label !== 'retry');
@@ -21,7 +21,8 @@ function validateOrder(order) {
 
 export function orderTaskText({ order = {}, grant, advice, questions, verify, task = 'Inspect the repository.' }) {
   validateOrder(order);
-  const header = [];
+  const header = ORDER_LABELS.filter((label) => Object.hasOwn(order, label))
+    .map((label) => `${label}: ${order[label]}`);
   if (advice !== undefined) header.push(`advice: ${advice}`);
   if (grant !== undefined) {
     if (!['continue', 'retry'].includes(grant.kind) || !grant.run || !grant.reason) {
@@ -40,9 +41,6 @@ export function orderInvocation({ agent, order = {}, grant, advice, questions, v
   if (typeof dir !== 'string' || !path.isAbsolute(dir)) throw new Error('dir must be an absolute directory');
   const text = orderTaskText({ order, grant, advice, questions, verify, task });
   const taskFile = path.join(dir, 'task.md');
-  const flags = ORDER_LABELS.filter((label) => Object.hasOwn(order, label))
-    .flatMap((label) => [orderInputName(label), String(order[label])]);
-  if (grant !== undefined) flags.push(orderInputName('continue'));
   fs.writeFileSync(taskFile, text);
-  return { argv: ['--agent', agent, '--task-file', taskFile, ...flags], taskFile };
+  return { argv: ['--agent', agent, '--task-file', taskFile], taskFile };
 }

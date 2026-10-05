@@ -14,11 +14,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { parseArgs, runsPrefixInside, worktreeSnapshot } from '../src/home/lib/run-codex.mjs';
+import { runsPrefixInside, worktreeSnapshot } from '../src/home/lib/run-codex.mjs';
 import { codexArgs } from '../src/home/lib/runner/codex-args.mjs';
 import { loadRunEnv } from '../src/home/lib/runner/run-env.mjs';
 import { runsRoot } from '../src/home/lib/runner/runs-root.mjs';
 import { makeTempTree } from './temp-tree.mjs';
+import { orderInvocation } from './runner/order-invocation.mjs';
 
 /** Resolved from this file, so a copied folder tests its own copy of the runner. */
 const RUN_CODEX = new URL('../src/home/lib/run-codex.mjs', import.meta.url).href;
@@ -33,24 +34,6 @@ const jsonAscii = (value) =>
     (ch) => `\\u${ch.charCodeAt(0).toString(16).padStart(4, '0')}`,
   );
 
-/**
- * parseArgs refuses by exiting the process, and that exit code IS the refusal — a dispatcher
- * branches on it. So it is asked in a child process and judged by what the child returns.
- */
-function parseArgsInChild(argv) {
-  const source = `import { parseArgs } from ${JSON.stringify(RUN_CODEX)};
-try {
-  process.stdout.write(JSON.stringify(parseArgs(JSON.parse(process.env.CODEX_TEST_ARGV))));
-} catch (err) {
-  process.exit(err.exitCode || 1);
-}`;
-  const out = spawnSync(process.execPath, ['--input-type=module', '-e', source], {
-    encoding: 'utf8',
-    env: { ...process.env, CODEX_TEST_ARGV: jsonAscii(argv) },
-  });
-  return { code: out.status, stderr: out.stderr || '', opts: out.stdout ? JSON.parse(out.stdout) : null };
-}
-
 test('importing the runner starts nothing', () => {
   // Every refusal and every artifact of a run lives behind a direct call. Imported — which is
   // how the cases here reach it — the file must not parse arguments, read stdin, take the
@@ -60,6 +43,7 @@ test('importing the runner starts nothing', () => {
   const source = `await import(${JSON.stringify(RUN_CODEX)});
 process.stdout.write('imported');`;
 
+  // raw argv: Node imports the facade in isolation to prove that import has no side effects.
   const out = spawnSync(process.execPath, ['--input-type=module', '-e', source], {
     encoding: 'utf8',
     cwd,
@@ -74,131 +58,86 @@ process.stdout.write('imported');`;
   assert.deepEqual(fs.readdirSync(home), []);
 });
 
-// Every run carries the order label the orchestrator issued, so these cases spell it out
-// rather than testing the --order-id refusal by accident; that refusal has its own cases below.
-// raw argv: these parser cases exercise flag values and refusal precedence before task-file loading.
-const ORDER = ['--order-id', 'ord-1'];
-const SCOUT_QUESTION = ['--question', 'Describe the current implementation.'];
+// Plan_63 D8 keeps order validation after transport parsing, on the task-header path.
+function headerArgsInChild(order, { grant, agent = 'codex-scout', launch = false } = {}) {
+  const root = makeTempTree('header-args-');
+  const { argv } = orderInvocation({
+    agent, order, grant, advice: agent === 'codex-build' ? 'mechanical' : undefined, questions: ['Describe the current implementation.'], dir: root,
+  });
+  const taskInput = new URL('../src/home/lib/runner/task-input.mjs', import.meta.url).href;
+  const launcher = new URL('../src/home/lib/runner/launcher.mjs', import.meta.url).href;
+  const source = `import { parseArgs } from ${JSON.stringify(RUN_CODEX)};
+import { settleTaskInput } from ${JSON.stringify(taskInput)};
+try {
+  const argv = JSON.parse(process.env.CODEX_TEST_ARGV);
+  if (${launch}) {
+    // raw argv: valid transport reaches the launcher with an impossible scope as a no-spend boundary.
+    process.argv = [process.execPath, ${JSON.stringify(launcher)}, ...argv];
+    const { launcher } = await import(${JSON.stringify(launcher)});
+    const code = await launcher();
+    if (code !== undefined) process.exitCode = code;
+  } else {
+    const opts = parseArgs(argv);
+    settleTaskInput(opts);
+    process.stdout.write(JSON.stringify(opts));
+  }
+} catch (err) { process.exit(err.exitCode || 1); }`;
+  // raw argv: Node executes the isolated header-validation child without starting a worker.
+  const out = spawnSync(process.execPath, ['--input-type=module', '-e', source], {
+    encoding: 'utf8', env: { ...process.env, CODEX_TEST_ARGV: jsonAscii(argv), CODEX_RUNS_ROOT: path.join(root, 'runs') },
+  });
+  return { code: out.status, stderr: out.stderr || '', opts: out.stdout ? JSON.parse(out.stdout) : null };
+}
 
-test('parseArgs refuses a run with no order label', () => {
-  // The label is what caught the two self-restarts of this project: a dispatcher that renames
-  // itself has no honest source of a new one. So it is required, never defaulted, and never
-  // invented by the runner — a runner-issued label would be fresh on a restart and the chain
-  // would miss again.
-  // raw argv: missing and whitespace-only order labels must reach the parser unchanged.
-  for (const argv of [['--agent', 'codex-scout'], ['--agent', 'codex-scout', '--order-id', '   ']]) {
-    const { code, stderr } = parseArgsInChild(argv);
-    assert.equal(code, 2, JSON.stringify(argv));
-    assert.match(stderr, /--order-id is required/);
+test('the header refuses a run with no order label', () => {
+  // The two self-restarts incident requires an orchestrator-issued label, never a runner default.
+  for (const order of [{}, { 'order id': '   ' }]) {
+    const { code, stderr } = headerArgsInChild(order);
+    assert.equal(code, 2, JSON.stringify(order));
+    assert.match(stderr, Object.hasOwn(order, 'order id')
+      ? /header label "order id" has an empty value/
+      : /missing required header label "order id:"/);
   }
 });
 
-test('the order label is stored trimmed', () => {
-  // raw argv: padding in the order-id flag is the parser behavior under test.
-  const { code, opts } = parseArgsInChild([
-    '--agent',
-    'codex-scout',
-    '--order-id',
-    '  order-42  ',
-    ...SCOUT_QUESTION,
-  ]);
-  assert.equal(code, 0);
+test('the order label is stored trimmed from the header', () => {
+  const { code, opts, stderr } = headerArgsInChild({ 'order id': '  order-42  ' });
+  assert.equal(code, 0, stderr);
   assert.equal(opts.orderId, 'order-42');
 });
 
-test('a flag name in place of a value is a missing value, not a value', () => {
-  // `--question --continue` recorded `--continue` as the sub-question and satisfied every later
-  // check: the run then graded itself against a question nobody asked.
-  // raw argv: malformed value positions must not be normalized by the invocation helper.
-  for (const argv of [
-    ['--agent', 'codex-scout', ...ORDER, '--question', '--continue'],
-    ['--agent', 'codex-scout', ...ORDER, ...SCOUT_QUESTION, '--slug', '--continue'],
-  ]) {
-    const { code, stderr } = parseArgsInChild(argv);
-    assert.equal(code, 2, JSON.stringify(argv));
-    assert.match(stderr, /missing value/);
+test('a continuation or retry grant alone authorises continuation and preserves scope', () => {
+  for (const kind of ['continue', 'retry']) {
+    const { code, opts, stderr } = headerArgsInChild({ 'order id': 'ord-1', scope: 'src/**' }, {
+      agent: 'codex-build', grant: { kind, run: 'previous-run', reason: 'finish the task' },
+    });
+    assert.equal(code, 0, stderr);
+    assert.equal(opts.continue, true, kind);
+    assert.deepEqual(opts.scopePatterns, ['src/**'], kind);
   }
+  const { code, opts, stderr } = headerArgsInChild({ 'order id': 'ord-1' });
+  assert.equal(code, 0, stderr);
+  assert.equal(opts.continue, false);
 });
 
-test('--continue with no value is consent', () => {
-  // raw argv: the parser must recognize a valueless consent flag.
-  const { code, opts } = parseArgsInChild(['--agent', 'codex-scout', ...ORDER, ...SCOUT_QUESTION, '--continue']);
-  assert.equal(code, 0);
-  assert.equal(opts.continue, true);
-});
-
-test('the spelled-out yes and no of --continue are both honoured', () => {
-  // raw argv: explicit consent spellings are the parser contract, not a task-file grant.
-  for (const value of ['1', 'true', 'yes']) {
-    const { code, opts } = parseArgsInChild([
-      '--agent',
-      'codex-scout',
-      ...ORDER,
-      ...SCOUT_QUESTION,
-      '--continue',
-      value,
-    ]);
-    assert.equal(code, 0, `--continue ${value}`);
-    assert.equal(opts.continue, true, `--continue ${value}`);
-  }
-  // raw argv: explicit negative consent values must remain literal parser inputs.
-  for (const value of ['0', 'false', 'no']) {
-    const { code, opts } = parseArgsInChild([
-      '--agent',
-      'codex-scout',
-      ...ORDER,
-      ...SCOUT_QUESTION,
-      '--continue',
-      value,
-    ]);
-    assert.equal(code, 0, `--continue ${value}`);
-    assert.equal(opts.continue, false, `--continue ${value}`);
-  }
-});
-
-test('a placeholder left in from the prompt template is not consent', () => {
-  // The permissive reading this replaces — "anything but 0/false/no means yes" — turned the
-  // agent prompt's own `--continue "<only if the orchestrator provided continue>"` into a silent
-  // opt-in, and a repeat run started on someone else's quota. The refusal is exit code 2.
-  // raw argv: invalid consent values must reach the parser rather than helper grant validation.
-  for (const value of ['<only if the orchestrator provided continue>', 'maybe', '']) {
-    const { code, stderr } = parseArgsInChild([
-      '--agent',
-      'codex-scout',
-      ...ORDER,
-      ...SCOUT_QUESTION,
-      '--continue',
-      value,
-    ]);
-    assert.equal(code, 2, `--continue ${JSON.stringify(value)}`);
-    assert.match(stderr, /takes no value, or one of 1\/true\/yes\/0\/false\/no/);
-  }
-});
-
-test('--continue does not swallow the flag that follows it', () => {
-  // raw argv: adjacent consent and scope flags exercise value consumption in the parser.
-  const { code, opts } = parseArgsInChild([
-    '--agent',
-    'codex-scout',
-    ...ORDER,
-    ...SCOUT_QUESTION,
-    '--continue',
-    '--scope',
-    'src/**',
-  ]);
-  assert.equal(code, 0);
-  assert.equal(opts.continue, true);
-  assert.equal(opts.scope, 'src/**');
-});
-
-test('parseArgs refuses a whitespace-containing effort with the flag name and exit code 2', () => {
-  // raw argv: the malformed effort flag and its exact refusal are the subject.
-  const { code, stderr } = parseArgsInChild([
-    '--agent', 'codex-scout', ...ORDER, ...SCOUT_QUESTION, '--effort', 'two words',
-  ]);
+test('the header refuses a whitespace-containing effort with its label and exit code 2', () => {
+  const { code, stderr } = headerArgsInChild({ 'order id': 'ord-1', effort: 'two words' });
   assert.equal(code, 2, stderr);
   assert.equal(stderr.trim(),
-    'run-codex: --effort must be a non-empty single word with no whitespace; got "two words"');
+    'run-codex: `effort:` must be a non-empty single word with no whitespace; got "two words"');
+});
+
+test('the header refuses an unusable slug and shell-unsafe effort before starting', () => {
+  for (const [order, refusal] of [
+    [{ 'order id': 'ord-1', slug: '___' }, /`slug:` produces an unusable run folder name/],
+    [{ 'order id': 'ord-1', effort: '$(echo)' }, /`effort:` contains forbidden shell sequence/],
+  ]) {
+    const { code, stderr } = Object.hasOwn(order, 'effort')
+      ? headerArgsInChild({ ...order, scope: '/absolute-is-refused' }, { agent: 'codex-build', launch: true })
+      : headerArgsInChild(order);
+    assert.equal(code, 2, stderr);
+    assert.match(stderr, refusal);
+  }
 });
 
 // The prompts also say not to delegate, and prompts are what a dispatcher already ignored twice
@@ -377,6 +316,7 @@ test('a run does not see its own artifacts as work in the tree it measures', () 
     fs.writeFileSync(path.join(repo, 'agents', 'note.md'), 'one\n');
     fs.writeFileSync(path.join(runFolder, 'state-after.txt'), 'one\n');
 
+    // raw argv: Git creates and measures the throwaway fixture, never the project worktree.
     const git = (...args) => spawnSync('git', ['-C', repo, ...args], { encoding: 'utf8' });
     git('init', '-q');
     git('add', '-A');

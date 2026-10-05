@@ -39,8 +39,7 @@ function launch(tree, { phase, task = TASK, refuse = false, grant, taskFile = tr
   let { argv: args } = orderInvocation(invocation);
   if (!taskFile) {
     // raw argv: the task-gate matrix must still exercise stdin without --task-file.
-    args = ['--agent', invocation.agent, '--repo', tree.repo, '--order-id', 'advisor-fixture',
-      ...(phase === undefined ? [] : ['--phase', phase])];
+    args = ['--agent', invocation.agent];
   }
   const source = `
 import childProcess from 'node:child_process';
@@ -54,6 +53,7 @@ catch (error) {
   process.exitCode = error.exitCode;
 }
 `;
+  // raw argv: run the launcher with mocked process APIs in an isolated Node module.
   return spawnSync(process.execPath, ['--input-type=module', '-e', source], {
     cwd: tree.repo, input: taskFile ? '' : orderTaskText(invocation), encoding: 'utf8', timeout: 10_000, windowsHide: true,
     env: { ...process.env, CODEX_BRIDGE_HOME: tree.home, CODEX_RUNS_ROOT: tree.runs },
@@ -70,11 +70,11 @@ function runFrom(output) {
     advisorTask: read('advisor-task.json'), task: fs.readFileSync(path.join(dir, 'task.md'), 'utf8') };
 }
 
-function assertFree(tree, output, code, message) {
+function assertFree(tree, output, code, message, freeSentence = true) {
   assert.equal(output.status, code, output.stderr || output.error?.message);
   assert.equal(output.stdout, '');
   assert.match(output.stderr, message);
-  assert.match(output.stderr, /The run folder was not created; quota was not spent\.\s*$/);
+  if (freeSentence) assert.match(output.stderr, /The run folder was not created; quota was not spent\.(?:\r?\n|$)/);
   assert.equal(fs.existsSync(tree.runs), false);
   assert.deepEqual(fs.readdirSync(tree.repo), ['source.mjs']);
 }
@@ -105,10 +105,10 @@ test('scope writes its phase schema, read-only argv, configured profile and answ
   assert.match(task, /every text field of result\.json in Spanish/);
 });
 
-test('advise without --continue refuses before a probe or run folder exists', () => {
+test('advise without a continuation grant refuses before a probe or run folder exists', () => {
   const tree = fixture();
   assertFree(tree, launch(tree, { phase: 'advise', refuse: true }), 2,
-    /requires --continue: phase 2 continues the scope run of the same order so it can settle the risks phase 1 predicted/);
+    /requires a `continue:` grant naming the scope run: phase 2 continues the scope run of the same order so it can settle the risks phase 1 predicted/);
 });
 
 for (const taskFile of [false, true]) {
@@ -123,7 +123,8 @@ test('advisor requires an explicit phase and refuses undeclared phases for free'
   for (const phase of [undefined, 'default', 'typo']) {
     const tree = fixture();
     assertFree(tree, launch(tree, { phase, refuse: true }), 2,
-      phase === undefined ? /--phase is required.*scope, advise/ : /undeclared --phase.*scope, advise/);
+      phase === undefined ? /missing required header label "phase:"/ : /undeclared `phase:`.*scope, advise/,
+      phase !== undefined);
   }
 });
 
@@ -141,12 +142,13 @@ try {
     { advisor: { scope: 5, advise: 15 }, scout: { advise: 15 } }));
 } catch (error) { if (typeof error?.exitCode !== 'number') throw error; process.exitCode = error.exitCode; }
 `;
+    // raw argv: isolate phase refusal exit codes in a Node module subprocess.
     const output = spawnSync(process.execPath, ['--input-type=module', '-e', source], {
       encoding: 'utf8', timeout: 10_000, windowsHide: true,
     });
     assert.equal(output.status, exitCode, output.stderr || output.error?.message);
     if (exitCode === 0) assert.equal(output.stdout.trim(), phase);
-    else assert.match(output.stderr, /requires --continue.*The run folder was not created; quota was not spent/);
+    else assert.match(output.stderr, /requires a `continue:` grant.*The run folder was not created; quota was not spent/);
   }
 });
 

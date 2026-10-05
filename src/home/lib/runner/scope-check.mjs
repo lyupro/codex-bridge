@@ -173,8 +173,8 @@ export function validateScope(repoRoot, patterns, scopeNewPatterns = []) {
   const allPatterns = [...declared, ...newPaths];
   const newPathKeys = new Set(newPaths.map((pattern) => normalizePath(pattern)));
 
-  // The flag is decided by --scope-new membership, not list position: args.mjs merges every --scope-new
-  // pattern into the declared list, so position named --scope for a directory given only to --scope-new
+  // The label is decided by `scope new:` membership, not list position: orderOptions() merges every
+  // `scope new:` pattern into the declared list, so position named `scope:` for a directory given only to `scope new:`
   // (OW-042 B1, caught on the live runner 2026-10-04 after the unit test passed separate lists).
   for (const pattern of allPatterns) {
     const label = newPathKeys.has(normalizePath(pattern)) ? 'scope new' : 'scope';

@@ -33,15 +33,21 @@ test('order schemas derive every label and its category from the registry minus 
   }
 });
 
-test('order input names use the registry flag for every order label and agent', () => {
-  const entries = ORDER_AGENTS.flatMap((agent) => callInputsFor(agent));
-  for (const label of ALL_ORDER_LABELS) {
-    const matching = entries.filter((entry) => entry.label === label);
-    assert.ok(matching.length > 0);
-    for (const entry of matching) assert.equal(orderInputName(label), entry.flag);
-  }
-  assert.equal(orderInputName('continue'), '--continue');
-  assert.equal(orderInputName('retry'), '--continue');
+test('order input names use the header label spelling for every order label (Plan_63 D7)', () => {
+  for (const label of ALL_ORDER_LABELS) assert.equal(orderInputName(label), `\`${label}:\``);
+  assert.equal(orderInputName('continue'), '`continue:`');
+  assert.equal(orderInputName('retry'), '`retry:`');
+});
+
+test('a blank order id and a codex-build scope without a pattern are header problems', () => {
+  const header = (lines) => parseTaskHeader([...lines, '## Task', 'x'].join('\n'));
+  const reasons = (agent, lines) => orderFromHeader(agent, header(lines)).problems.map(({ reason }) => reason);
+  // A blank value never becomes a field, so the required-label check is what refuses it.
+  assert.ok(reasons('codex-scout', ['order id:   ']).some((reason) => reason.startsWith('missing required header label "order id:"')));
+  assert.ok(reasons('codex-build', ['order id: o-1', 'scope: , ,', 'scope new: src/new.mjs', 'advice: mechanical'])
+    .some((reason) => reason.startsWith('`scope:` is required for codex-build')));
+  assert.ok(!reasons('codex-build', ['order id: o-1', 'scope: src/a.mjs', 'advice: mechanical'])
+    .some((reason) => reason.includes('is required')));
 });
 
 test('unknown order input labels throw an Error naming the label', () => {

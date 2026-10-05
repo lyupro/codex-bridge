@@ -6,12 +6,12 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { makeTempTree } from '../temp-tree.mjs';
 import { launcherProcessMocks } from './launcher-mocks.mjs';
-import { orderInvocation } from './order-invocation.mjs';
+import { orderInvocation, orderTaskText } from './order-invocation.mjs';
 import { taskPreflight } from '../../src/home/lib/runner/preflight.mjs';
 
 const LAUNCHER = new URL('../../src/home/lib/runner/launcher.mjs', import.meta.url).href;
 const CLEAN_TASK = '## Options\n- keep: Keep the boundary.\n- split: Split the boundary.\n## Paths\n- source.mjs\n';
-const FREE = /The run folder was not created; quota was not spent\.\s*$/;
+const FREE = /^The run folder was not created; quota was not spent\.$/m;
 
 function fixture() {
   const root = makeTempTree('advice-gate-');
@@ -25,23 +25,25 @@ function fixture() {
 }
 
 function launch(tree, agent, taskText, { advice, refuse = false, taskFile = false, raw = false } = {}) {
+  const order = { repository: tree.repo, 'order id': 'advice-fixture',
+    ...(agent === 'codex-advisor' ? { phase: 'scope' } : {}),
+    ...(agent === 'codex-build' ? { scope: 'source.mjs' } : {}) };
   let args;
   if (raw) {
-    // raw argv: header syntax, line numbers, empty bodies and channel checks require the exact task bytes.
-    args = ['--agent', agent, '--repo', tree.repo, '--order-id', 'advice-fixture',
-      ...(agent === 'codex-advisor' ? ['--phase', 'scope'] : []),
-      ...(agent === 'codex-build' ? ['--scope', 'source.mjs'] : []),
-      ...(agent === 'codex-scout' ? ['--question', 'What does source.mjs export?'] : [])];
+    // Plan_63 D8: malformed task bytes follow the three-line build order header unchanged.
+    const header = orderTaskText({ order }).split('\n\n', 1)[0];
+    taskText = `${header}\n${taskText}`;
+    // raw argv: syntax and empty-body cases need exact task bytes through either transport.
+    args = ['--agent', agent];
     if (taskFile) {
       const file = path.join(tree.root, 'task.md');
       fs.writeFileSync(file, taskText);
+      // raw argv: the file half of the raw-header matrix needs its explicit task path.
       args.push('--task-file', file);
     }
   } else {
     ({ argv: args } = orderInvocation({
-      agent, order: { repository: tree.repo, 'order id': 'advice-fixture',
-        ...(agent === 'codex-advisor' ? { phase: 'scope' } : {}),
-        ...(agent === 'codex-build' ? { scope: 'source.mjs' } : {}) },
+      agent, order,
       advice, questions: agent === 'codex-scout' ? ['What does source.mjs export?'] : undefined,
       task: taskText, dir: tree.root,
     }));
@@ -58,6 +60,7 @@ catch (error) {
   process.exitCode = error.exitCode;
 }
 `;
+  // raw argv: isolate the launcher with mocked process APIs in a Node module.
   return spawnSync(process.execPath, ['--input-type=module', '-e', source], {
     cwd: tree.repo, input: raw && !taskFile ? taskText : '', encoding: 'utf8', timeout: 10_000, windowsHide: true,
     env: { ...process.env, CODEX_BRIDGE_HOME: tree.home, CODEX_RUNS_ROOT: tree.runs },
@@ -151,7 +154,7 @@ for (const [name, task] of Object.entries(invalid)) {
     const headerError = name === 'duplicate' || name === 'empty';
     assertFree(tree, output, headerError ? 2 : 1);
     if (headerError) {
-      assert.match(output.stderr, name === 'duplicate' ? /line 2: misplaced advice/ : /line 1: advice value must be non-empty/);
+      assert.match(output.stderr, name === 'duplicate' ? /line 5: misplaced advice/ : /line 4: advice value must be non-empty/);
       return;
     }
     assert.match(output.stderr, /requires the task file to start with the header line `advice: <value>`/);
@@ -182,11 +185,11 @@ test('clean advisor task is not refused by the task gate', () => {
 });
 // Plan_75 D5, 2026-10-03 20:42: inspect raw lines before Verify can swallow a grant.
 const malformedHeaders = [
-  ['advice below the body', 'Edit source.\nadvice: mechanical', /line 2: misplaced advice.*: advice: mechanical/],
-  ['duplicate header label', 'advice: mechanical\nadvice: revert\n\nEdit source.', /line 2: duplicate advice label/],
-  ['decorated label below the header', 'advice: mechanical\n\nEdit source.\n**advice:** revert', /line 4: misplaced advice.*: \*\*advice:\*\* revert/],
-  ['decorated first label', ' \t-  AdViCe \t: \t docs-only \t\r\n\r\nEdit source.', /line 1: misplaced advice/],
-  ['grant hidden in Verify', 'advice: mechanical\n\nEdit source.\n## Verify\nretry: X — finish the failed work', /line 5: misplaced retry/],
+  ['advice below the body', 'Edit source.\nadvice: mechanical', /line 5: misplaced advice.*: advice: mechanical/],
+  ['duplicate header label', 'advice: mechanical\nadvice: revert\n\nEdit source.', /line 5: duplicate advice label/],
+  ['decorated label below the header', 'advice: mechanical\n\nEdit source.\n**advice:** revert', /line 7: misplaced advice.*: \*\*advice:\*\* revert/],
+  ['decorated first label', ' \t-  AdViCe \t: \t docs-only \t\r\n\r\nEdit source.', /line 4: misplaced advice/],
+  ['grant hidden in Verify', 'advice: mechanical\n\nEdit source.\n## Verify\nretry: X — finish the failed work', /line 8: misplaced retry/],
   ['conflicting header grants', 'advice: mechanical\ncontinue: X — finish the work\nretry: Y — repeat failed work\n\nEdit source.', /continue and retry cannot both be present/],
 ];
 for (const taskFile of [false, true]) {
@@ -218,7 +221,7 @@ for (const taskFile of [false, true]) {
       for (const grantFirst of [false, true]) {
         const lines = ['advice: mechanical', `${kind}: X — finish the work`];
         if (grantFirst) lines.reverse();
-        const text = [...lines, '', '## Task', 'Edit source.', '## Questions', '- Inspect source?', '## Verify', 'npm test'].join('\n');
+        const text = [`repository: ${tree.repo}`, 'order id: advice-fixture', ...lines, '', '## Task', 'Edit source.', '## Questions', '- Inspect source?', '## Verify', 'npm test'].join('\n');
         const opts = { agent: 'codex-review' };
         if (taskFile) {
           opts['task-file'] = path.join(tree.root, 'task.md');
@@ -228,14 +231,17 @@ for (const taskFile of [false, true]) {
 import { settleTaskInput } from ${JSON.stringify(new URL('../../src/home/lib/runner/task-input.mjs', import.meta.url).href)};
 const opts = ${JSON.stringify(opts)};
 const input = settleTaskInput(opts);
-process.stdout.write(JSON.stringify({ input, questions: opts.questions, verify: opts.verify }));
+process.stdout.write(JSON.stringify({ input, questions: opts.questions, verify: opts.verify, continued: opts.continue, orderId: opts.orderId }));
 `;
+        // raw argv: isolate stdin/file settlement without a launcher or paid process.
         const output = spawnSync(process.execPath, ['--input-type=module', '-e', source], {
           input: taskFile ? '' : text, encoding: 'utf8', timeout: 10_000, windowsHide: true,
         });
         assert.equal(output.status, 0, output.stderr || output.error?.message);
         const result = JSON.parse(output.stdout);
         assert.equal(result.input.task, 'Edit source.');
+        assert.equal(result.continued, true);
+        assert.equal(result.orderId, 'advice-fixture');
         assert.equal(result.input.header.advice, 'mechanical');
         assert.deepEqual(result.input.header.grant, { kind, run: 'X', reason: 'finish the work' });
         assert.deepEqual(result.input.header.problems, []);

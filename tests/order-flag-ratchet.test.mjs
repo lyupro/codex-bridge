@@ -17,9 +17,9 @@ const EXCLUDED = new Set([
   'tests/order-flag-ratchet.test.mjs',
 ]);
 
-// Plan_63 D5: literal post-batch-3 counts, never regenerated as part of running the guard.
+// Plan_63 D8: literal post-F1-F5 counts, never regenerated as part of running the guard.
 const BASELINE = {
-  'tests/cli/codex-bridge.test.mjs': 3,
+  'tests/cli/codex-bridge.test.mjs': 1,
   'tests/cli/commands.test.mjs': 1,
   'tests/cli/model-concurrent-edits.test.mjs': 3,
   'tests/cli/model.test.mjs': 5,
@@ -27,32 +27,17 @@ const BASELINE = {
   'tests/dispatcher-call.test.mjs': 11,
   'tests/dispatcher-command.test.mjs': 33,
   'tests/dispatcher-gate.test.mjs': 4,
-  'tests/hooks/reply-guard.test.mjs': 1,
-  'tests/meta/advisor-reply.test.mjs': 1,
   'tests/mode-is-not-a-name.test.mjs': 1,
-  'tests/order-schema.test.mjs': 2,
   'tests/required-inputs.test.mjs': 3,
-  'tests/run-codex.test.mjs': 23,
-  'tests/runner/advice-gate.test.mjs': 4,
-  'tests/runner/advisor-run.test.mjs': 9,
-  'tests/runner/args-refusal-order.test.mjs': 27,
-  'tests/runner/attach.test.mjs': 6,
-  'tests/runner/continuation-grant.test.mjs': 10,
-  'tests/runner/continuation.test.mjs': 1,
-  'tests/runner/order-input-spelling.test.mjs': 1,
-  'tests/runner/phase.test.mjs': 15,
-  'tests/runner/pre-start.test.mjs': 2,
-  'tests/runner/refusal-table.test.mjs': 2,
-  'tests/runner/retry-grant.test.mjs': 3,
-  'tests/runner/retry-launch.test.mjs': 5,
-  'tests/runner/scope-flag-origin.test.mjs': 5,
-  'tests/runner/scope.test.mjs': 27,
-  'tests/runner/shell-unsafe.test.mjs': 13,
-  'tests/runner/slug.test.mjs': 4,
-  'tests/runner/task-file.test.mjs': 5,
-  'tests/runner/task-input.test.mjs': 5,
+  'tests/runner/advisor-run.test.mjs': 1,
+  'tests/runner/args-refusal-order.test.mjs': 7,
+  'tests/runner/continuation-grant.test.mjs': 3,
+  'tests/runner/continuation.test.mjs': 2,
+  'tests/runner/phase.test.mjs': 1,
+  'tests/runner/retry-grant.test.mjs': 2,
+  'tests/runner/scope.test.mjs': 5,
+  'tests/runner/shell-unsafe.test.mjs': 1,
   'tests/shell-unsafe-arguments.test.mjs': 2,
-  'tests/write-meta-scout.test.mjs': 2,
 };
 
 function moduleFiles(directory) {

@@ -31,7 +31,7 @@ test('either phase result counts as filled, an empty one does not', () => {
 
 test('a sufficient scope says so and points to the advise phase', () => {
   const rows = reply(validScope());
-  assert.equal(rows[0], 'OK — scope: sufficient; continue this run with --phase advise');
+  assert.equal(rows[0], 'OK — scope: sufficient; continue this run with `phase:` advise');
   assert.equal(rows.some((row) => row.startsWith('Missing:')), false);
   assert.match(rows.at(-1), /^Report: .*result\.json · Log: codex-bridge read /);
 });

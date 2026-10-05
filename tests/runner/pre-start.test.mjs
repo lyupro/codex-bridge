@@ -47,6 +47,7 @@ function installFakeCodex(root, source) {
 }
 
 function runner(args, env, cwd) {
+  // raw argv: Node transports the helper invocation unchanged (Plan_63 D8).
   return spawnSync(process.execPath, [RUN_CODEX, ...args], {
     cwd,
     env: { ...process.env, ...env },
@@ -61,6 +62,7 @@ import childProcess from 'node:child_process';
 import { syncBuiltinESMExports } from 'node:module';
 ${source}
 syncBuiltinESMExports();
+// raw argv: the launcher harness preserves the helper transport arguments (Plan_63 D8).
 process.argv = [process.execPath, ${JSON.stringify(LAUNCHER)}, ...${JSON.stringify(args)}];
 const { launcher } = await import(${JSON.stringify(LAUNCHER)});
 // run-codex.mjs maps a runner refusal to its own exit code (its RunnerUsageError branch).
@@ -74,6 +76,7 @@ try {
   process.exitCode = error.exitCode;
 }
 `;
+  // raw argv: Node evaluates process mocks, not an order (Plan_63 D8).
   return spawnSync(process.execPath, ['--input-type=module', '-e', script], {
     cwd,
     env: { ...process.env, ...env },
@@ -106,6 +109,7 @@ test('the busy refusal reports on stderr without creating a run folder', (t) => 
   fs.mkdirSync(path.join(repo, 'src'));
   fs.writeFileSync(path.join(repo, 'src', 'existing.mjs'), 'export default 1;\n');
   const project = resolveProjectRunsDir(runsRoot, repo).dir;
+  // raw argv: this holder supplies a live pid for the busy-tree refusal (Plan_58).
   const holder = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
   t.after(() => holder.kill());
   fs.mkdirSync(path.join(project, 'other-live-run'));
@@ -201,7 +205,7 @@ const gateStatus = (repo, orderId, state) => ({
 
 // The acceptance case of the vaultforge incident, end to end: the launcher itself must start,
 // not merely the predicate underneath it. A folder left by a guard refusal used to send the
-// second attempt to the --continue gate, and the orchestrator paid for a whole extra round trip.
+// second attempt to the continue: gate, and the orchestrator paid for a whole extra round trip.
 test('a pre-start folder does not make the same order ask for a continuation', (t) => {
   const root = fixture(t, 'gate-open');
   const repo = path.join(root, 'repo');
@@ -226,7 +230,7 @@ process.exit = (code = 0) => { process.exitCode = code; };
     CODEX_RUNS_ROOT: runsRoot,
   }, repo);
 
-  assert.doesNotMatch(output.stderr, /--continue is required/);
+  assert.doesNotMatch(output.stderr, /`continue:` is required/);
   assert.match(output.stdout, /^RUN=/m, `${output.stdout}\n${output.stderr}`);
   const probe = runStatus(output).sandbox_probe;
   assert.equal(probe.outcome, 'alive');
@@ -255,7 +259,7 @@ test('a folder with a Codex session still sends the same order to the continuati
   const output = runner(baseArgs('codex-review', repo, 'gate-order', 'gate task'), { CODEX_RUNS_ROOT: runsRoot }, repo);
 
   assert.equal(output.status, 2, output.stderr);
-  assert.match(output.stderr, /--continue is required/);
+  assert.match(output.stderr, /`continue:` is required/);
   assert.doesNotMatch(output.stdout, /^RUN=/m);
 });
 

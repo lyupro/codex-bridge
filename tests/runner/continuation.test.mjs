@@ -8,6 +8,8 @@ import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { continuationRefusal } from '../../src/home/lib/runner/continuation.mjs';
 import { chainRuns, startedRuns, taskFingerprint } from '../../src/home/lib/write-meta.mjs';
 import { parseTaskHeader } from '../../src/home/lib/task-header.mjs';
+import { parseArgs } from '../../src/home/lib/runner/args.mjs';
+import { orderTaskText } from './order-invocation.mjs';
 
 function fixture(t) {
   const root = makeTempTree('continuation-');
@@ -16,6 +18,7 @@ function fixture(t) {
 }
 
 function deadPid() {
+  // raw argv: Node supplies a terminated pid for continuation liveness checks.
   return spawnSync(process.execPath, ['-e', '0']).pid;
 }
 
@@ -39,15 +42,20 @@ function run(runsRoot, name, overrides = {}, withVerdict = true) {
   return dir;
 }
 
-const grant = (runName) => ({ run: runName, reason: 'LIMIT at step 3, tests unwritten' });
+const grant = (runName) => parseTaskHeader(orderTaskText({
+  grant: { kind: 'continue', run: runName, reason: 'LIMIT at step 3, tests unwritten' },
+  task: 'Finish the ordered task.',
+})).grant;
 
-test('--continue without a grant is refused before any run folder exists', (t) => {
+test('the closed continuation flag is refused before any run folder exists', (t) => {
   const runsRoot = fixture(t);
-  const message = continuationRefusal(runsRoot, [], true, 'order-1');
-
-  assert.match(message, /orchestrator/);
-  assert.match(message, /Example: `continue:/);
-  assert.match(message, /Action:/);
+  // raw argv: Plan_63 D8 closes the continuation flag; a header grant alone is consent.
+  assert.throws(() => parseArgs(['--agent', 'codex-review', '--continue']), (error) => {
+    assert.equal(error.exitCode, 2);
+    assert.match(error.message, /unknown flag --continue/);
+    assert.match(error.message, /the order belongs in the task-file header/);
+    return true;
+  });
   assert.deepEqual(fs.readdirSync(runsRoot), []);
 });
 
@@ -78,7 +86,7 @@ test('a missing-folder grant refusal names the last outcome and ready grant line
     [last],
     true,
     'order-1',
-    { run: '2026-08-10_220535_plan25-2-install-table-two-root', reason },
+    grant('2026-08-10_220535_plan25-2-install-table-two-root'),
   );
 
   assert.match(message, new RegExp(`Last run: ${last}`));

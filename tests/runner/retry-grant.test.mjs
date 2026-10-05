@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
+import { orderTaskText } from './order-invocation.mjs';
+import { parseArgs } from '../../src/home/lib/runner/args.mjs';
 import {
   CONTINUATION_INPUT, RETRY_INPUT, parseContinuationGrant, parseRetryGrant, parseGrant,
   REQUIRED_INPUTS, requiredInputsFor,
@@ -27,7 +29,10 @@ function run(root, name, status, meta) {
 }
 
 const finished = { state: 'finished', order_id: 'o' };
-const grant = (runName) => ({ run: runName, reason: 'model at capacity, same pass again' });
+const grant = (kind, runName) => parseGrant(orderTaskText({
+  order: { 'order id': 'o' },
+  grant: { kind, run: runName, reason: 'model at capacity, same pass again' },
+}));
 const dead = () => false;
 const unexpectedLiveness = () => assert.fail('an earlier retry gate must refuse before liveness');
 const noQuota = (message) => assert.match(message, /The run folder was not created; quota was not spent\.$/);
@@ -91,12 +96,9 @@ test('grant placeholders and incomplete run/reason pairs remain null', () => {
   }
 });
 
-test('retry gate a: the explicit flag precedes folder and worker checks', (t) => {
-  const root = fixture(t);
-  const message = retryRefusal(root, [], false, 'o', grant('missing'), unexpectedLiveness);
-  assert.match(message, /--continue is required/);
-  noQuota(message);
-  assert.deepEqual(fs.readdirSync(root), []);
+test('the retired continuation flag is refused before a retry can start', () => {
+  // raw argv: Plan_63 D8 closes the old flag family; the header grant alone authorizes a retry.
+  assert.throws(() => parseArgs(['--continue']), /unknown flag .*the order belongs in the task-file header/);
 });
 
 test('retry gate b: the grant must name a bare existing run directory', (t) => {
@@ -104,7 +106,7 @@ test('retry gate b: the grant must name a bare existing run directory', (t) => {
   run(root, 'A', finished, { status: 'FAIL' });
   fs.writeFileSync(path.join(root, 'file'), 'not a run folder\n');
   for (const name of ['missing', '.', '..', '../A', path.join(root, 'A'), 'file']) {
-    const message = retryRefusal(root, [name], true, 'o', grant(name), unexpectedLiveness);
+    const message = retryRefusal(root, [name], true, 'o', grant('retry', name), unexpectedLiveness);
     assert.match(message, /not a bare existing run folder/);
     noQuota(message);
   }
@@ -115,11 +117,11 @@ test('retry gate c: only the last run matches, before checking its order or verd
   const root = fixture(t);
   run(root, 'S', { order_id: 'different' }, null);
   run(root, 'A', finished, { status: 'FAIL' });
-  const message = retryRefusal(root, ['S', 'A'], true, 'o', grant('S'), unexpectedLiveness);
+  const message = retryRefusal(root, ['S', 'A'], true, 'o', grant('retry', 'S'), unexpectedLiveness);
   assert.match(message, /not the LAST run/);
   assert.match(message, /single-use/);
   noQuota(message);
-  noQuota(retryRefusal(root, [], true, 'o', grant('A'), unexpectedLiveness));
+  noQuota(retryRefusal(root, [], true, 'o', grant('retry', 'A'), unexpectedLiveness));
 });
 
 test('retry gate d: repeats only the same order, and refuses pre-order runs', (t) => {
@@ -130,7 +132,7 @@ test('retry gate d: repeats only the same order, and refuses pre-order runs', (t
     ['blank', { order_id: '  ' }],
   ]) {
     run(root, name, status, null);
-    const message = retryRefusal(root, [name], true, 'o', grant(name), unexpectedLiveness);
+    const message = retryRefusal(root, [name], true, 'o', grant('retry', name), unexpectedLiveness);
     assert.match(message, /order_id .* differs from order o/);
     assert.match(message, /start a new order/);
     noQuota(message);
@@ -141,9 +143,9 @@ test('retry gate e: a missing verdict refuses before liveness', (t) => {
   const root = fixture(t);
   for (const [name, meta] of [['missing', null], ['empty', {}]]) {
     run(root, name, finished, meta);
-    const message = retryRefusal(root, [name], true, 'o', grant(name), unexpectedLiveness);
+    const message = retryRefusal(root, [name], true, 'o', grant('retry', name), unexpectedLiveness);
     assert.match(message, /no finished verdict/);
-    assert.match(message, /Repeat without --continue to attach/);
+    assert.match(message, /Repeat without `retry:` to attach/);
     noQuota(message);
   }
 });
@@ -153,7 +155,7 @@ test('retry gate e: a possibly live worker refuses even an OK verdict before gat
   for (const verdict of ['FAIL', 'OK']) {
     const runDir = run(root, verdict, finished, { status: verdict });
     let calls = 0;
-    const message = retryRefusal(root, [verdict], true, 'o', grant(verdict), (input) => {
+    const message = retryRefusal(root, [verdict], true, 'o', grant('retry', verdict), (input) => {
       calls += 1;
       assert.deepEqual(input, { runDir, status: finished });
       return true;
@@ -168,7 +170,7 @@ test('retry gate e: a possibly live worker refuses even an OK verdict before gat
 test('retry gate f: a finished OK run needs a continuation, not a retry', (t) => {
   const root = fixture(t);
   run(root, 'S', finished, { status: 'OK' });
-  const message = retryRefusal(root, ['S'], true, 'o', grant('S'), dead);
+  const message = retryRefusal(root, ['S'], true, 'o', grant('retry', 'S'), dead);
   assert.match(message, /ended OK/);
   assert.match(message, /use continue: for the next pass/);
   noQuota(message);
@@ -178,7 +180,7 @@ test('retry gate g: finished FAIL, LIMIT and UNAVAILABLE runs can repeat the sam
   const root = fixture(t);
   for (const verdict of ['FAIL', 'LIMIT', 'UNAVAILABLE']) {
     run(root, verdict, finished, { status: verdict });
-    assert.equal(retryRefusal(root, [verdict], true, 'o', grant(verdict), dead), null);
+    assert.equal(retryRefusal(root, [verdict], true, 'o', grant('retry', verdict), dead), null);
   }
 });
 
@@ -190,13 +192,13 @@ test('TradeForge: the failed advise can be retried after scope and advise spent 
   });
   const chain = ['S', 'A'];
   assert.equal(retryRefusal(root, chain, true, 'o', parseGrant('retry: A — model at capacity'), dead), null);
-  assert.match(retryRefusal(root, chain, true, 'o', grant('S'), dead), /not the LAST run/);
-  const message = continuationRefusal(root, chain, true, 'o', grant('A'));
+  assert.match(retryRefusal(root, chain, true, 'o', grant('retry', 'S'), dead), /not the LAST run/);
+  const message = continuationRefusal(root, chain, true, 'o', grant('continue', 'A'));
   assert.match(message, /already spent its allowed continuation/);
   assert.match(message, /Ready retry line: retry: A — Selected model is at capacity… \(repeats that pass under order o\)\./);
   noQuota(message);
   run(root, 'R', { ...finished, retry_of: 'A' }, { status: 'FAIL' });
-  assert.match(retryRefusal(root, [...chain, 'R'], true, 'o', grant('A'), dead), /not the LAST run/);
+  assert.match(retryRefusal(root, [...chain, 'R'], true, 'o', grant('retry', 'A'), dead), /not the LAST run/);
 });
 
 test('an OK retry does not enter the spent-pass list: S and A remain the two passes', (t) => {
@@ -204,7 +206,7 @@ test('an OK retry does not enter the spent-pass list: S and A remain the two pas
   run(root, 'S', finished, { status: 'OK' });
   run(root, 'A', { ...finished, continued_from: 'S' }, { status: 'FAIL' });
   run(root, 'R', { ...finished, retry_of: 'A' }, { status: 'OK' });
-  const message = continuationRefusal(root, ['S', 'A', 'R'], true, 'o', grant('R'));
+  const message = continuationRefusal(root, ['S', 'A', 'R'], true, 'o', grant('continue', 'R'));
   assert.match(message, /already spent its allowed continuation/);
   const spent = message.split('. Last run:')[0];
   assert.ok(spent.includes(path.join(root, 'S')));
@@ -217,7 +219,7 @@ test('a retry adds no continuation count when only one original pass carries thi
   const root = fixture(t);
   run(root, 'S', finished, { status: 'OK' });
   run(root, 'R', { ...finished, retry_of: 'S' }, { status: 'OK' });
-  assert.equal(continuationRefusal(root, ['S', 'R'], true, 'o', grant('R')), null);
+  assert.equal(continuationRefusal(root, ['S', 'R'], true, 'o', grant('continue', 'R')), null);
 });
 
 test('an empty retry_of still counts as a new pass', (t) => {
@@ -225,7 +227,7 @@ test('an empty retry_of still counts as a new pass', (t) => {
   run(root, 'S', finished, { status: 'OK' });
   for (const retryOf of ['', '  ']) {
     run(root, 'A', { ...finished, retry_of: retryOf }, { status: 'FAIL' });
-    assert.match(continuationRefusal(root, ['S', 'A'], true, 'o', grant('A')), /already spent/);
+    assert.match(continuationRefusal(root, ['S', 'A'], true, 'o', grant('continue', 'A')), /already spent/);
   }
 });
 
@@ -263,13 +265,13 @@ test('every continuation refusal includes the ready retry when the last run fail
   const root = fixture(t);
   run(root, 'S', finished, { status: 'OK' });
   run(root, 'A', finished, { status: 'FAIL', reason: 'capacity' });
-  for (const [flag, input] of [
-    [false, grant('A')], [true, null], [true, grant('missing')], [true, grant('S')], [true, grant('A')],
-  ]) {
-    const message = continuationRefusal(root, ['S', 'A'], flag, 'o', input);
+  // Plan_63 D8: without a header grant there is no continuation; flag/grant mismatches cannot occur.
+  assert.equal(continuationRefusal(root, ['S', 'A'], false, 'o', null), null);
+  for (const input of [grant('continue', 'missing'), grant('continue', 'S'), grant('continue', 'A')]) {
+    const message = continuationRefusal(root, ['S', 'A'], Boolean(input), 'o', input);
     assert.match(message, /Ready retry line: retry: A — capacity \(repeats that pass under order o\)/);
     noQuota(message);
   }
   run(root, 'A', { ...finished, state: 'running' }, { status: 'FAIL', reason: 'capacity' });
-  assert.match(continuationRefusal(root, ['A'], true, 'o', grant('A')), /Ready retry line: retry: A/);
+  assert.match(continuationRefusal(root, ['A'], true, 'o', grant('continue', 'A')), /Ready retry line: retry: A/);
 });

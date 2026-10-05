@@ -43,7 +43,7 @@ const REFUSALS = [
     why: 'Plan_59 D5/D6: blind choices and design authority must be settled without spending quota',
   },
   {
-    name: 'an impossible --scope pattern',
+    name: 'an impossible scope header pattern',
     side: 'before',
     marker: 'pattern ${JSON.stringify(scopeRefusal.pattern)} refused: ',
     why: 'Plan_27: nothing has been touched and the order has to be rewritten',
@@ -91,7 +91,7 @@ const REFUSALS = [
     why: 'Plan_59 D14: phase 2 needs a successful phase 1 and must refuse before registration',
   },
   {
-    name: 'a repeat that needs --continue',
+    name: 'a repeat that needs a continuation grant',
     side: 'before',
     file: 'pass-gate.mjs',
     marker: 'this task already ran in this repository under the name',
@@ -139,7 +139,7 @@ test('the launcher registers a run exactly once', () => {
 
 test('task gates precede the paid sandbox probe and read the one parsed task', () => {
   // Plan_59 D5/D6: a biased advisor task or a build order without advice costs nothing. The task
-  // text comes from parseArgs alone; a second argv reader would drift from it.
+  // text comes from the settled task header; a second order reader would drift from it (Plan_63 D8).
   const taskGate = LAUNCHER.indexOf('if (taskGate.refusal) die(taskGate.refusal, EXIT.FAIL)');
   assert.ok(taskGate > LAUNCHER.indexOf('= parseArgs(argv)'));
   assert.ok(taskGate >= 0 && taskGate < LAUNCHER.indexOf('await probeSandbox('));

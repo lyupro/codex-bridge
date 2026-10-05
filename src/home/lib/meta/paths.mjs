@@ -114,7 +114,7 @@ export const samePath = (declared, touched) => {
 };
 
 /**
- * One --scope pattern as a regular expression. Deliberately a small glob dialect and not a
+ * One scope pattern as a regular expression. Deliberately a small glob dialect and not a
  * dependency: `**` crosses directory boundaries, `*` and `?` stop at `/`, matching is
  * case-insensitive because Windows paths arrive in whatever case Codex felt like using.
  * A slash right after `**` is optional, so `src/**` covers `src/a.ts` too — otherwise the

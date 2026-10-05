@@ -86,15 +86,15 @@ export const runDirPath = (root, slug, runStamp = stamp()) => {
 
 /**
  * Everything a run needs before a single token of someone else's quota is spent, and every
- * refusal that costs nothing: bad arguments, an open chain without --continue, a busy
+ * refusal that costs nothing: bad arguments, an open chain without a `continue:` grant, a busy
  * worktree, a dead Codex sandbox, a missing Codex CLI. All in the process the caller is free
  * to kill — so a killed caller can only ever interrupt a run that was already paid for.
  */
 export async function launcher(argv = process.argv.slice(2)) {
   loadRunEnv();
   const opts = parseArgs(argv);
-  opts.phase = resolveRunPhase(opts, RUN_ENV.budgets);
   const { task: taskText, header } = settleTaskInput(opts);
+  opts.phase = resolveRunPhase(opts, RUN_ENV.budgets);
   // Plan_59 D5/D6: blind choices and design authority must be checked before the paid probe.
   const taskGate = taskPreflight({ agent: opts.agent, taskText, header });
   if (taskGate.refusal) die(taskGate.refusal, EXIT.FAIL);
@@ -103,9 +103,8 @@ export async function launcher(argv = process.argv.slice(2)) {
   const repoRoot = isGitRepo ? topLevel.stdout.trim() : opts.repo;
   // Plan_27 moved impossible scope failures ahead of the run directory: an absolute pattern had
   // already cost 18 minutes before the verdict could prove it matched nothing.
-  // Every agent, not only the writing one: a pattern that cannot match gives a scout empty coverage
-  // instead of an answer. Only codex-build may declare a not-yet-existing path, so only its scope
-  // carries --scope-new; for the other two the list is empty and every pattern must match.
+  // Plan_63 D6: only codex-build's header accepts `scope:` and `scope new:`; for the other agents both
+  // lists are empty and the check passes. Only paths named in `scope new:` may be absent.
   const scopeRefusal = validateScope(repoRoot, opts.scopePatterns, opts.scopeNewPatterns);
   if (scopeRefusal) {
     die(
@@ -225,8 +224,8 @@ export async function launcher(argv = process.argv.slice(2)) {
       );
     }
 
-    // The sub-questions this run will be graded against come only from the orchestrator's
-    // repeatable flags. They are written before the task is assembled so the prompt and verdict
+    // The sub-questions this run will be graded against come only from the task document's
+    // `Questions` section. They are written before the task is assembled so the prompt and verdict
     // read the same ordered list, including a valid one-question order.
     const questions = opts.agent === 'codex-scout' ? questionsFromTexts(opts.questions) : [];
     if (opts.agent === 'codex-scout') {

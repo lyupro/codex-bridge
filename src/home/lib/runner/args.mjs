@@ -8,11 +8,11 @@
 import { EXIT } from './exit-codes.mjs';
 import fs from 'node:fs';
 import { AGENTS } from '../write-meta.mjs';
-import { isAbsoluteTaskFilePath, requiredInputsFor } from '../required-inputs.mjs';
+import { isAbsoluteTaskFilePath } from '../required-inputs.mjs';
 import { firstShellUnsafeSequence } from '../shell-unsafe.mjs';
 import { parseTaskDocument } from './task-file.mjs';
 import { parseTaskHeader, taskHeaderRefusal } from '../task-header.mjs';
-import { orderOptions } from './order-options.mjs';
+import { renderOrderHeaderHelp } from '../order-schema.mjs';
 
 export class RunnerUsageError extends Error {
   // 2 says the order itself is wrong and has to be rewritten. A refusal about the state of the
@@ -30,57 +30,48 @@ export function die(message, exitCode = EXIT.USAGE) {
 }
 
 export function readTaskDocument(opts) {
+  const refuse = (message) => die([message, renderOrderHeaderHelp(opts.agent)].filter(Boolean).join('\n'));
   const stdinText = process.stdin.isTTY ? '' : fs.readFileSync(0, 'utf8');
   if (opts['task-file'] !== undefined) {
     if (stdinText.trim()) {
-      die('task text was supplied through both stdin and --task-file; choose exactly one channel');
+      refuse('task text was supplied through both stdin and --task-file; choose exactly one channel');
     }
     const taskFile = opts['task-file'];
     // The 2026-08-15 incident resolved a relative order against the repository cwd and ran an
     // unrelated task.md. Refuse the supplied value instead of silently selecting another file.
     if (!isAbsoluteTaskFilePath(taskFile)) {
-      die(`--task-file must be an absolute path; got ${JSON.stringify(taskFile)}`);
+      refuse(`--task-file must be an absolute path; got ${JSON.stringify(taskFile)}`);
     }
     let fileText;
     try {
       fileText = fs.readFileSync(taskFile, 'utf8');
     } catch (err) {
-      die(`task file from --task-file could not be read: ${err.message}`);
+      refuse(`task file from --task-file could not be read: ${err.message}`);
     }
-    if (!fileText.trim()) die(`task file from --task-file is empty: ${taskFile}`);
+    if (!fileText.trim()) refuse(`task file from --task-file is empty: ${taskFile}`);
     // Plan_75 D5, 2026-10-03 20:42: validate raw metadata before sections can hide a grant.
     const parsed = parseTaskHeader(fileText);
     const refusal = taskHeaderRefusal(parsed);
-    if (refusal) die(`${taskFile}: ${refusal}`);
-    if (!parsed.body.trim()) die(`task file from --task-file is empty: ${taskFile}`);
+    if (refusal) refuse(`${taskFile}: ${refusal}`);
+    if (!parsed.body.trim()) refuse(`task file from --task-file is empty: ${taskFile}`);
     let document;
     try {
       document = parseTaskDocument(parsed.body);
     } catch (err) {
-      die(`${taskFile}: ${err.message}`);
-    }
-    if (document.questions.length && opts.questions?.length) {
-      die('questions were supplied through both --question and the task file; choose exactly one channel');
-    }
-    if (document.verify !== undefined && opts.verify !== undefined) {
-      die('verification command was supplied through both --verify and the task file; choose exactly one channel');
+      refuse(`${taskFile}: ${err.message}`);
     }
     return { ...document, header: parsed };
   }
-  if (!stdinText.trim()) die('task text on stdin is empty');
+  if (!stdinText.trim()) refuse('task text on stdin is empty');
   const parsed = parseTaskHeader(stdinText);
   const refusal = taskHeaderRefusal(parsed);
-  if (refusal) die(refusal);
-  if (!parsed.body.trim()) die('task text on stdin is empty');
+  if (refusal) refuse(refusal);
+  if (!parsed.body.trim()) refuse('task text on stdin is empty');
   try {
     return { ...parseTaskDocument(parsed.body), header: parsed };
   } catch (err) {
-    die(err.message);
+    refuse(err.message);
   }
-}
-
-function requiredInput(agentType, label) {
-  return requiredInputsFor(agentType).find((entry) => entry.label === label);
 }
 
 // Flags that carry no value. A value is accepted only in its explicit yes/no spellings;
@@ -89,20 +80,11 @@ function requiredInput(agentType, label) {
 // continue>"`) into a silent opt-in, and a real run started on someone else's quota. A flag
 // whose whole point is that a human decided it must never be switched on by a leftover
 // template.
-const BOOLEAN_FLAGS = new Set(['continue', 'no-wait']);
-const REPEATABLE_FLAGS = new Set(['question']);
+const BOOLEAN_FLAGS = new Set(['no-wait']);
 // Plan_42 keeps free text in the task file because these command-line values otherwise disable
 // the host's standing permission before the runner can spend quota.
 const SHELL_CHECKED_FLAGS = Object.freeze([
-  'order-id',
-  'slug',
-  'scope',
-  'scope-new',
-  'repo',
   'agent',
-  'phase',
-  'effort',
-  'changeset',
   'task-file',
 ]);
 const BOOLEAN_YES = /^(1|true|yes)$/i;
@@ -114,8 +96,12 @@ export function parseArgs(argv) {
     const key = argv[i];
     if (!key.startsWith('--')) die(`unexpected argument: ${key}`);
     const name = key.slice(2);
-    // Plan_56 D10 requires --changeset: a stale reviewer flag must not silently select uncommitted work.
-    if (name === 'mode') die('unknown flag: --mode; use --changeset instead');
+    if (!['agent', 'task-file', 'no-wait'].includes(name)) {
+      const agent = opts.agent ?? argv[argv.indexOf('--agent') + 1];
+      const help = Object.hasOwn(AGENTS, agent) ? renderOrderHeaderHelp(agent) : '';
+      die(`unknown flag --${name}: codex-bridge run takes only --agent, --task-file and --no-wait; ` +
+        'the order belongs in the task-file header' + (help ? `\n${help}` : ''));
+    }
     const value = argv[i + 1];
     if (BOOLEAN_FLAGS.has(name)) {
       if (value !== undefined && !value.startsWith('--')) {
@@ -132,15 +118,8 @@ export function parseArgs(argv) {
       }
       continue;
     }
-    // A flag name where a value belongs means the value was left out: `--question --continue`
-    // otherwise records `--continue` as the question and passes every later check.
+    // A flag name where a value belongs means the value was left out.
     if (value === undefined || value.startsWith('--')) die(`missing value for ${key}`);
-    if (REPEATABLE_FLAGS.has(name)) {
-      if (!opts.questions) opts.questions = [];
-      opts.questions.push(value);
-      i += 1;
-      continue;
-    }
     opts[name] = value;
     i += 1;
   }
@@ -156,65 +135,6 @@ export function parseArgs(argv) {
   }
   if (!opts.agent) die('--agent is required');
   if (!AGENTS[opts.agent]) die(`unknown --agent ${opts.agent}`);
-  const order = new Map([
-    ['order id', opts['order-id']],
-    ['scope', opts.scope],
-    ['scope new', opts['scope-new']],
-    ['repository', opts.repo],
-    ['slug', opts.slug],
-    ['effort', opts.effort],
-    ['changeset', opts.changeset],
-    ['phase', opts.phase],
-  ].filter(([, value]) => value !== undefined));
-  const { options, problems } = orderOptions(opts.agent, order);
-  Object.assign(opts, options);
   opts.noWait = Boolean(opts['no-wait']);
-  if (opts.noWait && opts.continue) {
-    die('--no-wait cannot be combined with --continue: checking an existing run must never authorize a new one.');
-  }
-  if (!opts.orderId) {
-    const orderInput = requiredInput(opts.agent, 'order id');
-    die(
-      `--order-id is required: ${orderInput.source} supplies the ${orderInput.label}; the runner will not invent one. ` +
-        'A repeat of the same order should come back with --continue. If this appeared right after a package update, ' +
-        'the installed dispatcher prompts are stale and need npm run dev:install (local dev) or codex-bridge update. ' +
-        `Example: --order-id "${orderInput.example}". Action: get the value from ${orderInput.source}, pass it as --order-id, and retry.`,
-    );
-  }
-  if (opts.agent === 'codex-scout') {
-    // The requirement itself moved to the launcher, which is the first point that has seen both
-    // sources: questions now arrive either as flags or as a section of the task file, and this
-    // check runs before either file or stdin has been read. Only the shape of a supplied flag is
-    // still judged here.
-    if (opts.questions?.some((question) => !String(question).trim())) {
-      die('--question must not be empty for codex-scout; no quota was spent');
-    }
-  }
-  const flagOf = (label) => {
-    // Plan_63 D5 preserves the flag channel's empty --slug fallback to --order-id.
-    if (label === 'order id' || (label === 'slug' && !order.get('slug'))) return 'order-id';
-    return label;
-  };
-  for (const { label, reason } of problems) die(`--${flagOf(label)} ${reason}`);
-  // A writing run without a declared scope is how `!Plans/*.md` got edited by a run that was
-  // told in prose not to touch them: prose does not bind, a file list does. Required rather
-  // than defaulted to "everything", and checked here — before the folder exists and before a
-  // single token of someone else's quota is spent.
-  // Only the writing agent creates files, so only its scope may name one that does not exist yet.
-  // Accepting the flag elsewhere would hand scout and review a way to waive the check for nothing.
-  if (opts.agent !== 'codex-build' && opts.scopeNewPatterns.length) {
-    die(
-      `--scope-new is only for codex-build: ${opts.agent} does not create files. ` +
-        'Action: drop --scope-new and pass every path through --scope.',
-    );
-  }
-  if (opts.agent === 'codex-build' && opts.scopePatterns.length === opts.scopeNewPatterns.length) {
-    const scopeInput = requiredInput(opts.agent, 'scope');
-    die(
-      `--scope is required for codex-build: ${scopeInput.source} supplies the ${scopeInput.label}. ` +
-        `${scopeInput.explanation} Example: --scope "${scopeInput.example}". ` +
-        `Action: get the value from ${scopeInput.source}, pass it as --scope, and retry.`,
-    );
-  }
   return opts;
 }

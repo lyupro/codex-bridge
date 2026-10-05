@@ -85,7 +85,7 @@ export function scopeRunRefusal({ agent, phase, runsRoot, grantRun }) {
 export function resolveRunPhase({ agent, phase, continue: isContinue }, budgets) {
   // Plan_59 D7: phase 2 must retain the scope run's predictions before quota is spent.
   if (agent === 'codex-advisor' && phase === 'advise' && !isContinue) {
-    die(`codex-advisor ${orderInputName('phase')} advise requires ${orderInputName('continue')}: phase 2 continues the scope run of the same order ` +
+    die(`codex-advisor ${orderInputName('phase')} advise requires a ${orderInputName('continue')} grant naming the scope run: phase 2 continues the scope run of the same order ` +
       'so it can settle the risks phase 1 predicted. The run folder was not created; quota was not spent.');
   }
   const phases = budgets[agentRole(agent)];

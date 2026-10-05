@@ -12,6 +12,7 @@ const GUARD = path.join(ROOT, 'src', 'home', 'hooks', 'reply-guard.mjs');
 
 function runGuard(root, reply, agentId = 'test-reply-guard', transcriptPath = undefined) {
   const repo = path.join(root, 'project');
+  // raw argv: the hook receives its event on stdin, not a runner order.
   return spawnSync(process.execPath, [GUARD], {
     input: JSON.stringify({
       agent_type: 'codex-build',
@@ -116,8 +117,8 @@ test('a host refusal without its order id is blocked with the missing contract p
 });
 
 /**
- * The runner refuses before it creates a folder — a repeat without `--continue`, an impossible
- * `--scope`, a missing `--question` — and quoting that refusal is the whole honest answer. The
+ * The runner refuses before it creates a folder — a repeat without a grant, an impossible
+ * `scope:`, missing questions — and quoting that refusal is the whole honest answer. The
  * first version of the disk search escalated it anyway: it found an unrelated recent run and
  * demanded the dispatcher name that folder, which after three tries would have ended the session
  * over a reply that was true. A reply pronouncing no verdict contradicts nothing.
@@ -129,7 +130,7 @@ test('a quoted runner refusal is not escalated by an unrelated recent run', asyn
     finished_at: new Date().toISOString(),
     status: 'OK',
   }, { status: 'OK', reason: null });
-  const refusal = 'run-codex: --continue is required: runs for task "x" already exist in this '
+  const refusal = 'run-codex: `continue:` is required: runs for task "x" already exist in this '
     + 'repository (1). The run folder was not created; quota was not spent.';
 
   // One agent id across all four calls: the budget is per agent, and the fourth try is the point.

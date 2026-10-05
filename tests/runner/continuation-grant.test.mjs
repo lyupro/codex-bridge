@@ -34,16 +34,17 @@ function runner(args, input, runsRoot, repo) {
   });
 }
 
-function mockedRunner(args, input, runsRoot, repo) {
+function mockedRunner(args, input, runsRoot, repo, refuse = false) {
   const script = [
     "import childProcess from 'node:child_process';",
     "import { syncBuiltinESMExports } from 'node:module';",
-    launcherProcessMocks({ worker: 'spawn', probe: 'marker' }),
+    launcherProcessMocks({ worker: refuse ? 'forbidden' : 'spawn', probe: refuse ? 'forbidden' : 'marker' }),
     'syncBuiltinESMExports();',
     `const { runCodexCommand } = await import(${JSON.stringify(pathToFileURL(RUN_CODEX).href)});`,
     'const code = await runCodexCommand(process.argv.slice(1));',
     'if (code !== undefined) process.exitCode = code;',
   ].join('\n');
+  // raw argv: isolate the mocked launcher; -- separates Node flags from transport arguments.
   return spawnSync(process.execPath, ['--input-type=module', '-e', script, '--', ...args], {
     cwd: repo,
     env: { ...process.env, CODEX_RUNS_ROOT: runsRoot },
@@ -78,19 +79,15 @@ function runFolders(project) {
     .sort();
 }
 
-function args(repo, withContinue = false) {
-  // raw argv: refusal cases deliberately mismatch the continuation flag and task header.
-  return [
-    '--agent', AGENT,
-    '--repo', repo,
-    '--slug', SLUG,
-    '--order-id', ORDER_ID,
-    '--scope', 'src/existing.mjs',
-    ...(withContinue ? ['--continue'] : []),
-  ];
+function invocation(repo, dir, grant) {
+  return orderInvocation({
+    agent: AGENT,
+    order: { repository: repo, slug: SLUG, 'order id': ORDER_ID, scope: 'src/existing.mjs' },
+    grant, advice: 'test-only', task: 'The order needs a second pass.', dir,
+  });
 }
 
-test('a grant without --continue refuses before attach and names the repair details', (t) => {
+test('a grant alone starts continuation without a separate flag', (t) => {
   const root = fixture(t);
   const repo = path.join(root, 'repo');
   const runsRoot = path.join(root, 'runs');
@@ -99,16 +96,17 @@ test('a grant without --continue refuses before attach and names the repair deta
   const project = resolveProjectRunsDir(runsRoot, repo).dir;
   createPriorRun(project, repo);
 
-  // raw argv: a grant without --continue must retain its mismatched flag/header inputs.
-  const output = runner(args(repo), `continue: ${LAST_RUN} — ${GRANT_REASON}\nadvice: test-only\n\nThe order needs a second pass.\n`, runsRoot, repo);
+  const { argv } = invocation(repo, root, { kind: 'continue', run: LAST_RUN, reason: GRANT_REASON });
+  const output = mockedRunner(argv, undefined, runsRoot, repo);
 
-  assert.equal(output.status, 2, output.stderr);
-  assert.match(output.stderr, /--continue is required/);
-  assert.match(output.stderr, new RegExp(`Last run: ${LAST_RUN}`));
-  assert.match(output.stderr, new RegExp(`Outcome: FAIL — ${OUTCOME_REASON}`));
-  assert.match(output.stderr, new RegExp(`Ready grant line: continue: ${LAST_RUN} — ${GRANT_REASON}`));
+  assert.equal(output.status, 0, output.stderr);
   assert.doesNotMatch(output.stdout, /ATTACH=/);
-  assert.deepEqual(runFolders(project), [LAST_RUN]);
+  const folders = runFolders(project);
+  assert.equal(folders.length, 2);
+  const continued = folders.find((name) => name !== LAST_RUN);
+  const status = JSON.parse(fs.readFileSync(path.join(project, continued, 'status.json'), 'utf8'));
+  assert.equal(status.continued_from, LAST_RUN);
+  assert.equal(status.order_id, ORDER_ID);
 });
 
 // Plan_75 D5: the old grant-after-prose layout must refuse before spending quota.
@@ -119,20 +117,21 @@ test('a grant after prose is refused for free as misplaced metadata and names it
   fs.mkdirSync(path.join(repo, 'src'), { recursive: true });
   fs.writeFileSync(path.join(repo, 'src', 'existing.mjs'), 'export default 1;\n');
 
-  // raw argv: the misplaced grant must remain after prose on stdin with its original line number.
-  const output = runner(args(repo, true),
-    `advice: test-only\n\nThe order needs a second pass.\ncontinue: ${LAST_RUN} — ${GRANT_REASON}\n`,
-    runsRoot, repo);
+  const { argv, taskFile } = invocation(repo, root);
+  // Plan_63 D8: keep the misplaced grant after prose, following the required order header.
+  fs.writeFileSync(taskFile,
+    `order id: ${ORDER_ID}\nscope: src/existing.mjs\nadvice: test-only\n\nThe order needs a second pass.\ncontinue: ${LAST_RUN} \u2014 ${GRANT_REASON}\n`);
+  const output = mockedRunner(argv, undefined, runsRoot, repo, true);
 
   assert.equal(output.status, 2, output.stderr);
   assert.equal(output.stdout, '');
-  assert.match(output.stderr, /line 4: misplaced continue metadata/);
+  assert.match(output.stderr, /line 6: misplaced continue metadata/);
   assert.ok(output.stderr.includes(`continue: ${LAST_RUN} — ${GRANT_REASON}`), output.stderr);
-  assert.match(output.stderr, /The run folder was not created; quota was not spent\.\s*$/);
+  assert.match(output.stderr, /^The run folder was not created; quota was not spent\.$/m);
   assert.equal(fs.existsSync(runsRoot), false);
 });
 
-test('a --continue flag without a grant keeps the existing refusal', (t) => {
+test('--continue is a closed flag before attach or run registration', (t) => {
   const root = fixture(t);
   const repo = path.join(root, 'repo');
   const runsRoot = path.join(root, 'runs');
@@ -141,16 +140,17 @@ test('a --continue flag without a grant keeps the existing refusal', (t) => {
   const project = resolveProjectRunsDir(runsRoot, repo).dir;
   createPriorRun(project, repo);
 
-  // raw argv: --continue without a grant is the command-line refusal under test.
-  const output = runner(args(repo, true), 'advice: test-only\n\nThe order asks for the existing work only.\n', runsRoot, repo);
+  const { argv } = invocation(repo, root);
+  // raw argv: Plan_63 D8 closes --continue; only a header grant authorizes continuation.
+  const output = runner([...argv, '--continue'], undefined, runsRoot, repo);
 
   assert.equal(output.status, 2, output.stderr);
-  assert.match(output.stderr, /did not provide a `continue:` grant/);
+  assert.match(output.stderr, /unknown flag --continue/);
   assert.doesNotMatch(output.stdout, /ATTACH=/);
   assert.deepEqual(runFolders(project), [LAST_RUN]);
 });
 
-test('repeating a --continue command attaches to its run without creating another folder', (t) => {
+test('repeating a header continuation attaches to its run without creating another folder', (t) => {
   const root = fixture(t);
   const repo = path.join(root, 'repo');
   const runsRoot = path.join(root, 'runs');
@@ -165,7 +165,7 @@ test('repeating a --continue command attaches to its run without creating anothe
     advice: 'test-only', task: 'The order needs a second pass.',
   };
   const { argv: command } = orderInvocation({ ...invocation, dir: root });
-  // Plan_63 D5 centralizes the order while this continuation scenario keeps using stdin.
+  // Plan_63 D8: stdin carries the same header grant as the task-file channel.
   command.splice(command.indexOf('--task-file'), 2);
   const input = orderTaskText(invocation);
 
@@ -185,7 +185,7 @@ test('repeating a --continue command attaches to its run without creating anothe
   assert.ok(repeated.stdout.includes(`ATTACH=${continuationDir} order-id=${ORDER_ID}`), repeated.stdout);
   assert.match(repeated.stdout, /This is the answer of the previous run/);
   assert.match(repeated.stdout, /OK — continuation answered/);
-  assert.doesNotMatch(`${repeated.stdout}\n${repeated.stderr}`, /--continue is refused/);
+  assert.doesNotMatch(`${repeated.stdout}\n${repeated.stderr}`, /`continue:` grant is refused/);
   assert.deepEqual(runFolders(project), afterStart);
 });
 

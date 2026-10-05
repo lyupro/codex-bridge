@@ -11,7 +11,6 @@ import { orderInvocation } from './order-invocation.mjs';
 
 const RUN_CODEX = new URL('../../src/home/lib/run-codex.mjs', import.meta.url).href;
 const LAUNCHER = new URL('../../src/home/lib/runner/launcher.mjs', import.meta.url).href;
-const ARGS_MODULE = new URL('../../src/home/lib/runner/args.mjs', import.meta.url).href;
 
 function fixture(t, suffix) {
   const root = makeTempTree(`scope-${suffix}-`);
@@ -33,6 +32,7 @@ import childProcess from 'node:child_process';
 import { syncBuiltinESMExports } from 'node:module';
 ${source}
 syncBuiltinESMExports();
+// raw argv: install the requested invocation in the isolated mock process.
 process.argv = [process.execPath, ${JSON.stringify(LAUNCHER)}, ...${JSON.stringify(args)}];
 const { launcher } = await import(${JSON.stringify(LAUNCHER)});
 try {
@@ -43,6 +43,7 @@ try {
   else throw err;
 }
 `;
+  // raw argv: Node evaluates the mock launcher rather than starting a real worker process.
   return spawnSync(process.execPath, ['--input-type=module', '-e', script], {
     cwd,
     env: { ...process.env, ...env },
@@ -111,7 +112,7 @@ test('scope preflight checks file and directory intent in both scope lists', (t)
 
   for (const { pattern, reason, refusal: expected, action, newFile, repo: caseRepo = repo } of cases) {
     for (const scopeNew of [false, true]) {
-      const context = `${scopeNew ? '--scope-new' : '--scope'} ${pattern}: ${reason}`;
+      const context = `${scopeNew ? 'scope new:' : 'scope:'} ${pattern}: ${reason}`;
       const refusal = validateScope(caseRepo, scopeNew ? [] : [pattern], scopeNew || newFile ? [pattern] : []);
       if (!expected) {
         assert.equal(refusal, null, context);
@@ -225,7 +226,7 @@ test('launcher refuses an invalid scope before creating the run folder', (t) => 
   }, repo);
 
   assert.equal(output.status, 2, output.stderr);
-  assert.match(output.stderr, /--scope pattern/);
+  assert.match(output.stderr, /`scope:` pattern/);
   assert.match(output.stderr, /absolute/);
   assert.match(output.stderr, /Action:/);
   assert.match(output.stderr, /quota was not spent/);
@@ -237,6 +238,7 @@ test('--no-wait exits 4 without launching a missing order', (t) => {
   const runsRoot = path.join(root, 'runs');
   const output = mockedLauncher(
     SUCCESS_SOURCE,
+    // raw argv: --no-wait is allowed transport and is the attach-only behavior under test.
     buildArgs(repo, 'missing-order', 'inspect a run without starting one', 'src/existing.mjs', { extra: ['--no-wait'] }),
     { CODEX_RUNS_ROOT: runsRoot },
     repo,
@@ -252,22 +254,14 @@ test('--no-wait exits 4 without launching a missing order', (t) => {
   );
 });
 
-test('--no-wait cannot be combined with --continue', (t) => {
+test('--continue is a closed flag even beside --no-wait', (t) => {
   const { root, repo } = repository(t, 'no-wait-continue');
   const runsRoot = path.join(root, 'runs');
-  // raw argv: this parser refusal depends on conflicting flags and a header-only stdin task.
-  const args = ['--agent', 'codex-build', '--repo', repo, '--scope', 'src/existing.mjs',
-    '--slug', 'scope-test', '--order-id', 'conflicting-order', '--no-wait', '--continue'];
-  const output = mockedLauncher(
-    SUCCESS_SOURCE,
-    args,
-    { CODEX_RUNS_ROOT: runsRoot },
-    repo,
-    'advice: mechanical\n\ncontinue: previous-run — finish the task',
-  );
-
+  // raw argv: legacy consent is refused as a closed flag, before loading a task or inspecting runs.
+  const args = ['--agent', 'codex-build', '--no-wait', '--continue'];
+  const output = mockedLauncher(SUCCESS_SOURCE, args, { CODEX_RUNS_ROOT: runsRoot }, repo);
   assert.equal(output.status, 2, output.stderr);
-  assert.match(output.stderr, /--no-wait cannot be combined with --continue/);
+  assert.match(output.stderr, /unknown flag --continue:/);
   assert.equal(fs.existsSync(runsRoot), false);
 });
 
@@ -299,23 +293,21 @@ test('an honest scope starts and scope-new is persisted in worker.json', (t) => 
   ]);
 });
 
-test('a missing --scope is still refused in args even with --scope-new', () => {
-  // raw argv: parseArgs must see the missing --scope before any task-input channel is settled.
-  const script = `
-import { parseArgs } from ${JSON.stringify(ARGS_MODULE)};
-try { parseArgs(${JSON.stringify([
-    '--agent', 'codex-build',
-    '--repo', process.cwd(),
-    '--slug', 'missing-scope',
-    '--order-id', 'missing-scope-order',
-    '--scope-new', 'src/new-file.mjs',
-  ])}); } catch (err) { process.exitCode = err.exitCode || 1; }
-`;
-  const output = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
-    encoding: 'utf8',
-  });
-  assert.equal(output.status, 2, output.stderr);
-  assert.match(output.stderr, /--scope is required/);
+test('a missing scope header is still refused even with scope new', (t) => {
+  const { root, repo } = repository(t, 'missing-scope');
+  const runsRoot = path.join(root, 'runs');
+  for (const scope of [undefined, ', ,']) {
+    const { argv } = orderInvocation({
+      agent: 'codex-build', order: { repository: repo, 'order id': 'missing-scope-order',
+        'scope new': 'src/new-file.mjs', ...(scope === undefined ? {} : { scope }) },
+      advice: 'mechanical', task: 'Declare a new file.', dir: root,
+    });
+    const output = mockedLauncher('', argv, { CODEX_RUNS_ROOT: runsRoot }, repo);
+    assert.equal(output.status, 2, output.stderr);
+    assert.match(output.stderr, scope === undefined
+      ? /missing required header label "scope:"/ : /`scope:` is required/);
+    assert.equal(fs.existsSync(runsRoot), false);
+  }
 });
 
 test('all dispatcher prompts state the scope rule, and only build offers --scope-new', () => {
@@ -330,53 +322,50 @@ test('all dispatcher prompts state the scope rule, and only build offers --scope
   }
 });
 
-test('--scope-new is refused for the agents that never create a file', () => {
+test('scope new is refused for the agents that never create a file', (t) => {
+  const { root, repo } = repository(t, 'no-new-paths');
+  const runsRoot = path.join(root, 'runs');
   for (const agent of ['codex-scout', 'codex-review', 'codex-advisor']) {
-    // raw argv: parseArgs must reject --scope-new before task-file Questions could change the refusal.
-    const script = `
-import { parseArgs } from ${JSON.stringify(ARGS_MODULE)};
-try { parseArgs(${JSON.stringify([
-      '--agent', agent,
-      '--repo', process.cwd(),
-      '--slug', 'no-new-paths',
-      '--order-id', 'no-new-paths-order',
-      '--question', 'does the flag reach an agent that cannot use it?',
-      '--scope', 'src/**',
-      '--scope-new', 'src/new-file.mjs',
-    ])}); } catch (err) { process.exitCode = err.exitCode || 1; }
-`;
-    const output = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
-      encoding: 'utf8',
+    const { argv } = orderInvocation({
+      agent, order: { repository: repo, slug: 'no-new-paths', 'order id': 'no-new-paths-order',
+        'scope new': 'src/new-file.mjs' },
+      questions: ['Does this order reach an agent that cannot create files?'], dir: root,
     });
+    const output = mockedLauncher('', argv, { CODEX_RUNS_ROOT: runsRoot }, repo);
     assert.equal(output.status, 2, output.stderr);
-    assert.match(output.stderr, /--scope-new is only for codex-build/);
+    assert.match(output.stderr, new RegExp('label "scope new" is not accepted by ' + agent));
+    assert.equal(fs.existsSync(runsRoot), false);
   }
 });
 
-test('a scout scope is checked too: an impossible pattern never reaches Codex', (t) => {
+// Plan_63 D6: a scout scope bound nothing but a path check, so the header refuses the label itself.
+test('a scout scope is refused: the label binds only codex-build', (t) => {
   const { root, repo } = repository(t, 'scout-scope');
   const runsRoot = path.join(root, 'runs');
-  const { argv } = orderInvocation({
-    agent: 'codex-scout',
-    order: { repository: repo, scope: 'srcc/**', slug: 'scout-scope', 'order id': 'scout-scope-order' },
-    questions: ['which module owns the scope check?'], task: 'scout with a typo in scope', dir: root,
-  });
-  const output = mockedLauncher('', argv, { CODEX_RUNS_ROOT: runsRoot }, repo);
+  const text = [
+    'order id: scout-scope-order', `repository: ${repo}`, 'slug: scout-scope', 'scope: srcc/**',
+    '## Task', 'scout with a scope label', '## Questions', '- which module owns the scope check?',
+  ].join('\n');
+  const taskFile = path.join(root, 'task.md');
+  fs.writeFileSync(taskFile, text);
+  // raw argv: the helper refuses a scout scope, and this case is about the runner refusing it.
+  const output = mockedLauncher('', ['--agent', 'codex-scout', '--task-file', taskFile], { CODEX_RUNS_ROOT: runsRoot }, repo);
 
   assert.equal(output.status, 2, output.stderr);
-  assert.match(output.stderr, /does not match any existing path/i);
+  assert.match(output.stderr, /label "scope" is not accepted by codex-scout/);
   assert.equal(fs.existsSync(runsRoot), false);
 });
 
 test('the file list comes from git, so an ignored path cannot satisfy a pattern', (t) => {
   const { repo } = repository(t, 'git-list');
+  // raw argv: Git is confined to the fixture repository for its ignored-path listing contract.
   const git = (...args) => spawnSync('git', ['-C', repo, ...args], { encoding: 'utf8' });
   // OW-042: a miss outside git must explain the walk, while a git-listed miss keeps its wording.
   fs.writeFileSync(path.join(repo, 'a.txt'), 'A.\n');
   assert.deepEqual(validateScope(repo, ['b.txt'], []), {
     pattern: 'b.txt', label: 'scope', reason: `does not match any existing path under ${repo}; ` +
       'git could not list that folder as a repository, so it was walked instead',
-    action: 'start the run from the repository root (cd into it, or pass --repo <repository root>); ' +
+    action: 'start the run from the repository root (cd into it, or pass `repository:` <repository root>); ' +
       'if this folder is the intended one, correct the pattern',
   });
   assert.equal(git('init').status, 0);

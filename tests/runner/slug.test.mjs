@@ -7,19 +7,11 @@ import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { chainRuns, taskFingerprint } from '../../src/home/lib/meta/chain.mjs';
 import { makeRunDir, runDirPath } from '../../src/home/lib/runner/launcher.mjs';
 import { makeChainRoot, CHAIN_REPO } from '../meta/test-fixtures.mjs';
+import { orderInvocation } from './order-invocation.mjs';
 
 const ARGS_MODULE = new URL('../../src/home/lib/runner/args.mjs', import.meta.url).href;
+const TASK_INPUT = new URL('../../src/home/lib/runner/task-input.mjs', import.meta.url).href;
 const RUN_STAMP = '2026-08-13_235525';
-
-// raw argv: separator-only order ids must reach parseArgs unchanged for its exact refusal.
-function reviewArgs(orderId, slug) {
-  return [
-    '--agent', 'codex-review',
-    '--repo', CHAIN_REPO,
-    ...(slug === undefined ? [] : ['--slug', slug]),
-    '--order-id', orderId,
-  ];
-}
 
 test('a leading slug date appears only once in the run directory name', () => {
   const runDir = runDirPath('/runs', '2026-08-13_plan4-6g-ceiling-scope', RUN_STAMP);
@@ -75,18 +67,23 @@ test('an old generic-slug folder is found by order id and task fingerprint', () 
   ]);
 });
 
-test('parseArgs refuses a separator-only order id with the flag name and exit code 2', () => {
-  // raw argv: this case tests the order-id flag refusal rather than an ordinary runner start.
+test('the header refuses a separator-only order id with its label and exit code 2', (t) => {
+  const root = makeTempTree('slug-invalid-order-');
+  t.after(() => removeTempTree(root));
+  const { argv } = orderInvocation({
+    agent: 'codex-review', order: { repository: CHAIN_REPO, 'order id': '...' }, dir: root,
+  });
   const script = `
 import { parseArgs } from ${JSON.stringify(ARGS_MODULE)};
-try { parseArgs(JSON.parse(process.env.CODEX_SLUG_ARGS)); }
+import { settleTaskInput } from ${JSON.stringify(TASK_INPUT)};
+try { settleTaskInput(parseArgs(JSON.parse(process.env.CODEX_SLUG_ARGS))); }
 catch (err) { process.exitCode = err.exitCode || 1; }
 `;
+  // raw argv: the child evaluates header validation without starting a paid runner.
   const output = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
-    env: { ...process.env, CODEX_SLUG_ARGS: JSON.stringify(reviewArgs('...')) },
-    encoding: 'utf8',
+    env: { ...process.env, CODEX_SLUG_ARGS: JSON.stringify(argv) }, encoding: 'utf8',
   });
   assert.equal(output.status, 2, output.stderr);
   assert.equal(output.stderr.trim(),
-    'run-codex: --order-id produces an unusable run folder name after sanitization: "..." must contain a letter or digit.');
+    'run-codex: `order id:` produces an unusable run folder name after sanitization: "..." must contain a letter or digit.');
 });

@@ -4,6 +4,7 @@
  * rather than independently defined call labels and header grants.
  */
 import { REQUIRED_INPUTS, callInputsFor, isInputPlaceholder } from './required-inputs.mjs';
+import { firstShellUnsafeSequence } from './shell-unsafe.mjs';
 
 export const ORDER_AGENTS = Object.freeze(Object.keys(REQUIRED_INPUTS));
 
@@ -35,7 +36,7 @@ const inputNames = new Map(ORDER_AGENTS.flatMap((agentType) =>
 // Plan_63 D7: switching the order input channel changes only this function.
 export function orderInputName(label) {
   if (!inputNames.has(label)) throw new Error(`Unknown order input label "${label}"`);
-  return inputNames.get(label);
+  return `\`${label}:\``;
 }
 
 export function orderFromHeader(agentType, parsed) {
@@ -63,6 +64,20 @@ export function orderFromHeader(agentType, parsed) {
     order.set(label, value);
     if (isInputPlaceholder(value, label)) {
       problems.push({ ...location, reason: `label "${label}" is still a placeholder` });
+    }
+    // Plan_63 D5: the flag-era refusal (Plan_42) keeps its pair in the header — an order value is a short
+    // identifier, so a shell sequence in it is free text written in the wrong place.
+    const sequence = firstShellUnsafeSequence(value);
+    if (sequence !== null) {
+      problems.push({ ...location, reason: `${orderInputName(label)} contains forbidden shell sequence ` +
+        `${JSON.stringify(sequence)}; put free text in the task file body and keep header values short` });
+    }
+    // Plan_63 D5: new paths cannot replace the existing-file boundary of a writing order.
+    if (agentType === 'codex-build' && label === 'scope'
+        && !value.split(',').some((pattern) => pattern.trim())) {
+      problems.push({ ...location,
+        reason: `${orderInputName(label)} is required for codex-build: declare at least one existing path pattern; ` +
+          `${orderInputName('scope new')} does not replace it.` });
     }
   }
   for (const { label, required, example } of labels) {

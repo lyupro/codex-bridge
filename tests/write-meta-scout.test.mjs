@@ -13,14 +13,23 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { collect } from '../src/home/lib/write-meta.mjs';
 import { questionsFromTexts } from '../src/home/lib/runner/question-kind.mjs';
+import { orderInvocation } from './runner/order-invocation.mjs';
+import { makeTempTree } from './temp-tree.mjs';
 import { COMPLETED_COMMAND, makeRun } from './meta/test-fixtures.mjs';
 
 const RUN_CODEX = new URL('../src/home/lib/run-codex.mjs', import.meta.url).href;
 
-function parseArgsInChild(argv) {
+function parseArgsInChild(argv, settle = false) {
+  const taskInput = new URL('../src/home/lib/runner/task-input.mjs', import.meta.url).href;
   const source = `import { parseArgs } from ${JSON.stringify(RUN_CODEX)};
-try { process.stdout.write(JSON.stringify(parseArgs(JSON.parse(process.env.CODEX_TEST_ARGV)))); }
+import { settleTaskInput } from ${JSON.stringify(taskInput)};
+try {
+  const opts = parseArgs(JSON.parse(process.env.CODEX_TEST_ARGV));
+  if (${settle}) settleTaskInput(opts);
+  process.stdout.write(JSON.stringify(opts));
+}
 catch (err) { process.exitCode = err.exitCode || 1; }`;
+  // raw argv: Node isolates input settlement from the suite's interactive stdin.
   const out = spawnSync(process.execPath, ['--input-type=module', '-e', source], {
     encoding: 'utf8',
     env: { ...process.env, CODEX_TEST_ARGV: JSON.stringify(argv) },
@@ -46,35 +55,27 @@ const COORDINATES_ONLY = 'packages/x/src/source.ts:60-79, registry.ts:14';
 
 // --- explicit scout questions --------------------------------------------------------
 
-// The requirement itself now lives in the launcher, which is the first point that has seen both
-// sources — flags and the task file's Questions section. Argument parsing runs before either the
-// file or stdin is read, so refusing here would reject a perfectly good file-carried order.
+// Plan_63 D8: transport parsing runs before the task file's Questions section is read.
+// Refusing here would reject a perfectly good file-carried order.
 // The refusal is covered end-to-end in tests/runner/task-file.test.mjs.
 test('parsing arguments no longer decides whether a scout has its questions', () => {
   // raw argv: parsing must accept missing questions before the launcher loads a task file.
   const { code, opts } = parseArgsInChild([
     '--agent',
     'codex-scout',
-    '--order-id',
-    'ord-1',
   ]);
   assert.equal(code, 0);
   assert.equal(opts.questions, undefined);
 });
 
-test('repeatable flags build questions.json entries in the given order', () => {
-  // raw argv: repeated question flags and their ordering are the parser behavior under test.
-  const { code, opts } = parseArgsInChild([
-    '--agent',
-    'codex-scout',
-    '--order-id',
-    'ord-1',
-    '--question',
-    'First wording is preserved.',
-    '--question',
-    'Second wording is preserved exactly.',
-  ]);
-  assert.equal(code, 0);
+test('the Questions section builds questions.json entries in the given order', () => {
+  const root = makeTempTree('scout-questions-');
+  const { argv } = orderInvocation({
+    agent: 'codex-scout', order: { 'order id': 'ord-1' }, dir: root,
+    questions: ['First wording is preserved.', 'Second wording is preserved exactly.'],
+  });
+  const { code, opts, stderr } = parseArgsInChild(argv, true);
+  assert.equal(code, 0, stderr);
   assert.deepEqual(questionsFromTexts(opts.questions), [
     { id: 'Q1', text: 'First wording is preserved.', kind: 'code-required' },
     { id: 'Q2', text: 'Second wording is preserved exactly.', kind: 'code-required' },

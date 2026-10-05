@@ -15,6 +15,7 @@ const ROOT = path.resolve(HERE, '..', '..');
 const BIN = path.join(ROOT, 'bin', 'codex-bridge.mjs');
 
 function run(args, env = {}) {
+  // raw argv: Node transports dispatcher arguments; orders live in the task file (Plan_63 D8).
   return spawnSync(process.execPath, [BIN, ...args], {
     encoding: 'utf8',
     windowsHide: true,
@@ -28,6 +29,7 @@ test('importing dispatcher does not execute main', () => {
 
 test('--help and -h print the command list', () => {
   for (const flag of ['--help', '-h']) {
+    // raw argv: public dispatcher help aliases are the subject of this test.
     const result = run([flag]);
     assert.equal(result.status, 0);
     assert.match(result.stdout, /Commands:[\s\S]*install[\s\S]*update[\s\S]*uninstall[\s\S]*doctor[\s\S]*unlock/);
@@ -44,6 +46,7 @@ test('run forwards runner arguments and returns the runner exit code unchanged',
     agent: 'codex-review', order: { repository: root, 'order id': 'bin-run' },
     task: 'check current state', dir: root,
   });
+  // raw argv: run and --no-wait wrap the helper transport invocation (Plan_63 D8).
   const result = run(
     ['run', ...argv, '--no-wait'],
     { CODEX_RUNS_ROOT: path.join(root, 'runs'), CODEX_BRIDGE_HOME: home },
@@ -53,21 +56,29 @@ test('run forwards runner arguments and returns the runner exit code unchanged',
   assert.doesNotMatch(result.stderr, /unknown run option/);
 });
 
-test('run forwards --phase and an undeclared phase leaves no run directory', async (t) => {
+test('run forwards header phase and an undeclared phase leaves no run directory', async (t) => {
   const home = await makeHomeImage(t);
   const root = makeTempTree('bridge-bin-phase-');
+  t.after(() => removeTempTree(root));
   const runs = path.join(root, 'runs');
-  const args = (phase) => ['run', ...orderInvocation({
-    agent: 'codex-review', order: { repository: root, 'order id': 'bin-phase', phase },
-    task: 'check current state', dir: root,
+  // raw argv: dispatcher transport wraps the header-backed order (Plan_63 D8).
+  const args = (phase, agent) => ['run', ...orderInvocation({
+    agent, order: { repository: root, 'order id': 'bin-phase', ...(phase === undefined ? {} : { phase }) },
+    task: agent === 'codex-advisor'
+      ? 'Compare boundaries.\n\n## Options\n- keep: Keep the boundary.\n- split: Split the boundary.\n\n## Paths\n- task.md\n'
+      : 'check current state', dir: root,
   }).argv, '--no-wait'];
   const env = { CODEX_RUNS_ROOT: runs, CODEX_BRIDGE_HOME: home };
-  const invalid = run(args('undeclared'), env);
+  const invalid = run(args('undeclared', 'codex-advisor'), env);
   assert.equal(invalid.status, 2, invalid.stderr);
-  assert.match(invalid.stderr, /undeclared --phase "undeclared".*allowed phases: default/);
+  assert.match(invalid.stderr, /undeclared `phase:` "undeclared".*allowed phases: scope, advise/);
   assert.match(invalid.stderr, /The run folder was not created; quota was not spent/);
   assert.equal((await fs.readdir(root)).includes('runs'), false);
-  const valid = run(args('default'), env);
+  const declared = run(args('scope', 'codex-advisor'), env);
+  assert.equal(declared.status, 4, declared.stderr);
+  assert.match(declared.stdout, /--no-wait never starts a new run/);
+  // Plan_63 D8: single-phase agents use their implicit phase, with no phase header label.
+  const valid = run(args(undefined, 'codex-review'), env);
   assert.equal(valid.status, 4, valid.stderr);
   assert.match(valid.stdout, /--no-wait never starts a new run/);
 });
@@ -75,6 +86,7 @@ test('run forwards --phase and an undeclared phase leaves no run directory', asy
 test('--version and -v print package.json version', async () => {
   const { version } = JSON.parse(await fs.readFile(path.join(ROOT, 'package.json'), 'utf8'));
   for (const flag of ['--version', '-v']) {
+    // raw argv: public dispatcher version aliases are the subject of this test.
     const result = run([flag]);
     assert.equal(result.status, 0);
     assert.equal(result.stdout.trim(), version);
@@ -82,6 +94,7 @@ test('--version and -v print package.json version', async () => {
 });
 
 test('unknown command exits 2 with a useful error', () => {
+  // raw argv: an unknown dispatcher command must refuse before any order exists.
   const result = run(['unknown']);
   assert.equal(result.status, 2);
   assert.match(result.stderr, /unknown command "unknown"/);
@@ -89,6 +102,7 @@ test('unknown command exits 2 with a useful error', () => {
 });
 
 test('the old sweep command refuses with the unlock rename', () => {
+  // raw argv: the retired dispatcher command must report its replacement.
   const result = run(['sweep']);
   assert.equal(result.status, 2);
   assert.match(result.stderr, /sweep was renamed to codex-bridge unlock/);
@@ -96,12 +110,15 @@ test('the old sweep command refuses with the unlock rename', () => {
 });
 
 test('shared option parser rejects flags outside each command contract', () => {
+  // raw argv: doctor must refuse options outside its own command contract.
   const doctor = run(['doctor', '--dry-run']);
   assert.equal(doctor.status, 2);
   assert.match(doctor.stderr, /unknown doctor option/);
+  // raw argv: uninstall must refuse options outside its own command contract.
   const uninstall = run(['uninstall', '--force']);
   assert.equal(uninstall.status, 2);
   assert.match(uninstall.stderr, /unknown uninstall option/);
+  // raw argv: update must refuse options outside its own command contract.
   const update = run(['update', '--unknown']);
   assert.equal(update.status, 2);
   assert.match(update.stderr, /unknown update option/);
@@ -110,6 +127,7 @@ test('shared option parser rejects flags outside each command contract', () => {
 test('update flags reach the command handler', (t) => {
   const host = makeTempTree('bridge-bin-update-');
   t.after(() => removeTempTree(host));
+  // raw argv: update installation flags, including its own --scope, remain dispatcher inputs.
   const result = run(
     ['update', '--host', host, '--scope', 'project', '--dry-run', '--force'],
     { CODEX_HOME: path.join(host, 'codex-home'), CODEX_BRIDGE_HOME: path.join(host, 'brand') },
@@ -122,6 +140,7 @@ test('update flags reach the command handler', (t) => {
 test('doctor subcommand diagnoses only the explicit temporary host', (t) => {
   const host = makeTempTree('bridge-bin-doctor-');
   t.after(() => removeTempTree(host));
+  // raw argv: doctor diagnoses only the explicit temporary installation host.
   const result = run(
     ['doctor', '--host', host],
     { CODEX_HOME: path.join(host, 'codex-home'), CODEX_BRIDGE_HOME: path.join(host, 'brand') },

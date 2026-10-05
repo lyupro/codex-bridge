@@ -89,13 +89,13 @@ export async function waitForReply(runDir, workerPid, status) {
  * What counts as "not finished yet" is the absence of reply.txt, not the absence of meta.json.
  * The artifact order is meta.json first, reply.txt last, so between the two there is a moment
  * where the verdict exists and the run is not closed — judged by meta.json, a repeat arriving in
- * that window would be refused and sent to the --continue gate instead of being answered. The
+ * that window would be refused and sent to the continuation gate instead of being answered. The
  * promise being kept here is that repeating the command is always safe, and a promise with a
  * window in it is not one. markAbandoned() closes dead runs with FAIL before the gate, so this
  * path only covers a live run that has not recorded a verdict yet.
  *
  * A repeat that arrives after the verdict is answered from disk rather than refused, for the same
- * reason. `--continue` may attach to a run created from its grant: the 2026-09-23 dispatcher
+ * reason. A `continue:` grant may attach to a run created from it: the 2026-09-23 dispatcher
  * incident showed that repeating the identical continuation command must return to that run.
  */
 export async function attach({
@@ -121,7 +121,7 @@ export async function attach({
   }
 
   // The run an order is currently about is its newest one, and the chain arrives oldest first.
-  // Reading it from the end is the whole point: `--continue` adds a second run under the same
+  // Reading it from the end is the whole point: a continuation adds a second run under the same
   // order, and while it was in flight a repeat used to be answered by the first run's reply.txt —
   // a stale verdict presented as this pass's answer. Found by the Plan_11-2 checklist, 2026-08-04.
   let candidate = null;
