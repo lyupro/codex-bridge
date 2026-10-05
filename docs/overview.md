@@ -9,7 +9,7 @@ response, log, worktree snapshots, and the verdict computed from them remain in 
 | Agent | Access | When to use |
 | --- | --- | --- |
 | `codex-scout` | `read-only` | Analyze code, find the cause of a failure, gather facts, or answer several technical questions without edits. |
-| `codex-build` | `workspace-write` | Implement a change, fix a defect, add tests, or add documentation. Requires an explicit `--scope`. |
+| `codex-build` | `workspace-write` | Implement a change, fix a defect, add tests, or add documentation. Requires an explicit `scope:` in the task-file header. |
 | `codex-review` | `read-only` | Get an independent second opinion on a diff after implementation. Checks for defects, not style. |
 | `codex-advisor` | `read-only` | Assess whether the listed paths cover a design question, then recommend among unbiased options before implementation. |
 
@@ -37,20 +37,33 @@ This prevents a repeat of the 2026-09-24 `dev:install` incident, when hook names
 older global package were registered and every shell call on the machine was refused.
 
 `codex-review` supports the `uncommitted`, `base:<branch>`, and `commit:<sha>` scopes through
-`--changeset`. By default, it reviews uncommitted changes.
-A dispatcher call passes this value with the `changeset:` label.
+`changeset:` in the task-file header. By default, it reviews uncommitted changes.
 
 ## Running
 
-The orchestrator writes the task to a file and supplies its path with `--task-file`. Shipped agent
-definitions must call `codex-bridge run`; exposing the internal runner path breaks host permission
-matching and causes an approval prompt for every delegation. Direct stdin remains available for
-manual use, but stdin and `--task-file` cannot be supplied together.
+The orchestrator writes the whole order in the task-file header and calls the dispatcher with exactly
+one line, `task file: <absolute path>`. The dispatcher prompts render the one command from the same
+assembler the order gate uses (Plan_63 D11), without adding order arguments. Shipped agent definitions
+must call `codex-bridge run`; exposing the internal runner path breaks host permission matching and
+causes an approval prompt for every delegation. The runner accepts only `--agent`, `--task-file` and
+`--no-wait`; every other flag is a free refusal, and stdin is not an input channel. Task-file paths
+use forward slashes: `$`, doubled backslashes (`\\`) and a final backslash (`\`) are refused because
+the shell would rewrite them inside the command's double quotes.
 
 Reconnaissance:
 
+```markdown
+order id: order-42
+repository: /abs/path/to/repository
+slug: auth-flow
+effort: medium
+
+## Questions
+- Where is the authentication check implemented?
+```
+
 ```bash
-codex-bridge run --agent codex-scout --repo . --slug auth-flow --order-id order-42 --effort medium --task-file /abs/path/to/task.md
+codex-bridge run --agent codex-scout --task-file "/abs/path/to/task.md"
 ```
 
 One line, absolute path, no free text. The sub-questions live inside that file, under a `Questions`
@@ -58,7 +71,7 @@ heading, one Markdown list item each — a host stops applying a permission rule
 argument carries prose with a metacharacter in it.
 
 Only the orderer may start a question with exactly `[context-only]` followed by a space and the
-question, in `## Questions` or a manual `--question` value, to ask about the startup task, instructions,
+question, in `## Questions` in the task body, to ask about the startup task, instructions,
 schema or environment rather than the repository; the scout cannot set it. Two honest scouts were
 failed on 2026-09-22 for answering that context without a command. `[Context-Only]`, `[context only]`,
 `[context_only]`, a marker anywhere but the start, no space after it, or nothing after it is refused
@@ -72,8 +85,21 @@ before any probe, run folder or quota. For example:
 
 Implementation:
 
+```markdown
+order id: order-42
+repository: /abs/path/to/repository
+slug: auth-flow
+scope: src/auth/**,tests/auth/**
+advice: mechanical
+
+Implement the authentication change.
+
+## Verify
+npm test
+```
+
 ```bash
-codex-bridge run --agent codex-build --repo . --slug auth-flow --order-id order-42 --scope "src/auth/**,tests/auth/**" --task-file /abs/path/to/task.md
+codex-bridge run --agent codex-build --task-file "/abs/path/to/task.md"
 ```
 
 The verification command lives in the task file too, on one line under a `Verify` heading. An
@@ -81,46 +107,73 @@ operator's real check command contained `&&`, which is exactly what unmatches th
 
 Reviewing uncommitted changes:
 
+```text
+order id: order-42-review
+repository: /abs/path/to/repository
+slug: auth-flow-review
+changeset: uncommitted
+
+Review the authentication change for defects.
+```
+
 ```bash
-codex-bridge run --agent codex-review --repo . --slug auth-flow-review --order-id order-42-review --changeset uncommitted --task-file /abs/path/to/review-task.md
+codex-bridge run --agent codex-review --task-file "/abs/path/to/review-task.md"
 ```
 
 ### Design advice before a build
 
 `codex-advisor` runs in two phases. The 10-minute `scope` phase checks whether the supplied paths
 cover the question and records missing paths and predicted risks. The 25-minute `advise` phase is
-available only with `--continue` after an `OK` scope run for the same order; it can continue an
+available only with a `continue:` grant in the header after an `OK` scope run for the same order; it can continue an
 insufficient-but-valid scope result too. The task file has `## Question` for the design question,
 `## Options` with at least two unbiased `- id: description` lines with unique ids and no preference
 markers, and `## Paths` with repository-relative paths. Every `path:line` citation must point to
 an existing line, and its path must be listed under `## Paths` or in phase 1's `missing_paths`.
 
-The scope reply starts with `OK — scope: sufficient; continue this run with --phase advise` or
-`OK — scope: insufficient; N paths named`, then includes `Missing:` when needed, `Predicted risks:`,
+The scope reply reports `OK` with sufficient or insufficient scope and, for a sufficient scope,
+directs the next pass to use `phase: advise` with a `continue:` header grant. It includes `Missing:` when needed, `Predicted risks:`,
 and `Report: ... · Log: ...`. An insufficient scope is still an `OK` run with `sufficient: false`,
 not a `LIMIT`. The advise reply contains `OK — recommend <option_id>: <text>`, `Rejected:`,
 `Counter:`, `Risks: <confirmed> confirmed · <refuted> refuted · open questions <count> · confidence
 <level>`, and `Report: ... · Log: ...`.
 
-```bash
-codex-bridge run --agent codex-advisor --repo . --phase scope --slug architecture-check --order-id order-43 --task-file /abs/path/to/advisor-task.md
+```markdown
+order id: order-43
+repository: /abs/path/to/repository
+phase: scope
+slug: architecture-check
+
+## Question
+Where should the authentication check live?
+## Options
+- middleware: Check authentication in middleware.
+- handler: Check authentication in each handler.
+## Paths
+- src/auth/middleware.mjs
+- src/auth/handler.mjs
 ```
 
-`--agent` and `--order-id` are required. `--repo` defaults to the current directory, `--slug` is
-optional and defaults to the `order id`, `--effort` defaults to `medium`, and `--changeset` defaults to `uncommitted`.
-The `--effort` value is passed to Codex as is; the runner checks only that it is a single word.
+```bash
+codex-bridge run --agent codex-advisor --task-file "/abs/path/to/advisor-task.md"
+```
+
+`--agent` and `--task-file` are required. In the header, `order id:` is required for every agent,
+`scope:` for `codex-build`, and `phase:` (`scope` or `advise`) for `codex-advisor` only.
+`repository:` defaults to the current directory; optional `slug:` defaults to `order id:`.
+Optional `effort:` overrides the role profile, with `medium` as the fallback, and is validated before
+being passed to Codex. Optional `changeset:` is accepted only by `codex-review` and defaults to `uncommitted`.
 `--no-wait` checks an existing run immediately: it returns its ready reply normally, or exit code `4`
 when the run is still in progress or no run exists. It never starts a new run and cannot be combined
-with `--continue`.
+with a `continue:` or `retry:` grant in the header.
 
 The same sanitizer is applied to the `order id` and an explicit `slug`: characters outside
 `A-Za-z0-9._-` are replaced with `-`. If no letter or digit remains in the name afterward, the
 runner refuses before creating a directory: an empty name or a name consisting only of separators
 and dots cannot be a safe directory name.
 
-### Why `--scope` is required
+### Why `scope:` is required
 
-For `codex-build`, `--scope` is required and contains comma-separated glob patterns relative to
+For `codex-build`, `scope:` is required in the header and contains comma-separated glob patterns relative to
 the repository root. The runner refuses before creating a paid call if scope is empty.
 
 Pattern format is checked before Codex starts for all agents that accept scope patterns. The
@@ -134,16 +187,15 @@ skipping `.git` and `node_modules`. Before scope validation moved ahead of execu
 was discovered only in the verdict—the 2026-08-09 run with an absolute path consumed 18 minutes of
 someone else's quota and received `FAIL` for work it had completed.
 
-A file that does not exist yet is declared separately: `--scope-new "src/new-module.mjs"`.
-In a dispatcher call, this is the `scope new:` label.
+A file that does not exist yet is declared separately in the header: `scope new: src/new-module.mjs`.
 These paths enter scope alongside the others and are exempt only from the existence check; the
-flag is accepted by `codex-build`, the only agent that creates files.
+label is accepted by `codex-build`, the only agent that creates files; it does not replace required `scope:`.
 
 Every pattern, declared or new, has to be able to match a file: a scope is compared against file paths
 and never against directories. A pattern that can only name a directory — a trailing slash, a name that
 exists on disk as a directory, or a glob-free name whose last segment has no extension — is refused
 before the run with the spelling that works (`muse/scripts/**`). The exemption for new paths was the
-hole: `--scope-new muse/scripts` passed validation, then authorised one file that would never exist
+hole: declaring `muse/scripts` as a new-file scope passed validation, then authorised one file that would never exist
 while every file created inside the folder counted as a stray, and the 2026-09-19 run was failed after
 ten minutes of finished work.
 
@@ -165,11 +217,11 @@ checked as before. Details and check order are in [verdict.md](verdict.md). `cod
 `codex-review` do not have this field: their outcome is expressed by subquestion coverage and a
 verdict with findings. `codex-advisor` reports its phase-specific scope assessment or recommendation.
 
-### Repeated runs and `--continue`
+### Repeated runs and grants
 
 A chain is all runs of one repository that match by `slug`, header-free task-body fingerprint, or order label.
-If `--slug` is omitted, a new slug comes from the `order id`, so different orders do not inherit
-the agent's generic name. If such a chain already exists, a new run without `--continue` does not
+If `slug:` is omitted, a new slug comes from `order id:`, so different orders do not inherit
+the agent's generic name. If such a chain already exists, a new run without a `continue:` or `retry:` header grant does not
 create a new directory or spend quota: an ordinary repeat attaches to the existing response or
 wait. This protects against accidental repetition.
 
@@ -181,29 +233,33 @@ Repeat the same command later; it attaches to that run instead of starting anoth
 Directories created before this rule with a generic slug such as `build` are not renamed: the
 chain still finds them by the stored order label or task fingerprint.
 
-Add `--continue` only with an orchestrator grant in the task header: `continue:` authorizes the next
-pass, and `retry:` repeats a failed pass. The flag without a grant is rejected before quota is spent.
-The dispatcher adds `--continue` when its call carries either grant. If the header carries a grant
-but the flag was lost along the way, the result is a refusal before attachment, directory creation,
-and quota, not an old response
-presented as the result of a new order:
-
-```bash
-codex-bridge run --agent codex-build --repo . --slug auth-flow --order-id order-42 --continue --scope "src/auth/**,tests/auth/**" --task-file /abs/path/to/follow-up.md
-```
-
-where `follow-up.md` starts with this build-continuation header, a blank line, and the task body:
+Authorize another pass with an orchestrator grant in the task-file header: `continue:` authorizes the
+next pass, and `retry:` repeats a failed pass. The runner reads the grant directly from the header;
+the dispatcher never adds anything to the command. `follow-up.md` starts with this
+build-continuation header, a blank line, and the task body:
 
 ```text
+order id: order-42
+repository: /abs/path/to/repository
+slug: auth-flow
+scope: src/auth/**,tests/auth/**
 continue: 2026-08-05_092913_auth-flow — LIMIT at step 3, tests unwritten
 advice: mechanical
 
 Complete step 3 and write the remaining authentication tests.
 ```
 
+```bash
+codex-bridge run --agent codex-build --task-file "/abs/path/to/follow-up.md"
+```
+
 The header contains consecutive lowercase `label: value` lines starting at the task's first line,
-with no leading blank line; one initial BOM is ignored. Its labels are `advice:`, `continue:`, and
-`retry:`, in any order, and the first blank or other line ends it. Values must be non-empty and
+with no leading blank line; one initial BOM is ignored. The registry is `src/home/lib/order-schema.mjs`:
+`order id:` is required for all agents; `scope:` is required and `scope new:` is optional for build
+only; `phase:` is required for advisor only. `continue:` and `retry:` are conditional grants for all
+agents. Optional `slug:`, `effort:` and `repository:` apply to all agents; `changeset:` is review-only.
+`advice:` is build-only. Labels may appear in any order, followed by a blank line and the body.
+The first blank or other line ends the header. Values must be non-empty and
 single-line. A duplicate label or both grants together is refused before any run folder or quota.
 A build task requires `advice:` in this header: `mechanical`, `revert`, `docs-only`, `test-only`, or
 an absolute path to an existing `OK` advisor `advise` run.
@@ -216,7 +272,7 @@ for another attempt. Below the header, a known label, decorated or not, followed
 name with or without a reason, or by an advice value, is refused for free with its line number and
 repair: move it into the header with the exact lowercase spelling, or quote an example with `>` or
 reword it inside a sentence. Code fences do not exempt such lines. Other prose that merely starts
-with a label remains task text. These rules apply to both `--task-file` and stdin; the producer's
+with a label remains task text. These rules apply to `--task-file`; the producer's
 `order-gate.mjs` hook applies the same refusal.
 
 On a safe `attach`, the first line is `ATTACH=<directory> order-id=<id> started=<time>`. For a saved
@@ -226,8 +282,8 @@ waiting for its verdict.
 
 An order id names one task. When the id already belongs to a run whose task-body hash differs, the runner
 refuses with exit code `2` before printing anything from that run: it names the folder that owns the
-id, its slug and start time, and the two remedies — a new `--order-id`, or a `continue:`/`retry:`
-header grant with `--continue` if this really is another pass of the same order. The refusal exists
+id, its slug and start time, and the two remedies — a new `order id:`, or a `continue:`/`retry:`
+header grant if this really is another pass of the same order. The refusal exists
 because on 2026-08-15 a run ordered
 under the previous run's id was answered with that run's `OK`, its file list and its suite, over a
 worktree where nothing had been done.
@@ -235,7 +291,7 @@ worktree where nothing had been done.
 Each grant is single-use: it names the latest run in the chain, and its execution appends a later
 one. Repeating an identical granted command attaches to the run it already started.
 
-`retry: <failed run> — <reason>` with `--continue` repeats a `FAIL`, `LIMIT`, or `UNAVAILABLE` pass
+`retry: <failed run> — <reason>` in the header repeats a `FAIL`, `LIMIT`, or `UNAVAILABLE` pass
 once under that grant. The named run must be the last of its chain, have a finished verdict and a
 worker proven dead, and match the order id, agent, and phase. The new run records `retry_of` and
 does not spend another continuation of the order; an `advise` retry carries the original `OK`
@@ -412,8 +468,8 @@ node ~/.lyupro/.codex-bridge/lib/run-config.mjs reset
 `codex-bridge model set <role> <model> [effort]` to configure it; the pair is checked against that
 model's entry in the live catalogue before writing. `codex-bridge model unset <role>` returns the
 role to whatever Codex chooses. A configured model reaches `codex exec` through the `-m` flag, while reasoning depth is chosen in
-this order: the request's explicit `--effort`, then the role profile, then `medium`. Reading the
-config and parsing `--effort` check only the form of the depth, never a list of values: that path
+this order: the header's explicit `effort:`, then the role profile, then `medium`. Reading the
+config and parsing `effort:` validate the depth locally: that path
 runs at the start of every delegated run and must not wait on the network, and Codex refuses an
 unusable depth in its own words. An empty or missing profile means “Codex decides”; model
 identifiers live only here and do not appear in code.
@@ -592,8 +648,8 @@ header template in the refusal. It then reads the file: the header's own problem
 schema's problems (missing required label, a label of another agent, a placeholder) are refused before
 any grant is considered. Only a valid `continue:` or `retry:` header grant hands the order to the
 runner's grant rules; otherwise an order id already owned by a run with a different task-body hash is
-refused before Codex is invoked. The canonical command is `codex-bridge run --agent <type> --task-file
-"<path>"`, built by `lib/dispatcher-command.mjs` from the call alone.
+refused before Codex is invoked. The canonical command is `codex-bridge run --agent <type> --task-file "<path>"`,
+built by `lib/dispatcher-command.mjs` from the call alone.
 
 The gate and the runner share one definition of which task owns an order id
 (`lib/runner/order-owner.mjs`); a second copy would drift, and drift between two such lists is what

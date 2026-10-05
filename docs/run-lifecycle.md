@@ -16,8 +16,9 @@ which were never accounted for at all.
 
 Before the launcher starts, Claude Code invokes the `PreToolUse` hook `order-gate.mjs` on every attempt
 to call a dispatcher. The gate reads the job text from `tool_input.prompt` and checks it against the
-order schema in `src/home/lib/order-schema.mjs`: the call is only `task file:`, and the header of that file
-must carry the job label (and full `scope` for `codex-build`). A missing value or obvious placeholder (`TODO`,
+order schema in `src/home/lib/order-schema.mjs`: the call is exactly one `task file: <absolute path>` line,
+and the header of that file must carry `order id:` (and full `scope:` for `codex-build`, or `phase:` for
+`codex-advisor`). A missing value or obvious placeholder (`TODO`,
 `<label>`, and so on) is rejected here, before either the subagent or Codex starts and before quota is
 spent. A real label and scope allow the call to continue.
 
@@ -33,32 +34,37 @@ complete job before detaching from the launcher.
 1. `loadRunEnv()` reads the host's `config.json` — resolved by `brand-home.mjs` from
    `CODEX_BRIDGE_HOME` or `~/.lyupro/.codex-bridge/`, never from the package directory — and fixes
    the environment flags. A configuration error ends the command without creating a run directory.
-2. `parseArgs()` validates the CLI, including mandatory `--agent` and `--order-id` for all modes,
-   `--scope` for build, and at least one `--question` for scout. The orchestrator supplies the job label
-   and subquestions; the runner does not invent them and will not start without them. A flag name in
-   place of a value (`--question --continue`) counts as a missing value. `--effort` is checked against
-   the Codex set (`none|low|medium|high|xhigh|max`) here as well — before invocation, not from
-   an API response. The launcher then resolves `--phase` against the phases declared for that role;
-   an undeclared phase (or a missing required phase) is refused before the run folder exists. A role
-   with only the `default` phase may omit the flag. `codex-advisor --phase advise` without `--continue`
-   is also refused here, before a run folder exists or quota is spent.
-3. The launcher reads `--task-file` or stdin and rejects an empty task. It parses the metadata header
-   and refuses malformed or misplaced metadata before creating a run folder or spending quota;
-   the producer hook applies the same check. Before proceeding, it also rejects a biased or
+2. `parseArgs()` validates the CLI: `--agent` and `--task-file` are mandatory, and `--no-wait` is
+   the only optional flag. Every other flag is a free refusal. A flag name in place of a required
+   value counts as a missing value. The task-file path must be absolute and use forward slashes;
+   `$`, doubled backslashes (`\\`) and a final backslash (`\`) are refused because the shell would
+   rewrite them inside the command's double quotes.
+3. The launcher reads `--task-file` and rejects an empty task; stdin is not an input channel.
+   It parses the header and validates the order: `order id:` for all agents, `scope:` for build,
+   and `phase:` (`scope` or `advise`) for advisor are required. The orchestrator supplies the job
+   label and scout subquestions under `## Questions` in the task body; the runner does not invent
+   them and will not start without them. Optional `effort:` is checked against the Codex set
+   (`none|low|medium|high|xhigh|max`) before invocation, not from an API response. An undeclared
+   phase (or a missing required phase) is refused before the run folder exists; single-phase roles
+   use `default` and do not accept `phase:`. Advisor `phase: advise` requires a `continue:` header
+   grant, or a `retry:` grant for a failed advise pass. Malformed or misplaced header entries are
+   refused before creating a run folder or spending quota; the producer hook applies the same
+   check. Before proceeding, it also rejects a biased or
    malformed advisor task: `## Options` must contain at least two distinct `- option-id: description`
    choices without preference markers, and `## Paths` must contain at least one list path. A build task
    must contain exactly one valid `advice:` line in the header: `mechanical`, `revert`, `docs-only`, `test-only`, or
    an absolute path to an existing advisor run directory whose `meta.json` says agent `codex-advisor`,
    phase `advise` and status `OK` — a scope pass or a failed advice authorizes nothing.
    These task-contract refusals happen before the run folder exists and spend no quota.
-4. The repository root is determined through git; `--repo` is used for a non-git directory.
+4. The repository root is determined through git; header `repository:` is used for a non-git directory
+   and defaults to the current directory when omitted.
    Immediately afterward, `validateScope()` checks scope patterns against repository contents and
    rejects a pattern that cannot match: an absolute or drive path, backslashes, `..`, a pattern inside
    a service directory (`.git/`, `.claude/`, `.codex/`, `.omx/`, `.omc/`, `node_modules/` — the verdict
    fails every change there whatever the scope says, so such a run could only end in FAIL), a pattern
    that can only name a directory (trailing slash, a directory that exists on disk, or a glob-free last
    segment without an extension), or a pattern that found nothing. This check runs for all agents and
-   before creating the run directory; paths from `--scope-new` (only for `codex-build`) are exempt from
+   before creating the run directory; paths from `scope new:` (only for `codex-build`) are exempt from
    the requirement to exist — and only from that one, because the exemption is what let a bare directory
    through on 2026-09-19 and failed a finished run for the files it created inside it. The repository root
    is needed before validation, which is why this check belongs here rather than in `parseArgs()`.
@@ -89,10 +95,11 @@ complete job before detaching from the launcher.
    did, startup is rejected for all three modes, prints `git checkout <branch>`, and does not execute it.
    A branch-name difference is not a refusal: switching branches is normal operator work. The block
    clears itself as soon as the repository is back on a branch.
-8. If `--slug` is absent, the runner takes it from the mandatory job label and applies the sanitizer
+8. If `slug:` is absent from the header, the runner takes it from the mandatory job label and applies the sanitizer
    `[^A-Za-z0-9._-]+` → `-`; a result with no letters or digits is rejected before creating a directory.
    Then `chainRuns()` finds runs from the same repository by three signals: the same `slug`, the same
-   header-free task-body fingerprint, or the same job label. A matching chain without `--continue` stops startup
+   header-free task-body fingerprint, or the same job label. A matching chain without a `continue:` or
+   `retry:` header grant stops startup
    before a new directory is created. Old-contract directories with a generic slug such as `build` are
    not lost: the saved job label or fingerprint finds them. Only runs that had a Codex session count:
    a directory with `state=aborted_pre_start` (and its old-contract equivalent) is excluded — it spent
@@ -148,9 +155,10 @@ complete job before detaching from the launcher.
     are already in the folder, so the folder can explain itself. The separate state is not cosmetic: it
     lets the next startup distinguish an empty directory from a run backed by spent quota. A busy tree
     and an unavailable CLI are refused earlier, in step 9, and leave nothing behind.
-13. For review, the diff area is computed and written to `scope.txt`. For scout, subquestions passed via
-    `--question` are written to `questions.json` in the same order (`Q1..Qn`); the task text is not the
-    source of this list. For build, `--scope` patterns are written to `scope.txt`.
+13. For review, the diff area selected by header `changeset:` (default `uncommitted`) is computed and
+    written to `scope.txt`. For scout, subquestions parsed from `## Questions` in the task body are
+    written to `questions.json` in the same order (`Q1..Qn`); the verdict reads this saved list rather
+    than parsing the assembled task again. For build, header `scope:` patterns are written to `scope.txt`.
 14. `env.json` is written, followed by `task.md` and `schema.json`. `schema.json` is not only the Codex
     response format: it tells the verdict whether the run was required to declare an outcome (`outcome`
     in `required`), so an old directory is judged by the contract of its own day — see
@@ -174,7 +182,7 @@ complete job before detaching from the launcher.
 Changing only header metadata does not change this identity.
 
 A repeated invocation with the same label does not create a second run. The check occurs before
-directory creation, immediately after finding the chain and before the `--continue is required` refusal
+directory creation, immediately after finding the chain and before the missing-grant refusal
 (step 8):
 
 - **A run with this label already has `reply.txt`** — the verdict is printed from disk; the repeat
@@ -182,12 +190,12 @@ directory creation, immediately after finding the chain and before the `--contin
   code.
 - **The label already belongs to a run whose task-body hash differs** — the invocation refuses with exit
   code `2`, naming the folder that owns the label, its slug and start time, and the two remedies: a
-  new `--order-id`, or a `continue:`/`retry:` header grant with `--continue`. If the owner lacks
+  new `order id:`, or a `continue:`/`retry:` header grant. If the owner lacks
   `task_hash_scheme` and its hash differs, the refusal explains that the owner predates the task
   header and its task cannot be compared, points to the saved answer in that folder with
   `codex-bridge read "<directory>"`, and gives the same remedies. Nothing is printed from the other
   run, no folder is created and no quota is spent. Checked before every branch below, and skipped
-  under `--continue` and whenever
+  with a `continue:` or `retry:` header grant and whenever
   either task hash is unknown, so runs older than the `task_hash` field keep attaching as they did.
 - **There is no `reply.txt`, and the pid is alive** — the invocation prints
   `ATTACH=<directory> order-id=<id> started=<time>`, waits for `reply.txt`, and prints it. The next line states
@@ -203,9 +211,9 @@ directory creation, immediately after finding the chain and before the `--contin
 - **No run exists for this order label and `--no-wait` was passed** — the invocation reports that no
   run exists and returns exit code `4`. It never creates a run directory or invokes Codex.
 - **There is no `reply.txt`, and the pid is dead** — this is an abandoned run with nothing to attach to;
-  the earlier path applies (`markAbandoned()` has already marked the directory, then the `--continue`
+  the earlier path applies (`markAbandoned()` has already marked the directory, then the missing-grant
   refusal takes effect).
-- **`--continue` was passed** — the invocation attaches only to a run of this order label whose
+- **A `continue:` or `retry:` grant is present in the header** — the invocation attaches only to a run of this order label whose
   `status.json#continued_from` names the same run as the header's `continue:` grant, or whose
   `status.json#retry_of` names the same run as its `retry:` grant, and it does so BEFORE the
   grant is checked: that run is what an identical earlier continuation command started, and by now the
@@ -219,19 +227,27 @@ when the failed last run has an order id.
 
 ## Continuation authorization
 
-The gate always parses the task header for authorization. If a grant exists but
-`--continue` was not passed, the call is rejected before `attach()`, directory creation, and quota use.
-`--continue` without authorization from the orchestrator is also rejected. The dispatcher adds
-`--continue` when its call carries either grant. The header consists of consecutive lowercase
-`advice:`, `continue:`, or `retry:` lines in any order at the very start of the task. One initial BOM
-is ignored; no blank line may precede the header. The first blank or other line ends it. A build
-continuation has this form:
+The gate always parses the task-file header for authorization: a `continue:` grant authorizes the
+next pass, and a `retry:` grant repeats a failed pass. The dispatcher never adds anything to the
+command. The header consists of consecutive lowercase `label: value` lines in any order at the very
+start of the task. The registry in `src/home/lib/order-schema.mjs` requires `order id:` for all agents,
+`scope:` for build only and `phase:` for advisor only. Optional `scope new:` is build-only;
+`changeset:` is review-only; `slug:`, `effort:` and `repository:` apply to all agents. Build also
+requires `advice:`. Either grant is conditional for all agents. One initial BOM is ignored;
+no blank line may precede the header. The first blank or other line ends it; separate the header
+from the task body with a blank line. A build continuation has this form:
 
 ```text
+order id: plan-14-build
+scope: src/auth/**,tests/auth/**
 continue: 2026-08-05_092913_plan14-build — LIMIT at step 3, tests unwritten
 advice: mechanical
 
 Complete step 3 and write the remaining tests.
+```
+
+```bash
+codex-bridge run --agent codex-build --task-file "/abs/path/to/follow-up.md"
 ```
 
 The grant names the run after which execution continues and gives the reason. Each value must be
@@ -244,7 +260,7 @@ in ordinary prose is not authorization. Below the header, a known label, decorat
 by a bare folder name with or without a reason, or by an advice value, is refused with its line
 number and repair: move it into the header with the exact lowercase spelling, or quote an example
 with `>` or reword it inside a sentence. Code fences do not exempt such metadata. Other prose that
-merely starts with a label stays task text. The same rules cover task files and stdin, and
+merely starts with a label stays task text. The same rules cover task files, and
 `order-gate.mjs` applies the same refusal on the producer side.
 
 All refusals are free:
@@ -253,7 +269,7 @@ All refusals are free:
 - the named directory does not exist in the project's runs directory — refusal with the same hints;
 - the named run is not the last in the chain — refusal.
 
-If authorization exists but the flag was omitted, the refusal names the exact directory of this task's
+If a grant cannot authorize a new pass, the refusal names the exact directory of this task's
 last run, its status and reason, and prints a ready-to-use authorization line. A failed last run with
 an order id also gets a ready `retry:` line. If the directory is absent, all three hints are still
 provided; the entered name is not substituted.
@@ -263,10 +279,10 @@ line stops matching by itself — without a counter or new state. The named run 
 `status.json` as `continued_from`. It is not a validation input for the grant; it is the key by which a
 repeated continuation command finds the run it already started (see the attach rules above).
 
-Without the line, a normal repeat without `--continue` can still safely attach to the previous run; a
-line without the flag cannot pass through `attach()`. Therefore the `PreToolUse` job-label gate does not
-require authorization: the decision to continue originates inside the subagent, and requiring it for
-every call would reject legitimate first attempts. The 2026-08-05 incident caused this rule: after
+Without a grant line, a normal repeat can still safely attach to the previous run; a grant authorizes
+a new pass or attaches to the pass it already started. Therefore the `PreToolUse` job-label gate does
+not require a grant for every call: legitimate first attempts and ordinary attaches need none.
+The decision to continue belongs to the orchestrator. The 2026-08-05 incident caused this rule: after
 receiving an honest `FAIL`, the dispatcher assigned itself a second attempt using 75,691 tokens of
 someone else's quota and invented work the job had not requested. The
 `2026-08-10_220535_plan25-2-install-table-two-roots` incident showed that without this ordering an old
@@ -274,19 +290,19 @@ response could look like the verdict for a new job.
 
 ## Continuation limit
 
-An advisor `scope` phase is never continued: `--phase scope --continue` with a `continue:` grant is
+An advisor `scope` phase is never continued: header `phase: scope` with a `continue:` grant is
 refused before start, because
 continuing a failed scope spent the order's single continuation and left its `advise` phase unreachable
-(2026-09-30). A failed scope can be repeated with a `retry:` grant and `--continue`, or under a new
+(2026-09-30). A failed scope can be repeated with a `retry:` header grant, or under a new
 order id; `advise` then continues that order.
 
-A limit applies on top of continuation authorization: a `continue:` grant with `--continue` is
+A limit applies on top of continuation authorization: a `continue:` grant in the header is
 permitted once per job label and only after a run with a recorded verdict:
 
 - no runs with this label — continuation is allowed;
 - one run with a verdict — allowed;
 - one run without a verdict — refusal: the run may still be editing the tree, and a repeat without
-  `--continue` will attach to it;
+  a grant will attach to it;
 - two or more — refusal naming the spent runs; another attempt requires a new job label from the
   orchestrator.
 
@@ -294,12 +310,12 @@ Only non-retry runs with this label count, not the entire chain. Runs with `retr
 another continuation. The chain also links runs by slug and header-free task-body
 fingerprint — catching a repeat that renamed itself — but applying the limit to the chain would break
 the promised exit: a new label joins the same chain through the fingerprint, and the task is rejected
-both with `--continue` (“continuation spent”) and without it (“`--continue` required”). A permanently
+both with a grant (continuation already spent) and without one (a grant required). A permanently
 unstartable task is worse than the retry storm the limit was introduced to prevent.
 
 ## Retry authorization
 
-`retry: <failed run> — <reason>` in the header, together with `--continue`, repeats a `FAIL`, `LIMIT`,
+`retry: <failed run> — <reason>` in the header repeats a `FAIL`, `LIMIT`,
 or `UNAVAILABLE` pass once under that grant. The named folder must exist and be the last run of the
 chain, have a finished verdict and a worker proven dead, and match this call's order id, agent, and
 phase. A missing verdict, a worker that may still be alive, or an `OK` outcome is a free refusal.

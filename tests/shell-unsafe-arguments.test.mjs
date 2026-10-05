@@ -10,6 +10,7 @@ import {
   SHELL_UNSAFE_SEQUENCES,
 } from '../src/home/lib/shell-unsafe.mjs';
 import { makeTempTree, removeTempTree } from './temp-tree.mjs';
+import { orderSpellings } from './order-spelling-scan.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const AGENTS_DIR = path.join(ROOT, 'src', 'agents');
@@ -105,13 +106,22 @@ test('the order gate denies unsafe task-file call values before reading a header
 
 // Documentation examples were covered by nothing at all, and the commit that made an absolute
 // --task-file mandatory turned four of them into instant refusals without a single test noticing.
-const DOC_FILES = ['docs/overview.md', 'README.md'];
+const DOC_FILES = ['docs/overview.md', 'docs/run-lifecycle.md', 'README.md'];
+
+// Plan_63 C6: the runner accepts only these flags; documented examples kept the retired order flags
+// for two commits after the runner refused them, because no test compared examples with the parser.
+const RUN_FLAGS = new Set(['--agent', '--task-file', '--no-wait']);
 
 function docFindings(source, name) {
   const findings = [...unsafeArguments(source, name)];
   for (const block of commandBlocks(source)) {
     if (!block.includes('codex-bridge run')) continue;
     if (/\\\r?\n/.test(block)) findings.push({ name, flag: '<line continuation>', sequence: '\\' });
+    for (const line of block.split(/\r?\n/).filter((text) => text.includes('codex-bridge run'))) {
+      for (const [flag] of line.matchAll(/(?<![\w-])--[a-z][a-z-]*/g)) {
+        if (!RUN_FLAGS.has(flag)) findings.push({ name, flag, sequence: '<retired run flag>' });
+      }
+    }
     for (const match of block.matchAll(/--task-file(?:=|\s+)("[^"\r\n]*"|'[^'\r\n]*'|[^\s\r\n]+)/g)) {
       const value = match[1].replace(/^["']|["']$/g, '');
       const absolute = value.startsWith('/') || /^[A-Za-z]:[\/]/.test(value) || value.startsWith('<');
@@ -135,6 +145,10 @@ test('the documentation guard catches a relative task file and a continued line'
   assert.deepEqual(docFindings(relative, 'doc.md'), [{ name: 'doc.md', flag: '--task-file', sequence: 'task.md' }]);
   const continued = '```bash\ncodex-bridge run \\\\\n  --task-file /abs/task.md\n```';
   assert.deepEqual(docFindings(continued, 'doc.md'), [{ name: 'doc.md', flag: '<line continuation>', sequence: '\\' }]);
+  for (const flag of orderSpellings()) {
+    const retired = '```bash\ncodex-bridge run --agent codex-build ' + flag + ' x --task-file "/abs/task.md"\n```';
+    assert.deepEqual(docFindings(retired, 'doc.md'), [{ name: 'doc.md', flag, sequence: '<retired run flag>' }], flag);
+  }
 });
 
 // The block used to open with "start a run through run-codex.mjs". A dispatcher refused by the

@@ -97,8 +97,19 @@ Output on a healthy host (trimmed):
 
 If a session answers `Agent type 'codex-build' not found`, a run can still be started without the dispatcher — the agent is a wrapper that types one command:
 
+The task file starts with the order header, a blank line, and the task text:
+
+```text
+order id: order-42
+repository: /abs/path/to/repository
+scope: src/auth/**,tests/auth/**
+advice: mechanical
+
+Implement the authentication change and verify it with the tests named in the task.
+```
+
 ```bash
-codex-bridge run --agent codex-build --repo <repository> --order-id <id> --scope <globs> --task-file <absolute path>
+codex-bridge run --agent codex-build --task-file "/abs/path/to/task.md"
 ```
 
 The trade-off is explicit: `order-gate` and `reply-guard` sit on the dispatcher call, so a direct run is unguarded and its result is judged by the worktree and the suite.
@@ -131,7 +142,7 @@ Transport files from runs at least **30 days** old are pruned automatically when
 | `permissions [add\|remove] [--scope user\|project] [--host <path>]` | Inspect or manage optional shell rules. |
 | `uninstall [--scope user\|project] [--host <path>] [--dry-run] [--purge]` | Remove recorded package files while preserving run artifacts; `--purge` also deletes your data and the home after one preflight and two consents (see [Uninstall and purge](docs/overview.md#uninstall-and-purge)). |
 | `doctor [--scope user\|project] [--host <path>] [--probe-contract] [--probe-executable <path>]` | Diagnose the selected host and Codex connection, including the handback witness and four dispatcher contract lines. `--probe-contract` targets the newest observed host, accepting `CLAUDE_CODE_EXECPATH` or `claude` on `PATH` only when each reports that version with `--version`; use `--probe-executable <path>` to name an executable (`--host` selects the Claude Code configuration). The probe prints its target and records nothing if the completed host run reports another transcript version. |
-| `run <runner options> --task-file <abs path>` | Start or attach to a delegated run through the permission-stable package command. The task file carries the statement, the scout questions and the verification command; its path must be absolute. Piping the statement on stdin is the alternative channel, and the two cannot be combined. |
+| `run --agent <type> --task-file "<abs path>" [--no-wait]` | Start or attach to a delegated run through the permission-stable package command. The task-file header carries the whole order; its body carries the statement, scout questions and verification command. Its path must be absolute and use forward slashes; `$`, doubled backslashes and a final backslash are refused. Every other runner flag is a free refusal; stdin is not an input channel. |
 | `model [list\|set\|unset\|speed]` | Show the model, effort, pinned speed tier and provenance of each role, with the config path; `model list` prints the live catalogue from Codex, hidden models included and marked; `model set <role> <model> [effort]` checks the pair and any retained speed tier against that model's catalogue entry, and `model unset <role>` removes the profile. `model speed <role> <tier>` previews a live accelerated tier and its quoted cost description; repeat with trailing `confirm` to pin it. `model speed <role> unset` removes only speed, without confirmation. The profile is machine-wide, shared by every project on this machine. |
 | `projects [<name>] [--json]` | List projects or runs in the run store. |
 | `prune <project> [<run>] [--purge] [--older-than <age>] [-f] [--json]`<br>`prune --all-projects [--older-than <age>] [-f] [--json]` | Plan or perform operator-confirmed cleanup, for one project or across the whole run store. |
