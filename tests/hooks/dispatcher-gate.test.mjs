@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { readHandbackWitness } from '../../src/home/lib/handback-witness.mjs';
 import { HOST_OBSERVATIONS_FILE } from '../../src/home/lib/host-observations.mjs';
 import { canonicalRunCommand } from '../../src/home/lib/dispatcher-command.mjs';
+import { readDispatcherState } from '../../src/home/lib/dispatcher-state.mjs';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
@@ -140,6 +141,44 @@ test('honest runner output replaces handback with the final failure verdict', as
   assert.equal(final.updatedInput.message, 'FAIL — boom');
   const witness = await readHandbackWitness({ stateDir: path.join(root, 'home', 'state') });
   assert.ok(witness.lastSeen);
+});
+
+test('canonical runner stdout binds a receipt and preserves the first contradictory folder', async (t) => {
+  const root = await fixture(t);
+  const identity = await addTranscript(root);
+  const ids = {
+    stateDir: path.join(root, 'home', 'state'),
+    sessionId: identity.session_id,
+    agentId: identity.agent_id,
+  };
+  const folder = 'C:\\runs\\first folder';
+  const other = 'C:\\runs\\second folder';
+  for (const [stdout, expectedConflict] of [
+    [`RUN=${folder} order-id=order-62\nSTARTED run-62`, undefined],
+    [`ATTACH=${folder} order-id=order-62 started=2026-10-05T00:00:00Z\nOK — done`, undefined],
+    [`ATTACH=${other} order-id=order-62 started=2026-10-05T00:00:00Z\nOK — done`, other],
+    ['RUN=C:\\runs\\third order-id=order-62\nOK — done', other],
+  ]) {
+    const payload = dispatcherPayload(identity, 'Bash', { command: COMMAND }, 'PostToolUse');
+    payload.tool_response = { stdout };
+    assert.equal(outcome(root, payload).stdout, '');
+    const state = readDispatcherState(ids);
+    assert.equal(state.runReceipt, folder);
+    assert.equal(state.runReceiptConflict, expectedConflict);
+    assert.equal(state.runnerOutput, stdout);
+    assert.equal(state.runnerFinal, !stdout.includes('STARTED '));
+    assert.equal(state.runnerExitCode, 0);
+  }
+
+  const failure = dispatcherPayload(identity, 'Bash', { command: COMMAND }, 'PostToolUseFailure');
+  failure.error = `Exit code 7\nATTACH=${folder} order-id=order-62 started=2026-10-05T00:00:00Z\nFAIL — boom`;
+  assert.equal(outcome(root, failure).stdout, '');
+  const state = readDispatcherState(ids);
+  assert.equal(state.runReceipt, folder);
+  assert.equal(state.runReceiptConflict, other);
+  assert.equal(state.runnerOutput, failure.error.slice('Exit code 7\n'.length));
+  assert.equal(state.runnerFinal, true);
+  assert.equal(state.runnerExitCode, 7);
 });
 
 test('handback sighting records transcript host version instead of inherited SDK version', async (t) => {

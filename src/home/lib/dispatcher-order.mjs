@@ -1,8 +1,27 @@
-/** Reads and compares the order identity carried between dispatcher hook boundaries. */
+/** Reads the run identity carried between dispatcher hook boundaries. */
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseJsonText } from './json-file.mjs';
-import { parseDispatcherCall } from './dispatcher-call.mjs';
+
+/** Plan_63 D10: extracts the first run folder reported by the runner's own stdout. */
+export function runnerReceipt(output) {
+  if (typeof output !== 'string') return null;
+  const line = output.split('\n').find((value) => value.startsWith('RUN=') || value.startsWith('ATTACH='));
+  if (line === undefined) return null;
+  const receiptLine = line.replace(/\r$/, '');
+  const start = receiptLine.indexOf('=') + 1;
+  const end = receiptLine.lastIndexOf(' order-id=');
+  return end > start ? receiptLine.slice(start, end) : null;
+}
+
+/** Plan_63 D10: binds the run folder once and retains the first contradictory receipt. */
+export function bindReceipt(state, folder) {
+  if (folder === null) return {};
+  if (state?.runReceipt == null) return { runReceipt: folder };
+  // D10: both strings come from the same runner code, so exact equality is the contract.
+  if (state.runReceipt === folder || state.runReceiptConflict) return {};
+  return { runReceiptConflict: folder };
+}
 
 /** Implements Plan_62 D7: keeps untrusted ids from redirecting the host-owned subagent transcript path. */
 export function ownTranscriptPath(payload) {
@@ -35,28 +54,4 @@ function firstEntry(transcriptPath) {
 export function transcriptPrompt(transcriptPath) {
   const entry = firstEntry(transcriptPath);
   return entry?.type === 'user' ? entry.text : null;
-}
-
-/**
- * The reply guard's transcript is diagnostic evidence, so the read stays fail-open: any doubt gives ''.
- * Plan_76 D1: the same call parser as the order gate and the canonical command, so the three cannot disagree.
- */
-export function transcriptOrderId(transcriptPath, agentType) {
-  const text = firstEntry(transcriptPath)?.text ?? '';
-  return parseDispatcherCall(agentType, text).inputs.get('order id') ?? '';
-}
-
-/** On 2026-08-15 another order's saved reply was returned as the current run's verdict. */
-export function runOrderMismatch(orderedOrderId, runStatus, runDir) {
-  const ordered = String(orderedOrderId ?? '').trim();
-  const recorded = String(runStatus?.order_id ?? '').trim();
-  if (!ordered || !recorded || ordered === recorded) return null;
-  return {
-    reason: `Contract violated: the dispatcher was ordered order id ${JSON.stringify(ordered)}, ` +
-      `but run folder ${runDir} records order_id ${JSON.stringify(recorded)}. Run the ordered ` +
-      'order id and return that run\'s stdout verbatim.',
-    observed: `The dispatcher transcript orders ${JSON.stringify(ordered)}, but status.json in ` +
-      `${runDir} records order_id=${JSON.stringify(recorded)}. Run the ordered order id and ` +
-      `return that run's stdout verbatim.`,
-  };
 }

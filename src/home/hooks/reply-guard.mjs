@@ -24,6 +24,7 @@
  * In the handback era, SubagentHandback delivers the caller-visible answer before SubagentStop.
  * Alarms name the host by its transcript version: on 2026-09-25 the SDK variable proved inherited.
  * Plan_62 makes this hook yield after delivery and audit every transcript tool call against gate receipts.
+ * Plan_63 D10 identifies this run only by the host-keyed gate's immutable runner receipt.
  *
  * Input is JSON on stdin. The fields used here (`agent_type`, `last_assistant_message`)
  * come from Claude Code; the last payload is kept in state/diagnostics/reply-guard.last.json
@@ -34,18 +35,16 @@ import path from 'node:path';
 import { AGENTS } from '../lib/agents.mjs';
 import { BRAND_STATE_DIR } from '../lib/brand-home.mjs';
 import { recordHookDiagnostic } from '../lib/hook-diagnostics.mjs';
-import { runOrderMismatch, transcriptOrderId } from '../lib/dispatcher-order.mjs';
 import { decideDispatcherStop, transcriptToolUses } from '../lib/dispatcher-stop.mjs';
 import { recognizeHostRefusal } from '../lib/host-refusal.mjs';
 import { readJsonFileSync } from '../lib/json-file.mjs';
 import { readDispatcherState, updateDispatcherState } from '../lib/dispatcher-state.mjs';
 import { recordHandbackWitness, witnessHostVersion } from '../lib/handback-witness.mjs';
 import { runLiveness } from '../lib/meta/run-liveness.mjs';
-import { resolveProjectRunsDir } from '../lib/runner/project-dir.mjs';
-import { runsRoot } from '../lib/runner/runs-root.mjs';
-import { liveRuns, normalizePath, recentRuns } from './live-runs.mjs';
+import { liveRuns, normalizePath } from './live-runs.mjs';
 import { FORM, MAX_STATE_BLOCKS, STATE, takeTry } from './guard-tries.mjs';
 import { parseReply } from './reply-parser.mjs';
+import { decideReplyIdentity, missingIdsAlarm, readReceiptEvidence } from './reply-identity.mjs';
 import {
   abandonedRunReason,
   abandonedRunStop,
@@ -58,14 +57,11 @@ import {
   missingHostOrderIdReason,
   missingMetaReason,
   missingRunReason,
-  noRecentRunReason,
-  noRecentRunStop,
   nonexistentRunReason,
   omittedDiscoveredRunReason,
   omittedDiscoveredRunStop,
   omittedSiblingReason,
   omittedSiblingStop,
-  orderMismatchStop,
   statusMismatchReason,
   statusMismatchStop,
 } from './reply-verdicts.mjs';
@@ -142,15 +138,19 @@ const emitStop = (payload) => {
   process.stdout.write(JSON.stringify(payload));
   process.exit(0);
 };
+const hasIds = typeof input.session_id === 'string' && input.session_id.length > 0
+  && typeof input.agent_id === 'string' && input.agent_id.length > 0;
+let receipt = null;
+let receiptConflict = null;
 try {
-  if (typeof input.session_id === 'string' && input.session_id.length > 0
-    && typeof input.agent_id === 'string' && input.agent_id.length > 0) {
+  if (hasIds) {
     const ids = {
       stateDir: BRAND_STATE_DIR,
       sessionId: input.session_id,
       agentId: input.agent_id,
     };
     const state = readDispatcherState(ids);
+    ({ receipt, receiptConflict } = readReceiptEvidence(state));
     const toolUses = transcriptToolUses(input.agent_transcript_path);
     const stop = decideDispatcherStop({ state, toolUses });
     if (stop.unseen.length) {
@@ -183,6 +183,20 @@ try {
   }
 } catch {
   // The handback path is fail-open; the established reply checks remain the fallback.
+}
+
+if (!hasIds) {
+  try {
+    await recordHandbackWitness({
+      stateDir: BRAND_STATE_DIR,
+      kind: 'alarm',
+      hostVersion: await witnessHostVersion(input),
+      detail: `host omitted session_id or agent_id for ${input.agent_type}`,
+    });
+  } catch {
+    // Plan_66 H2: host contract loss must alarm, but never block work.
+  }
+  dispatcherSystemMessage ||= missingIdsAlarm(input.agent_type);
 }
 
 const reply = String(input.last_assistant_message || '').trim();
@@ -220,48 +234,22 @@ const blockState = (reason, stopReason) => {
 
 const { runDirs, claimed } = parseReply(reply);
 let runDir = runDirs[0] || null;
-let discoveredRun = false;
-let discoveredStatus = null;
-let searchedRunsDir = null;
 
 if (runDir && !fs.existsSync(runDir)) {
   blockForm(nonexistentRunReason);
 }
 
-const orderedOrderId = transcriptOrderId(input.agent_transcript_path, input.agent_type);
-
 if (!runDir && !claimed) {
   // A reply that pronounces nothing cannot contradict the disk. It stays on the old, softer path:
   // three tries about the SHAPE of the answer and then through, which is what a quoted refusal
-  // needs. Only a reply that hands down a verdict earns the disk search below.
+  // needs. Only a reply that hands down a verdict earns the receipt checks below.
   blockForm(missingRunReason);
 }
 
-if (!runDir) {
-  let candidates;
-  try {
-    searchedRunsDir = resolveProjectRunsDir(runsRoot(), input.cwd, { create: false }).dir;
-    // Plan_62 r2: on 2026-09-24 the newest run of this agent type belonged to an earlier order, and the
-    // guard judged the reply against that stranger's folder. With the order id known, only its runs count.
-    candidates = recentRuns(searchedRunsDir, {
-      agent: input.agent_type,
-      ...(orderedOrderId ? { orderId: orderedOrderId } : {}),
-    });
-  } catch {
-    pass();
-  }
-  if (candidates === null) pass();
-
-  if (!candidates.length) {
-    blockState(
-      noRecentRunReason,
-      noRecentRunStop(MAX_STATE_BLOCKS, input.agent_type, searchedRunsDir),
-    );
-  }
-
-  ({ dir: runDir, status: discoveredStatus } = candidates[0]);
-  discoveredRun = true;
-}
+const identity = decideReplyIdentity({ runDir, hasIds, receipt, receiptConflict, agentType: input.agent_type });
+if (identity.block) blockState(identity.block.reason, identity.block.stop);
+const { discoveredRun, discoveredStatus } = identity;
+runDir = identity.runDir;
 
 /**
  * The dispatcher must name every WRITING run the project has live, not just the one it chose to
@@ -307,12 +295,6 @@ if (fs.existsSync(statusPath)) {
   } catch {
     runStatus = null;
   }
-  const mismatch = runOrderMismatch(orderedOrderId, runStatus, runDir);
-
-  if (mismatch) {
-    blockState(mismatch.reason, orderMismatchStop(MAX_STATE_BLOCKS, mismatch, runStatus, runDir));
-  }
-
   if (runStatus?.state === 'running') {
     // Plan_57 D5/D27: a bare pid mistook a reused foreign process for this run's worker.
     // The shared judge uses run identity and keeps unverified processes live (fail open).

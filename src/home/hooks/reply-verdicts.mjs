@@ -62,18 +62,29 @@ export const handbackDemandReason =
   'exactly the command its refusal quotes and hand back again; the gate replaces the message with the ' +
   "runner's output.";
 
-export const noRecentRunReason =
-  'Contract violated: the response has no RUN= or ATTACH= line, and no recent run for this ' +
-  'dispatcher was found on disk. Run codex-bridge run and return its stdout verbatim; your own ' +
-  'analysis instead of Codex is prohibited in all outcomes.';
+export const noReceiptReason =
+  'Contract violated: no run receipt is recorded for this dispatcher. Run the canonical ' +
+  "codex-bridge run command and return that run's stdout verbatim; another run on disk cannot identify this run.";
 
-export const noRecentRunStop = (maxBlocks, agentType, runsDir) => stopText(
+export const noReceiptStop = (maxBlocks, agentType) =>
   `The reply guard stopped the session: the dispatcher responded ${maxBlocks} times ` +
-    'without naming a run and no recent matching run was found on disk.',
-  `No run for agent ${agentType} was found in the last 24 hours.`,
-  null,
-  runsDir,
-);
+  `without a run receipt for agent ${agentType}. The answer was not checked.`;
+
+export const receiptMismatchReason = (runDir, receipt) =>
+  `Contract violated: the response names run folder ${runDir}, but this dispatcher's run receipt ` +
+  `names ${receipt}. Run the canonical codex-bridge run command and return that run's stdout verbatim.`;
+
+export const receiptMismatchStop = (maxBlocks, agentType, runDir, receipt) =>
+  `The reply guard stopped the session: dispatcher ${agentType} returned run folder ${runDir} ` +
+  `${maxBlocks} times while its run receipt names ${receipt}. The answer was not checked.`;
+
+export const receiptConflictReason = (receipt, conflict) =>
+  `Contract violated: this dispatcher's run receipt names ${fact(receipt)}, but a contradictory ` +
+  `receipt names ${conflict}. Run the canonical codex-bridge run command and return that run's stdout verbatim.`;
+
+export const receiptConflictStop = (maxBlocks, agentType, receipt, conflict) =>
+  `The reply guard stopped the session: dispatcher ${agentType} responded ${maxBlocks} times ` +
+  `with conflicting run receipts ${fact(receipt)} and ${conflict}. The answer was not checked.`;
 
 export const omittedSiblingReason = (runDir, dir, status) =>
   `Contract violated: the response names ${runDir} but omits live run folder ${dir}; report every ` +
@@ -85,13 +96,6 @@ export const omittedSiblingStop = (maxBlocks, dir, status) => stopText(
   `status.json in ${dir} says state=running; process pid ${fact(status.pid)} is alive.`,
   status,
   dir,
-);
-
-export const orderMismatchStop = (maxBlocks, mismatch, runStatus, runDir) => stopText(
-  `The reply guard stopped the session: the dispatcher returned another order's run ${maxBlocks} times.`,
-  mismatch.observed,
-  runStatus,
-  runDir,
 );
 
 export const liveRunReason =
@@ -144,7 +148,7 @@ export const missingMetaReason = (runDir) =>
 
 export const missingDiscoveredMetaStop = (maxBlocks, discoveredStatus, runDir) => stopText(
   `The reply guard stopped the session: the dispatcher responded ${maxBlocks} times ` +
-    'without naming the recent run found on disk.',
+    'without naming the run its receipt names.',
   `status.json says state=${fact(discoveredStatus?.state)}, status=${fact(discoveredStatus?.status)}, ` +
     'but the adjacent meta.json is missing.',
   discoveredStatus,
@@ -158,8 +162,8 @@ export const statusMismatchReason = (claimed, meta, discoveredStatus, runDir) =>
   'its output verbatim without substituting your own judgment.';
 
 export const statusMismatchStop = (maxBlocks, claimed, meta, discoveredStatus, runDir) => stopText(
-  `The reply guard stopped the session: the dispatcher contradicted the recent run on disk ${maxBlocks} times.`,
-  `status.json says state=${fact(discoveredStatus.state)}, status=${fact(discoveredStatus.status)}; ` +
+  `The reply guard stopped the session: the dispatcher contradicted the run its receipt names ${maxBlocks} times.`,
+  `status.json says state=${fact(discoveredStatus?.state)}, status=${fact(discoveredStatus?.status)}; ` +
     `meta.json says status=${meta.status}, but the reply says ${claimed}.`,
   discoveredStatus,
   runDir,
@@ -167,12 +171,12 @@ export const statusMismatchStop = (maxBlocks, claimed, meta, discoveredStatus, r
 
 export const omittedDiscoveredRunReason = (meta, discoveredStatus, runDir) =>
   `Contract violated: the response omitted RUN=${runDir}; status.json says ` +
-  `state=${fact(discoveredStatus.state)}, status=${fact(discoveredStatus.status)}, and meta.json ` +
+  `state=${fact(discoveredStatus?.state)}, status=${fact(discoveredStatus?.status)}, and meta.json ` +
   `says status=${fact(meta.status)}. Return the runner stdout verbatim.`;
 
 export const omittedDiscoveredRunStop = (maxBlocks, meta, discoveredStatus, runDir) => stopText(
-  `The reply guard stopped the session: the dispatcher omitted the recent run found on disk ${maxBlocks} times.`,
-  `status.json says state=${fact(discoveredStatus.state)}, status=${fact(discoveredStatus.status)}; ` +
+  `The reply guard stopped the session: the dispatcher omitted the run its receipt names ${maxBlocks} times.`,
+  `status.json says state=${fact(discoveredStatus?.state)}, status=${fact(discoveredStatus?.status)}; ` +
     `meta.json says status=${fact(meta.status)}.`,
   discoveredStatus,
   runDir,

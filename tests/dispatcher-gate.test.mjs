@@ -147,6 +147,41 @@ test('decidePreToolUse substitutes only a final runner output at handback', () =
   assert.ok(started.reason.endsWith(`\n${command}\nRun it exactly, in the foreground; repeating it attaches to the same run.`));
 });
 
+test('decidePreToolUse reports receipt conflicts before any runner output at handback', () => {
+  // Plan_63 D10: even a final verdict cannot replace the first contradictory run receipt.
+  const receipts = { runReceipt: 'C:\\runs\\first folder', runReceiptConflict: 'C:\\runs\\second folder' };
+  for (const runner of [
+    { runnerOutput: 'OK — done', runnerFinal: true },
+    { runnerOutput: 'STARTED run-63', runnerFinal: false },
+    {},
+  ]) {
+    const decision = decidePreToolUse({
+      payload: { tool_name: HANDBACK_TOOL }, order: { command }, state: { ...receipts, ...runner },
+    });
+    assert.deepEqual(decision, {
+      kind: 'allow',
+      message: 'FAIL — dispatcher gate: the runner reported two different run folders for one dispatcher: ' +
+        'C:\\runs\\first folder and C:\\runs\\second folder; the answer is not delivered.',
+      stateUpdate: { handback: 'delivered' },
+    });
+  }
+  const refusal = decidePreToolUse({
+    payload: { tool_name: HANDBACK_TOOL }, order: { refusal: 'unreadable order' }, state: receipts,
+  });
+  assert.equal(refusal.message, 'FAIL — dispatcher gate: unreadable order');
+});
+
+test('decidePreToolUse ignores empty or non-string receipt conflicts', () => {
+  for (const runReceiptConflict of ['', null, undefined, 42]) {
+    const decision = decidePreToolUse({
+      payload: { tool_name: HANDBACK_TOOL }, order: { command },
+      state: { runReceipt: '/runs/first', runReceiptConflict, runnerOutput: 'OK — done', runnerFinal: true },
+    });
+    assert.equal(decision.kind, 'allow');
+    assert.equal(decision.message, 'OK — done');
+  }
+});
+
 test('decidePreToolUse records first premature handback and reports repeat handback', () => {
   const first = decidePreToolUse({
     payload: { tool_name: HANDBACK_TOOL }, order: { command }, state: {},

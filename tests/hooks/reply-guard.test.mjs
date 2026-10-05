@@ -5,18 +5,21 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { updateDispatcherState } from '../../src/home/lib/dispatcher-state.mjs';
+import { noReceiptReason } from '../../src/home/hooks/reply-verdicts.mjs';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const GUARD = path.join(ROOT, 'src', 'home', 'hooks', 'reply-guard.mjs');
 
-function runGuard(root, reply, agentId = 'test-reply-guard', transcriptPath = undefined) {
+function runGuard(root, reply, agentId = 'test-reply-guard', transcriptPath = undefined, sessionId = undefined) {
   const repo = path.join(root, 'project');
   // raw argv: the hook receives its event on stdin, not a runner order.
   return spawnSync(process.execPath, [GUARD], {
     input: JSON.stringify({
       agent_type: 'codex-build',
       agent_id: agentId,
+      session_id: sessionId,
       agent_transcript_path: transcriptPath,
       cwd: repo,
       last_assistant_message: reply,
@@ -32,10 +35,22 @@ function runGuard(root, reply, agentId = 'test-reply-guard', transcriptPath = un
   });
 }
 
-async function writeTranscript(root, promptText, name = 'transcript.jsonl') {
-  const transcriptPath = path.join(root, name);
-  await fs.writeFile(transcriptPath, `${JSON.stringify({ message: { content: promptText } })}\n`);
-  return transcriptPath;
+async function seedReceipt(root, runReceipt, agentId = 'test-reply-guard') {
+  const bridgeHome = path.join(root, '.lyupro', '.codex-bridge');
+  const previousHome = process.env.CODEX_BRIDGE_HOME;
+  process.env.CODEX_BRIDGE_HOME = bridgeHome;
+  const moduleUrl = new URL('../../src/home/lib/brand-home.mjs', import.meta.url);
+  moduleUrl.searchParams.set('test-home', bridgeHome);
+  let stateDir;
+  try {
+    ({ BRAND_STATE_DIR: stateDir } = await import(moduleUrl.href));
+  } finally {
+    if (previousHome === undefined) delete process.env.CODEX_BRIDGE_HOME;
+    else process.env.CODEX_BRIDGE_HOME = previousHome;
+  }
+  const sessionId = 'receipt-session';
+  await updateDispatcherState({ stateDir, sessionId, agentId }, (current) => ({ ...current, runReceipt }));
+  return sessionId;
 }
 
 async function fixture(t) {
@@ -71,16 +86,6 @@ function replyFor(runDir, extra = '') {
   return `RUN=${runDir}\nOK — run finished.${extra}`;
 }
 
-test('an invented reply without any run folder is fail-closed', async (t) => {
-  const { root } = await fixture(t);
-  const result = runGuard(root, 'OK — files were created.');
-  assert.equal(result.status, 0);
-  const decision = JSON.parse(result.stdout);
-  assert.equal(decision.decision, 'block');
-  assert.match(decision.reason, /no RUN= or ATTACH=/);
-  assert.match(decision.reason, /prohibited/);
-});
-
 /**
  * The 2026-08-16 live permission-denial probe proved an honest host refusal was indistinguishable
  * from skipped delegation and spent three state tries. A complete refusal is terminal evidence,
@@ -92,6 +97,7 @@ test('a complete host refusal passes immediately without spending try budget', a
     root,
     'FAIL — host denied order id `probe-refusal`. Run `codex-bridge install` to grant permission.',
     'complete-host-refusal',
+    undefined, 'receipt-session',
   );
   assert.equal(result.status, 0);
   assert.equal(result.stdout, '');
@@ -107,6 +113,7 @@ test('a host refusal without its order id is blocked with the missing contract p
     root,
     'FAIL — permission to run the command was denied. Run `codex-bridge install`.',
     'host-refusal-without-order',
+    undefined, 'receipt-session',
   );
   const decision = JSON.parse(result.stdout);
   assert.equal(decision.decision, 'block');
@@ -134,7 +141,7 @@ test('a quoted runner refusal is not escalated by an unrelated recent run', asyn
     + 'repository (1). The run folder was not created; quota was not spent.';
 
   // One agent id across all four calls: the budget is per agent, and the fourth try is the point.
-  const decisions = [1, 2, 3, 4].map(() => runGuard(root, refusal, 'refusal-budget'));
+  const decisions = [1, 2, 3, 4].map(() => runGuard(root, refusal, 'refusal-budget', undefined, 'receipt-session'));
 
   for (const result of decisions.slice(0, 3)) {
     const decision = JSON.parse(result.stdout);
@@ -145,7 +152,7 @@ test('a quoted runner refusal is not escalated by an unrelated recent run', asyn
   assert.equal(decisions[3].stdout, '', 'the soft budget must let a truthful refusal through');
 });
 
-test('a folderless FAIL is blocked by a recent finished OK run found on disk', async (t) => {
+test('a folderless FAIL is blocked by its receipted finished OK run', async (t) => {
   const { root, runs } = await fixture(t);
   const finishedAt = new Date().toISOString();
   const run = await createRun(runs, 'recent-ok', {
@@ -153,7 +160,8 @@ test('a folderless FAIL is blocked by a recent finished OK run found on disk', a
     finished_at: finishedAt,
     status: 'OK',
   }, { status: 'OK', reason: 'artifacts are complete', finished_at: finishedAt });
-  const result = runGuard(root, 'FAIL — invented dispatcher verdict.');
+  const sessionId = await seedReceipt(root, run);
+  const result = runGuard(root, 'FAIL — invented dispatcher verdict.', 'test-reply-guard', undefined, sessionId);
   assert.equal(result.status, 0);
   const decision = JSON.parse(result.stdout);
   assert.equal(decision.decision, 'block');
@@ -162,21 +170,22 @@ test('a folderless FAIL is blocked by a recent finished OK run found on disk', a
   assert.match(decision.reason, /status=OK in meta\.json/);
 });
 
-test('a folderless reply with no recent matching run keeps the missing-run block', async (t) => {
+test('a folderless verdict without a receipt is blocked', async (t) => {
   const { root } = await fixture(t);
-  const result = runGuard(root, 'FAIL — invented dispatcher verdict.', 'no-recent-run');
+  const result = runGuard(root, 'FAIL — invented dispatcher verdict.', 'no-recent-run', undefined, 'receipt-session');
   const decision = JSON.parse(result.stdout);
   assert.equal(decision.decision, 'block');
-  assert.match(decision.reason, /no recent run/);
+  assert.equal(decision.reason, noReceiptReason);
 });
 
 test('folderless reply blocks spend STATE budget and then end the turn', async (t) => {
   const { root } = await fixture(t);
-  const results = [1, 2, 3, 4].map(() => runGuard(root, 'FAIL — invented dispatcher verdict.', 'missing-budget'));
+  const results = [1, 2, 3, 4].map(() => runGuard(root, 'FAIL — invented dispatcher verdict.', 'missing-budget', undefined, 'receipt-session'));
   for (const result of results.slice(0, 3)) assert.equal(JSON.parse(result.stdout).decision, 'block');
   const exhausted = JSON.parse(results[3].stdout);
   assert.equal(exhausted.continue, false);
-  assert.match(exhausted.stopReason, /no recent matching run was found on disk/);
+  assert.match(exhausted.stopReason, /without a run receipt for agent codex-build/);
+  assert.match(exhausted.stopReason, /answer was not checked/);
 });
 
 test('a folderless reply ignores runs from another agent and stale runs', async (t) => {
@@ -193,9 +202,9 @@ test('a folderless reply ignores runs from another agent and stale runs', async 
     finished_at: stale,
     status: 'OK',
   }, { status: 'OK' });
-  const result = runGuard(root, 'FAIL — invented dispatcher verdict.', 'wrong-candidates');
+  const result = runGuard(root, 'FAIL — invented dispatcher verdict.', 'wrong-candidates', undefined, 'receipt-session');
   const decision = JSON.parse(result.stdout);
-  assert.match(decision.reason, /no recent run/);
+  assert.equal(decision.reason, noReceiptReason);
   assert.doesNotMatch(decision.reason, new RegExp(other.replaceAll('\\', '\\\\')));
   assert.doesNotMatch(decision.reason, new RegExp(old.replaceAll('\\', '\\\\')));
 });
@@ -203,30 +212,30 @@ test('a folderless reply ignores runs from another agent and stale runs', async 
 test('folderless lookup does not create a project directory or marker', async (t) => {
   const root = makeTempTree('bridge-reply-guard-no-create-');
   t.after(() => removeTempTree(root));
-  const result = runGuard(root, 'FAIL — invented dispatcher verdict.', 'no-create');
+  const result = runGuard(root, 'FAIL — invented dispatcher verdict.', 'no-create', undefined, 'receipt-session');
   assert.equal(JSON.parse(result.stdout).decision, 'block');
   await assert.rejects(fs.access(path.join(root, 'runs')), { code: 'ENOENT' });
   await assert.rejects(fs.access(path.join(root, 'runs', 'project', '.project.json')), { code: 'ENOENT' });
 });
 
-test('folderless lookup is fail-open when a status file is broken', async (t) => {
+test('a broken unrelated status file cannot bypass the no-receipt block', async (t) => {
   const { root, runs } = await fixture(t);
   const broken = path.join(runs, 'broken-recent');
   await fs.mkdir(broken);
   await fs.writeFile(path.join(broken, 'status.json'), '{ broken');
-  const result = runGuard(root, 'FAIL — invented dispatcher verdict.', 'broken-disk');
+  const result = runGuard(root, 'FAIL — invented dispatcher verdict.', 'broken-disk', undefined, 'receipt-session');
   assert.equal(result.status, 0);
-  assert.equal(result.stdout, '');
+  assert.equal(JSON.parse(result.stdout).reason, noReceiptReason);
 });
 
-test('folderless lookup is fail-open when the project candidate is not a directory', async (t) => {
+test('an unavailable runs directory cannot bypass the no-receipt block', async (t) => {
   const root = makeTempTree('bridge-reply-guard-unavailable-');
   t.after(() => removeTempTree(root));
   await fs.mkdir(path.join(root, 'runs'));
   await fs.writeFile(path.join(root, 'runs', 'project'), 'unavailable');
-  const result = runGuard(root, 'FAIL — invented dispatcher verdict.', 'unavailable-disk');
+  const result = runGuard(root, 'FAIL — invented dispatcher verdict.', 'unavailable-disk', undefined, 'receipt-session');
   assert.equal(result.status, 0);
-  assert.equal(result.stdout, '');
+  assert.equal(JSON.parse(result.stdout).reason, noReceiptReason);
 });
 
 test('a reply that names every live run passes', async (t) => {
@@ -243,7 +252,8 @@ test('a reply that names every live run passes', async (t) => {
     started_at: '2026-08-05T10:01:00.000Z',
     process_started_at: performance.timeOrigin,
   });
-  const result = runGuard(root, replyFor(own, `\nATTACH=${sibling} started=2026-08-05T10:01:00.000Z`));
+  const sessionId = await seedReceipt(root, own);
+  const result = runGuard(root, replyFor(own, `\nATTACH=${sibling} started=2026-08-05T10:01:00.000Z`), 'test-reply-guard', undefined, sessionId);
   assert.equal(result.status, 0);
   assert.equal(result.stdout, '');
 });
@@ -260,7 +270,8 @@ test('a reply silent about a live writing sibling is blocked with status facts',
     started_at: '2026-08-05T10:01:00.000Z',
     process_started_at: performance.timeOrigin,
   });
-  const result = runGuard(root, replyFor(own));
+  const sessionId = await seedReceipt(root, own);
+  const result = runGuard(root, replyFor(own), 'test-reply-guard', undefined, sessionId);
   assert.equal(result.status, 0);
   const decision = JSON.parse(result.stdout);
   assert.equal(decision.decision, 'block');
@@ -286,7 +297,8 @@ for (const reader of ['codex-scout', 'codex-review', 'codex-advisor']) {
       started_at: '2026-08-05T10:01:00.000Z',
       process_started_at: performance.timeOrigin,
     });
-    const result = runGuard(root, replyFor(own));
+    const sessionId = await seedReceipt(root, own);
+    const result = runGuard(root, replyFor(own), 'test-reply-guard', undefined, sessionId);
     assert.equal(result.status, 0);
     assert.equal(result.stdout, '');
   });
@@ -304,7 +316,8 @@ test('a running sibling with a dead pid does not block', async (t) => {
     started_at: '2026-08-05T10:01:00.000Z',
     process_started_at: performance.timeOrigin,
   });
-  const result = runGuard(root, replyFor(own));
+  const sessionId = await seedReceipt(root, own);
+  const result = runGuard(root, replyFor(own), 'test-reply-guard', undefined, sessionId);
   assert.equal(result.status, 0);
   assert.equal(result.stdout, '');
 });
@@ -316,7 +329,8 @@ test('a finished sibling does not block', async (t) => {
     ...ownStatus('finished-sibling'),
     state: 'finished',
   }, { status: 'OK' });
-  const result = runGuard(root, replyFor(own));
+  const sessionId = await seedReceipt(root, own);
+  const result = runGuard(root, replyFor(own), 'test-reply-guard', undefined, sessionId);
   assert.equal(result.status, 0);
   assert.equal(result.stdout, '');
 });
@@ -333,7 +347,8 @@ test('sibling blocks spend the STATE budget and then end the turn', async (t) =>
     started_at: '2026-08-05T10:01:00.000Z',
     process_started_at: performance.timeOrigin,
   });
-  const results = [1, 2, 3, 4].map(() => runGuard(root, replyFor(own), 'budget-agent'));
+  const sessionId = await seedReceipt(root, own, 'budget-agent');
+  const results = [1, 2, 3, 4].map(() => runGuard(root, replyFor(own), 'budget-agent', undefined, sessionId));
   for (const result of results.slice(0, 3)) assert.equal(JSON.parse(result.stdout).decision, 'block');
   const exhausted = JSON.parse(results[3].stdout);
   assert.equal(exhausted.continue, false);
@@ -347,50 +362,8 @@ test('an unreadable sibling status is fail-open', async (t) => {
   const sibling = path.join(runs, 'broken');
   await fs.mkdir(sibling, { recursive: true });
   await fs.writeFile(path.join(sibling, 'status.json'), '{ broken');
-  const result = runGuard(root, replyFor(own));
+  const sessionId = await seedReceipt(root, own);
+  const result = runGuard(root, replyFor(own), 'test-reply-guard', undefined, sessionId);
   assert.equal(result.status, 0);
   assert.equal(result.stdout, '');
-});
-
-test('a reply naming a run from another order is blocked as external state', async (t) => {
-  const { root, runs } = await fixture(t);
-  const run = await createRun(runs, 'wrong-order', {
-    ...ownStatus('wrong-order'),
-    order_id: 'run-two-order',
-  }, { status: 'OK' });
-  const transcriptPath = await writeTranscript(root, 'order id: run-three-order\ntask file: C:/task.md');
-  const result = runGuard(root, replyFor(run), 'wrong-order-agent', transcriptPath);
-  const decision = JSON.parse(result.stdout);
-  assert.equal(decision.decision, 'block');
-  assert.match(decision.reason, /run-three-order/);
-  assert.match(decision.reason, /run-two-order/);
-  assert.match(decision.reason, new RegExp(run.replaceAll('\\', '\\\\')));
-  assert.match(decision.reason, /Run the ordered order id/);
-  assert.match(decision.reason, /return that run's stdout verbatim/);
-});
-
-test('a reply naming the ordered run passes', async (t) => {
-  const { root, runs } = await fixture(t);
-  const run = await createRun(runs, 'matching-order', {
-    ...ownStatus('matching-order'),
-    order_id: 'matching-order-id',
-  }, { status: 'OK' });
-  const transcriptPath = await writeTranscript(root, 'order id: matching-order-id\ntask file: C:/task.md');
-  const result = runGuard(root, replyFor(run), 'matching-order-agent', transcriptPath);
-  assert.equal(result.stdout, '');
-});
-
-test('missing or malformed transcripts do not block an otherwise valid reply', async (t) => {
-  const { root, runs } = await fixture(t);
-  const run = await createRun(runs, 'diagnostic-only', {
-    ...ownStatus('diagnostic-only'),
-    order_id: 'stored-order',
-  }, { status: 'OK' });
-  const missing = runGuard(root, replyFor(run), 'missing-transcript', path.join(root, 'missing.jsonl'));
-  assert.equal(missing.stdout, '');
-
-  const malformedPath = path.join(root, 'malformed.jsonl');
-  await fs.writeFile(malformedPath, '{ malformed\n');
-  const malformed = runGuard(root, replyFor(run), 'malformed-transcript', malformedPath);
-  assert.equal(malformed.stdout, '');
 });

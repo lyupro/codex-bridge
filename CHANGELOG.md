@@ -19,6 +19,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- The reply guard identifies a dispatcher's run by a receipt — the run folder the runner itself
+  printed to that dispatcher, recorded once by the dispatcher gate — instead of the order id in the
+  call or the newest run on disk. A reply naming another folder, a reply with a verdict but no
+  receipt, and two different folders reported to one dispatcher are blocked; the last one also turns
+  the handback into a `FAIL`.
 - `changeset:` reaches the runner, so `base:<branch>` and `commit:<sha>` review the requested changes
   instead of silently reviewing uncommitted work.
 - `scope-new:` is refused with the exact `scope new:` spelling; it can no longer be dropped or read as

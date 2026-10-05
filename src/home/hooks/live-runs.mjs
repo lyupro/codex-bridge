@@ -18,8 +18,6 @@ import { readJsonFileSync } from '../lib/json-file.mjs';
 import { runLiveness } from '../lib/meta/run-liveness.mjs';
 import { IDENTITY_ALIVE } from '../lib/process-identity.mjs';
 
-export const RECENT_RUN_MAX_AGE_MS = 24 * 60 * 60 * 1_000;
-
 /**
  * Match the package's repository comparison without resolving symlinks: Windows realpath adds
  * `\\?\\` and UNC spellings, turning equal paths into unequal ones. A null result is uncertainty,
@@ -96,45 +94,6 @@ export function liveRuns(runsDir, options = {}) {
     if (recognizedStatus(dir, status, options)) result.push({ dir, status });
   }
   return result;
-}
-
-/**
- * Find runs recent enough to explain the current dispatcher reply, including completed runs.
- * The 24-hour window covers long and overnight dispatches without letting old project history
- * explain a new reply. This closes the August 13 incident where a fabricated FAIL hid a
- * finished/OK run simply by omitting its folder. Null means the disk could not be trusted.
- */
-export function recentRuns(runsDir, options = {}) {
-  if (typeof runsDir !== 'string' || !runsDir.trim()) return null;
-  const now = options.now ?? Date.now();
-  const maxAgeMs = options.maxAgeMs ?? RECENT_RUN_MAX_AGE_MS;
-  let entries;
-  try {
-    entries = fs.readdirSync(runsDir, { withFileTypes: true });
-  } catch (err) {
-    return err.code === 'ENOENT' ? [] : null;
-  }
-
-  const result = [];
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    const dir = path.join(runsDir, entry.name);
-    const statusPath = path.join(dir, 'status.json');
-    if (!fs.existsSync(statusPath)) continue;
-    let status;
-    try {
-      status = readJsonFileSync(statusPath);
-    } catch {
-      return null;
-    }
-    if (!status || typeof status !== 'object' || Array.isArray(status)) return null;
-    if (options.agent && status.agent !== options.agent) continue;
-    if (options.orderId && String(status.order_id ?? '').trim() !== options.orderId) continue;
-    const timestamp = Date.parse(status.finished_at || status.started_at || '');
-    if (!Number.isFinite(timestamp) || timestamp > now || now - timestamp > maxAgeMs) continue;
-    result.push({ dir, status, timestamp });
-  }
-  return result.sort((a, b) => b.timestamp - a.timestamp);
 }
 
 /** Scan every project under the configured runs root for worktree ownership. */

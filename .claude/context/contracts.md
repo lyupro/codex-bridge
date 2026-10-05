@@ -57,13 +57,20 @@ here. Nothing was reworded on the way out.
 - **The dispatcher call is only exact `label: value` lines of one registry, and
   `src/home/lib/dispatcher-call.mjs` is its only reader** (Plan_76 D1). The labels — required, conditional and
   `OPTIONAL_INPUTS`, each with its agents and runner flag — live in `src/home/lib/required-inputs.mjs`
-  (`callInputsFor`); the order gate hook, the canonical command of the dispatcher gate and the reply guard's
-  transcript order id all take `parseDispatcherCall`, and the generated prompt text lists the same labels. Any other
+  (`callInputsFor`); the order gate hook and the canonical command of the dispatcher gate take
+  `parseDispatcherCall`, and the generated prompt text lists the same labels. Any other
   line is a free refusal before the dispatcher starts. A new label is one registry entry with a flag (a label without
   effect on the command is refused by a test), never a regex in a consumer; never add a synonym spelling. Why: on
   2026-10-04 `scope-new: src/` was silently dropped and, placed above `scope:`, became `--scope "new: src/"`, and a
   `Repository root:` prose line made the haiku dispatcher prepend `cd … &&` and leave without delegating — the loose
   reader accepted a label on any line.
+- **The reply guard knows a dispatcher's run only by its receipt** (Plan_63 D10). The dispatcher gate's PostToolUse
+  records the folder of the runner's first `RUN=`/`ATTACH=` stdout line in the dispatcher state, keyed by the host's
+  `session_id` + `agent_id`, once (`bindReceipt` in `src/home/lib/dispatcher-order.mjs`); a different folder later is
+  kept as `runReceiptConflict` and turns the handback into a `FAIL`. Never identify the run by order id, by the task
+  file (re-read at reply time it can carry a valid header of another order) or by searching recent runs on disk (on
+  2026-09-24 the newest run of the agent belonged to an earlier order). Without host ids there is no receipt and a named
+  folder keeps only the disk checks.
 - **Every child process in `src` or `cli` hides its console window: `windowsHide: true` at the call
   site.** The run worker is spawned detached, so on Windows it owns no console, and each console program
   it starts without the flag opens a visible window — on 2026-09-24 the before/after `git` snapshots

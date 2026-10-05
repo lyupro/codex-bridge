@@ -70,6 +70,10 @@ export function decidePreToolUse({ payload, order, state }) {
 
   if (toolName === HANDBACK_TOOL) {
     if (order?.refusal) return allow(`FAIL — dispatcher gate: ${order.refusal}`);
+    if (typeof state?.runReceiptConflict === 'string' && state.runReceiptConflict.length > 0) {
+      return allow('FAIL — dispatcher gate: the runner reported two different run folders for one dispatcher: ' +
+        `${state.runReceipt} and ${state.runReceiptConflict}; the answer is not delivered.`);
+    }
     if (typeof state?.runnerOutput === 'string' && state.runnerOutput.length > 0) {
       if (state.runnerFinal) return allow(state.runnerOutput);
       return deny('the run has started without a verdict; repeat the exact command to attach and wait.', order);

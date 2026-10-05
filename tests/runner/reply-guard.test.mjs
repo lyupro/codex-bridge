@@ -31,5 +31,8 @@ test('cleanRunDir keeps only the folder from the new ATTACH line shape', (t) => 
   });
 
   assert.equal(output.status, 0, output.stderr);
-  assert.equal(output.stdout, '');
+  // Plan_63 D10: without host ids the guard adds a host-loss alarm, but the ATTACH folder must still be accepted.
+  const decision = output.stdout ? JSON.parse(output.stdout) : {};
+  assert.equal(decision.decision, undefined);
+  assert.equal(decision.reason, undefined);
 });

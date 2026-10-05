@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import { AGENTS } from '../lib/agents.mjs';
 import { BRAND_STATE_DIR } from '../lib/brand-home.mjs';
 import { sameCommand } from '../lib/dispatcher-command.mjs';
+import { bindReceipt, runnerReceipt } from '../lib/dispatcher-order.mjs';
 import { parseJsonText } from '../lib/json-file.mjs';
 import {
   decidePreToolUse,
@@ -119,12 +120,16 @@ async function main() {
       if (!order.command || !sameCommand(payload.tool_input?.command, order.command)) return;
       const result = runnerOutput(payload);
       if (!result) return;
-      await updateDispatcherState(ids, (current) => ({
-        ...(current.corrupt ? {} : current),
-        runnerOutput: result.output,
-        runnerFinal: isFinalOutput(result.output),
-        runnerExitCode: result.exitCode,
-      }));
+      await updateDispatcherState(ids, (current) => {
+        const base = current.corrupt ? {} : current;
+        return {
+          ...base,
+          ...bindReceipt(base, runnerReceipt(result.output)),
+          runnerOutput: result.output,
+          runnerFinal: isFinalOutput(result.output),
+          runnerExitCode: result.exitCode,
+        };
+      });
     } catch {}
   }
 }

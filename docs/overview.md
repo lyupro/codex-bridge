@@ -553,13 +553,17 @@ a dispatcher returned its own words and a second writer started in the same tree
 stays silent; if the dispatcher stopped without one, it asks once for a handback. Its stop audit
 checks that every tool call in the dispatcher transcript passed through the gate. A bypass raises
 an alarm in the same turn (“do not trust this dispatcher answer”) and in the witness. The run is
-looked up by the dispatcher's order id, not by the most recent run. It also checks that the response:
+identified by its **receipt**: the dispatcher gate records the run folder from the first `RUN=` or
+`ATTACH=` line of the runner's own stdout, once, under the host's session and agent ids; a second,
+different folder is kept as a contradiction and the handback becomes a `FAIL`. Neither the order id
+nor a search of recent runs on disk identifies the run, and the task file is never re-read. It also
+checks that the response:
 
 - contains `RUN=` with an existing directory;
 - is not issued over a live or abandoned run without a verdict;
 - **names every live `codex-build` run for this project, not only the one being quoted**;
-- **reports a run whose `order_id` is the one the dispatcher was ordered**, read from the
-  dispatcher's own transcript;
+- **names the run its receipt names** — a reply without a receipt, with another folder or over a
+  contradictory receipt is blocked;
 - is confirmed by `meta.json`;
 - does not declare a status that contradicts `meta.json.status`.
 
@@ -586,8 +590,8 @@ refuses prose, unknown or another agent's labels, decorated or hyphenated spelli
 values, missing required labels, placeholders, relative task-file paths, and shell-unsafe values.
 The refusal is free and happens before the dispatcher starts: it names the offending line, the
 exact spelling and every label of that agent, and says "Free text belongs in the task file."
-`parseDispatcherCall` in `lib/dispatcher-call.mjs` is the shared reader for this hook, the canonical
-command's dispatcher gate and the reply guard's transcript order id; grant values (`continue`,
+`parseDispatcherCall` in `lib/dispatcher-call.mjs` is the shared reader for this hook and the canonical
+command's dispatcher gate; grant values (`continue`,
 `retry`) are left to the runner. The hook also refuses an order id already owned by a run with a
 different task-body hash, before Codex is invoked. An explicit `continue:` or `retry:` header grant
 permits another pass. The gate also applies the runner's malformed-header and misplaced-metadata
