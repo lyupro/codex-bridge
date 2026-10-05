@@ -11,6 +11,7 @@ import { activeRunDetails, readJson } from '../write-meta.mjs';
 import { probeCodexAvailability } from './codex-availability.mjs';
 import { agentRole } from '../agents.mjs';
 import { die } from './args.mjs';
+import { orderInputName } from '../order-schema.mjs';
 
 /** Plan_60 D2: only conclusive evidence says UNAVAILABLE; an unclear probe stays an ordinary refusal. */
 export async function codexAvailabilityRefusal({ probe = probeCodexAvailability } = {}) {
@@ -84,15 +85,15 @@ export function scopeRunRefusal({ agent, phase, runsRoot, grantRun }) {
 export function resolveRunPhase({ agent, phase, continue: isContinue }, budgets) {
   // Plan_59 D7: phase 2 must retain the scope run's predictions before quota is spent.
   if (agent === 'codex-advisor' && phase === 'advise' && !isContinue) {
-    die('codex-advisor --phase advise requires --continue: phase 2 continues the scope run of the same order ' +
+    die(`codex-advisor ${orderInputName('phase')} advise requires ${orderInputName('continue')}: phase 2 continues the scope run of the same order ` +
       'so it can settle the risks phase 1 predicted. The run folder was not created; quota was not spent.');
   }
   const phases = budgets[agentRole(agent)];
   const names = Object.keys(phases);
   if (phase === undefined && names.length === 1 && names[0] === 'default') return 'default';
   if (phase !== undefined && Object.hasOwn(phases, phase)) return phase;
-  die(`${phase === undefined ? '--phase is required' : `undeclared --phase ${JSON.stringify(phase)}`} ` +
-    `for ${agent}. Action: pass --phase <name>; allowed phases: ${names.join(', ')}. ` +
+  die(`${phase === undefined ? `${orderInputName('phase')} is required` : `undeclared ${orderInputName('phase')} ${JSON.stringify(phase)}`} ` +
+    `for ${agent}. Action: pass ${orderInputName('phase')} <name>; allowed phases: ${names.join(', ')}. ` +
     'The run folder was not created; quota was not spent.');
 }
 

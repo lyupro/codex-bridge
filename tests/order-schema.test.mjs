@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { REQUIRED_INPUTS, callInputsFor } from '../src/home/lib/required-inputs.mjs';
 import {
-  ORDER_AGENTS, ALL_ORDER_LABELS, orderLabelsFor, orderFromHeader, renderOrderHeaderHelp,
+  ORDER_AGENTS, ALL_ORDER_LABELS, orderLabelsFor, orderInputName, orderFromHeader, renderOrderHeaderHelp,
 } from '../src/home/lib/order-schema.mjs';
 import { parseTaskHeader } from '../src/home/lib/task-header.mjs';
 
@@ -14,6 +14,7 @@ test('order schemas derive every label and its category from the registry minus 
     const labels = orderLabelsFor(agent);
     assert.deepEqual(labels, expected.map((entry) => ({
       label: entry.label,
+      flag: entry.flag,
       required: !entry.conditional && !entry.optional,
       conditional: Boolean(entry.conditional),
       optional: Boolean(entry.optional),
@@ -29,6 +30,24 @@ test('order schemas derive every label and its category from the registry minus 
   for (const agent of ['unknown', '__proto__', 'constructor']) {
     assert.deepEqual(orderLabelsFor(agent), []);
     assert.ok(Object.isFrozen(orderLabelsFor(agent)));
+  }
+});
+
+test('order input names use the registry flag for every order label and agent', () => {
+  const entries = ORDER_AGENTS.flatMap((agent) => callInputsFor(agent));
+  for (const label of ALL_ORDER_LABELS) {
+    const matching = entries.filter((entry) => entry.label === label);
+    assert.ok(matching.length > 0);
+    for (const entry of matching) assert.equal(orderInputName(label), entry.flag);
+  }
+  assert.equal(orderInputName('continue'), '--continue');
+  assert.equal(orderInputName('retry'), '--continue');
+});
+
+test('unknown order input labels throw an Error naming the label', () => {
+  for (const label of ['unknown input', '__proto__', 'constructor']) {
+    assert.throws(() => orderInputName(label), (error) =>
+      error instanceof Error && error.message.includes(label));
   }
 });
 

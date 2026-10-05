@@ -10,8 +10,9 @@ export const ORDER_AGENTS = Object.freeze(Object.keys(REQUIRED_INPUTS));
 const schemas = new Map(ORDER_AGENTS.map((agentType) => [agentType,
   Object.freeze(callInputsFor(agentType)
     .filter(({ label }) => label !== 'task file')
-    .map(({ label, conditional, optional, example }) => Object.freeze({
+    .map(({ label, flag, conditional, optional, example }) => Object.freeze({
       label,
+      flag,
       required: !conditional && !optional,
       conditional: Boolean(conditional),
       optional: Boolean(optional),
@@ -27,6 +28,15 @@ export function orderLabelsFor(agentType) {
 export const ALL_ORDER_LABELS = Object.freeze([...new Set(
   ORDER_AGENTS.flatMap((agentType) => orderLabelsFor(agentType).map(({ label }) => label)),
 )].sort());
+
+const inputNames = new Map(ORDER_AGENTS.flatMap((agentType) =>
+  orderLabelsFor(agentType).map(({ label, flag }) => [label, flag])));
+
+// Plan_63 D7: switching the order input channel changes only this function.
+export function orderInputName(label) {
+  if (!inputNames.has(label)) throw new Error(`Unknown order input label "${label}"`);
+  return inputNames.get(label);
+}
 
 export function orderFromHeader(agentType, parsed) {
   const order = new Map();

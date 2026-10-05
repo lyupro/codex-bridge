@@ -14,6 +14,7 @@ import { attach } from './attach.mjs';
 import { continuationRefusal, retryRefusal, readyGrantLines } from './continuation.mjs';
 import { advisorTaskOrRefuse } from './advise-carry.mjs';
 import { scopeRunRefusal } from './preflight.mjs';
+import { orderInputName } from '../order-schema.mjs';
 
 export async function passGate({ opts, taskText, header, projectRunsRoot, repoRoot, beforeWait }) {
   // A second pass at the same task is a real need — after a timeout or a LIMIT the work has
@@ -29,9 +30,9 @@ export async function passGate({ opts, taskText, header, projectRunsRoot, repoRo
   const grant = header.grant;
   // OW-040, 2026-09-30: only a retry repeats failed scope without spending advise's continuation.
   if (opts.agent === 'codex-advisor' && opts.phase === 'scope' && opts.continue && grant?.kind !== 'retry') {
-    die('codex-advisor --phase scope refuses --continue: a scope pass is never continued, and continuing one ' +
+    die(`codex-advisor ${orderInputName('phase')} scope refuses ${orderInputName('continue')}: a scope pass is never continued, and continuing one ` +
       "spends the order's single continuation that its advise phase needs. Action: repeat the scope under a new order id " +
-      "without --continue and without a continue: grant, then run advise as that order's continuation; a " +
+      `without ${orderInputName('continue')} and without a continue: grant, then run advise as that order's continuation; a ` +
       'scope run that failed is repeated with a `retry:` grant instead. The run folder was not created; quota was not spent.');
   }
   let continuationGrant = grant?.kind === 'continue' ? grant : null;
@@ -92,14 +93,14 @@ export async function passGate({ opts, taskText, header, projectRunsRoot, repoRo
     const lastSlug = String(readJson(path.join(projectRunsRoot, last, 'status.json'))?.slug || '');
     const renamed = lastSlug && lastSlug.toLowerCase() !== String(opts.slug).toLowerCase();
     die(
-      `--continue is required: ${
+      `${orderInputName('continue')} is required: ${
         renamed
           ? `this task already ran in this repository under the name “${lastSlug}”`
           : `runs for task “${opts.slug}” already exist in this repository`
       } (${startedChain.length}), latest: ${path.join(projectRunsRoot, last)}. ` +
         'A repeat run is allowed, but the orchestrator decides, not the runner: it read the ' +
-        'previous response and knows whether work remains. Add --continue if you are finishing ' +
-        'the same task; changing --slug with the same task text does not stop it being a repeat. ' +
+        `previous response and knows whether work remains. Add ${orderInputName('continue')} if you are finishing ` +
+        `the same task; changing ${orderInputName('slug')} with the same task text does not stop it being a repeat. ` +
         `${readyGrantLines(projectRunsRoot, startedChain)} ` +
         'The run folder was not created; quota was not spent.',
     );

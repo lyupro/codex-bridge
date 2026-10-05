@@ -7,6 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { CONTINUATION_INPUT, parseContinuationGrant } from '../required-inputs.mjs';
+import { orderInputName } from '../order-schema.mjs';
 import { readJson } from '../write-meta.mjs';
 import { workerMayBeAlive } from '../meta/run-liveness.mjs';
 
@@ -90,7 +91,7 @@ export function continuationRefusal(runsRootPath, chain, isContinue, orderId, gr
   if (!isContinue) {
     if (!continuation) return null;
     return (
-      '--continue is required when the task text contains a `continue:` grant. ' +
+      `${orderInputName('continue')} is required when the task text contains a \`continue:\` grant. ` +
       `${lastRunHints(runsRootPath, chain, continuation.reason)} ` +
       'The submitted grant was not rewritten. The run folder was not created; quota was not spent.'
     );
@@ -98,7 +99,7 @@ export function continuationRefusal(runsRootPath, chain, isContinue, orderId, gr
 
   if (!continuation) {
     return (
-      '--continue is refused: the orchestrator did not provide a `continue:` grant in the task text. ' +
+      `${orderInputName('continue')} is refused: the orchestrator did not provide a \`continue:\` grant in the task text. ` +
       `${lastRunHints(runsRootPath, chain)} ` +
       `${grantExample} ${grantAction} The run folder was not created; quota was not spent.`
     );
@@ -107,7 +108,7 @@ export function continuationRefusal(runsRootPath, chain, isContinue, orderId, gr
   const namedDirectory = namedRunDirectory(runsRootPath, continuation.run);
   if (!namedDirectory) {
     return (
-      `--continue is refused: the orchestrator named run “${continuation.run}”, but it does not ` +
+      `${orderInputName('continue')} is refused: the orchestrator named run “${continuation.run}”, but it does not ` +
       `exist as a run folder in this project's runs directory ${runsRootPath}. ` +
       `${lastRunHints(runsRootPath, chain, continuation.reason)} ` +
       `${grantExample} ${grantAction} The submitted grant was not rewritten. ` +
@@ -120,7 +121,7 @@ export function continuationRefusal(runsRootPath, chain, isContinue, orderId, gr
   // incident needs no counter or new state to make an orchestrator grant single-use.
   if (!last || !sameRun(runsRootPath, continuation.run, last)) {
     return (
-      `--continue is refused: grant ${continuation.run} is not the LAST run of this task's chain; ` +
+      `${orderInputName('continue')} is refused: grant ${continuation.run} is not the LAST run of this task's chain; ` +
       `the current last run is ${last || 'none'}. A continuation is single-use: continuing the ` +
       'last run appends a later run, so the old grant stops matching by itself — no counter or new ' +
       `state is used. ${lastRunHints(runsRootPath, chain, continuation.reason)} ` +
@@ -138,7 +139,7 @@ export function continuationRefusal(runsRootPath, chain, isContinue, orderId, gr
   if (ofThisOrder.length > 1) {
     const spent = ofThisOrder.map((run) => path.join(runsRootPath, run)).join(', ');
     return (
-      `--continue is refused: order “${wanted}” already spent its allowed continuation on ${spent}. ` +
+      `${orderInputName('continue')} is refused: order “${wanted}” already spent its allowed continuation on ${spent}. ` +
       `${lastRunHints(runsRootPath, chain, continuation.reason)} ` +
       'A further pass needs a new order id from the orchestrator. The run folder was not ' +
       'created; quota was not spent.'
@@ -149,8 +150,8 @@ export function continuationRefusal(runsRootPath, chain, isContinue, orderId, gr
   const meta = readJson(path.join(previous, 'meta.json'));
   if (!meta?.status || status?.state === 'running') {
     return (
-      `--continue is refused: previous run ${previous} has no finished verdict and may still ` +
-      'be editing the worktree. Repeat without --continue to attach to it. ' +
+      `${orderInputName('continue')} is refused: previous run ${previous} has no finished verdict and may still ` +
+      `be editing the worktree. Repeat without ${orderInputName('continue')} to attach to it. ` +
       `${lastRunHints(runsRootPath, chain, continuation.reason)} The run folder was ` +
       'not created; quota was not spent.'
     );
@@ -161,7 +162,7 @@ export function continuationRefusal(runsRootPath, chain, isContinue, orderId, gr
 export function retryRefusal(runsRootPath, chain, isContinue, orderId, grant, liveness = workerMayBeAlive) {
   const refuse = (message) => `${message} The run folder was not created; quota was not spent.`;
   if (!isContinue) {
-    return refuse('--continue is required for a `retry:` grant: the orchestrator deliberately repeats the same pass.');
+    return refuse(`${orderInputName('retry')} is required for a \`retry:\` grant: the orchestrator deliberately repeats the same pass.`);
   }
   const runDir = namedRunDirectory(runsRootPath, grant?.run);
   if (!runDir) {
@@ -183,7 +184,7 @@ export function retryRefusal(runsRootPath, chain, isContinue, orderId, grant, li
   // Plan_75 D1: a verdict alone must not let a retry overlap the failed advise's live writer.
   if (!meta?.status || liveness({ runDir, status })) {
     return refuse(`Retry is refused: run ${grant.run} has no finished verdict or its worker may still be alive and writing. ` +
-      'Repeat without --continue to attach to it.');
+      `Repeat without ${orderInputName('retry')} to attach to it.`);
   }
   if (meta.status === 'OK') {
     return refuse(`Retry is refused: run ${grant.run} ended OK. A retry repeats a failed pass; use continue: for the next pass.`);

@@ -65,7 +65,8 @@ const REFUSALS = [
     name: 'an advisor scope continuation that would spend the advise pass',
     side: 'before',
     file: 'pass-gate.mjs',
-    marker: 'codex-advisor --phase scope refuses --continue',
+    // Plan_63 D7: markers avoid input spellings, which come from orderInputName and change at the switch.
+    marker: 'a scope pass is never continued',
     why: 'OW-040: failed scope repeats only with retry, preserving the advise continuation',
   },
   {
@@ -93,7 +94,7 @@ const REFUSALS = [
     name: 'a repeat that needs --continue',
     side: 'before',
     file: 'pass-gate.mjs',
-    marker: '`--continue is required:',
+    marker: 'this task already ran in this repository under the name',
     why: 'Plan_23: a folder here sent the next identical order to the continuation gate',
   },
   {
