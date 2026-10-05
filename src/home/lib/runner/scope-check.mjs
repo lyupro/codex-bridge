@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { listRepositoryPaths } from './git-paths.mjs';
 import { globToRegExp, normalizePath, SERVICE_RE } from '../meta/paths.mjs';
+import { orderInputName } from '../order-schema.mjs';
 
 // Directories a self-walk must never descend into. Only reached when the repository has no git:
 // with git present the file list comes from the repository itself, which already knows what is
@@ -89,14 +90,14 @@ function noMatchRefusal(pattern, repoRoot, gitListed) {
       pattern,
       reason: `does not match any existing path under ${repoRoot}; ` +
         'git could not list that folder as a repository, so it was walked instead',
-      action: 'start the run from the repository root (cd into it, or pass --repo <repository root>); ' +
+      action: `start the run from the repository root (cd into it, or pass ${orderInputName('repository')} <repository root>); ` +
         'if this folder is the intended one, correct the pattern',
     };
   }
   return {
     pattern,
     reason: 'does not match any existing path in the repository',
-    action: 'correct the pattern or declare an intentionally new path with --scope-new',
+    action: `correct the pattern or declare an intentionally new path with ${orderInputName('scope new')}`,
   };
 }
 
@@ -176,10 +177,10 @@ export function validateScope(repoRoot, patterns, scopeNewPatterns = []) {
   // pattern into the declared list, so position named --scope for a directory given only to --scope-new
   // (OW-042 B1, caught on the live runner 2026-10-04 after the unit test passed separate lists).
   for (const pattern of allPatterns) {
-    const flag = newPathKeys.has(normalizePath(pattern)) ? '--scope-new' : '--scope';
+    const label = newPathKeys.has(normalizePath(pattern)) ? 'scope new' : 'scope';
     const refusal = structuralRefusal(repoRoot, pattern);
-    if (refusal) return { pattern, flag, ...refusal };
-    if (!pattern) return { ...noMatchRefusal(pattern), flag };
+    if (refusal) return { pattern, label, ...refusal };
+    if (!pattern) return { ...noMatchRefusal(pattern), label };
   }
 
   const required = allPatterns.filter((pattern) => !newPathKeys.has(normalizePath(pattern)));
@@ -191,7 +192,7 @@ export function validateScope(repoRoot, patterns, scopeNewPatterns = []) {
   } catch (error) {
     return {
       pattern: required[0],
-      flag: '--scope',
+      label: 'scope',
       reason: `could not parse the pattern: ${error.message}`,
       action: 'correct the pattern and retry',
     };
@@ -204,11 +205,11 @@ export function validateScope(repoRoot, patterns, scopeNewPatterns = []) {
     if (error.code !== 'ERR_GIT_PATH_NOT_UTF8') throw error;
     return {
       pattern: required[0],
-      flag: '--scope',
+      label: 'scope',
       reason: error.message,
       action: 'rename the non-UTF-8 file using a UTF-8 file name and retry',
     };
   }
   const missing = matchers.find((matcher) => !matches.matched.has(matcher.pattern));
-  return missing ? { ...noMatchRefusal(missing.pattern, repoRoot, matches.gitListed), flag: '--scope' } : null;
+  return missing ? { ...noMatchRefusal(missing.pattern, repoRoot, matches.gitListed), label: 'scope' } : null;
 }

@@ -1,5 +1,6 @@
 /** Keeps the runner and producer hook on one definition of which task owns an order id. */
 import { TASK_HASH_SCHEME } from '../meta/chain.mjs';
+import { orderInputName } from '../order-schema.mjs';
 
 const byStartThenName = (left, right) => {
   const leftAt = String(left.status.started_at || '');
@@ -41,6 +42,6 @@ export function orderOwnerConflictText(owner, ownerDir, orderId) {
       `Its answer is already on disk in that folder (codex-bridge read "${ownerDir}"). ` +
       'Another pass of that order needs a continue:/retry: header line; a new task needs a new order id.';
   }
-  return `${identity} with a different task. Use a new order id (--order-id), or a continue:/retry: header line ` +
+  return `${identity} with a different task. Use a new order id (${orderInputName('order id')}), or a continue:/retry: header line ` +
     'if this is another pass of that order.';
 }

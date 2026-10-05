@@ -16,6 +16,7 @@ import {
   abandonedBranchDrift,
 } from '../write-meta.mjs';
 import { TASK_HASH_SCHEME } from '../meta/chain.mjs';
+import { orderInputName } from '../order-schema.mjs';
 import { EXIT } from './exit-codes.mjs';
 import { passGate } from './pass-gate.mjs';
 import { setRun } from './run-context.mjs';
@@ -108,7 +109,7 @@ export async function launcher(argv = process.argv.slice(2)) {
   const scopeRefusal = validateScope(repoRoot, opts.scopePatterns, opts.scopeNewPatterns);
   if (scopeRefusal) {
     die(
-      `${scopeRefusal.flag} pattern ${JSON.stringify(scopeRefusal.pattern)} refused: ` +
+      `${orderInputName(scopeRefusal.label)} pattern ${JSON.stringify(scopeRefusal.pattern)} refused: ` +
         `${scopeRefusal.reason}. ` +
         `Action: ${scopeRefusal.action}. The run folder was not created; quota was not spent.`,
     );
@@ -344,7 +345,7 @@ export async function launcher(argv = process.argv.slice(2)) {
       `STARTED agent=${opts.agent} slug=${opts.slug} order-id=${opts.orderId} worker-pid=${worker.pid}`,
     );
     console.log(
-      'To get the verdict, repeat the identical command with the same --order-id; it will attach to this run and will not start a second run.',
+      `To get the verdict, repeat the identical command with the same ${orderInputName('order id')}; it will attach to this run and will not start a second run.`,
     );
     return EXIT.OK;
   } finally {

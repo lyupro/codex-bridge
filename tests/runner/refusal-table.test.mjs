@@ -45,7 +45,7 @@ const REFUSALS = [
   {
     name: 'an impossible --scope pattern',
     side: 'before',
-    marker: '`${scopeRefusal.flag} pattern ${JSON.stringify(scopeRefusal.pattern)} refused: `',
+    marker: 'pattern ${JSON.stringify(scopeRefusal.pattern)} refused: ',
     why: 'Plan_27: nothing has been touched and the order has to be rewritten',
   },
   {

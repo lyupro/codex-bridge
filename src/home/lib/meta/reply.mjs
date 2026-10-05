@@ -15,6 +15,7 @@ import { AGENTS as AGENT_DEFINITIONS } from '../agents.mjs';
 import { changedPaths, line, readText } from './paths.mjs';
 import { splitRunChanges } from './environment.mjs';
 import { scoutCoverage } from './verdict.mjs';
+import { orderInputName } from '../order-schema.mjs';
 
 /** What the run itself changed, and what the tooling around it changed while it worked. */
 const runChanges = (runDir) =>
@@ -143,7 +144,7 @@ function advisorReply(ctx) {
     const risks = r.predicted_risks || [];
     return [
       r.sufficient
-        ? 'OK — scope: sufficient; continue this run with --phase advise'
+        ? `OK — scope: sufficient; continue this run with ${orderInputName('phase')} advise`
         : `OK — scope: insufficient; ${missing.length} paths named`,
       ...(missing.length ? [`Missing: ${line(missing.join(', '), 160)}`] : []),
       `Predicted risks: ${risks.length}${risks[0] ? ` — ${risks[0].id} ${line(risks[0].risk, 120)}` : ''}`,
