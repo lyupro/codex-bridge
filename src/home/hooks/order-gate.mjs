@@ -14,7 +14,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { AGENTS } from '../lib/agents.mjs';
+import { BRAND_HOME, BRAND_STATE_DIR } from '../lib/brand-home.mjs';
+import { modelLatch, readDispatcherModel } from '../lib/dispatcher-model.mjs';
+import { readDispatcherPin } from '../lib/dispatcher-pin.mjs';
 import { recordHookDiagnostic } from '../lib/hook-diagnostics.mjs';
+import { transcriptHostVersion } from '../lib/host-version.mjs';
 import { readJsonFileSync } from '../lib/json-file.mjs';
 import { parseDispatcherCall, renderCallRefusal } from '../lib/dispatcher-call.mjs';
 import { orderFromHeader, renderOrderProblems } from '../lib/order-schema.mjs';
@@ -25,6 +29,7 @@ import { resolveProjectRunsDir } from '../lib/runner/project-dir.mjs';
 import { runsRoot } from '../lib/runner/runs-root.mjs';
 import { parseTaskDocument } from '../lib/runner/task-file.mjs';
 import { parseTaskHeader, taskHeaderRefusal } from '../lib/task-header.mjs';
+import { envModelProblem } from '../lib/subagent-model-env.mjs';
 
 const GUARDED = new Set(Object.keys(AGENTS));
 /**
@@ -34,9 +39,14 @@ const GUARDED = new Set(Object.keys(AGENTS));
  */
 const SUBAGENT_TOOL_NAMES = new Set(SUBAGENT_TOOLS);
 
-const pass = () => process.exit(0);
+let systemMessage;
+const pass = () => {
+  if (systemMessage) process.stdout.write(JSON.stringify({ systemMessage }));
+  process.exit(0);
+};
 const deny = (reason) => {
   process.stdout.write(JSON.stringify({
+    ...(systemMessage ? { systemMessage } : {}),
     hookSpecificOutput: {
       hookEventName: 'PreToolUse',
       permissionDecision: 'deny',
@@ -60,7 +70,37 @@ if (!SUBAGENT_TOOL_NAMES.has(input.tool_name)) pass();
 
 const toolInput = input.tool_input;
 if (!toolInput || typeof toolInput !== 'object' || Array.isArray(toolInput)) pass();
-if (!GUARDED.has(toolInput.subagent_type) || typeof toolInput.prompt !== 'string') pass();
+if (!GUARDED.has(toolInput.subagent_type)) pass();
+
+// Plan_67 D6: one installed model contract; refuse even matching aliases before prompt exits.
+const agentType = toolInput.subagent_type;
+if (Object.hasOwn(toolInput, 'model')) {
+  deny(
+    "Order gate denied the Agent call because it passes `model`: a dispatcher's model is set in one place, "
+      + `its installed agent file. Call ${agentType} without model. `
+      + 'The run folder was not created; quota was not spent.',
+  );
+}
+try {
+  const hostVersion = await transcriptHostVersion(input.transcript_path).catch(() => null);
+  const pin = readDispatcherPin({ brandRoot: BRAND_HOME.root, agentType });
+  const problem = envModelProblem({ env: process.env, hostVersion, pinFamily: pin.family });
+  if (problem) deny(problem);
+} catch {
+  // D6 (b): uncertain host/env evidence is diagnostic only; the stop observer still checks it.
+}
+try {
+  const latch = modelLatch({ ledger: readDispatcherModel({ stateDir: BRAND_STATE_DIR }), agentType });
+  if (latch.active) {
+    const { data, at } = latch.violation;
+    systemMessage = `codex-bridge: the last ${agentType} ran on ${data.parsed.join(', ')} `
+      + `while the installed contract pins ${data.pinFamily} (${data.hostVersion ?? 'unknown'}, ${at}); `
+      + 'the cause is outside this call — another hook or the host; run codex-bridge doctor.';
+  }
+} catch {
+  // D4 (a): a corrupt ledger must not turn a diagnostic warning into a refusal.
+}
+if (typeof toolInput.prompt !== 'string') pass();
 
 /**
  * Plan_62 D7: with agent teams enabled, a registered dispatcher launched with `name` or `team_name`

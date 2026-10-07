@@ -8,16 +8,19 @@ import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 const ROOT = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const GATE = path.join(ROOT, 'src', 'home', 'hooks', 'order-gate.mjs');
 
-export function runGate(root, input) {
+export function runGate(root, input, env = {}) {
   return spawnSync(process.execPath, [GATE], {
     input,
     encoding: 'utf8',
     env: {
       ...process.env,
+      CLAUDE_CODE_SUBAGENT_MODEL: '',
+      CLAUDE_CODE_SUBAGENT_MODEL_FORCE: '',
       CODEX_RUNS_ROOT: path.join(root, 'runs'),
       HOME: root,
       USERPROFILE: root,
       CODEX_BRIDGE_HOME: path.join(root, '.lyupro', '.codex-bridge'),
+      ...env,
     },
   });
 }
