@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { withTempTree } from './temp-tree.mjs';
+import { handbackWitnessStatus } from '../cli/handback-witness-check.mjs';
 import { emptyLedger, entryState, HISTORY_LIMIT } from '../src/home/lib/observation-ledger.mjs';
 import {
   WITNESS_FILE, WITNESS_CAUSES, witnessKey, readHandbackWitness,
@@ -155,6 +156,29 @@ test('corrupt files refuse both writers and retain their original bytes', async 
       await assert.rejects(recordInterceptedAttempt({ stateDir, hostVersion: null }), /Cannot update corrupt observation ledger/);
       assert.equal(fs.readFileSync(file, 'utf8'), source);
       assert.deepEqual(fs.readdirSync(stateDir), [WITNESS_FILE]);
+    }
+  });
+});
+
+test('witness reads validate adapter data in every observation slot without throwing', async () => {
+  await fixture(async (stateDir, file) => {
+    await observe(stateDir, { verdict: 'violation' });
+    const valid = await observe(stateDir, { verdict: 'match' });
+    for (const slot of ['lastObservation', 'lastViolation', 'lastMatch', 'history']) {
+      for (const data of [undefined, null, [], {}, { ...identity(), cause: 'foreign' },
+        { ...identity(), hostVersion: 123 }, { ...identity(), agentType: 123 }]) {
+        const record = JSON.parse(JSON.stringify(valid));
+        const entry = record.ledger.entries[witnessKey(identity())];
+        const observation = slot === 'history' ? entry.history[0] : entry[slot];
+        if (data === undefined) delete observation.data;
+        else observation.data = data;
+        fs.writeFileSync(file, JSON.stringify(record));
+        const read = readHandbackWitness({ stateDir });
+        assert.deepEqual(read, { corrupt: true }, `${slot}: ${JSON.stringify(data)}`);
+        const status = handbackWitnessStatus({ record: read, hostVersion: identity().hostVersion, stateDir });
+        assert.equal(status.state, 'unreadable');
+        assert.ok(status.message.includes(file));
+      }
     }
   });
 });

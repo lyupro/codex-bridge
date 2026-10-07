@@ -15,7 +15,7 @@ const hostVersion = 'test-host';
 const agentType = 'codex-build';
 const agentId = 'test-agent';
 const cleanStop = () => ({
-  agentType, hostVersion, agentId, hasIds: true,
+  agentType, hostVersion, agentId, hasIds: true, transcriptComplete: true,
   state: { handback: 'delivered', runnerFinal: true }, toolUses: [], unseen: [],
 });
 const toolsObservation = (values) => typedStopObservations(values).find(({ cause }) => cause === 'tools-outside-gate');
@@ -65,6 +65,7 @@ test('unseen tools always violate the gate with the existing detail and tool ord
     detail: `${agentType} ${agentId}: Bash, Read outside the dispatcher gate`,
   });
   assert.equal(toolsObservation({ ...values, state: null, toolUses: null }).verdict, 'violation');
+  assert.equal(toolsObservation({ ...values, transcriptComplete: false }).verdict, 'violation');
 });
 
 test('a readable, fully audited, healthy delivered runner stop matches the gate', () => {
@@ -78,6 +79,9 @@ test('a readable, fully audited, healthy delivered runner stop matches the gate'
 });
 
 for (const [name, overrides] of [
+  ['incomplete transcript', { transcriptComplete: false }],
+  ['unspecified transcript completeness', { transcriptComplete: undefined }],
+  ['truthy non-boolean transcript completeness', { transcriptComplete: 'true' }],
   ['unreadable transcript', { toolUses: null }],
   ['missing state', { state: null }],
   ['undefined state', { state: undefined }],
@@ -96,6 +100,25 @@ for (const [name, overrides] of [
     assert.equal(typedStopObservations(values).length, 2);
   });
 }
+
+test('an incomplete stop preserves an audit alarm and still records unseen tools', async () => {
+  await withTempTree('reply-witness-incomplete-', async (root) => {
+    const stateDir = path.join(root, 'state');
+    const cause = 'tools-outside-gate';
+    const key = witnessKey({ cause, hostVersion, agentType });
+    await recordWitnessObservation({ stateDir, cause, hostVersion, agentType, verdict: 'violation' });
+    await recordStopWitness({ stateDir, observations: typedStopObservations({ ...cleanStop(), transcriptComplete: false }) });
+    let entry = readHandbackWitness({ stateDir }).ledger.entries[key];
+    assert.equal(entryState(entry), 'violation');
+    assert.equal(entry.lastMatch, null);
+    await recordStopWitness({ stateDir, observations: typedStopObservations({
+      ...cleanStop(), transcriptComplete: false, unseen: [{ name: 'Read' }],
+    }) });
+    entry = readHandbackWitness({ stateDir }).ledger.entries[key];
+    assert.equal(entry.lastObservation.verdict, 'violation');
+    assert.match(entry.lastViolation.detail, /Read outside the dispatcher gate/);
+  });
+});
 
 test('one ordered batch preserves violations and allocates successive sequence numbers', async () => {
   await withTempTree('reply-witness-batch-', async (root) => {

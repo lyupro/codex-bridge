@@ -54,9 +54,24 @@ function normalizeOldWitness(record) {
   return null;
 }
 
+function normalizeWitnessLedger(parsed) {
+  const ledger = normalizeLedger(parsed);
+  if (!ledger) return null;
+  for (const entry of Object.values(ledger.entries)) {
+    for (const observation of [entry.lastObservation, entry.lastViolation, entry.lastMatch, ...entry.history]) {
+      if (observation === null) continue;
+      const data = observation.data;
+      if (!data || Object.getPrototypeOf(data) !== Object.prototype || !WITNESS_CAUSES.includes(data.cause)
+        || !(data.hostVersion === null || typeof data.hostVersion === 'string')
+        || !(data.agentType === null || typeof data.agentType === 'string')) return null;
+    }
+  }
+  return ledger;
+}
+
 export function migrateWitness(parsed) {
   if (object(parsed) && Object.hasOwn(parsed, 'version')) {
-    return parsed.version === 2 && normalizeLedger(parsed.ledger) && hostMap(parsed.intercepted)
+    return parsed.version === 2 && normalizeWitnessLedger(parsed.ledger) && hostMap(parsed.intercepted)
       && Array.isArray(parsed.legacy) && parsed.legacy.every((entry) => alarmEntry(entry)
         && ['legacy-untyped-unverified', 'unclassified'].includes(entry.disposition)) ? parsed : null;
   }

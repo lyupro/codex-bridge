@@ -120,7 +120,8 @@ if (typeof input.agent_id === 'string' && input.agent_id.length > 0
   try {
     const state = typeof input.session_id === 'string' && input.session_id.length > 0
       ? readDispatcherState({ stateDir: BRAND_STATE_DIR, sessionId: input.session_id, agentId: input.agent_id }) : null;
-    evidence = untypedStopEvidence({ state, toolUses: transcriptToolUses(input.agent_transcript_path) });
+    const transcript = transcriptToolUses(input.agent_transcript_path);
+    evidence = untypedStopEvidence({ state, toolUses: transcript?.toolUses ?? null });
   } catch {
     // An unreadable state is no evidence either way; a guard failure must never break the stop.
     evidence = { dispatcher: false, reason: 'state-unreadable' };
@@ -162,7 +163,8 @@ try {
     };
     const state = readDispatcherState(ids);
     ({ receipt, receiptConflict } = readReceiptEvidence(state));
-    const toolUses = transcriptToolUses(input.agent_transcript_path);
+    const transcript = transcriptToolUses(input.agent_transcript_path);
+    const toolUses = transcript?.toolUses ?? null;
     const stop = decideDispatcherStop({ state, toolUses });
     if (stop.unseen.length) {
       const names = stop.unseen.map((toolUse) => toolUse.name).join(', ');
@@ -170,7 +172,7 @@ try {
     }
     await recordStopWitness({ stateDir: BRAND_STATE_DIR, observations: typedStopObservations({
       agentType: input.agent_type, agentId: input.agent_id, hostVersion: await witnessHostVersion(input),
-      hasIds, state, toolUses, unseen: stop.unseen,
+      hasIds, state, toolUses, unseen: stop.unseen, transcriptComplete: transcript?.complete === true,
     }) });
     if (stop.stateUpdate) {
       await updateDispatcherState(ids, (current) => ({
@@ -197,7 +199,7 @@ try {
 if (!hasIds) {
   await recordStopWitness({ stateDir: BRAND_STATE_DIR, observations: typedStopObservations({
     agentType: input.agent_type, hostVersion: await witnessHostVersion(input),
-    hasIds, state: null, toolUses: null, unseen: [],
+    hasIds, state: null, toolUses: null, unseen: [], transcriptComplete: false,
   }) });
   dispatcherSystemMessage ||= missingIdsAlarm(input.agent_type);
 }

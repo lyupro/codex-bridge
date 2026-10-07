@@ -18,10 +18,10 @@ test('transcriptToolUses reads assistant tool calls and skips other or broken li
   ];
   await fs.writeFile(transcript, `${lines.join('\n')}\n`);
 
-  assert.deepEqual(transcriptToolUses(transcript), [
+  assert.deepEqual(transcriptToolUses(transcript), { toolUses: [
     { id: 'one', name: 'Bash' },
     { id: 'two', name: HANDBACK_TOOL },
-  ]);
+  ], complete: false });
   assert.equal(transcriptToolUses(path.join(root, 'missing.jsonl')), null);
 });
 
@@ -43,11 +43,22 @@ test('transcriptToolUses preserves only assistant Bash string commands', async (
     ] } },
   ];
   await fs.writeFile(transcript, `${lines.map((line) => JSON.stringify(line)).join('\n')}\n`);
-  assert.deepEqual(transcriptToolUses(transcript), [
+  assert.deepEqual(transcriptToolUses(transcript), { toolUses: [
     { id: 'bash', name: 'Bash', command },
     { id: 'read', name: 'Read' },
     { id: 'number', name: 'Bash' },
-  ]);
+  ], complete: true });
+});
+
+test('transcriptToolUses ignores blank lines without making the transcript incomplete', async (t) => {
+  const root = makeTempTree('bridge-dispatcher-stop-');
+  t.after(() => removeTempTree(root));
+  const transcript = path.join(root, 'agent.jsonl');
+  const record = { type: 'assistant', message: { content: [{ type: 'tool_use', id: 'one', name: 'Read' }] } };
+  await fs.writeFile(transcript, `\r\n \t\r\n${JSON.stringify(record)}\r\n\t\n`);
+  assert.deepEqual(transcriptToolUses(transcript), { toolUses: [{ id: 'one', name: 'Read' }], complete: true });
+  await fs.writeFile(transcript, ' \t\r\n\n');
+  assert.deepEqual(transcriptToolUses(transcript), { toolUses: [], complete: true });
 });
 
 test('decideDispatcherStop yields after a delivered handback', () => {

@@ -16,7 +16,9 @@ export function untypedStopObservation({ evidence, hostVersion, agentId }) {
   };
 }
 
-export function typedStopObservations({ agentType, hostVersion, agentId, hasIds, state, toolUses, unseen }) {
+export function typedStopObservations({
+  agentType, hostVersion, agentId, hasIds, state, toolUses, unseen, transcriptComplete,
+}) {
   const observations = hasIds ? [
     { cause: 'missing-agent-type', hostVersion, agentType: null, verdict: 'match' },
     { cause: 'missing-ids', hostVersion, agentType, verdict: 'match' },
@@ -29,7 +31,7 @@ export function typedStopObservations({ agentType, hostVersion, agentId, hasIds,
       cause: 'tools-outside-gate', hostVersion, agentType, verdict: 'violation',
       detail: `${agentType} ${agentId}: ${unseen.map(({ name }) => name).join(', ')} outside the dispatcher gate`,
     });
-  } else if (toolUses !== null && state && !state.corrupt && state.auditAlarmed !== true
+  } else if (transcriptComplete === true && toolUses !== null && state && !state.corrupt && state.auditAlarmed !== true
     && state.handback === 'delivered' && state.runnerFinal === true && !state.runReceiptConflict) {
     // D8: denied attempts and synthetic gate FAILs (dispatcher-gate.mjs:70-92) cannot clear an audit alarm.
     observations.push({ cause: 'tools-outside-gate', hostVersion, agentType, verdict: 'match' });

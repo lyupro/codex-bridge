@@ -1,11 +1,16 @@
 /** Guards Plan_67 D4/D8 severity, recovery and current-host-only doctor rows. */
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
 import { dispatcherModelChecks } from '../../cli/dispatcher-model-check.mjs';
 import { check } from '../../cli/doctor-format.mjs';
-import { DISPATCHER_MODEL_FILE } from '../../src/home/lib/dispatcher-model.mjs';
+import { diagnose } from '../../cli/doctor.mjs';
+import { brandStateDir } from '../../src/home/lib/brand-home.mjs';
+import { DISPATCHER_MODEL_FILE, readDispatcherModel } from '../../src/home/lib/dispatcher-model.mjs';
+import { readHandbackWitness, WITNESS_FILE } from '../../src/home/lib/handback-witness.mjs';
 import { emptyLedger, reduceObservation } from '../../src/home/lib/observation-ledger.mjs';
+import { codexProbe, installedFixture, ownPackage } from './doctor-fixtures.mjs';
 
 const hostVersion = '2.1.281';
 const at = '2026-10-07T10:00:00.000Z';
@@ -159,3 +164,29 @@ test('a null host identity stays distinct from a known host', () => {
   assert.equal(row.status, 'ok');
   assert.match(row.value, /unknown host: 1 entries, 1 unresolved violations/);
 });
+
+for (const [file, key, read] of [
+  [DISPATCHER_MODEL_FILE, 'dispatcherModel', readDispatcherModel],
+  [WITNESS_FILE, 'handbackWitness', readHandbackWitness],
+]) {
+  test(`doctor warns once without throwing when ${file} has an observation without data`, async (t) => {
+    const { host } = await installedFixture(t);
+    const directory = brandStateDir(host.brandRoot);
+    const data = { hostVersion, agentType: 'codex-build', cause: 'missing-ids' };
+    const ledger = reduceObservation(emptyLedger(), {
+      key: `${hostVersion}|codex-build`, verdict: 'violation', at, detail: 'contract broken', data,
+    });
+    const foreign = JSON.parse(JSON.stringify(ledger));
+    delete foreign.entries[`${hostVersion}|codex-build`].lastObservation.data;
+    const record = file === WITNESS_FILE ? { version: 2, ledger: foreign, intercepted: {}, legacy: [] } : foreign;
+    fs.mkdirSync(directory, { recursive: true });
+    fs.writeFileSync(path.join(directory, file), JSON.stringify(record));
+    assert.deepEqual(read({ stateDir: directory }), { corrupt: true });
+    const result = await diagnose({ host, codexProbe, currentPackage: ownPackage, hostVersion });
+    const resultRows = result.checks.filter((item) => item.key.startsWith(key));
+    assert.equal(resultRows.length, 1);
+    assert.equal(resultRows[0].status, 'warn');
+    assert.ok(resultRows[0].value.includes(path.join(directory, file)));
+    assert.equal(result.exitCode, 0);
+  });
+}

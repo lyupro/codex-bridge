@@ -31,9 +31,19 @@ test('transcriptModels preserves every assistant model and skips malformed or un
       JSON.stringify({ type: 'assistant' }),
       'null', '',
     ].join('\r\n'));
-    assert.deepEqual(transcriptModels(file), ['haiku', 'claude-sonnet-4-5', '<synthetic>', 'haiku']);
+    assert.deepEqual(transcriptModels(file), {
+      models: ['haiku', 'claude-sonnet-4-5', '<synthetic>', 'haiku'], complete: false,
+    });
     fs.writeFileSync(file, '');
-    assert.deepEqual(transcriptModels(file), []);
+    assert.deepEqual(transcriptModels(file), { models: [], complete: true });
+  });
+});
+
+test('transcriptModels ignores blank lines without making the transcript incomplete', async () => {
+  await withTempTree('dispatcher-model-blank-', (root) => {
+    const file = path.join(root, 'agent.jsonl');
+    fs.writeFileSync(file, `\r\n \t\r\n${JSON.stringify({ type: 'assistant', message: { model: 'haiku' } })}\r\n\t\n`);
+    assert.deepEqual(transcriptModels(file), { models: ['haiku'], complete: true });
   });
 });
 
@@ -62,6 +72,25 @@ test('any foreign parsed family is a violation against the installed contract', 
   assert.deepEqual(result.data.parsed, ['haiku', 'sonnet']);
   assert.equal(result.data.unparsed, 1);
   assert.doesNotMatch(result.detail, /ignored|frontmatter/);
+});
+
+test('incomplete matching model evidence is undetermined and cannot clear the quota latch', () => {
+  const result = observe({ complete: false });
+  assert.equal(result.verdict, 'undetermined');
+  assert.equal(result.detail, 'codex-build model comparison is undetermined: the transcript has unreadable records');
+  assert.equal(result.data.complete, false);
+  const violation = reduceObservation(emptyLedger(), { ...observe({ models: ['sonnet'] }), at: now });
+  const ledger = reduceObservation(violation, { ...result, at: now });
+  assert.equal(modelLatch({ ledger, agentType }).active, true);
+  assert.equal(ledger.entries[result.key].lastMatch, null);
+});
+
+test('incomplete foreign-family evidence still records a violation', () => {
+  const result = observe({ models: ['haiku', 'sonnet'], complete: false });
+  assert.equal(result.verdict, 'violation');
+  assert.deepEqual(result.data.parsed, ['haiku', 'sonnet']);
+  assert.equal(Object.hasOwn(result.data, 'complete'), false);
+  assert.equal(Object.hasOwn(observe({ models: null, complete: false }).data, 'complete'), false);
 });
 
 test('an undetermined pin retains its reasons and uses the unknown host key', () => {
@@ -140,6 +169,26 @@ test('malformed ledgers remain corrupt and are never overwritten', async () => {
       assert.deepEqual(readDispatcherModel({ stateDir }), { corrupt: true });
       await assert.rejects(recordDispatcherModel({ stateDir, observation: observe(), now }), /corrupt observation ledger/);
       assert.equal(fs.readFileSync(file, 'utf8'), content);
+    }
+  });
+});
+
+test('dispatcher-model reads validate adapter data in every observation slot', async () => {
+  await withTempTree('dispatcher-model-adapter-data-', (stateDir) => {
+    const violation = reduceObservation(emptyLedger(), { ...observe({ models: ['sonnet'] }), at: now });
+    const valid = reduceObservation(violation, { ...observe(), at: now });
+    const file = path.join(stateDir, DISPATCHER_MODEL_FILE);
+    for (const slot of ['lastObservation', 'lastViolation', 'lastMatch', 'history']) {
+      for (const data of [undefined, null, [], {}, { hostVersion: 123, agentType },
+        { hostVersion: null, agentType: '' }, { hostVersion: null, agentType: null }]) {
+        const ledger = JSON.parse(JSON.stringify(valid));
+        const entry = ledger.entries['host-a|codex-build'];
+        const observation = slot === 'history' ? entry.history[0] : entry[slot];
+        if (data === undefined) delete observation.data;
+        else observation.data = data;
+        fs.writeFileSync(file, JSON.stringify(ledger));
+        assert.deepEqual(readDispatcherModel({ stateDir }), { corrupt: true }, `${slot}: ${JSON.stringify(data)}`);
+      }
     }
   });
 });

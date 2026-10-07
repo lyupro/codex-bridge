@@ -12,11 +12,14 @@ export function transcriptToolUses(transcriptPath) {
   }
 
   const toolUses = [];
+  let complete = true;
   for (const line of source.split(/\r?\n/)) {
+    if (!line.trim()) continue;
     let record;
     try {
       record = parseJsonText(transcriptPath, line);
     } catch {
+      complete = false;
       continue;
     }
     if (record?.type !== 'assistant' && record?.message?.role !== 'assistant') continue;
@@ -32,7 +35,7 @@ export function transcriptToolUses(transcriptPath) {
       }
     }
   }
-  return toolUses;
+  return { toolUses, complete };
 }
 
 export function decideDispatcherStop({ state, toolUses }) {
