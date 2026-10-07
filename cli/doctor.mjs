@@ -20,10 +20,12 @@ import {
 import { hookChecks } from './doctor-hooks.mjs';
 import { contractStatus, readHostContract } from './host-contract.mjs';
 import { handbackWitnessStatus } from './handback-witness-check.mjs';
+import { dispatcherModelChecks } from './dispatcher-model-check.mjs';
 import { dispatcherContractStatus } from './dispatcher-contract.mjs';
 import { DISPATCHER_CONTRACT_FILE, readDispatcherContract } from './dispatcher-contract-record.mjs';
 import { PROBE_COMMAND } from './host-contract.mjs';
 import { readHandbackWitness } from '../src/home/lib/handback-witness.mjs';
+import { readDispatcherModel } from '../src/home/lib/dispatcher-model.mjs';
 import { brandStateDir } from '../src/home/lib/brand-home.mjs';
 import { readHostObservations } from '../src/home/lib/host-observations.mjs';
 import { otherHostCheck, sessionHostCheck, sessionHostVersions } from './session-hosts.mjs';
@@ -83,6 +85,7 @@ export async function diagnose({
   currentPackage,
   contractRecord,
   handbackWitnessRecord,
+  dispatcherModelRecord,
   dispatcherContractRecord,
   hostVersion,
   observations,
@@ -163,6 +166,11 @@ export async function diagnose({
     stateDir,
   });
   checks.push(check('handbackWitness', ['violation', 'unreadable'].includes(witness.state) ? 'warn' : 'ok', witness.message));
+  checks.push(...dispatcherModelChecks({
+    record: dispatcherModelRecord === undefined ? readDispatcherModel({ stateDir }) : dispatcherModelRecord,
+    hostVersion: detectedHostVersion,
+    stateDir,
+  }));
   const dispatcherRecord = dispatcherContractRecord === undefined ? readDispatcherContract({ stateDir }) : dispatcherContractRecord;
   checks.push(...dispatcherContractChecks({
     record: dispatcherRecord,
@@ -190,7 +198,7 @@ export async function diagnose({
     exitCode: !record || recordBroken || missingFiles.length || agents.status === 'fail' || rules.status === 'fail'
       || hostContractStatus === 'fail' || retention.status === 'fail' || conventions.status === 'fail'
       || projectRuns.status === 'fail'
-      || checks.some((item) => /^(hook|dispatcherContract):/.test(item.key) && item.status === 'fail')
+      || checks.some((item) => /^(hook|dispatcherContract|dispatcherModel):/.test(item.key) && item.status === 'fail')
       || checks.some((item) => item.key.startsWith('otherHost:') && item.status === 'fail') ? 1 : 0,
     checks,
     record,
