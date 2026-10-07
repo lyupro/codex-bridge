@@ -4,6 +4,40 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `codex-bridge inventory confirm [--scope user|project] [--host <path>] [--dry-run]` lets the
+  operator declare that the recorded hosts are all the hosts using this home. An old installation
+  record migrated to format 2 without a terminal stays `inventory: incomplete`: later updates do
+  not ask again, and since 0.6.11 every dispatcher model observation leaves the pin undetermined.
+  The package cannot prove that no unrecorded host uses the home; only the operator can.
+  The command shows the home, recorded host roots and Codex rules registry hints, marking missing
+  folders because the registry can retain deleted scratchpads. Enroll an unlisted host with
+  `codex-bridge install --host "<path>"` before confirming. A terminal "yes" changes only
+  `inventory` to `complete` and removes `legacy`; owners, fingerprints and every other field are
+  left as read. This permits ordinary shared-image cleanup when the last recorded host uninstalls;
+  it does not record a model match or clear a violation. No, EOF or a non-TTY exits 1 without changes;
+  Ctrl+C exits 130; a valid dry run shows the declaration without writing and exits 0. Confirmation
+  and an already-complete inventory without `legacy` exit 0. The `doctor` owner rows and the
+  incomplete-inventory pin reason now name this command.
+
+### Changed
+
+- `doctor` judges handback witness and dispatcher model state for every host whose dispatchers
+  ran in the last 24 hours. On 2026-10-07 two VS Code windows ran 2.1.291 and 2.1.292: an observation
+  on the non-newest host appeared only as history, and a model violation there would have printed
+  `ok`. Active witness violations identify their host with `host <version>:`, and each active
+  host's model entries have their own rows with that prefix. A model `fail` on any active host
+  reaches exit code 1. Older unresolved entries remain in one history sentence, without active
+  warning rows. The newest-host selector still serves contracts, `otherHost:*` and install.
+
+### Fixed
+
+- Dispatcher model rows no longer print a doubled period after a pin reason: the live `doctor`
+  output had added its own period to a reason that already ended with one.
+
 ## [0.6.11] - 2026-10-07
 
 ### Changed

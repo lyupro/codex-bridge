@@ -312,9 +312,13 @@ boundaries are:
 An untyped stop is a violation only with evidence bound to that stop: healthy gate state with
 a registered type and actual gate activity, or an assistant Bash call executing a standalone
 runner command for a registered role. No evidence, or unavailable evidence, is undetermined;
-it cannot clear an earlier violation. `handbackWitness` warns only for unresolved causes on the
-current observed session host and never fails `doctor` or blocks work. Recovery and other hosts
-remain history; no observations is `ok`.
+it cannot clear an earlier violation. `handbackWitness` warns for unresolved causes on any host
+with dispatcher activity in the last 24 hours, naming each violation's host with `host <version>:`;
+it never fails `doctor` or blocks work. Recovery, unverified legacy alarms and unresolved causes
+on hosts outside the window remain a history sentence with counts. With no active hosts it is
+`ok` and says “No dispatcher activity in the last 24 hours.” Activity comes from the latest
+recorded session activity, intercepted handback or witness/model observation for each host version,
+not session liveness (Plan_67 D12).
 
 The old `{lastSeen, alarms}` form is interpreted before normalization: host-version sightings
 become `intercepted`, while SDK-based sightings cannot identify a host. Exact old “host omitted
@@ -347,6 +351,11 @@ The contract requires `.installed.json` format 2, a complete inventory, no legac
 at least one owner. Every recorded root's `agents/codex-bridge/<type>.md` must have the required
 frontmatter `name` and agree on a parseable family. Missing files, malformed definitions or
 disagreement produce an undetermined pin, rather than reconstructing host precedence.
+An old record migrated without a terminal stays `inventory: incomplete` until the operator
+accounts for every host using the home. `codex-bridge inventory confirm` sets `.installed.json`
+`inventory` to `complete` and removes `legacy`, leaving every other field as read, including
+owners and fingerprints. It does not create a model match or clear a violation; the next
+dispatcher observation determines the comparison (Plan_67 D11).
 
 With a known pin, any parsed foreign family is a violation; one or more parsed families all
 matching is a match. Unparseable model strings are not evidence, and no parsed family or an
@@ -354,11 +363,14 @@ unknown pin is undetermined. A violation raises a same-turn alarm even if record
 The order gate's warning latch projects across all host entries of that type: the greatest
 violation `seq` stays active until a greater match `seq`, without rewriting the old host's entry.
 
-`doctor` prints `dispatcherModel:<type>` only for current-host entries: a latest violation is
-`fail` with exit 1; a latest undetermined observation is `warn`, retaining any undisproved incident;
-a latest match is `ok`, including recovery. No current-host observations produces an `ok`
-`dispatcherModel` row saying “Not observed yet”. Other hosts and recovered incidents are history,
-not permanent warnings (Plan_67 D8 clarification, 2026-10-07).
+`doctor` prints each active host's `dispatcherModel:<type>` entries as separate rows prefixed
+`host <version>:`: a latest violation is `fail`, and a model `fail` on any host with dispatcher
+activity in the last 24 hours reaches exit code 1; a latest undetermined observation is `warn`,
+retaining any undisproved incident; a latest match is `ok`, including recovery. No model entries
+for active hosts produces an `ok` `dispatcherModel` row saying “Not observed in the last 24 hours
+— recorded when a dispatcher stops.” Hosts outside the window remain one history sentence with
+entry and unresolved violation counts; recovered incidents stay in history rather than becoming
+permanent warnings (Plan_67 D8/D12). Contract checks still use the newest observed host.
 
 ## File relationships
 

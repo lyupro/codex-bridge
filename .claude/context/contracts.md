@@ -48,9 +48,18 @@ here. Nothing was reworded on the way out.
 - **Every witness or model alarm names the event that clears it** (Plan_67 D8, D9). `src/home/lib/observation-ledger.mjs`
   keeps the last observation apart from the last confirmed violation and match, ordered by `seq`, never by time; an
   "undetermined" observation clears nothing, and an intercepted or refused handback is never recovery evidence. A new
-  alarm cause comes with its clearing event and its key, and `doctor` warns only for the current host. Why: until
-  Plan_67 the witness kept every alarm forever, and 13 noise alarms across nine hosts made a permanent `warn` behind
-  which a real one could not be seen.
+  alarm cause comes with its clearing event and its key, and `doctor` judges only hosts whose dispatchers ran in the
+  last 24 hours (`cli/active-hosts.mjs`, D12) — older unresolved entries are one history sentence, never dropped. Why:
+  until Plan_67 the witness kept every alarm forever, and 13 noise alarms across nine hosts made a permanent `warn`
+  behind which a real one could not be seen; and a single "newest host" hid the second live VS Code window on
+  2026-10-07. Activity, not liveness: hooks are event-driven and the host process cannot be identified. The newest-host
+  selector still owns contracts, `otherHost:*` and install.
+- **The package never declares its own inventory complete** (Plan_67 D11). Only `codex-bridge inventory confirm`, a
+  "yes" in a TTY, sets `inventory: complete` — the absence of an unrecorded host using the home is unprovable, and the
+  Codex rules registry is a hint that held three deleted scratchpads. It writes through `publishInstallRecordOnly`,
+  never `writeInstallRecord`/`withOwner`: those rebuild owners and fingerprints and would hide real lag behind the
+  declaration. Every "inventory incomplete" message names that command — a reason without a repair is a permanent
+  warning (D10).
 - **`src/home/lib/cli-names.mjs` is the only list of CLI spellings.** `bin`, the prune guard's matcher and
   anything else that has to recognise a call read it from there. Two independent lists drift
   silently — exactly how the installer and test hook lists had already drifted before Plan_19.

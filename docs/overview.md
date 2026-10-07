@@ -647,6 +647,14 @@ a same-turn warning alongside any tool-audit alarm, even if writing the model re
 does not block the stop. Both observation records use the locked, atomic ledger described in
 [Artifact formats](artifact-formats.md#observation-ledger).
 
+An old record migrated to format 2 without a terminal keeps an incomplete inventory; updates do
+not ask again, so since 0.6.11 every model observation remains undetermined. Only the operator can
+account for hosts not in the record. After enrolling any missing host, run
+`codex-bridge inventory confirm` in a terminal to declare the recorded hosts complete. It sets
+`inventory: complete` and removes `legacy`, preserving owners, fingerprints and all other fields.
+The pin reason and `doctor` owner rows name this repair; confirmation itself records no model
+match and clears no violation — the next dispatcher stop supplies that evidence.
+
 The run is identified by its **receipt**: the dispatcher gate records the run folder from the first
 `RUN=` or `ATTACH=` line of the runner's own stdout, once, under the host's session and agent ids; a second,
 different folder is kept as a contradiction and the handback becomes a `FAIL`. Neither the order id
@@ -767,20 +775,29 @@ Doctor also reports `handbackWitness`, `dispatcherModel:<type>` rows and four di
 are `ok`; never probed, another host version, and unknown host version are `warn`. A measured
 change is `fail` and exits 1. An unreadable record produces one warning naming its file.
 
-Witness and model rows judge active evidence only for the current host — the newest observed
-session host, not `PATH`. `handbackWitness` is `warn` for an unresolved cause on that host and
-otherwise `ok`, including when nothing has been observed; it never changes the exit code.
-Intercepted attempts are displayed separately from recovery evidence. Recovered causes, unresolved
-causes on other hosts and unverified legacy alarms are retained as history without making a healthy
-current host warn. `doctor` interprets an old witness in memory without writing it; the next witness
+Witness and model checks judge every host whose dispatchers ran in the last 24 hours, using the
+latest recorded session activity, intercepted handback or witness/model observation for each host
+version. This is recorded activity, not a claim that a session is still alive. On 2026-10-07 two
+VS Code windows ran 2.1.291 and 2.1.292; the newest-host selector hid the non-newest host's
+observation in history, where a model violation would have printed `ok`. Plan_67 D12 makes both
+active. Contracts, `otherHost:*` and install still use the newest observed host selector.
+
+`handbackWitness` is `warn` for an unresolved cause on any active host and otherwise `ok`; it
+never changes the exit code. Its violation details name each host with `host <version>:`.
+With no active hosts it says “No dispatcher activity in the last 24 hours.” Intercepted attempts
+are displayed separately from recovery evidence. Recovered causes, unresolved causes on hosts
+outside the window and unverified legacy alarms remain a history sentence with counts, without
+active warnings. `doctor` interprets an old witness in memory without writing it; the next witness
 write migrates it under the lock. Older SDK-based sightings cannot identify a host.
 
-Each model row reports `fail` with exit 1 when its latest observation on the current host is a
-violation, `warn` when it is undetermined (including a still-undisproved earlier violation), and
-`ok` when it is a match, with recovery named as history. With no observations on that host,
-`dispatcherModel` is `ok` and says “Not observed yet”. Other hosts are summarized as history, not
-active warning rows. This follows Plan_67 D8's 2026-10-07 clarification: a disproved incident or a
-fresh installation must not recreate the witness's permanent warning.
+Each active host's model entries get their own `dispatcherModel:<type>` rows prefixed
+`host <version>:`. A latest violation is `fail`, and a model `fail` on any active host reaches
+exit code 1; an undetermined observation is `warn` (including a still-undisproved earlier
+violation), and a match is `ok`, with recovery named as history. With no model entries for active
+hosts, `dispatcherModel` is `ok` and says “Not observed in the last 24 hours — recorded when a
+dispatcher stops.” Hosts outside the window remain one history sentence with entry and unresolved
+violation counts, not active warning rows. Their incidents are kept, not disproved by inactivity;
+a recovered incident or a fresh installation must not recreate the witness's permanent warning.
 
 `codex-bridge doctor --probe-contract` performs the measurement. By default it targets the newest
 observed host version; `CLAUDE_CODE_EXECPATH` and `claude` on `PATH` are candidates only when their
@@ -884,6 +901,24 @@ be removed keeps everything it shares, so a repeat run after the fix finds it wh
 removed only when its content proves it is ours — the fingerprint recorded for this host, or an
 exact match with what the current package would write; anything edited stays and is named.
 `config.json`, `conventions.md` and `state/` are operator data and stay.
+
+A new home starts with a complete inventory, but an old record cannot prove it named every host.
+Migration to format 2 without a terminal leaves `inventory: incomplete`; later updates do not
+repeat the question. Ordinary uninstall keeps the shared image when the last recorded owner of
+an incomplete inventory leaves, unless the operator confirms that no other host uses it.
+
+To complete the inventory before uninstall, run
+`codex-bridge inventory confirm [--scope user|project] [--host <path>] [--dry-run]`. It requires a
+valid format-2 record with at least one owner and shows the home, every recorded host and Codex
+rules registry hints, marking roots whose folders no longer exist. Hints may be stale or belong
+to another home; they are not proof of ownership. Enroll an unlisted host first with
+`codex-bridge install --host "<path>"`, then answer yes in a terminal only if the listed hosts are
+all of them. Confirmation holds the home's lifecycle lock and changes only `inventory` to
+`complete` and removes `legacy`; it leaves owners, fingerprints and all other fields as read.
+This allows ordinary shared-image cleanup after the last owner leaves, without consenting to
+purge of operator data. No, EOF or a non-TTY leaves the record unchanged and exits 1; Ctrl+C exits
+130. A valid `--dry-run` prints without asking or writing and exits 0; yes and an already-complete
+record without `legacy` also exit 0.
 
 `codex-bridge uninstall --purge` additionally deletes that operator data and the home folder. It
 runs one preflight before it touches anything, in this order:

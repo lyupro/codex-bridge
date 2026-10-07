@@ -87,7 +87,9 @@ hand-edited files stop the run unless `--force`.
   `lib/untyped-stop.mjs` decides from evidence bound to the stop whether a subagent without `agent_type` was a
   dispatcher. The pin comes from `lib/dispatcher-pin.mjs` over `lib/install-owner-roots.mjs` and `lib/frontmatter.mjs`,
   which moved out of `cli/` so hooks can read the installed contract — the home has no `cli/`. `cli/handback-witness-check.mjs`
-  and `cli/dispatcher-model-check.mjs` turn the two records into `doctor` rows for the current host only.
+  and `cli/dispatcher-model-check.mjs` turn the two records into `doctor` rows for every host `cli/active-hosts.mjs`
+  finds active — dispatcher activity in the last 24 hours, from records already written (D12). The pin needs a complete
+  inventory, which only the operator declares: `cli/inventory-confirm.mjs` (`codex-bridge inventory confirm`, D11).
 - **Installer is the package, execution is the home** (Plan_62 D17). `cli/hook.mjs` and
   `cli/run-launcher.mjs` are launchers: they resolve the brand home and import `lib/hook-entry.mjs` or the
   installed runner, never the package copy beside them — on 2026-09-24 a clone registered hook names the
@@ -101,7 +103,7 @@ hand-edited files stop the run unless `--force`.
   reads the `version` the host writes into its own transcript; `lib/host-observations.mjs` records it once
   per session from the gate, before its dispatcher filter (`state/host-observations.json`).
   `cli/session-hosts.mjs` turns observations into the current host and `otherHost:*` lines for `doctor`
-  and `install`; `cli/probe-target.mjs` picks the executable `--probe-contract` measures. Never identify
+  and `install` (the witness and model rows use the active hosts instead, above); `cli/probe-target.mjs` picks the executable `--probe-contract` measures. Never identify
   the host by `claude` on PATH or by `CLAUDE_CODE_EXECPATH`/`CLAUDE_AGENT_SDK_VERSION`: on 2026-09-25 the
   VS Code extension 2.1.282 ran the sessions beside PATH 2.1.281, and those variables proved inherited by
   every descendant `claude`.
