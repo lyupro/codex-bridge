@@ -4,7 +4,8 @@ import { randomUUID } from 'node:crypto';
 import { createHomeWriter } from '../src/home/lib/home-write.mjs';
 import { readJsonFile } from '../src/home/lib/json-file.mjs';
 import { HOOK_DEFINITIONS } from '../src/home/lib/hook-definitions.mjs';
-import { isFormat2, ownerView, validateFormat2, withOwner, withoutOwner } from './install-owners.mjs';
+import { isFormat2 } from '../src/home/lib/install-owner-roots.mjs';
+import { ownerView, validateFormat2, withOwner, withoutOwner } from './install-owners.mjs';
 
 /**
  * The record's own spelling of the field saying how the package was installed, and its one value.

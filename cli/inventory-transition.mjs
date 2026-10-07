@@ -5,7 +5,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { askYesNo, isInteractive } from './terminal-question.mjs';
-import { isFormat2 } from './install-owners.mjs';
+import { isFormat2 } from '../src/home/lib/install-owner-roots.mjs';
 import { readInstallRecordFile } from './install-record.mjs';
 import { normalizedRulesOwner, readRulesRegistry } from './rules-owners.mjs';
 

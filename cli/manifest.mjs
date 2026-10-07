@@ -10,7 +10,7 @@ import { renderDispatcherProtocol } from '../src/home/lib/dispatcher-protocol.mj
 import { ORDER_AGENTS } from '../src/home/lib/order-schema.mjs';
 import { renderStopSummary } from '../src/home/lib/stop-contract.mjs';
 import { readJsonFile } from '../src/home/lib/json-file.mjs';
-import { normalizeFrontmatter } from './frontmatter.mjs';
+import { normalizeFrontmatter } from '../src/home/lib/frontmatter.mjs';
 import {
   INSTALL_RECORD_NAME,
   RULES_NAME,

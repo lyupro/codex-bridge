@@ -4,7 +4,8 @@ import path from 'node:path';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { resolveHost } from '../../cli/hosts.mjs';
 import { installRecordPath } from '../../cli/install-record.mjs';
-import { isFormat2, ownerView } from '../../cli/install-owners.mjs';
+import { ownerView } from '../../cli/install-owners.mjs';
+import { isFormat2 } from '../../src/home/lib/install-owner-roots.mjs';
 
 export async function fixture(t) {
   const root = makeTempTree('bridge-install-');

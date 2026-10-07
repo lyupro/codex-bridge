@@ -9,7 +9,7 @@ import {
 import { plannedContent } from './copy.mjs';
 import { RULE_LIST_NAMES, inspectPermissions } from './permissions.mjs';
 import { readRulesRegistry } from './rules-owners.mjs';
-import { parseFrontmatter } from './frontmatter.mjs';
+import { parseFrontmatter } from '../src/home/lib/frontmatter.mjs';
 import { check } from './doctor-format.mjs';
 
 export async function exists(target) {

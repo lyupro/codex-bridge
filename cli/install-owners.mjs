@@ -11,6 +11,7 @@
  */
 import { createHash } from 'node:crypto';
 import { normalizeRepoPath } from '../src/home/lib/runner/project-dir.mjs';
+import { isFormat2 } from '../src/home/lib/install-owner-roots.mjs';
 import {
   fileEntry,
   INSTALL_METHOD_COPY,
@@ -19,10 +20,6 @@ import {
 } from './install-record.mjs';
 
 const isObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-
-export function isFormat2(parsed) {
-  return isObject(parsed) && parsed.format === 2;
-}
 
 export function imageFingerprint(image) {
   const brand = image.fingerprints?.brand;

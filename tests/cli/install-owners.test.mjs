@@ -3,7 +3,8 @@ import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { normalizeRepoPath } from '../../src/home/lib/runner/project-dir.mjs';
-import { imageFingerprint, imageRemoval, isFormat2, ownerView, ownImageStampCurrent, validateFormat2, withOwner, withoutOwner } from '../../cli/install-owners.mjs';
+import { isFormat2 } from '../../src/home/lib/install-owner-roots.mjs';
+import { imageFingerprint, imageRemoval, ownerView, ownImageStampCurrent, validateFormat2, withOwner, withoutOwner } from '../../cli/install-owners.mjs';
 
 const brandFiles = [
   { root: 'brand', path: 'hooks/reply-guard.mjs' },

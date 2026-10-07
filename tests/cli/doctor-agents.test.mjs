@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { diagnose, renderDoctor } from '../../cli/doctor.mjs';
-import { parseFrontmatter } from '../../cli/frontmatter.mjs';
+import { parseFrontmatter } from '../../src/home/lib/frontmatter.mjs';
 import { recordTarget } from '../../cli/manifest.mjs';
 import { codexProbe, installedFixture, ownPackage } from './doctor-fixtures.mjs';
 

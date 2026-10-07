@@ -10,7 +10,8 @@ import path from 'node:path';
 import { normalizeRepoPath } from '../src/home/lib/runner/project-dir.mjs';
 import { check } from './doctor-format.mjs';
 import { hasPackageMarks } from './host-inspection.mjs';
-import { imageFingerprint, isFormat2 } from './install-owners.mjs';
+import { isFormat2 } from '../src/home/lib/install-owner-roots.mjs';
+import { imageFingerprint } from './install-owners.mjs';
 
 // Format 1 is not migrated here: asFormat2 would record this host as the owner, and doctor only reads.
 export function ownerEntry(rawRecord, host) {

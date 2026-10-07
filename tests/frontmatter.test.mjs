@@ -4,14 +4,14 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { plannedContent } from '../../cli/copy.mjs';
-import { normalizeFrontmatter, parseFrontmatter } from '../../cli/frontmatter.mjs';
-import { buildInstallPlan } from '../../cli/manifest.mjs';
-import { resolveHost } from '../../cli/hosts.mjs';
-import { renderRequiredInputSummary } from '../../src/home/lib/dispatcher-call.mjs';
-import { renderDispatcherProtocol } from '../../src/home/lib/dispatcher-protocol.mjs';
-import { renderNoSelfExecution } from '../../src/home/lib/no-self-execution.mjs';
-import { renderStopSummary } from '../../src/home/lib/stop-contract.mjs';
+import { plannedContent } from '../cli/copy.mjs';
+import { normalizeFrontmatter, parseFrontmatter } from '../src/home/lib/frontmatter.mjs';
+import { buildInstallPlan } from '../cli/manifest.mjs';
+import { resolveHost } from '../cli/hosts.mjs';
+import { renderRequiredInputSummary } from '../src/home/lib/dispatcher-call.mjs';
+import { renderDispatcherProtocol } from '../src/home/lib/dispatcher-protocol.mjs';
+import { renderNoSelfExecution } from '../src/home/lib/no-self-execution.mjs';
+import { renderStopSummary } from '../src/home/lib/stop-contract.mjs';
 
 function intendedValues(source, installationRoot, agentType) {
   const sourceValues = parseFrontmatter(normalizeFrontmatter(source));
