@@ -33,9 +33,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { AGENTS } from '../lib/agents.mjs';
-import { BRAND_STATE_DIR } from '../lib/brand-home.mjs';
+import { BRAND_HOME, BRAND_STATE_DIR } from '../lib/brand-home.mjs';
 import { recordHookDiagnostic } from '../lib/hook-diagnostics.mjs';
 import { decideDispatcherStop, transcriptToolUses } from '../lib/dispatcher-stop.mjs';
+import { observeDispatcherModelStop } from '../lib/dispatcher-model.mjs';
 import { recognizeHostRefusal } from '../lib/host-refusal.mjs';
 import { readJsonFileSync } from '../lib/json-file.mjs';
 import { readDispatcherState, updateDispatcherState } from '../lib/dispatcher-state.mjs';
@@ -138,6 +139,11 @@ if (typeof input.agent_id === 'string' && input.agent_id.length > 0
 // business — an earlier version inferred the agent from transcript text and blocked an
 // unrelated one, which cost a re-answer for nothing.
 if (!GUARDED.has(input.agent_type)) pass();
+try {
+  dispatcherSystemMessage = await observeDispatcherModelStop({
+    brandRoot: BRAND_HOME.root, stateDir: BRAND_STATE_DIR, input, hostVersion: await witnessHostVersion(input),
+  });
+} catch { /* Plan_67 D4: model diagnostics must never block a dispatcher stop. */ }
 
 const emitStop = (payload) => {
   process.stdout.write(JSON.stringify(payload));
@@ -160,7 +166,7 @@ try {
     const stop = decideDispatcherStop({ state, toolUses });
     if (stop.unseen.length) {
       const names = stop.unseen.map((toolUse) => toolUse.name).join(', ');
-      dispatcherSystemMessage = `codex-bridge: dispatcher ${input.agent_type} used ${names} outside the dispatcher gate — do not trust its answer; run codex-bridge doctor.`;
+      dispatcherSystemMessage = [dispatcherSystemMessage, `codex-bridge: dispatcher ${input.agent_type} used ${names} outside the dispatcher gate — do not trust its answer; run codex-bridge doctor.`].filter(Boolean).join(' ');
     }
     await recordStopWitness({ stateDir: BRAND_STATE_DIR, observations: typedStopObservations({
       agentType: input.agent_type, agentId: input.agent_id, hostVersion: await witnessHostVersion(input),
