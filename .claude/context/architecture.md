@@ -63,8 +63,10 @@ hand-edited files stop the run unless `--force`.
   open on anything they do not recognise except the dispatcher gate, which fails closed for a
   dispatcher whose order it cannot read (Plan_62 D7):
   `reply-guard.mjs` (SubagentStop) rejects a dispatcher reply that `meta.json` does not support or
-  that stays silent about a live `codex-build` run of the same project; `order-gate.mjs`
-  (PreToolUse) refuses a dispatcher call whose task text names no order id; `worktree-lock.mjs`
+  that stays silent about a live `codex-build` run of the same project, and records what the stop
+  showed (`reply-witness.mjs`, `lib/dispatcher-model.mjs`); `order-gate.mjs`
+  (PreToolUse) refuses a dispatcher call whose task text names no order id, or that carries `model`
+  or meets a foreign-family subagent-model env (`lib/subagent-model-env.mjs`, Plan_67 D6); `worktree-lock.mjs`
   (PreToolUse) refuses a file edit inside a repository a live `codex-build` run holds;
   `prune-guard.mjs` (PreToolUse) refuses an agent-issued `codex-bridge prune`, matching the command
   line by spelling — so a new CLI name has to be added here too, or the alias walks past it.
@@ -76,8 +78,16 @@ hand-edited files stop the run unless `--force`.
   passed the gate (`lib/dispatcher-stop.mjs`, D13/D15). The tool list the gate is registered on is
   `DISPATCHER_TOOLS` in `lib/hook-definitions.mjs` — one spelling of the handback tool.
 - `state/` under the brand root is the package's only mutable state (Plan_62 D14): dispatcher state,
-  the handback witness, the dispatcher contract record, guard counters and diagnostics. Its path comes
-  only from `brandStateDir`/`BRAND_STATE_DIR` in `brand-home.mjs`.
+  the handback witness, the dispatcher-model record, the dispatcher contract record, guard counters and
+  diagnostics. Its path comes only from `brandStateDir`/`BRAND_STATE_DIR` in `brand-home.mjs`.
+- **Observations, not assumptions** (Plan_67). `lib/observation-ledger.mjs` owns the record shape — last
+  observation apart from last confirmed violation and match, ordered by `seq` under the artifact lock; it knows no
+  causes. Two adapters sit on it: `lib/handback-witness.mjs` (per-cause keys, migration of the old form,
+  `legacy-untyped-unverified` history) and `lib/dispatcher-model.mjs` (`<host>|<type>`, the order gate's latch).
+  `lib/untyped-stop.mjs` decides from evidence bound to the stop whether a subagent without `agent_type` was a
+  dispatcher. The pin comes from `lib/dispatcher-pin.mjs` over `lib/install-owner-roots.mjs` and `lib/frontmatter.mjs`,
+  which moved out of `cli/` so hooks can read the installed contract — the home has no `cli/`. `cli/handback-witness-check.mjs`
+  and `cli/dispatcher-model-check.mjs` turn the two records into `doctor` rows for the current host only.
 - **Installer is the package, execution is the home** (Plan_62 D17). `cli/hook.mjs` and
   `cli/run-launcher.mjs` are launchers: they resolve the brand home and import `lib/hook-entry.mjs` or the
   installed runner, never the package copy beside them — on 2026-09-24 a clone registered hook names the

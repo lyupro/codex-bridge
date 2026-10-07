@@ -34,6 +34,23 @@ here. Nothing was reworded on the way out.
 - **`codex-runs/` is user data.** Uninstall never touches it; the install record is forbidden from
   naming it.
 - **Model ids live only in `config.json`.** No model literal belongs in `.mjs` code.
+- **A dispatcher's model is compared by family against the installed contract, never against an id table**
+  (Plan_67 D5, D10). `src/home/lib/model-family.mjs` parses the family from the id's structure, so a new model release
+  needs no edit; `src/home/lib/dispatcher-pin.mjs` takes the pin only when every owner recorded in `.installed.json`
+  agrees, and answers "undetermined" with reasons otherwise. Never reconstruct which definition the host selected from
+  the transcript path or its precedence rules: the host does not report it, and a copied rule breaks on its next change.
+  The only evidence of the model used is `message.model` in the dispatcher's transcript — on 2026-09-25 a hook's
+  `(inherit)` label and the VS Code panel both showed the parent's model while every dispatcher ran on its pin.
+- **A dispatcher call carrying `model` is refused before any prompt check or continuation exit** (Plan_67 D6,
+  `src/home/hooks/order-gate.mjs`). Always — even a matching family, even `inherit`: the pin is set in one place, the
+  installed agent file, and prompts that restate it stay on the old value when the package pin changes. An exit placed
+  before this check lets a continuation walk past it.
+- **Every witness or model alarm names the event that clears it** (Plan_67 D8, D9). `src/home/lib/observation-ledger.mjs`
+  keeps the last observation apart from the last confirmed violation and match, ordered by `seq`, never by time; an
+  "undetermined" observation clears nothing, and an intercepted or refused handback is never recovery evidence. A new
+  alarm cause comes with its clearing event and its key, and `doctor` warns only for the current host. Why: until
+  Plan_67 the witness kept every alarm forever, and 13 noise alarms across nine hosts made a permanent `warn` behind
+  which a real one could not be seen.
 - **`src/home/lib/cli-names.mjs` is the only list of CLI spellings.** `bin`, the prune guard's matcher and
   anything else that has to recognise a call read it from there. Two independent lists drift
   silently — exactly how the installer and test hook lists had already drifted before Plan_19.

@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **Breaking for orchestrator prompts:** the order gate refuses an explicit `model` on a dispatcher
+  call, even one matching the installed pin or `inherit`. Migration cost: drop `model` from dispatcher
+  calls in orchestrator prompts; the installed agent definition owns that setting. It also refuses a
+  foreign-family `CLAUDE_CODE_SUBAGENT_MODEL` on hosts where the environment overrides the pin
+  (before 2.1.251, or with `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1` from 2.1.257). Unknown host versions or
+  unparseable families are left to the stop observation. These checks precede prompt and grant exits,
+  so a continuation cannot bypass them.
+
 - **Breaking for orchestrator prompts:** a dispatcher call is exactly one line, `task file: <absolute
   path>`. The order — `order id`, `scope`, `scope new`, `phase`, `continue`/`retry`, `slug`, `effort`,
   `changeset`, `repository` — goes in the header at the top of that file, and the dispatcher runs
@@ -33,7 +41,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   the registry, 18 passed values as `--order-id x`, and 1 duplicated a label.
   Migration cost: a call written in an older form gets one free refusal naming the fix.
 
+### Added
+
+- The reply guard observes `message.model` in the dispatcher's assistant transcript entries at
+  `SubagentStop`, before its handback exits, and compares model families against the installed
+  contract agreed by every recorded owner. On 2026-09-25 a hook's `(inherit)` label was mistaken for
+  the model used, and the VS Code panel showed the parent model while transcripts showed the pinned
+  family; neither display is model evidence. A mismatch raises an alarm in the same turn and enters
+  `state/dispatcher-model.json`.
+  The order gate warns on every later call of that dispatcher type until a later match on any host;
+  uncertainty does not clear the warning. It warns rather than refusing work for a leak whose cause
+  may be another hook or the host.
+- `doctor` reports `dispatcherModel:<type>` rows for the current observed session host: the latest
+  violation is `fail` with exit 1, an undetermined observation is `warn`, and a match is `ok`, including
+  recovery after a violation. No observations is `ok`; recovered incidents and other hosts remain
+  history, without a permanent warning. An incomplete, unreadable or disagreeing installed contract
+  makes the comparison undetermined, rather than guessing which agent definition the host selected.
+
 ### Fixed
+
+- The handback witness keeps per-cause observations and violation history without a permanent
+  warning. Only later evidence disproving that cause clears it, and only the current observed session
+  host contributes active warnings. Intercepted handbacks, including refused attempts, are not proof
+  of recovery. Existing witness files migrate on their next write: old untyped alarms become
+  `legacy-untyped-unverified` history, not confirmed violations; `doctor` reads them without rewriting
+  the file. This fixes the 2026-09-27 case where clean handbacks on a newer host still left an old alarm
+  as the only visible signal.
+- A subagent stop without `agent_type` alarms only with dispatcher evidence bound to that stop:
+  healthy, active dispatcher-gate state or an assistant Bash call running the standalone runner command
+  for a registered role. The 13 older alarms across nine host versions lacked that evidence. Without
+  it, a stop is undetermined, neither an accusation nor recovery, and a command's `--agent` does not
+  invent the missing host type.
 
 - The reply guard identifies a dispatcher's run by a receipt — the run folder the runner itself
   printed to that dispatcher, recorded once by the dispatcher gate — instead of the order id in the

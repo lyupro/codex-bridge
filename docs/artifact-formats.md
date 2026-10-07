@@ -245,6 +245,121 @@ written with `-c core.quotepath=false` so a person sees real names. No code pars
 reads the snapshots above — and they may still quote or abbreviate unusual names. Do not build a
 consumer on them.
 
+## Observation ledger
+
+`state/handback-witness.json` and `state/dispatcher-model.json` keep observations in the branded
+home, separately from run verdicts. They share the format owned by
+`src/home/lib/observation-ledger.mjs`, but their adapters decide the keys, recovery evidence and
+severity. Both are purge-only operator data, retained across update and ordinary uninstall.
+
+On 2026-09-27 an old witness alarm still made `doctor` warn after clean handbacks on a newer host.
+Plan_67 D8 separates what was last observed from what was last confirmed, so uncertainty cannot
+erase an incident and recovery can clear its warning without erasing history.
+
+### Format 1
+
+| Field | Value |
+| --- | --- |
+| `format` | `1`. |
+| `seq` | Nonnegative counter for the whole ledger; `0` in an empty ledger. Each observation increments it under the artifact's lock. |
+| `entries` | Object keyed by an adapter-defined nonempty string. Empty in a new ledger. |
+
+Each entry has these four fields:
+
+| Field | Value |
+| --- | --- |
+| `lastObservation` | The newest observation of any verdict for this key. |
+| `lastViolation` | The newest confirmed violation, or `null`; a later match does not erase it. |
+| `lastMatch` | The newest confirmed match, or `null`; uncertainty does not replace it. |
+| `history` | Up to 20 violation observations for this key, in increasing `seq` order, including `lastViolation` when present. Matches and undetermined observations do not enter this list. |
+
+An observation contains positive integer `seq`, `verdict`, ISO timestamp `at`, string `detail`,
+and optional plain JSON object `data`. The verdict is `violation`, `match` or `undetermined`.
+Every observation replaces `lastObservation`; only a violation updates `lastViolation` and
+`history`, and only a match updates `lastMatch`.
+
+Ordering is by `seq`, never by timestamps: `at` is for display, and clocks can disagree. An entry
+with a violation stays unresolved unless `lastMatch.seq` exceeds `lastViolation.seq`. It is then
+recovered, with the incident still present. With no violation, a match means clean; otherwise the
+entry is undetermined. An absent entry is unobserved. An undetermined observation clears neither
+a cause nor the dispatcher-model warning latch.
+
+Sequence allocation and atomic replacement of the JSON happen under the same artifact lock,
+through `withHomeFileLock` and `writeHomeJsonAtomic`; the two files have independent counters and
+locks. A missing file reads as empty. An unreadable or invalid ledger is marked corrupt, not
+silently reset, and writers refuse to overwrite it. `doctor` reports an unreadable record as a
+warning naming its file.
+
+### `state/handback-witness.json` — version 2
+
+| Field | Value |
+| --- | --- |
+| `version` | `2`, the witness wrapper version; distinct from the nested ledger's `format: 1`. |
+| `ledger` | The observation ledger above. |
+| `intercepted` | Map of host transcript version (or `unknown`) to the latest intercepted handback timestamp. Includes refused attempts and is never proof of recovery. |
+| `legacy` | Preserved older alarms with `at`, `hostVersion`, `detail` and `disposition`: `legacy-untyped-unverified` or `unclassified`. These are history, outside the confirmed-violation ledger. |
+
+Every witness observation's `data` contains `cause`, `hostVersion` (string or `null`) and
+`agentType` (string or `null`). Unknown hosts use `unknown` in the key. Causes and their recovery
+boundaries are:
+
+| Cause / key | What disproves it |
+| --- | --- |
+| `missing-ids` / `<host>\|<type>\|missing-ids` | A later stop of that dispatcher type on that host with both `session_id` and `agent_id`. |
+| `tools-outside-gate` / `<host>\|<type>\|tools-outside-gate` | A later complete, readable audit with every tool call accounted for, healthy gate state, no prior audit alarm, a delivered runner handback and no receipt conflict. Refused attempts and synthetic gate `FAIL`s are not recovery. |
+| `missing-agent-type` / `<host>\|missing-agent-type` | A later recognized dispatcher stop on that host with the type and both ids. The missing type is not guessed from a runner command. |
+
+An untyped stop is a violation only with evidence bound to that stop: healthy gate state with
+a registered type and actual gate activity, or an assistant Bash call executing a standalone
+runner command for a registered role. No evidence, or unavailable evidence, is undetermined;
+it cannot clear an earlier violation. `handbackWitness` warns only for unresolved causes on the
+current observed session host and never fails `doctor` or blocks work. Recovery and other hosts
+remain history; no observations is `ok`.
+
+The old `{lastSeen, alarms}` form is interpreted before normalization: host-version sightings
+become `intercepted`, while SDK-based sightings cannot identify a host. Exact old “host omitted
+agent_type” alarms without dispatcher evidence become `legacy-untyped-unverified`, with their
+timestamp, detail and host version where known. This preserves the 13 unverified alarms found
+across nine hosts without inventing confirmed violations or recovery. Recognized missing-id and
+tool-gate alarms enter their ledger keys as violations; other old alarms remain `unclassified`.
+Older SDK-based alarms have unknown host identity. Migration is idempotent and persists only on
+the next locked witness write; `doctor` interprets the old file in memory without changing it.
+
+### `state/dispatcher-model.json`
+
+This file is directly a format-1 ledger, with no witness wrapper. Each key is
+`<host>|<agentType>` (host transcript version or `unknown`). At `SubagentStop` the reply guard
+reads assistant `message.model` entries before any handback exit and compares their parsed
+families with the installed package contract. It does not use a UI's parent-model label, the
+call's `(inherit)` display or a table of volatile model ids.
+
+| Observation `data` field | Value |
+| --- | --- |
+| `hostVersion` | Transcript host version, or `null`. |
+| `agentType` | Registered dispatcher type. |
+| `pinFamily` | Unanimous installed family, or `null` when the contract is undetermined. |
+| `parsed` | Array of distinct parsed model families seen in assistant entries, not raw model ids. |
+| `unparsed` | Count of model strings whose family could not be parsed. |
+| `comparison` | `installed-contract`; the host does not report which installed definition it selected. |
+| `pinReasons` | Present when `pinFamily` is `null`: reasons the installed contract could not be determined, including affected paths where applicable. |
+
+The contract requires `.installed.json` format 2, a complete inventory, no legacy partition and
+at least one owner. Every recorded root's `agents/codex-bridge/<type>.md` must have the required
+frontmatter `name` and agree on a parseable family. Missing files, malformed definitions or
+disagreement produce an undetermined pin, rather than reconstructing host precedence.
+
+With a known pin, any parsed foreign family is a violation; one or more parsed families all
+matching is a match. Unparseable model strings are not evidence, and no parsed family or an
+unknown pin is undetermined. A violation raises a same-turn alarm even if recording it fails.
+The order gate's warning latch projects across all host entries of that type: the greatest
+violation `seq` stays active until a greater match `seq`, without rewriting the old host's entry.
+
+`doctor` prints `dispatcherModel:<type>` only for current-host entries: a latest violation is
+`fail` with exit 1; a latest undetermined observation is `warn`, retaining any undisproved incident;
+a latest match is `ok`, including recovery. No current-host observations produces an `ok`
+`dispatcherModel` row saying “Not observed yet”. Other hosts and recovered incidents are history,
+not permanent warnings (Plan_67 D8 clarification, 2026-10-07).
+
 ## File relationships
 
 - `status.json` answers “is the process running, and how did it end?”

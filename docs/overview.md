@@ -605,12 +605,50 @@ a dispatcher returned its own words and a second writer started in the same tree
 
 ## Response guard
 
-`hooks/reply-guard.mjs` is the `SubagentStop` hook for the four dispatchers. After a handback it
-stays silent; if the dispatcher stopped without one, it asks once for a handback. Its stop audit
-checks that every tool call in the dispatcher transcript passed through the gate. A bypass raises
-an alarm in the same turn (“do not trust this dispatcher answer”) and in the witness. The run is
-identified by its **receipt**: the dispatcher gate records the run folder from the first `RUN=` or
-`ATTACH=` line of the runner's own stdout, once, under the host's session and agent ids; a second,
+`hooks/reply-guard.mjs` is the `SubagentStop` hook for the four dispatchers. A delivered handback
+needs no further request; if the dispatcher stopped without one, it asks once for a handback.
+Stop observations still run after delivery. Its stop audit checks that every tool call in the
+dispatcher transcript passed through the gate. A bypass raises
+an alarm in the same turn (“do not trust this dispatcher answer”) and in the witness.
+
+The witness separates the last observation from the last confirmed violation and match, per host
+and cause. On 2026-09-27, three clean handbacks on a newer host still left `doctor` warning about an
+old missing-type alarm. Keeping history must not keep that warning alive. Missing ids clear only
+after a stop of the same dispatcher type on the same host supplies both ids. A tool-gate violation
+clears only after a complete, readable audit accounts for every tool call and healthy gate state
+confirms a delivered runner handback without a receipt conflict. A refused attempt, a synthetic gate
+`FAIL`, an already-alarmed audit or an unreadable transcript cannot prove recovery. Intercepted
+handback timestamps include refused attempts and never clear a cause.
+
+A stop with `agent_id` but no `agent_type` alarms only with evidence tied to that stop: healthy gate
+state stamped with a registered dispatcher type and actual gate activity, or an assistant Bash
+tool call whose command is a standalone `codex-bridge run` (or `codexb run`) for a registered role.
+Prose, tool results and command substrings are not evidence; `--agent` does not supply the missing
+host type. Without evidence the observation is undetermined and clears nothing. A later recognized
+dispatcher stop with both ids on the same host clears the missing-type cause. The 13 older untyped
+alarms across nine host versions had no dispatcher evidence; migration preserves them as
+`legacy-untyped-unverified` history rather than claiming they were confirmed or repaired.
+
+Before its handback exits, the hook also reads `message.model` from the assistant entries in the
+dispatcher transcript and records the comparison in `state/dispatcher-model.json`. The 2026-09-25
+TradeForge report was based on a hook's `(inherit)` label, and the VS Code panel also showed the
+parent's model while dispatcher transcripts showed the pinned family. Only the transcript is
+evidence of the model used. Families are parsed structurally across old, new and cloud-qualified
+model ids, without an id table that goes stale with every release. Any parsed family differing from
+the pin is a violation; at least one parsed family and all matching is a match. Unparseable records
+are not evidence; no parsed family or an unknown pin makes the observation undetermined.
+
+The pin is the installed package contract, not a guess at which definition the host chose. The
+home's `.installed.json` must be format 2 with a complete inventory, no legacy partition and at
+least one owner. Every recorded user or project root must have an agent definition with the right
+frontmatter `name` and the same parseable model family. A missing, unreadable, unparseable or
+disagreeing owner makes the pin undetermined, with reasons naming the problem. A mismatch raises
+a same-turn warning alongside any tool-audit alarm, even if writing the model record fails; it
+does not block the stop. Both observation records use the locked, atomic ledger described in
+[Artifact formats](artifact-formats.md#observation-ledger).
+
+The run is identified by its **receipt**: the dispatcher gate records the run folder from the first
+`RUN=` or `ATTACH=` line of the runner's own stdout, once, under the host's session and agent ids; a second,
 different folder is kept as a contradiction and the handback becomes a `FAIL`. Neither the order id
 nor a search of recent runs on disk identifies the run, and the task file is never re-read. It also
 checks that the response:
@@ -650,6 +688,22 @@ any grant is considered. Only a valid `continue:` or `retry:` header grant hands
 runner's grant rules; otherwise an order id already owned by a run with a different task-body hash is
 refused before Codex is invoked. The canonical command is `codex-bridge run --agent <type> --task-file "<path>"`,
 built by `lib/dispatcher-command.mjs` from the call alone.
+
+Before prompt validation or any continuation/retry exit, the gate refuses an explicit `model`
+field, even a matching family or `inherit`: the installed definition is the one place that owns
+the pin. Otherwise a later package pin change would leave orchestrator prompts silently on their
+old setting. Migration cost: drop `model` from dispatcher calls in orchestrator prompts.
+It also refuses a foreign-family `CLAUDE_CODE_SUBAGENT_MODEL` when the session transcript's host
+version proves that the environment overrides frontmatter: before 2.1.251, or with
+`CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1` from 2.1.257. A matching family passes; unknown host versions,
+unparseable environment families or an undetermined installed pin do not justify refusal and are
+left to the stop observation. A known refusal happens before the dispatcher spends Claude quota.
+
+Another hook can rewrite the call after this gate has seen it, and the host can choose a model
+the gate did not request. After an observed leak, the gate warns on every later call of that
+dispatcher type, rather than refusing work whose cause is outside the call. A later confirmed
+match of that type on any host clears this warning; an undetermined observation does not. The
+projection uses ledger sequence numbers across hosts and leaves each host's incident history intact.
 
 The gate and the runner share one definition of which task owns an order id
 (`lib/runner/order-owner.mjs`); a second copy would drift, and drift between two such lists is what
@@ -707,15 +761,26 @@ a host whose version cannot be read.
 measurement of an executable reporting version V applies to every host of version V; older
 single-version files are read as verdicts for their own versions only.
 
-Doctor also reports `handbackWitness` and four dispatcher contract lines:
+Doctor also reports `handbackWitness`, `dispatcherModel:<type>` rows and four dispatcher contract lines:
 `dispatcherContract:agentIdentity`, `dispatcherContract:shellStdout`,
 `dispatcherContract:shellFailure`, and `dispatcherContract:agentTranscript`. Verified contracts
 are `ok`; never probed, another host version, and unknown host version are `warn`. A measured
-change is `fail` and exits 1. An unreadable record produces one warning naming its file. Handback
-sightings and alarms carry the transcript version, and a sighting matches only that exact version;
-an older SDK-based record is treated as no sighting while retaining its alarms. If a subagent stop
-has an `agent_id` but no `agent_type`, the reply guard records a versioned alarm and tells the
-session that the dispatcher gate cannot recognise dispatchers.
+change is `fail` and exits 1. An unreadable record produces one warning naming its file.
+
+Witness and model rows judge active evidence only for the current host — the newest observed
+session host, not `PATH`. `handbackWitness` is `warn` for an unresolved cause on that host and
+otherwise `ok`, including when nothing has been observed; it never changes the exit code.
+Intercepted attempts are displayed separately from recovery evidence. Recovered causes, unresolved
+causes on other hosts and unverified legacy alarms are retained as history without making a healthy
+current host warn. `doctor` interprets an old witness in memory without writing it; the next witness
+write migrates it under the lock. Older SDK-based sightings cannot identify a host.
+
+Each model row reports `fail` with exit 1 when its latest observation on the current host is a
+violation, `warn` when it is undetermined (including a still-undisproved earlier violation), and
+`ok` when it is a match, with recovery named as history. With no observations on that host,
+`dispatcherModel` is `ok` and says “Not observed yet”. Other hosts are summarized as history, not
+active warning rows. This follows Plan_67 D8's 2026-10-07 clarification: a disproved incident or a
+fresh installation must not recreate the witness's permanent warning.
 
 `codex-bridge doctor --probe-contract` performs the measurement. By default it targets the newest
 observed host version; `CLAUDE_CODE_EXECPATH` and `claude` on `PATH` are candidates only when their
@@ -746,7 +811,7 @@ the host. `package.json`, required by npm outside that image, is the one documen
 | Root | What lives there |
 | --- | --- |
 | `~/.lyupro/.codex-bridge/` | runner and its modules (`lib/`), guards (`hooks/`), `config.json`, `conventions.md`, installation record `.installed.json` |
-| `~/.lyupro/.codex-bridge/state/` | Per-dispatcher state (pruned after 7 days), `host-observations.json` (sessions kept 7 days, hosts 30), `handback-witness.json`, `dispatcher-contract.json`, `reply-guard-tries.json`, and `diagnostics/*.last.json`; `update` removes diagnostics formerly under `~/.claude/logs/` |
+| `~/.lyupro/.codex-bridge/state/` | Per-dispatcher state (pruned after 7 days), `host-observations.json` (sessions kept 7 days, hosts 30), `handback-witness.json`, `dispatcher-model.json`, `dispatcher-contract.json`, `reply-guard-tries.json`, and `diagnostics/*.last.json`; the witness and model ledgers are purge-only; `update` removes diagnostics formerly under `~/.claude/logs/` |
 | `~/.claude/agents/codex-bridge/` | four agent definitions—Claude Code reads them only from here |
 | `~/.claude/commands/codex-bridge/` | two command files: `/codex-bridge:env` and `/codex-bridge:usage` |
 | `~/.codex/rules/` | Codex CLI rules file; the directory is not ours |
