@@ -252,6 +252,21 @@ test('PreToolUse receipts cover pass, deny, and allow decisions', async (t) => {
   ]);
 });
 
+test('PreToolUse state stamps the recognised dispatcher type alongside its receipt', async (t) => {
+  const root = await fixture(t);
+  const identity = await addTranscript(root);
+  const payload = dispatcherPayload(identity, 'Bash', { command: COMMAND });
+  payload.tool_use_id = 'typed-receipt';
+  assert.equal(outcome(root, payload).stdout, '');
+  const state = readDispatcherState({
+    stateDir: path.join(root, 'home', 'state'),
+    sessionId: identity.session_id,
+    agentId: identity.agent_id,
+  });
+  assert.equal(state.agentType, payload.agent_type);
+  assert.deepEqual(state.seenToolUseIds, ['typed-receipt']);
+});
+
 test('PreToolUse receipts retain only the newest 200 IDs', async (t) => {
   const root = await fixture(t);
   const identity = await addTranscript(root);

@@ -25,6 +25,31 @@ test('transcriptToolUses reads assistant tool calls and skips other or broken li
   assert.equal(transcriptToolUses(path.join(root, 'missing.jsonl')), null);
 });
 
+test('transcriptToolUses preserves only assistant Bash string commands', async (t) => {
+  const root = makeTempTree('bridge-dispatcher-stop-');
+  t.after(() => removeTempTree(root));
+  const transcript = path.join(root, 'agent.jsonl');
+  const command = 'codex-bridge run --agent codex-build --task-file task.md';
+  const lines = [
+    { type: 'assistant', message: { content: [
+      { type: 'tool_use', id: 'bash', name: 'Bash', input: { command } },
+      { type: 'tool_use', id: 'read', name: 'Read', input: { command } },
+      { type: 'tool_use', id: 'number', name: 'Bash', input: { command: 42 } },
+      { type: 'text', text: command },
+    ] } },
+    { type: 'user', message: { content: [
+      { type: 'tool_use', id: 'user', name: 'Bash', input: { command } },
+      { type: 'tool_result', tool_use_id: 'bash', content: command },
+    ] } },
+  ];
+  await fs.writeFile(transcript, `${lines.map((line) => JSON.stringify(line)).join('\n')}\n`);
+  assert.deepEqual(transcriptToolUses(transcript), [
+    { id: 'bash', name: 'Bash', command },
+    { id: 'read', name: 'Read' },
+    { id: 'number', name: 'Bash' },
+  ]);
+});
+
 test('decideDispatcherStop yields after a delivered handback', () => {
   assert.deepEqual(decideDispatcherStop({
     state: { handback: 'delivered', seenToolUseIds: ['one'] },

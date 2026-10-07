@@ -82,6 +82,7 @@ async function main() {
         const next = {
           ...(current.corrupt ? {} : current),
           ...(decision.stateUpdate || {}),
+          agentType: payload.agent_type,
         };
         if (toolUseId) {
           const seenToolUseIds = Array.isArray(next.seenToolUseIds) ? next.seenToolUseIds : [];

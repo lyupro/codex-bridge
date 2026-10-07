@@ -23,7 +23,13 @@ export function transcriptToolUses(transcriptPath) {
     const content = record.message?.content;
     if (!Array.isArray(content)) continue;
     for (const block of content) {
-      if (block?.type === 'tool_use') toolUses.push({ id: block.id, name: block.name });
+      if (block?.type === 'tool_use') {
+        const toolUse = { id: block.id, name: block.name };
+        if (block.name === 'Bash' && typeof block.input?.command === 'string') {
+          toolUse.command = block.input.command;
+        }
+        toolUses.push(toolUse);
+      }
     }
   }
   return toolUses;
