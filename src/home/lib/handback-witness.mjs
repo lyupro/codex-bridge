@@ -108,19 +108,27 @@ function validateHost(hostVersion) {
 export async function recordWitnessObservation({
   stateDir, cause, hostVersion, agentType = null, verdict, detail = '', now = new Date(),
 }) {
-  validateHost(hostVersion);
-  const key = witnessKey({ cause, hostVersion, agentType });
-  if (agentType !== null && (typeof agentType !== 'string' || agentType.length === 0)) {
-    throw new TypeError('agentType must be a non-empty string or null');
-  }
+  return recordWitnessObservations({
+    stateDir, observations: [{ cause, hostVersion, agentType, verdict, detail }], now,
+  });
+}
+
+export async function recordWitnessObservations({ stateDir, observations, now = new Date() }) {
+  const prepared = observations.map(({ cause, hostVersion, agentType = null, verdict, detail = '' }) => {
+    validateHost(hostVersion);
+    const key = witnessKey({ cause, hostVersion, agentType });
+    if (agentType !== null && (typeof agentType !== 'string' || agentType.length === 0)) {
+      throw new TypeError('agentType must be a non-empty string or null');
+    }
+    return { key, verdict, detail, data: { cause, hostVersion, agentType } };
+  });
   const at = new Date(now).toISOString();
   return updateLedgerFile({
     stateDir, id: 'handback-witness', file: path.join(stateDir, WITNESS_FILE), normalize: migrateWitness,
     update: (current) => {
       const record = witnessRecord(current);
-      return { ...record, ledger: reduceObservation(record.ledger, {
-        key, verdict, at, detail, data: { cause, hostVersion, agentType },
-      }) };
+      return { ...record, ledger: prepared.reduce((ledger, observation) =>
+        reduceObservation(ledger, { ...observation, at }), record.ledger) };
     },
   });
 }

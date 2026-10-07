@@ -172,7 +172,7 @@ test('an unreceipted tool call alarms once, while complete receipts stay silent'
     const key = witnessKey({ cause: 'tools-outside-gate', hostVersion: null, agentType: 'codex-build' });
     const witness = readHandbackWitness({ stateDir });
     const entry = witness.ledger.entries[key];
-    assert.equal(Object.keys(witness.ledger.entries).length, 1);
+    assert.equal(Object.keys(witness.ledger.entries).length, 3);
     assert.equal(entryState(entry), 'violation');
     assert.equal(entry.lastViolation.data.hostVersion, null);
     assert.equal(entry.lastViolation.detail, 'codex-build test-dispatcher: Bash outside the dispatcher gate');
@@ -191,8 +191,40 @@ test('an unreceipted tool call alarms once, while complete receipts stay silent'
       });
       assert.equal(outputOf(runGuard(completeRoot, completeBridgeHome, completeTranscriptPath, 'Delivered answer.')), null);
       const completeWitness = readHandbackWitness({ stateDir: completeStateDir });
-      assert.deepEqual(completeWitness.ledger.entries, {});
+      assert.equal(Object.keys(completeWitness.ledger.entries).length, 2);
       assert.equal(entryState(completeWitness.ledger.entries[key]), 'unobserved');
     });
+  });
+});
+
+test('a later clean delivered stop of the same type recovers the tool-audit violation', async () => {
+  await withTempTree('bridge-guard-handback-recovered-', async (root) => {
+    const { bridgeHome, stateDir } = await stateDirsFor(root);
+    const uses = [{ id: 'runner-call', name: 'Bash' }, { id: 'handback-call', name: HANDBACK_TOOL }];
+    const transcriptPath = await writeTranscript(root, uses);
+    await writeState(stateDir, { handback: 'delivered', seenToolUseIds: ['handback-call'] });
+    const first = outputOf(runGuard(root, bridgeHome, transcriptPath, 'Delivered answer.'));
+    assert.match(first.systemMessage, /used Bash outside the dispatcher gate/);
+    const key = witnessKey({ cause: 'tools-outside-gate', hostVersion: null, agentType: 'codex-build' });
+    const violation = readHandbackWitness({ stateDir }).ledger.entries[key].lastViolation;
+
+    // D8: recovery needs a later dispatcher with a healthy gate, never the already-alarmed state.
+    const cleanAgentId = 'clean-dispatcher';
+    await updateDispatcherState({ stateDir, sessionId: SESSION_ID, agentId: cleanAgentId }, () => ({
+      handback: 'delivered', runnerFinal: true, seenToolUseIds: uses.map(({ id }) => id),
+    }));
+    const result = spawnSync(process.execPath, [GUARD], {
+      input: JSON.stringify({
+        session_id: SESSION_ID, agent_id: cleanAgentId, agent_type: 'codex-build',
+        agent_transcript_path: transcriptPath, last_assistant_message: 'Delivered answer.',
+      }),
+      encoding: 'utf8',
+      env: { ...process.env, CODEX_BRIDGE_HOME: bridgeHome, HOME: root, USERPROFILE: root },
+    });
+    assert.equal(outputOf(result), null);
+    const entry = readHandbackWitness({ stateDir }).ledger.entries[key];
+    assert.equal(entryState(entry), 'recovered');
+    assert.deepEqual(entry.lastViolation, violation);
+    assert.ok(entry.lastMatch.seq > violation.seq);
   });
 });

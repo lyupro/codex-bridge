@@ -39,11 +39,13 @@ import { decideDispatcherStop, transcriptToolUses } from '../lib/dispatcher-stop
 import { recognizeHostRefusal } from '../lib/host-refusal.mjs';
 import { readJsonFileSync } from '../lib/json-file.mjs';
 import { readDispatcherState, updateDispatcherState } from '../lib/dispatcher-state.mjs';
-import { recordWitnessObservation, witnessHostVersion } from '../lib/handback-witness.mjs';
+import { witnessHostVersion } from '../lib/handback-witness.mjs';
+import { untypedStopEvidence } from '../lib/untyped-stop.mjs';
 import { runLiveness } from '../lib/meta/run-liveness.mjs';
 import { liveRuns, normalizePath } from './live-runs.mjs';
 import { FORM, MAX_STATE_BLOCKS, STATE, takeTry } from './guard-tries.mjs';
 import { parseReply } from './reply-parser.mjs';
+import { recordStopWitness, typedStopObservations, untypedStopObservation } from './reply-witness.mjs';
 import { decideReplyIdentity, missingIdsAlarm, readReceiptEvidence } from './reply-identity.mjs';
 import {
   abandonedRunReason,
@@ -110,21 +112,23 @@ try {
 
 recordHookDiagnostic('reply-guard', input);
 
-// A host that stops sending agent_type would let every dispatcher past the gate and this
-// audit without a word (Plan_66 D2 (c)); say so instead of passing silently.
+// Plan_67 D9: only evidence bound to this stop can identify an untyped dispatcher.
 if (typeof input.agent_id === 'string' && input.agent_id.length > 0
   && !(typeof input.agent_type === 'string' && input.agent_type.length > 0)) {
+  let evidence;
   try {
-    await recordWitnessObservation({
-      stateDir: BRAND_STATE_DIR,
-      cause: 'missing-agent-type',
-      verdict: 'violation',
-      hostVersion: await witnessHostVersion(input),
-      detail: `host omitted agent_type for agent ${input.agent_id}`,
-    });
+    const state = typeof input.session_id === 'string' && input.session_id.length > 0
+      ? readDispatcherState({ stateDir: BRAND_STATE_DIR, sessionId: input.session_id, agentId: input.agent_id }) : null;
+    evidence = untypedStopEvidence({ state, toolUses: transcriptToolUses(input.agent_transcript_path) });
   } catch {
-    // Plan_66 H2: the 2026-09-17..24 handback break showed host contract loss must alarm, but never block work.
+    // An unreadable state is no evidence either way; a guard failure must never break the stop.
+    evidence = { dispatcher: false, reason: 'state-unreadable' };
   }
+  const { observation, alarm } = untypedStopObservation({
+    evidence, hostVersion: await witnessHostVersion(input), agentId: input.agent_id,
+  });
+  await recordStopWitness({ stateDir: BRAND_STATE_DIR, observations: [observation] });
+  if (!alarm) pass();
   process.stdout.write(JSON.stringify({
     systemMessage: 'codex-bridge: the host did not report agent_type for a subagent — the dispatcher gate cannot recognise dispatchers, so their answers are unchecked; run codex-bridge doctor.',
   }));
@@ -157,15 +161,11 @@ try {
     if (stop.unseen.length) {
       const names = stop.unseen.map((toolUse) => toolUse.name).join(', ');
       dispatcherSystemMessage = `codex-bridge: dispatcher ${input.agent_type} used ${names} outside the dispatcher gate — do not trust its answer; run codex-bridge doctor.`;
-      await recordWitnessObservation({
-        stateDir: BRAND_STATE_DIR,
-        cause: 'tools-outside-gate',
-        agentType: input.agent_type,
-        verdict: 'violation',
-        hostVersion: await witnessHostVersion(input),
-        detail: `${input.agent_type} ${input.agent_id}: ${names} outside the dispatcher gate`,
-      });
     }
+    await recordStopWitness({ stateDir: BRAND_STATE_DIR, observations: typedStopObservations({
+      agentType: input.agent_type, agentId: input.agent_id, hostVersion: await witnessHostVersion(input),
+      hasIds, state, toolUses, unseen: stop.unseen,
+    }) });
     if (stop.stateUpdate) {
       await updateDispatcherState(ids, (current) => ({
         ...(current.corrupt ? {} : current),
@@ -189,18 +189,10 @@ try {
 }
 
 if (!hasIds) {
-  try {
-    await recordWitnessObservation({
-      stateDir: BRAND_STATE_DIR,
-      cause: 'missing-ids',
-      agentType: input.agent_type,
-      verdict: 'violation',
-      hostVersion: await witnessHostVersion(input),
-      detail: `host omitted session_id or agent_id for ${input.agent_type}`,
-    });
-  } catch {
-    // Plan_66 H2: host contract loss must alarm, but never block work.
-  }
+  await recordStopWitness({ stateDir: BRAND_STATE_DIR, observations: typedStopObservations({
+    agentType: input.agent_type, hostVersion: await witnessHostVersion(input),
+    hasIds, state: null, toolUses: null, unseen: [],
+  }) });
   dispatcherSystemMessage ||= missingIdsAlarm(input.agent_type);
 }
 
