@@ -71,21 +71,23 @@ test('non-format-2 records fail before inventory is considered', async () => {
   }
 });
 
-test('inventory must be explicitly complete before owners or legacy are considered', async () => {
+test('inventory must be explicitly complete before legacy is considered when owners exist', async () => {
   for (const inventory of [undefined, null, 'incomplete', 'unknown']) {
-    await expectProblem({ format: 2, inventory, legacy: {}, owners: {} }, 'inventory-incomplete');
+    await expectProblem({ ...complete(), inventory, legacy: {} }, 'inventory-incomplete');
   }
 });
 
-test('a present legacy partition is rejected even when null or owners are missing', async () => {
+test('a present legacy partition is rejected even when null', async () => {
   for (const legacy of [{}, null, false]) {
-    await expectProblem({ format: 2, inventory: 'complete', legacy }, 'legacy-partition');
+    await expectProblem({ ...complete(), legacy }, 'legacy-partition');
   }
 });
 
 test('owners must be a non-empty object', async () => {
   for (const owners of [undefined, null, [], '', 123, {}]) {
-    await expectProblem({ format: 2, inventory: 'complete', owners }, 'no-owners');
+    for (const inventory of ['complete', 'incomplete', undefined]) {
+      await expectProblem({ format: 2, inventory, owners }, 'no-owners');
+    }
   }
 });
 

@@ -149,7 +149,29 @@ test('home owners warns with an install hint for marks without an owner row', as
     settingsError: null,
   });
   assert.equal(result.status, 'warn');
-  assert.equal(result.value, `recorded: none; inventory incomplete: an old record did not name every host; ${host.root} has package files or hooks but is not recorded: run codex-bridge install --host "${host.root}"`);
+  assert.equal(result.value, `recorded: none; inventory incomplete: an old record did not name every host; install into each host first: run codex-bridge install --host "<path>"; ${host.root} has package files or hooks but is not recorded: run codex-bridge install --host "${host.root}"`);
+});
+
+test('ownerless incomplete home inventory recommends enrolling each host without marks', async (t) => {
+  const host = await temporaryHost(t);
+  const result = await homeOwnersCheck(host, { format: 2, inventory: 'incomplete', owners: {} },
+    { files: [], hooks: [], settingsError: null });
+  assert.equal(result.status, 'warn');
+  assert.match(result.value, /inventory incomplete/);
+  assert.ok(result.value.includes('codex-bridge install --host "<path>"'));
+  assert.doesNotMatch(result.value, /inventory confirm/);
+});
+
+test('incomplete inventory and unrecorded package marks each name their repair', async (t) => {
+  const host = await temporaryHost(t);
+  const record = syncRecord();
+  record.inventory = 'incomplete';
+  const incomplete = await homeOwnersCheck(host, record, {
+    files: [{ relativeToHost: 'agents/bridge.md' }], hooks: [], settingsError: null,
+  });
+  assert.equal(incomplete.status, 'warn');
+  assert.ok(incomplete.value.includes(`inventory incomplete: an old record did not name every host; run ${INVENTORY_CONFIRM_COMMAND}`));
+  assert.ok(incomplete.value.includes(`codex-bridge install --host "${host.root}"`));
 });
 
 function syncRecord() {
@@ -230,7 +252,7 @@ test('owners in sync never marks an incomplete or legacy inventory healthy', () 
     });
   }
   assert.equal(ownersInSyncCheck({ format: 2, owners: {} }).value,
-    `no recorded owners; inventory incomplete; run ${INVENTORY_CONFIRM_COMMAND} if the recorded hosts are all of them`);
+    `no recorded owners; inventory incomplete; install into each host first: run codex-bridge install --host "<path>"`);
 });
 
 test('owners in sync joins lagging, unstamped and incomplete inventory warnings', () => {
@@ -240,7 +262,7 @@ test('owners in sync joins lagging, unstamped and incomplete inventory warnings'
   delete record.owners['C:/host two'].imageFingerprint;
   assert.deepEqual(ownersInSyncCheck(record), {
     key: 'owners in sync', status: 'warn',
-    value: `C:/host one (verified against an earlier image of 2.0.0): run codex-bridge update --host "C:/host one"; not yet verified by image fingerprint: C:/host two; inventory incomplete ${verificationNote}`,
+    value: `C:/host one (verified against an earlier image of 2.0.0): run codex-bridge update --host "C:/host one"; not yet verified by image fingerprint: C:/host two; inventory incomplete; run ${INVENTORY_CONFIRM_COMMAND} if the recorded hosts are all of them ${verificationNote}`,
   });
 });
 

@@ -26,10 +26,13 @@ for (const [name, source] of sources) {
   });
   test(`${name} observes the inclusive 24-hour window`, () => {
     assert.equal(ACTIVE_HOST_WINDOW_MS, 24 * 60 * 60 * 1000);
-    for (const [hours, expected] of [[23, [host]], [24, [host]], [25, []]]) {
+    for (const [hours, expected] of [[0, [host]], [23, [host]], [24, [host]], [25, []]]) {
       const at = new Date(now.getTime() - hours * 60 * 60 * 1000).toISOString();
       assert.deepEqual(active(source(host, at)), expected, `${hours} hours`);
     }
+  });
+  test(`${name} ignores activity one hour in the future`, () => {
+    assert.deepEqual(active(source(host, '2026-10-07T13:00:00.000Z')), []);
   });
   test(`${name} ignores unknown hosts and unparseable or non-ISO times`, () => {
     assert.deepEqual(active(source('unknown', recent)), []);
@@ -38,6 +41,17 @@ for (const [name, source] of sources) {
     }
   });
 }
+
+test('a future source does not hide valid past activity from the same host', () => {
+  const future = '2026-10-07T13:00:00.000Z';
+  for (const [name, source] of sources) {
+    const records = source(host, future);
+    const pastSource = records.modelRecord
+      ? { observations: { hosts: { [host]: { lastSeen: recent } } } }
+      : { modelRecord: ledger(host, recent) };
+    assert.deepEqual(active({ ...records, ...pastSource }), [host], name);
+  }
+});
 
 test('concurrent hosts are both active, newest activity first regardless of version', () => {
   assert.deepEqual(active({ observations: {

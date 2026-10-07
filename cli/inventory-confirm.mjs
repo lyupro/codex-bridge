@@ -63,7 +63,13 @@ async function confirmInRun(host, dryRun, questionOptions) {
 }
 
 export async function inventoryConfirm({ host, dryRun = false, ...questionOptions }) {
-  const action = () => confirmInRun(host, dryRun, questionOptions);
+  const action = (ticket) => {
+    // Plan_67 R2: a first install may create the home after the unlocked missing-home check.
+    if (!dryRun && ticket === undefined) {
+      return { exitCode: 1, output: `No format-2 installation record was found. ${updateHint}` };
+    }
+    return confirmInRun(host, dryRun, questionOptions);
+  };
   // Plan_67 D11: dry-run only reads; a real declaration holds the lifecycle lock before reading.
   return dryRun ? action() : withLifecycle(host, 'inventory', action);
 }

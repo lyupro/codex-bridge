@@ -4,6 +4,7 @@
 export const ACTIVE_HOST_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export function activeHostVersions({ observations, witnessRecord, modelRecord, now = new Date() }) {
+  const currentTime = new Date(now).getTime();
   const activity = new Map();
   function recordActivity(version, at) {
     if (typeof version !== 'string' || !version || version === 'unknown') return;
@@ -13,6 +14,8 @@ export function activeHostVersions({ observations, witnessRecord, modelRecord, n
     const date = Date.parse(`${at.slice(0, 10)}T00:00:00Z`);
     if (!Number.isFinite(time) || !Number.isFinite(date)
       || new Date(date).toISOString().slice(0, 10) !== at.slice(0, 10)) return;
+    // Plan_67 R2: future evidence must not hide a valid past source for the same host.
+    if (time > currentTime) return;
     if (!activity.has(version) || time > activity.get(version)) activity.set(version, time);
   }
   function ledgerActivity(ledger) {
@@ -36,7 +39,6 @@ export function activeHostVersions({ observations, witnessRecord, modelRecord, n
     ledgerActivity(witnessRecord.ledger);
   }
   ledgerActivity(modelRecord);
-  const currentTime = new Date(now).getTime();
-  return [...activity].filter(([, at]) => currentTime - at <= ACTIVE_HOST_WINDOW_MS)
+  return [...activity].filter(([, at]) => currentTime - at >= 0 && currentTime - at <= ACTIVE_HOST_WINDOW_MS)
     .sort((a, b) => b[1] - a[1]).map(([version]) => version);
 }

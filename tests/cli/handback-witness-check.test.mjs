@@ -152,6 +152,26 @@ test('legacy history counts each disposition alongside recovered and other-host 
   });
 });
 
+test('an active violation retains recovered, inactive-host and legacy history counts', async () => {
+  await withStateTree('bridge-witness-check-active-history-', async (stateDir) => {
+    await fs.writeFile(path.join(stateDir, WITNESS_FILE), JSON.stringify({ lastSeen: {}, alarms: [
+      { hostVersion, at, detail: 'host omitted agent_type for agent old' },
+      { hostVersion, at, detail: 'unclassified old alarm' },
+    ] }));
+    await observe(stateDir);
+    await observe(stateDir, { verdict: 'match', now: new Date(later) });
+    await observe(stateDir, { hostVersion: '2.1.280' });
+    await observe(stateDir, { cause: 'missing-ids', detail: 'active ids omitted' });
+    const result = status(stateDir);
+    assert.equal(result.state, 'violation');
+    assert.ok(result.message.includes(`host ${hostVersion}: missing-ids / codex-build: active ids omitted`));
+    assert.match(result.message, /History: 1 recovered entries; 1 unresolved entries on hosts without dispatcher activity in the last 24 hours \(history\)/);
+    assert.match(result.message, /1 older alarms without dispatcher evidence/);
+    assert.match(result.message, /1 unclassified legacy entries/);
+    oneHistory(result.message);
+  });
+});
+
 test('a match for a different cause or type cannot hide a current-host violation', async () => {
   await withStateTree('bridge-witness-check-independent-', async (stateDir) => {
     await observe(stateDir);

@@ -215,6 +215,24 @@ test('no record names update and does not create a missing home', async (t) => {
   await assert.rejects(fs.access(host.brandRoot), { code: 'ENOENT' });
 });
 
+test('a missing home refuses before a record read can create the home', async (t) => {
+  const { host, record } = await fixture(t, { writeRecord: false });
+  const readFile = fs.readFile;
+  let reads = 0;
+  // Plan_67 R2: model a first install becoming visible during the unlocked record read.
+  t.mock.method(fs, 'readFile', async (...args) => {
+    reads += 1;
+    await writeRawRecord(host, record);
+    return readFile(...args);
+  });
+  const result = await inventoryConfirm({ host, isTTY: true, prompt: async () => true });
+  assert.equal(result.exitCode, 1);
+  assert.match(result.output, /No format-2 installation record was found.*codex-bridge update/);
+  assert.equal(reads, 0, 'no record read is allowed without a lifecycle ticket');
+  await assert.rejects(fs.access(installRecordPath(host)), { code: 'ENOENT' });
+  await assert.rejects(fs.access(host.brandRoot), { code: 'ENOENT' });
+});
+
 test('format 1 names update without writing or asking', async (t) => {
   const { host, record } = await fixture(t);
   await writeRawRecord(host, record.legacy);
