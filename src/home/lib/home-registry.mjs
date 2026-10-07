@@ -84,6 +84,13 @@ const entries = [
     sides: ['lock', 'atomic-temporary'],
   },
   {
+    id: 'dispatcher-model',
+    removal: 'purge-only',
+    consequence: 'Doctor forgets which model each dispatcher type was last observed on and every model violation it recorded.',
+    primary: ['state/dispatcher-model.json'],
+    sides: ['lock', 'atomic-temporary'],
+  },
+  {
     id: 'host-observations',
     removal: 'purge-only',
     consequence: 'Doctor forgets which host versions sessions ran on until the next shell command in a session.',
