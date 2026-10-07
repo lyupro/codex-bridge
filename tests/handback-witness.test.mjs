@@ -175,7 +175,7 @@ test('witness reads validate adapter data in every observation slot without thro
         fs.writeFileSync(file, JSON.stringify(record));
         const read = readHandbackWitness({ stateDir });
         assert.deepEqual(read, { corrupt: true }, `${slot}: ${JSON.stringify(data)}`);
-        const status = handbackWitnessStatus({ record: read, hostVersion: identity().hostVersion, stateDir });
+        const status = handbackWitnessStatus({ record: read, activeHosts: [identity().hostVersion], stateDir });
         assert.equal(status.state, 'unreadable');
         assert.ok(status.message.includes(file));
       }

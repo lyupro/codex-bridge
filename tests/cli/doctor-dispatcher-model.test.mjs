@@ -65,7 +65,7 @@ test('a violation on another host remains historical and does not fail doctor', 
   const result = await runDoctor(host, ledger);
   assert.equal(modelRow(result).status, 'ok');
   assert.equal(result.exitCode, 0);
-  assert.match(modelRow(result).value, /^Not observed yet/);
+  assert.match(modelRow(result).value, /^Not observed in the last 24 hours — recorded when a dispatcher stops\./);
   assert.match(modelRow(result).value, /2\.1\.280: 1 entries, 1 unresolved violations/);
 });
 
@@ -75,4 +75,57 @@ test('a corrupt injected ledger warns without failing doctor', async (t) => {
   assert.equal(modelRow(result).status, 'warn');
   assert.equal(result.exitCode, 0);
   assert.match(modelRow(result).value, /dispatcher-model\.json/);
+});
+
+test('2026-10-07 D12: a model violation on the non-newest active host fails doctor', async (t) => {
+  const { host } = await installedFixture(t);
+  const dispatcherModelRecord = reduceObservation(emptyLedger(), {
+    ...observation('violation', '2.1.292'), key: '2.1.292|codex-scout',
+    data: { ...observation('violation', '2.1.292').data, agentType: 'codex-scout' },
+  });
+  const result = await diagnose({ host, codexProbe, currentPackage: ownPackage,
+    now: new Date('2026-10-07T12:00:00.000Z'), dispatcherModelRecord,
+    observations: { hosts: {
+      '2.1.291': { lastSeen: '2026-10-07T11:00:00.000Z' },
+      '2.1.292': { lastSeen: at },
+    } },
+  });
+  const row = result.checks.find((item) => item.key === 'dispatcherModel:codex-scout');
+  assert.equal(row.status, 'fail');
+  assert.match(row.value, /^host 2\.1\.292:/);
+  assert.equal(result.exitCode, 1);
+  assert.match(result.checks.find((item) => item.key === 'sessionHost').value, /2\.1\.291/);
+  assert.ok(result.checks.some((item) => item.key === 'otherHost:2.1.292'));
+});
+
+test('D12: the same model violation becomes history after 25 hours without later host activity', async (t) => {
+  const { host } = await installedFixture(t);
+  const oldAt = '2026-10-06T11:00:00.000Z';
+  const dispatcherModelRecord = reduceObservation(emptyLedger(), {
+    ...observation('violation', '2.1.292'), key: '2.1.292|codex-scout', at: oldAt,
+    data: { ...observation('violation', '2.1.292').data, agentType: 'codex-scout' },
+  });
+  const result = await diagnose({ host, codexProbe, currentPackage: ownPackage,
+    now: new Date('2026-10-07T12:00:00.000Z'), dispatcherModelRecord,
+    observations: { hosts: {
+      '2.1.291': { lastSeen: '2026-10-07T11:00:00.000Z' },
+      '2.1.292': { lastSeen: oldAt },
+    } },
+  });
+  assert.equal(modelRow(result).status, 'ok');
+  assert.match(modelRow(result).value, /History.*2\.1\.292: 1 entries, 1 unresolved violations/);
+  assert.equal(result.exitCode, 0);
+});
+
+test('injected active hosts override hostVersion, including an explicitly empty list', async (t) => {
+  const { host } = await installedFixture(t);
+  const dispatcherModelRecord = reduceObservation(emptyLedger(), observation('violation', '2.1.292'));
+  const options = { host, codexProbe, currentPackage: ownPackage, hostVersion, dispatcherModelRecord };
+  const failed = await diagnose({ ...options, activeHosts: ['2.1.292'] });
+  assert.equal(modelRow(failed).status, 'fail');
+  assert.equal(failed.exitCode, 1);
+  const historical = await diagnose({ ...options, activeHosts: [] });
+  assert.equal(modelRow(historical).status, 'ok');
+  assert.match(modelRow(historical).value, /History.*2\.1\.292: 1 entries, 1 unresolved violations/);
+  assert.equal(historical.exitCode, 0);
 });

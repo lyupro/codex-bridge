@@ -25,8 +25,8 @@ const options = { cause: 'tools-outside-gate', hostVersion, agentType: 'codex-bu
 const observe = (stateDir, fields = {}) => recordWitnessObservation({
   stateDir, ...options, verdict: 'violation', detail: 'dispatcher bypassed gate', now: new Date(at), ...fields,
 });
-const status = (stateDir, host = hostVersion) => handbackWitnessStatus({
-  record: readHandbackWitness({ stateDir }), hostVersion: host, stateDir,
+const status = (stateDir, activeHosts = [hostVersion]) => handbackWitnessStatus({
+  record: readHandbackWitness({ stateDir }), activeHosts, stateDir,
 });
 function oneHistory(message) {
   assert.equal(message.match(/History:/g)?.length, 1);
@@ -63,7 +63,7 @@ test('current-host violations outrank intercepted handbacks and report each caus
 
 test('missing observation is ok and unobserved', async () => {
   await withStateTree('bridge-witness-check-empty-', async (stateDir) => {
-    const result = status(stateDir, null);
+    const result = status(stateDir);
     assert.equal(result.state, 'ok');
     assert.match(result.message, /only when a dispatcher runs in an interactive session/);
     assert.doesNotMatch(result.message, /History:/);
@@ -75,7 +75,7 @@ test('intercepted handbacks on different hosts are not health signals, including
     await recordInterceptedAttempt({ stateDir, hostVersion, now: new Date(at) });
     await recordInterceptedAttempt({ stateDir, hostVersion: '9.9.281', now: new Date(later) });
     for (const host of ['2.1.282', '9.9.282']) {
-      const result = status(stateDir, host);
+      const result = status(stateDir, [host]);
       assert.equal(result.state, 'ok');
       assert.match(result.message, /^Not observed yet/);
       assert.doesNotMatch(result.message, /stale|2026-09-24/);
@@ -113,7 +113,7 @@ test('a violation only on another host is ok with one historical sentence', asyn
     await observe(stateDir, { hostVersion: '2.1.280' });
     const result = status(stateDir);
     assert.equal(result.state, 'ok');
-    assert.match(result.message, /0 recovered entries; 1 unresolved entries on other hosts \(historical, not current\)/);
+    assert.match(result.message, /0 recovered entries; 1 unresolved entries on hosts without dispatcher activity in the last 24 hours \(history\)/);
     assert.doesNotMatch(result.message, /do not trust/);
     oneHistory(result.message);
   });
@@ -169,5 +169,43 @@ test('an undetermined observation preserves the newest confirmed violation detai
     assert.equal(result.state, 'violation');
     assert.match(result.message, /dispatcher bypassed gate at 2026-09-24T10:00:00/);
     assert.doesNotMatch(result.message, /no evidence/);
+  });
+});
+
+test('two active hosts retain independent violations and name both hosts', async () => {
+  // D12: neither concurrent VS Code host may become history just because the other is newer.
+  await withStateTree('bridge-witness-check-concurrent-', async (stateDir) => {
+    await observe(stateDir, { hostVersion: '2.1.291', agentType: 'codex-scout' });
+    await observe(stateDir, { hostVersion: '2.1.292', agentType: 'codex-scout' });
+    const result = status(stateDir, ['2.1.292', '2.1.291']);
+    assert.equal(result.state, 'violation');
+    for (const host of ['2.1.291', '2.1.292']) assert.ok(result.message.includes(`host ${host}:`));
+    assert.equal(result.message.match(/codex-scout/g).length, 2);
+  });
+});
+
+test('intercepted sentence lists the newest handback per active host only', async () => {
+  await withStateTree('bridge-witness-check-concurrent-interception-', async (stateDir) => {
+    await recordInterceptedAttempt({ stateDir, hostVersion, now: at });
+    await recordInterceptedAttempt({ stateDir, hostVersion, now: later });
+    await recordInterceptedAttempt({ stateDir, hostVersion: '2.1.292', now: at });
+    await recordInterceptedAttempt({ stateDir, hostVersion: '2.1.280', now: later });
+    const result = status(stateDir, ['2.1.292', hostVersion]);
+    assert.equal(result.state, 'ok');
+    assert.equal(result.message, `Newest intercepted handback on host 2.1.292 at ${at}; host ${hostVersion} at ${later}.`);
+  });
+});
+
+test('no active hosts is ok and reports the 24-hour window while retaining unresolved history', async () => {
+  await withStateTree('bridge-witness-check-no-activity-', async (stateDir) => {
+    assert.deepEqual(status(stateDir, []), { state: 'ok', message: 'No dispatcher activity in the last 24 hours.' });
+    await observe(stateDir);
+    await recordInterceptedAttempt({ stateDir, hostVersion, now: later });
+    const result = status(stateDir, []);
+    assert.equal(result.state, 'ok');
+    assert.match(result.message, /^No dispatcher activity in the last 24 hours\./);
+    assert.match(result.message, /1 unresolved entries on hosts without dispatcher activity in the last 24 hours \(history\)/);
+    assert.doesNotMatch(result.message, /Newest intercepted|do not trust/);
+    oneHistory(result.message);
   });
 });

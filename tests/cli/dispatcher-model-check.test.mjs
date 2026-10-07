@@ -1,4 +1,4 @@
-/** Guards Plan_67 D4/D8 severity, recovery and current-host-only doctor rows. */
+/** Guards Plan_67 D4/D8 severity, recovery and active-host doctor rows. */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -15,7 +15,7 @@ import { codexProbe, installedFixture, ownPackage } from './doctor-fixtures.mjs'
 const hostVersion = '2.1.281';
 const at = '2026-10-07T10:00:00.000Z';
 const stateDir = path.resolve('fixture-state');
-const rows = (record, version = hostVersion) => dispatcherModelChecks({ record, hostVersion: version, stateDir });
+const rows = (record, activeHosts = [hostVersion]) => dispatcherModelChecks({ record, activeHosts, stateDir });
 
 function observe(ledger, verdict, data = {}) {
   const fields = { hostVersion, agentType: 'codex-build', pinFamily: 'haiku',
@@ -29,7 +29,7 @@ function observe(ledger, verdict, data = {}) {
 test('an absent or empty ledger is ok and not observed yet', () => {
   for (const record of [null, emptyLedger()]) {
     assert.deepEqual(rows(record), [check('dispatcherModel', 'ok',
-      'Not observed yet — recorded when a dispatcher stops on this host.')]);
+      'Not observed in the last 24 hours — recorded when a dispatcher stops.')]);
   }
 });
 
@@ -65,6 +65,14 @@ test('an undetermined pin carries all installed-contract reasons', () => {
   assert.match(row.value, /owner root missing; reinstall the owner; owners disagree on the pin/);
   assert.ok(row.value.includes(at));
   assert.doesNotMatch(row.value, /no model family could be read|not yet disproved/);
+});
+
+test('a pin reason ending in a period does not double the row period', () => {
+  const [row] = rows(observe(emptyLedger(), 'undetermined', {
+    pinFamily: null, parsed: ['haiku'], pinReasons: ['Installation record has an incomplete inventory.'],
+  }));
+  assert.ok(row.value.endsWith('has an incomplete inventory.'));
+  assert.doesNotMatch(row.value, /\.\./);
 });
 
 test('an undetermined transcript without pin reasons warns', () => {
@@ -125,8 +133,8 @@ test('other-host-only observations remain one ok row with one history sentence a
   assert.equal(result.length, 1);
   assert.equal(result[0].key, 'dispatcherModel');
   assert.equal(result[0].status, 'ok');
-  assert.match(result[0].value, /^Not observed yet/);
-  assert.match(result[0].value, /History on other hosts \(historical, not current\):/);
+  assert.match(result[0].value, /^Not observed in the last 24 hours/);
+  assert.match(result[0].value, /History on hosts without dispatcher activity in the last 24 hours \(historical, not current\):/);
   assert.ok(result[0].value.includes('2.1.280: 2 entries, 1 unresolved violations'));
   assert.ok(result[0].value.includes('2.1.279: 1 entries, 1 unresolved violations'));
   assert.equal(result[0].value.match(/History/g).length, 1);
@@ -138,7 +146,7 @@ test('other-host history is appended only to the first active row without extra 
   ledger = observe(ledger, 'match', { agentType: 'codex-review' });
   const result = rows(ledger);
   assert.deepEqual(result.map((row) => row.status), ['ok', 'ok']);
-  assert.match(result[0].value, /History on other hosts/);
+  assert.match(result[0].value, /History on hosts without dispatcher activity in the last 24 hours/);
   assert.doesNotMatch(result[1].value, /History/);
   assert.equal(result.length, 2);
 });
@@ -154,12 +162,12 @@ test('a match on another host cannot recover the current-host doctor violation',
   const ledger = observe(observe(emptyLedger(), 'violation'), 'match', { hostVersion: '2.1.280' });
   const [row] = rows(ledger);
   assert.equal(row.status, 'fail');
-  assert.match(row.value, /History on other hosts/);
+  assert.match(row.value, /History on hosts without dispatcher activity in the last 24 hours/);
 });
 
 test('a null host identity stays distinct from a known host', () => {
   const ledger = observe(emptyLedger(), 'violation', { hostVersion: null });
-  assert.equal(rows(ledger, null)[0].status, 'fail');
+  assert.equal(rows(ledger, [])[0].status, 'ok');
   const [row] = rows(ledger);
   assert.equal(row.status, 'ok');
   assert.match(row.value, /unknown host: 1 entries, 1 unresolved violations/);
@@ -190,3 +198,35 @@ for (const [file, key, read] of [
     assert.equal(result.exitCode, 0);
   });
 }
+
+test('two active hosts with the same dispatcher type each produce a fail row naming their host', () => {
+  // D12 incident: 2.1.292 must not disappear into history behind concurrent 2.1.291.
+  let ledger = observe(emptyLedger(), 'violation', { hostVersion: '2.1.291', agentType: 'codex-scout' });
+  ledger = observe(ledger, 'violation', { hostVersion: '2.1.292', agentType: 'codex-scout' });
+  const result = rows(ledger, ['2.1.292', '2.1.291']);
+  assert.deepEqual(result.map(({ key, status }) => ({ key, status })), [
+    { key: 'dispatcherModel:codex-scout', status: 'fail' },
+    { key: 'dispatcherModel:codex-scout', status: 'fail' },
+  ]);
+  assert.ok(result[0].value.startsWith('host 2.1.291: '));
+  assert.ok(result[1].value.startsWith('host 2.1.292: '));
+  for (const row of result) assert.doesNotMatch(row.value, /History/);
+});
+
+test('no active hosts yields one ok last-24-hours row with inactive entries retained as history', () => {
+  assert.deepEqual(rows(emptyLedger(), []), [check('dispatcherModel', 'ok',
+    'Not observed in the last 24 hours — recorded when a dispatcher stops.')]);
+  const result = rows(observe(emptyLedger(), 'violation'), []);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].status, 'ok');
+  assert.match(result[0].value, /^Not observed in the last 24 hours/);
+  assert.match(result[0].value, /History on hosts without dispatcher activity in the last 24 hours/);
+  assert.ok(result[0].value.includes(`${hostVersion}: 1 entries, 1 unresolved violations`));
+});
+
+test('every active entry status starts with its host, including undetermined and recovered entries', () => {
+  for (const ledger of [observe(emptyLedger(), 'violation'), observe(emptyLedger(), 'undetermined'),
+    observe(emptyLedger(), 'match'), observe(observe(emptyLedger(), 'violation'), 'match')]) {
+    assert.ok(rows(ledger)[0].value.startsWith(`host ${hostVersion}: `));
+  }
+});

@@ -58,7 +58,7 @@ test('doctor reports a violation only on another host as historical and ok', asy
   await alarm(brandStateDir(host.brandRoot), { hostVersion: '2.1.280' });
   const witness = witnessCheck(await runDoctor(host));
   assert.equal(witness.status, 'ok');
-  assert.match(witness.value, /1 unresolved entries on other hosts \(historical, not current\)/);
+  assert.match(witness.value, /1 unresolved entries on hosts without dispatcher activity in the last 24 hours \(history\)/);
 });
 
 test('doctor reports an intercepted handback only on another host as ok and unobserved', async (t) => {
@@ -99,5 +99,24 @@ test('doctor warns about an unreadable witness without changing exit code', asyn
   const result = await runDoctor(host);
   assert.equal(witnessCheck(result).status, 'warn');
   assert.match(witnessCheck(result).value, /handback witness is unreadable/);
+  assert.equal(result.exitCode, baseline.exitCode);
+});
+
+test('D12: an unresolved witness violation on the non-newest active host warns without changing exit code', async (t) => {
+  const { host } = await installedFixture(t);
+  const doctorOptions = { host, codexProbe, currentPackage: ownPackage,
+    now: new Date('2026-10-07T12:00:00.000Z'),
+    observations: { hosts: {
+      '2.1.291': { lastSeen: '2026-10-07T11:00:00.000Z' },
+      '2.1.292': { lastSeen: '2026-10-07T10:00:00.000Z' },
+    } },
+  };
+  const baseline = await diagnose(doctorOptions);
+  await alarm(brandStateDir(host.brandRoot), { hostVersion: '2.1.292',
+    now: new Date('2026-10-07T10:00:00.000Z') });
+  const result = await diagnose(doctorOptions);
+  assert.equal(witnessCheck(result).status, 'warn');
+  assert.match(witnessCheck(result).value, /2\.1\.292/);
+  assert.match(witnessCheck(result).value, /tools-outside-gate \/ codex-build: dispatcher bypassed gate/);
   assert.equal(result.exitCode, baseline.exitCode);
 });

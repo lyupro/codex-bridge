@@ -28,6 +28,7 @@ import { readHandbackWitness } from '../src/home/lib/handback-witness.mjs';
 import { readDispatcherModel } from '../src/home/lib/dispatcher-model.mjs';
 import { brandStateDir } from '../src/home/lib/brand-home.mjs';
 import { readHostObservations } from '../src/home/lib/host-observations.mjs';
+import { activeHostVersions } from './active-hosts.mjs';
 import { otherHostCheck, sessionHostCheck, sessionHostVersions } from './session-hosts.mjs';
 import { liveRunsCheck, projectRunsCheck, retentionCheck } from './doctor-runs.mjs';
 
@@ -88,6 +89,8 @@ export async function diagnose({
   dispatcherModelRecord,
   dispatcherContractRecord,
   hostVersion,
+  activeHosts: injectedActiveHosts,
+  now,
   observations,
 } = {}) {
   const checks = [sourceCheck()];
@@ -150,6 +153,10 @@ export async function diagnose({
   const hostObservations = observations === undefined ? readHostObservations({ stateDir }) : observations;
   const observedVersions = sessionHostVersions(hostObservations);
   const detectedHostVersion = hostVersion === undefined ? observedVersions[0] ?? null : hostVersion;
+  const witnessRecord = handbackWitnessRecord === undefined ? readHandbackWitness({ stateDir }) : handbackWitnessRecord;
+  const modelRecord = dispatcherModelRecord === undefined ? readDispatcherModel({ stateDir }) : dispatcherModelRecord;
+  const activeHosts = injectedActiveHosts ?? (hostVersion !== undefined ? [hostVersion].filter(Boolean)
+    : activeHostVersions({ observations: hostObservations, witnessRecord, modelRecord, now }));
   checks.push(sessionHostCheck(observedVersions, hostObservations));
   const refusalRecord = contractRecord === undefined ? await readHostContract(host) : contractRecord;
   const hostContract = contractStatus({
@@ -161,14 +168,14 @@ export async function diagnose({
     : hostContract.state === 'ignored' ? 'fail' : 'warn';
   checks.push(check('hostContract', hostContractStatus, hostContract.message));
   const witness = handbackWitnessStatus({
-    record: handbackWitnessRecord === undefined ? readHandbackWitness({ stateDir }) : handbackWitnessRecord,
-    hostVersion: detectedHostVersion,
+    record: witnessRecord,
+    activeHosts,
     stateDir,
   });
   checks.push(check('handbackWitness', ['violation', 'unreadable'].includes(witness.state) ? 'warn' : 'ok', witness.message));
   checks.push(...dispatcherModelChecks({
-    record: dispatcherModelRecord === undefined ? readDispatcherModel({ stateDir }) : dispatcherModelRecord,
-    hostVersion: detectedHostVersion,
+    record: modelRecord,
+    activeHosts,
     stateDir,
   }));
   const dispatcherRecord = dispatcherContractRecord === undefined ? readDispatcherContract({ stateDir }) : dispatcherContractRecord;
