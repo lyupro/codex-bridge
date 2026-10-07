@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { resolveBrandHome } from '../src/home/lib/brand-home.mjs';
+import { claudePaths } from '../src/home/lib/claude-layout.mjs';
 
 function repositoryRoot(start) {
   let current = path.resolve(start);
@@ -12,15 +13,6 @@ function repositoryRoot(start) {
     if (parent === current) return path.resolve(start);
     current = parent;
   }
-}
-
-function claudePaths(root) {
-  return {
-    agentsDir: path.join(root, 'agents', 'codex-bridge'),
-    commandsDir: path.join(root, 'commands', 'codex-bridge'),
-    legacyAgentsDir: path.join(root, 'agents', 'codex'),
-    legacyCommandsDir: path.join(root, 'commands', 'codex'),
-  };
 }
 
 export function resolveHost({
