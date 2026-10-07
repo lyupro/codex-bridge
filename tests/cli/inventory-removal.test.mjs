@@ -21,6 +21,8 @@ async function fixture(t) {
     brandRoot: path.join(root, 'brand'),
   });
   const ownRoot = normalizedRulesOwner(host);
+  // A hint whose folder is missing is shown with a suffix (Plan_67 D11); this hint names a real host.
+  await fs.mkdir(path.join(root, 'other-host'), { recursive: true });
   const otherRoot = normalizedRulesOwner({ root: path.join(root, 'other-host') });
   return { host, ownRoot, otherRoot };
 }

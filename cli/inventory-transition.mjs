@@ -3,6 +3,7 @@
  * store nothing about a refusal.
  */
 import fs from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { askYesNo, isInteractive } from './terminal-question.mjs';
 import { isFormat2 } from '../src/home/lib/install-owner-roots.mjs';
@@ -36,7 +37,8 @@ export function registryHintLines(host, candidates) {
   const otherCandidates = candidates.filter((root) => root !== owner);
   return [
     'Codex rules registry host roots are a hint only; they may be stale or belong to another home:',
-    ...(otherCandidates.length ? otherCandidates.map((root) => `  ${root}`) : ['  none found']),
+    ...(otherCandidates.length ? otherCandidates.map((root) =>
+      `  ${root}${existsSync(root) ? '' : ' (folder does not exist)'}`) : ['  none found']),
   ];
 }
 

@@ -9,6 +9,7 @@ import { CLI_NAMES } from '../../src/home/lib/cli-names.mjs';
 import { commandOptions, HELP, main } from '../../bin/codex-bridge.mjs';
 import { COMMANDS } from '../../cli/command-registry.mjs';
 import { renderCommandHelp } from '../../cli/command-help.mjs';
+import { withOwner } from '../../cli/install-owners.mjs';
 
 test('doctor accepts a probe executable and other commands reject it', () => {
   assert.deepEqual(commandOptions('doctor', ['--probe-contract', '--probe-executable', 'x.exe']),
@@ -102,6 +103,47 @@ function captureIO() {
   const errors = [];
   return { output, errors, log: (message) => output.push(message), error: (message) => errors.push(message) };
 }
+
+// raw argv: `--scope` here is the install scope of the command line under test, not an order flag.
+test('inventory confirm --dry-run reaches the confirmation handler', async (t) => {
+  const hostRoot = path.join(ROOT, 'inventory-test-host');
+  const record = withOwner(null, { root: hostRoot, scope: 'project' }, {
+    name: '@lyupro/codex-bridge', version: '0.1.0', installedAt: '2026-10-07T00:00:00.000Z',
+    mode: 'copy',
+    files: [{ root: 'claude', path: 'agents/codex-bridge/dispatcher.md' }, { root: 'brand', path: 'hooks/reply-guard.mjs' }],
+    fingerprints: {
+      claude: { 'agents/codex-bridge/dispatcher.md': 'a'.repeat(64) },
+      brand: { 'hooks/reply-guard.mjs': 'b'.repeat(64) },
+    },
+    hooks: [{ event: 'SubagentStop', root: 'brand', path: 'hooks/reply-guard.mjs', command: 'codex-bridge hook reply-guard' }],
+  });
+  t.mock.method(fs, 'readFile', async (file) => {
+    if (path.basename(file) === '.installed.json') return JSON.stringify(record);
+    throw Object.assign(new Error('missing test registry'), { code: 'ENOENT' });
+  });
+  const io = captureIO();
+  assert.equal(await main(['inventory', 'confirm', '--scope', 'project', '--host', hostRoot, '--dry-run'], io), 0);
+  assert.match(io.output[0], /Recorded hosts:/);
+  assert.ok(io.output[0].includes(hostRoot));
+  assert.match(io.output[0], /Dry run: nothing changed\./);
+  assert.deepEqual(io.errors, []);
+  assert.deepEqual(commandOptions('inventory', ['--dry-run']), { dryRun: true });
+});
+
+test('inventory requires confirm and rejects unknown flags', async () => {
+  for (const argv of [['inventory'], ['inventory', 'unknown'], ['inventory', '--dry-run']]) {
+    await assert.rejects(main(argv, captureIO()), /unknown inventory action/);
+  }
+  await assert.rejects(main(['inventory', 'confirm', '--unknown'], captureIO()), /unknown inventory option/);
+});
+
+// raw argv: the help text spells the install `--scope` flag.
+test('help lists the public inventory confirmation command', async () => {
+  const io = captureIO();
+  assert.equal(await main(['--help'], io), 0);
+  assert.ok(helpCommands(io.output[0]).includes('inventory'));
+  assert.ok(io.output[0].includes('codex-bridge inventory confirm [--scope user|project] [--host <path>] [--dry-run]'));
+});
 
 // Plan_71 D1: help must be intercepted before handlers can read state, launch or mutate anything.
 for (const entry of COMMANDS.filter((candidate) => candidate.section !== 'renamed')) {

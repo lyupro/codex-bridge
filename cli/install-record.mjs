@@ -307,6 +307,11 @@ async function publishInstallRecord(host, next) {
   await writer.rename('install-record', temporary, target);
 }
 
+/** Plan_67 D11 / A4: changing inventory must not rebuild owners or hide fingerprint lag. */
+export function publishInstallRecordOnly(host, next) {
+  return publishInstallRecord(host, next);
+}
+
 /**
  * Publishes the record whole through a temporary and a rename: a direct write left a half-written
  * record for every host sharing the home if the process died mid-write (advice A3, risk r3).

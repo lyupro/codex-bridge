@@ -146,7 +146,7 @@ test('withOwner records read back only when the inventory is explicitly complete
     assert.deepEqual(readOwnerRoots({ brandRoot }), { roots: [host.root] });
     fs.writeFileSync(file, JSON.stringify(withOwner(null, host, record1)));
     assert.deepEqual(readOwnerRoots({ brandRoot }), {
-      problem: 'inventory-incomplete', detail: `Installation record at ${file} has an incomplete inventory.`,
+      problem: 'inventory-incomplete', detail: `Installation record at ${file} has an incomplete inventory; if the recorded hosts are all the hosts using this home, run codex-bridge inventory confirm.`,
     });
   });
 });

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
-import { detectTransition, askTransition } from '../../cli/inventory-transition.mjs';
+import { detectTransition, askTransition, registryHintLines } from '../../cli/inventory-transition.mjs';
 import { installRecordPath } from '../../cli/install-record.mjs';
 import { resolveHost } from '../../cli/hosts.mjs';
 import {
@@ -67,6 +67,7 @@ test('asks with newline-separated text and omits this host from registry candida
   const { root, host } = await fixture(t);
   const ownRoot = normalizedRulesOwner(host);
   const otherRoot = normalizedRulesOwner({ root: path.join(root, 'other-host') });
+  await fs.mkdir(otherRoot, { recursive: true });
   await fs.mkdir(host.codexRulesDir, { recursive: true });
   await fs.writeFile(rulesRegistryPath(host), JSON.stringify({
     version: RULES_REGISTRY_VERSION,
@@ -120,4 +121,13 @@ test('maps prompt yes, no, and cancel to their inventory outcomes', async (t) =>
       prompt: async () => answer,
     }), expected);
   }
+});
+
+test('marks registry hints whose folders do not exist', async (t) => {
+  const { root, host } = await fixture(t);
+  const missingRoot = normalizedRulesOwner({ root: path.join(root, 'missing-host') });
+
+  assert.deepEqual(registryHintLines(host, [missingRoot]).slice(1), [
+    `  ${missingRoot} (folder does not exist)`,
+  ]);
 });

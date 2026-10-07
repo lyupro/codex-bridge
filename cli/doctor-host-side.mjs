@@ -12,6 +12,9 @@ import { check } from './doctor-format.mjs';
 import { hasPackageMarks } from './host-inspection.mjs';
 import { isFormat2 } from '../src/home/lib/install-owner-roots.mjs';
 import { imageFingerprint } from './install-owners.mjs';
+import { INVENTORY_CONFIRM_COMMAND } from './inventory-confirm.mjs';
+
+const inventoryRepair = `; run ${INVENTORY_CONFIRM_COMMAND} if the recorded hosts are all of them`;
 
 // Format 1 is not migrated here: asFormat2 would record this host as the owner, and doctor only reads.
 export function ownerEntry(rawRecord, host) {
@@ -66,7 +69,8 @@ export async function homeOwnersCheck(host, rawRecord, inspection) {
   const unrecordedMarks = hasPackageMarks(inspection) && !hostRecorded;
   const parts = [
     `recorded: ${roots.length ? roots.join(', ') : 'none'}`,
-    inventoryComplete ? 'inventory complete' : 'inventory incomplete: an old record did not name every host',
+    inventoryComplete ? 'inventory complete'
+      : `inventory incomplete: an old record did not name every host${unrecordedMarks ? '' : inventoryRepair}`,
     ...(unrecordedMarks
       ? [`${host.root} has package files or hooks but is not recorded: run codex-bridge install --host "${host.root}"`]
       : []),
@@ -83,7 +87,7 @@ export function ownersInSyncCheck(rawRecord) {
   const inventoryComplete = rawRecord.inventory === 'complete' && rawRecord.legacy === undefined;
   if (!owners.length) {
     return check('owners in sync', 'warn',
-      `no recorded owners${inventoryComplete ? '' : '; inventory incomplete'}`);
+      `no recorded owners${inventoryComplete ? '' : `; inventory incomplete${inventoryRepair}`}`);
   }
 
   const fingerprint = imageFingerprint(rawRecord.image);
@@ -103,7 +107,7 @@ export function ownersInSyncCheck(rawRecord) {
     parts.push(`${owner.root} (${why}): run codex-bridge update --host "${owner.root}"`);
   }
   if (unstamped.length) parts.push(`not yet verified by image fingerprint: ${unstamped.join(', ')}`);
-  if (!inventoryComplete) parts.push('inventory incomplete');
+  if (!inventoryComplete) parts.push(`inventory incomplete${parts.length ? '' : inventoryRepair}`);
   const warning = parts.length > 0;
   if (!warning) parts.push(`all ${owners.length} owner(s) verified against the current image`);
   return check('owners in sync', warning ? 'warn' : 'ok',

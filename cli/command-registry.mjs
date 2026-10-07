@@ -10,6 +10,7 @@ import { brandStateDir } from '../src/home/lib/brand-home.mjs';
 import { hook } from './hook.mjs';
 import { resolveHost } from './hosts.mjs';
 import { install } from './install.mjs';
+import { inventoryConfirm } from './inventory-confirm.mjs';
 import { model } from './model.mjs';
 import { projects } from './projects.mjs';
 import { read } from './read.mjs';
@@ -26,6 +27,7 @@ export function commandOptions(command, argv) {
   const options = {};
   const booleanFlags = command === 'install' || command === 'update' ? new Set(['--dry-run', '--force'])
     : command === 'uninstall' ? new Set(['--dry-run', '--purge'])
+      : command === 'inventory' ? new Set(['--dry-run'])
       : command === 'doctor' ? new Set(['--probe-contract']) : new Set();
   const flagNames = new Map([
     ['--dry-run', 'dryRun'],
@@ -118,6 +120,20 @@ export const COMMANDS = [
       const result = options.purge
         ? await purge({ host, dryRun: options.dryRun })
         : await uninstall({ host, dryRun: options.dryRun });
+      io.log(result.output);
+      return result.exitCode;
+    },
+  },
+  {
+    name: 'inventory',
+    summary: 'Confirm that the recorded hosts are all the hosts using this home',
+    usage: ['codex-bridge inventory confirm [--scope user|project] [--host <path>] [--dry-run]'],
+    section: 'public',
+    async handler(argv, io) {
+      if (argv[0] !== 'confirm') throw new Error(`unknown inventory action "${argv[0] ?? ''}"`);
+      const options = commandOptions('inventory', argv.slice(1));
+      const host = resolveHost(options);
+      const result = await inventoryConfirm({ host, dryRun: options.dryRun });
       io.log(result.output);
       return result.exitCode;
     },

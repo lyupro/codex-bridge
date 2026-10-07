@@ -6,6 +6,7 @@ import path from 'node:path';
 import { diagnose } from '../../cli/doctor.mjs';
 import { homeOwnersCheck, hostSideCheck, ownersInSyncCheck } from '../../cli/doctor-host-side.mjs';
 import { install } from '../../cli/install.mjs';
+import { INVENTORY_CONFIRM_COMMAND } from '../../cli/inventory-confirm.mjs';
 import { imageFingerprint } from '../../cli/install-owners.mjs';
 import { installRecordPath } from '../../cli/install-record.mjs';
 import { buildInstallPlan, fileFingerprint } from '../../cli/manifest.mjs';
@@ -133,7 +134,7 @@ test('home owners warns for an incomplete format 2 inventory', async (t) => {
     owners: { [normalizeRepoPath(host.root)]: { root: host.root } },
   }, { files: [], hooks: [], settingsError: null });
   assert.equal(result.status, 'warn');
-  assert.match(result.value, /inventory incomplete: an old record did not name every host/);
+  assert.equal(result.value, `recorded: ${host.root}; inventory incomplete: an old record did not name every host; run ${INVENTORY_CONFIRM_COMMAND} if the recorded hosts are all of them`);
 });
 
 test('home owners warns with an install hint for marks without an owner row', async (t) => {
@@ -225,11 +226,11 @@ test('owners in sync never marks an incomplete or legacy inventory healthy', () 
   for (const inventory of [{ inventory: 'incomplete' }, { inventory: undefined }, { legacy: {} }]) {
     const record = { ...syncRecord(), ...inventory };
     assert.deepEqual(ownersInSyncCheck(record), {
-      key: 'owners in sync', status: 'warn', value: `inventory incomplete ${verificationNote}`,
+      key: 'owners in sync', status: 'warn', value: `inventory incomplete; run ${INVENTORY_CONFIRM_COMMAND} if the recorded hosts are all of them ${verificationNote}`,
     });
   }
   assert.equal(ownersInSyncCheck({ format: 2, owners: {} }).value,
-    'no recorded owners; inventory incomplete');
+    `no recorded owners; inventory incomplete; run ${INVENTORY_CONFIRM_COMMAND} if the recorded hosts are all of them`);
 });
 
 test('owners in sync joins lagging, unstamped and incomplete inventory warnings', () => {

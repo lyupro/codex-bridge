@@ -34,7 +34,8 @@ export function readOwnerRoots({ brandRoot }) {
     return { problem: 'not-format-2', detail: `Installation record at ${file} is not format 2.` };
   }
   if (parsed.inventory !== 'complete') {
-    return { problem: 'inventory-incomplete', detail: `Installation record at ${file} has an incomplete inventory.` };
+    // Plan_67 D11: match cli/inventory-confirm.mjs INVENTORY_CONFIRM_COMMAND; hooks cannot import cli/.
+    return { problem: 'inventory-incomplete', detail: `Installation record at ${file} has an incomplete inventory; if the recorded hosts are all the hosts using this home, run codex-bridge inventory confirm.` };
   }
   if (Object.hasOwn(parsed, 'legacy')) {
     return { problem: 'legacy-partition', detail: `Installation record at ${file} contains a legacy partition.` };
