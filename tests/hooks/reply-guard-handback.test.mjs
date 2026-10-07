@@ -6,7 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { readDispatcherState, updateDispatcherState } from '../../src/home/lib/dispatcher-state.mjs';
 import { HANDBACK_TOOL } from '../../src/home/lib/hook-definitions.mjs';
-import { readHandbackWitness } from '../../src/home/lib/handback-witness.mjs';
+import { readHandbackWitness, witnessKey } from '../../src/home/lib/handback-witness.mjs';
+import { entryState } from '../../src/home/lib/observation-ledger.mjs';
 import { handbackDemandReason, missingRunReason } from '../../src/home/hooks/reply-verdicts.mjs';
 import { withTempTree } from '../temp-tree.mjs';
 
@@ -168,12 +169,17 @@ test('an unreceipted tool call alarms once, while complete receipts stay silent'
 
     const first = outputOf(runGuard(root, bridgeHome, transcriptPath, 'Delivered answer.'));
     assert.match(first.systemMessage, /used Bash outside the dispatcher gate/);
-    assert.equal(readHandbackWitness({ stateDir }).alarms.length, 1);
-    assert.equal(readHandbackWitness({ stateDir }).alarms[0].hostVersion, null);
+    const key = witnessKey({ cause: 'tools-outside-gate', hostVersion: null, agentType: 'codex-build' });
+    const witness = readHandbackWitness({ stateDir });
+    const entry = witness.ledger.entries[key];
+    assert.equal(Object.keys(witness.ledger.entries).length, 1);
+    assert.equal(entryState(entry), 'violation');
+    assert.equal(entry.lastViolation.data.hostVersion, null);
+    assert.equal(entry.lastViolation.detail, 'codex-build test-dispatcher: Bash outside the dispatcher gate');
     assert.equal(readDispatcherState({ stateDir, sessionId: SESSION_ID, agentId: AGENT_ID }).auditAlarmed, true);
 
     assert.equal(outputOf(runGuard(root, bridgeHome, transcriptPath, 'Delivered answer.')), null);
-    assert.equal(readHandbackWitness({ stateDir }).alarms.length, 1);
+    assert.deepEqual(readHandbackWitness({ stateDir }).ledger.entries[key], entry);
 
     await withTempTree('bridge-guard-handback-receipts-', async (completeRoot) => {
       const { bridgeHome: completeBridgeHome, stateDir: completeStateDir } = await stateDirsFor(completeRoot);
@@ -184,7 +190,9 @@ test('an unreceipted tool call alarms once, while complete receipts stay silent'
         seenToolUseIds: uses.map(({ id }) => id),
       });
       assert.equal(outputOf(runGuard(completeRoot, completeBridgeHome, completeTranscriptPath, 'Delivered answer.')), null);
-      assert.equal(readHandbackWitness({ stateDir: completeStateDir }).alarms.length, 0);
+      const completeWitness = readHandbackWitness({ stateDir: completeStateDir });
+      assert.deepEqual(completeWitness.ledger.entries, {});
+      assert.equal(entryState(completeWitness.ledger.entries[key]), 'unobserved');
     });
   });
 });

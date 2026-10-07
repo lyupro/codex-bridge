@@ -162,7 +162,7 @@ export async function diagnose({
     hostVersion: detectedHostVersion,
     stateDir,
   });
-  checks.push(check('handbackWitness', ['seen', 'unobserved'].includes(witness.state) ? 'ok' : 'warn', witness.message));
+  checks.push(check('handbackWitness', ['violation', 'unreadable'].includes(witness.state) ? 'warn' : 'ok', witness.message));
   const dispatcherRecord = dispatcherContractRecord === undefined ? readDispatcherContract({ stateDir }) : dispatcherContractRecord;
   checks.push(...dispatcherContractChecks({
     record: dispatcherRecord,

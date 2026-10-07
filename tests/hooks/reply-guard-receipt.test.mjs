@@ -6,6 +6,8 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { updateDispatcherState } from '../../src/home/lib/dispatcher-state.mjs';
+import { readHandbackWitness, witnessKey } from '../../src/home/lib/handback-witness.mjs';
+import { entryState } from '../../src/home/lib/observation-ledger.mjs';
 import { decideReplyIdentity, missingIdsAlarm, readReceiptEvidence } from '../../src/home/hooks/reply-identity.mjs';
 import {
   missingRunReason, noReceiptReason, nonexistentRunReason,
@@ -290,10 +292,12 @@ test('without host ids, a finished run from another order passes with a witness 
     session_id: undefined, agent_id: undefined, agent_transcript_path: transcript,
   });
   assert.deepEqual(output, { systemMessage: MISSING_IDS_MESSAGE });
-  const witness = JSON.parse(await fs.readFile(path.join(stateDir, 'handback-witness.json'), 'utf8'));
-  assert.equal(witness.alarms.length, 1);
-  assert.equal(witness.alarms[0].hostVersion, null);
-  assert.equal(witness.alarms[0].detail, 'host omitted session_id or agent_id for codex-scout');
+  const witness = readHandbackWitness({ stateDir });
+  const entry = witness.ledger.entries[witnessKey({ cause: 'missing-ids', hostVersion: null, agentType: 'codex-scout' })];
+  assert.equal(Object.keys(witness.ledger.entries).length, 1);
+  assert.equal(entryState(entry), 'violation');
+  assert.equal(entry.lastViolation.data.hostVersion, null);
+  assert.equal(entry.lastViolation.detail, 'host omitted session_id or agent_id for codex-scout');
 });
 
 for (const receipt of ['', null, 42]) {

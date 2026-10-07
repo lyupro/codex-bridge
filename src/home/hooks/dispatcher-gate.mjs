@@ -18,7 +18,7 @@ import {
   readDispatcherState,
   updateDispatcherState,
 } from '../lib/dispatcher-state.mjs';
-import { recordHandbackWitness, witnessHostVersion } from '../lib/handback-witness.mjs';
+import { recordInterceptedAttempt, witnessHostVersion } from '../lib/handback-witness.mjs';
 import { observeSessionHost } from '../lib/host-observations.mjs';
 
 function emit(decision, toolInput) {
@@ -98,9 +98,8 @@ async function main() {
 
     if (payload.tool_name === HANDBACK_TOOL) {
       try {
-        await recordHandbackWitness({
+        await recordInterceptedAttempt({
           stateDir: BRAND_STATE_DIR,
-          kind: 'seen',
           hostVersion: await witnessHostVersion(payload),
         });
       } catch {}

@@ -4,6 +4,8 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
+import { readHandbackWitness, witnessKey } from '../../src/home/lib/handback-witness.mjs';
+import { entryState } from '../../src/home/lib/observation-ledger.mjs';
 import { withTempTree } from '../temp-tree.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
@@ -30,10 +32,12 @@ function runGuard(root, payload) {
 async function assertAlarm(root, payload, agentId) {
   const result = runGuard(root, payload);
   assert.deepEqual(JSON.parse(result.stdout), { systemMessage: MESSAGE });
-  const witness = JSON.parse(await fs.readFile(path.join(result.stateDir, 'handback-witness.json'), 'utf8'));
-  assert.equal(witness.alarms.length, 1);
-  assert.equal(witness.alarms[0].hostVersion, null);
-  assert.equal(witness.alarms[0].detail, `host omitted agent_type for agent ${agentId}`);
+  const witness = readHandbackWitness({ stateDir: result.stateDir });
+  const entry = witness.ledger.entries[witnessKey({ cause: 'missing-agent-type', hostVersion: null })];
+  assert.equal(Object.keys(witness.ledger.entries).length, 1);
+  assert.equal(entryState(entry), 'violation');
+  assert.equal(entry.lastViolation.data.hostVersion, null);
+  assert.equal(entry.lastViolation.detail, `host omitted agent_type for agent ${agentId}`);
 }
 
 test('missing agent_type on a subagent alarms and warns', async () => {

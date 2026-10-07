@@ -144,7 +144,8 @@ test('honest runner output replaces handback with the final failure verdict', as
   assert.equal(final.permissionDecision, 'allow');
   assert.equal(final.updatedInput.message, 'FAIL — boom');
   const witness = await readHandbackWitness({ stateDir: path.join(root, 'home', 'state') });
-  assert.ok(witness.lastSeen);
+  assert.ok(witness.intercepted.unknown);
+  assert.deepEqual(witness.ledger.entries, {});
 });
 
 test('canonical runner stdout binds a receipt and preserves the first contradictory folder', async (t) => {
@@ -191,8 +192,9 @@ test('handback sighting records transcript host version instead of inherited SDK
   await fs.writeFile(identity.transcript_path, `${JSON.stringify({ version: '9.8.7' })}\n`);
   outcome(root, dispatcherPayload(identity, 'SubagentHandback', { message: 'OK' }));
   const witness = await readHandbackWitness({ stateDir: path.join(root, 'home', 'state') });
-  assert.equal(typeof witness.lastSeen['9.8.7'], 'string');
-  assert.equal(witness.lastSeen['0.3.999'], undefined);
+  assert.equal(typeof witness.intercepted['9.8.7'], 'string');
+  assert.equal(witness.intercepted['0.3.999'], undefined);
+  assert.deepEqual(witness.ledger.entries, {});
 });
 
 test('main-session and unregistered agent payloads are ignored', async (t) => {

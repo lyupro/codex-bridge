@@ -39,7 +39,7 @@ import { decideDispatcherStop, transcriptToolUses } from '../lib/dispatcher-stop
 import { recognizeHostRefusal } from '../lib/host-refusal.mjs';
 import { readJsonFileSync } from '../lib/json-file.mjs';
 import { readDispatcherState, updateDispatcherState } from '../lib/dispatcher-state.mjs';
-import { recordHandbackWitness, witnessHostVersion } from '../lib/handback-witness.mjs';
+import { recordWitnessObservation, witnessHostVersion } from '../lib/handback-witness.mjs';
 import { runLiveness } from '../lib/meta/run-liveness.mjs';
 import { liveRuns, normalizePath } from './live-runs.mjs';
 import { FORM, MAX_STATE_BLOCKS, STATE, takeTry } from './guard-tries.mjs';
@@ -115,9 +115,10 @@ recordHookDiagnostic('reply-guard', input);
 if (typeof input.agent_id === 'string' && input.agent_id.length > 0
   && !(typeof input.agent_type === 'string' && input.agent_type.length > 0)) {
   try {
-    await recordHandbackWitness({
+    await recordWitnessObservation({
       stateDir: BRAND_STATE_DIR,
-      kind: 'alarm',
+      cause: 'missing-agent-type',
+      verdict: 'violation',
       hostVersion: await witnessHostVersion(input),
       detail: `host omitted agent_type for agent ${input.agent_id}`,
     });
@@ -156,9 +157,11 @@ try {
     if (stop.unseen.length) {
       const names = stop.unseen.map((toolUse) => toolUse.name).join(', ');
       dispatcherSystemMessage = `codex-bridge: dispatcher ${input.agent_type} used ${names} outside the dispatcher gate — do not trust its answer; run codex-bridge doctor.`;
-      await recordHandbackWitness({
+      await recordWitnessObservation({
         stateDir: BRAND_STATE_DIR,
-        kind: 'alarm',
+        cause: 'tools-outside-gate',
+        agentType: input.agent_type,
+        verdict: 'violation',
         hostVersion: await witnessHostVersion(input),
         detail: `${input.agent_type} ${input.agent_id}: ${names} outside the dispatcher gate`,
       });
@@ -187,9 +190,11 @@ try {
 
 if (!hasIds) {
   try {
-    await recordHandbackWitness({
+    await recordWitnessObservation({
       stateDir: BRAND_STATE_DIR,
-      kind: 'alarm',
+      cause: 'missing-ids',
+      agentType: input.agent_type,
+      verdict: 'violation',
       hostVersion: await witnessHostVersion(input),
       detail: `host omitted session_id or agent_id for ${input.agent_type}`,
     });
