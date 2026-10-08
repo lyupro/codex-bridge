@@ -31,8 +31,15 @@ here. Nothing was reworded on the way out.
   reader merges defaults, so a writer that persisted the reader's object would freeze them into the
   operator's file — worst of all `environmentPaths`, the list the package extends as it finds new
   paths, which decides whether a change is charged to the run or to the environment.
-- **`codex-runs/` is user data.** Uninstall never touches it; the install record is forbidden from
-  naming it.
+- **Run records are user data** — `runs/` in the package home and the old `~/.claude/codex-runs/`.
+  Uninstall and `--purge` never touch either; the install record is forbidden from naming `runs/`.
+- **The runs root has one resolver, `runsRootResolution()`** (Plan_77 D6). The move record
+  `state/runs-root.json` is written last and only by `runs move`; a path under a retired root is
+  refused before anything is opened or created, never remapped; autocommit goes only into a
+  repository whose top is the store or the package home. Why: on 2026-10-07 run records written
+  into `~/.claude`, a foreign repository, left thousands of uncommitted files there, and a
+  session-close gate listed each one; `src/commands/usage.md` had kept its own copy of the root
+  rule and would have counted the old folder after the move.
 - **Model ids live only in `config.json`.** No model literal belongs in `.mjs` code.
 - **A dispatcher's model is compared by family against the installed contract, never against an id table**
   (Plan_67 D5, D10). `src/home/lib/model-family.mjs` parses the family from the id's structure, so a new model release

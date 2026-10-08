@@ -8,7 +8,8 @@
  * stood in the way of the seeded-file migration the release was about.
  *
  * `CODEX_RUNS_ROOT` joined before a failure rather than after one (Plan_65 B12): the runs root
- * falls back to the operator's `~/.claude/codex-runs`, so a runner test that did not name it
+ * falls back to the resolver's default (the package home's `runs/`, or the old
+ * `~/.claude/codex-runs` while a move is pending), so a runner test that did not name it
  * filed its runs among real ones, and the purge liveness checks would read real live runs as the
  * fixture's — a verdict that depends on what the operator happens to be running.
  *

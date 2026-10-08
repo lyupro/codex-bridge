@@ -39,4 +39,4 @@ Before changing an existing `settings.json`, codex-bridge writes a timestamped b
 
 ### Files never removed by codex-bridge
 
-Uninstall removes only recorded package files, hook registrations, and exact permission strings owned by codex-bridge. It never removes `codex-runs/`, operator-authored foreign settings or hooks, changed files it does not own, shared Claude Code directories, or operator-owned configuration and conventions.
+Uninstall removes only recorded package files, hook registrations, and exact permission strings owned by codex-bridge. It never removes run records in `~/.lyupro/.codex-bridge/runs/` or the old `~/.claude/codex-runs/`, operator-authored foreign settings or hooks, changed files it does not own, shared Claude Code directories, or operator-owned configuration and conventions. Run records are also preserved by `--purge`.

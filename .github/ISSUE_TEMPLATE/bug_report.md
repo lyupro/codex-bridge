@@ -31,7 +31,7 @@ Paste the output of `codex-bridge doctor`. Remove secrets and unrelated operator
 
 ## Run folder
 
-Provide the relevant `codex-runs/<project>/<run>/` folder name and the smallest safe artifacts needed to reproduce the issue. Do not publish secrets or private source code.
+Provide the relevant `<runs root>/<project>/<run>/` folder name and the smallest safe artifacts needed to reproduce the issue. Find the root in the `runsRoot` line of `codex-bridge doctor`. Do not publish secrets or private source code.
 
 ## Additional context
 

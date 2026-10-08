@@ -4,6 +4,37 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `codex-bridge runs move [--dry-run]` moves run records from `~/.claude/codex-runs/` to
+  `~/.lyupro/.codex-bridge/runs/`. It refuses while a run is live, copies every record, verifies
+  each file by SHA-256, imports the old repository's `codex-runs` git history, and writes
+  `state/runs-root.json` last. Only this command writes the move record. It offers to remove the
+  old folder only when every file in it has an identical copy in the new store.
+- A finished run autocommits its own folder and the project marker when the git repository top
+  is the run store or package home. It never commits into a foreign repository such as
+  `~/.claude`, and a commit failure does not change the run verdict. On 2026-10-07 run records
+  left thousands of uncommitted files in that foreign repository; a session-close gate listed
+  each one.
+- Paths under a retired run root are refused before anything is opened or created, including
+  `advice:`, `codex-bridge read`, `stop`, and a stale `CODEX_RUNS_ROOT` in the launcher. The refusal
+  names the equivalent new path; nothing is remapped and no quota is spent.
+- The `repository:` task header must name an existing absolute directory without any path
+  segment ending in a dot or space.
+
+### Changed
+
+- The default run root is now `~/.lyupro/.codex-bridge/runs/` after a move or on a fresh install
+  where `~/.claude/codex-runs/` does not exist. A trimmed, non-empty `CODEX_RUNS_ROOT` takes
+  precedence; otherwise an existing old folder remains the root while the move is pending.
+- The `doctor` `runsRoot` line shows the selected root, its source, and warnings for a pending
+  move, an old folder still present, or a root inside a foreign git repository. `.git` is not
+  counted as a project.
+- Run records are user data. Uninstall and `--purge` preserve the package home's `runs/` folder
+  and the old `~/.claude/codex-runs/` folder.
+
 ## [0.6.12] - 2026-10-07
 
 ### Added

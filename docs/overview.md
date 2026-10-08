@@ -319,8 +319,17 @@ tree can terminate both halves; the next run will mark the remaining unclosed ru
 
 ## Artifacts
 
-The root is set by the `CODEX_RUNS_ROOT` environment variable. An empty or missing value means
-`~/.claude/codex-runs`. A single run directory has this form:
+Run records use a trimmed, non-empty `CODEX_RUNS_ROOT`; otherwise they use
+`~/.lyupro/.codex-bridge/runs/` after a move or if `~/.claude/codex-runs/` is absent, and the old
+folder while a move is pending. Retired-root paths are refused before opening or creating
+anything, naming the new equivalent without remapping or spending quota. `codex-bridge runs move
+[--dry-run]` refuses live runs, copies and SHA-256-verifies every record, imports the old
+repository's `codex-runs` git history, writes `state/runs-root.json` last, and offers old-folder
+removal only after every file has an identical copy. Finished runs autocommit their own folder and
+project marker only when the repository top is the store or package home, never a foreign
+repository; commit failure leaves the verdict unchanged.
+
+A single run directory has this form:
 
 ```text
 <artifact root>/<project directory>/<date_time>_<slug>/
@@ -920,8 +929,8 @@ purge of operator data. No, EOF or a non-TTY leaves the record unchanged and exi
 130. A valid `--dry-run` prints without asking or writing and exits 0; yes and an already-complete
 record without `legacy` also exit 0.
 
-`codex-bridge uninstall --purge` additionally deletes that operator data and the home folder. It
-runs one preflight before it touches anything, in this order:
+`codex-bridge uninstall --purge` additionally deletes that operator data, preserving run records
+and their containing home. It runs one preflight before it touches anything, in this order:
 
 1. no recorded Codex run may still be executing — a live run is named with its `stop` command, and
    a run folder that cannot be read refuses as well, because it cannot be proven idle;
@@ -932,7 +941,7 @@ runs one preflight before it touches anything, in this order:
 
 Without a terminal both answers count as "no" and purge refuses: there is nobody to give consent.
 A refusal or a cancel changes nothing. When the host's hooks cannot be removed, purge stops before
-the home and exits 1. Run artifacts in `~/.claude/codex-runs/` are outside every uninstall and stay.
+the home and exits 1. Run records in `~/.lyupro/.codex-bridge/runs/` and the old `~/.claude/codex-runs/` are user data; uninstall and `--purge` preserve both folders, keeping the home when it contains `runs/`.
 
 `--purge --dry-run` takes no lock and asks nothing. It prints every refusal the real run would
 meet — all at once, not only the first — and the removals under `If you confirm both questions:`,

@@ -32,8 +32,8 @@ Use `--scope project` to install the Claude Code-facing files under `<repo>/.cla
 
 Installation has two roots:
 
-- `~/.lyupro/.codex-bridge/` contains package runtime files, guards, configuration, conventions, and the installation record.
-- The selected Claude Code root (`~/.claude/` or `<repo>/.claude/`) contains the four agents (`codex-scout`, `codex-build`, `codex-review`, `codex-advisor`), two slash commands, merged hook registrations in `settings.json`, and run artifacts under `codex-runs/`.
+- `~/.lyupro/.codex-bridge/` contains package runtime files, guards, configuration, conventions, the installation record, and run records under `runs/` as user data.
+- The selected Claude Code root (`~/.claude/` or `<repo>/.claude/`) contains the four agents (`codex-scout`, `codex-build`, `codex-review`, `codex-advisor`), two slash commands, and merged hook registrations in `settings.json`. Before the move, existing run records remain in `~/.claude/codex-runs/`.
 
 The repository's `src/home/` directory is the literal image copied into the branded root: its
 `hooks/`, `lib/`, `config.json`, and `conventions.md` paths are the host paths without remapping.
@@ -43,7 +43,7 @@ Before every `settings.json` write, the existing file is backed up. Existing set
 
 If a global install and a clone coexist, you have two package copies. `codex-bridge update`, `codexb update`, and the clone entry point copy files from whichever copy launched the command; using the wrong one can replace a newer host installation with older files.
 
-`codex-runs/` contains operator data. Uninstall never removes it.
+Run records in `~/.lyupro/.codex-bridge/runs/` (or `~/.claude/codex-runs/` before the move) are user data. Uninstall, including `--purge`, never removes either folder.
 
 ## Requirements
 
@@ -87,7 +87,7 @@ Output on a healthy host (trimmed):
 [ok] conventions: ~/.lyupro/.codex-bridge/conventions.md (found)
 [ok] codex: codex-cli 0.146.1
 [ok] node: 24.18.0 (requires >=24)
-[ok] runsRoot: ~/.claude/codex-runs
+[ok] runsRoot: ~/.lyupro/.codex-bridge/runs (default)
 [ok] liveRuns: 0 runs working right now
 ```
 
@@ -140,9 +140,9 @@ Transport files from runs at least **30 days** old are pruned automatically when
 | `install [--scope user\|project] [--host <path>] [--dry-run] [--force]` | Install into a Claude Code host. |
 | `update [--scope user\|project] [--host <path>] [--dry-run] [--force]` | Refresh a recorded installation. |
 | `permissions [add\|remove] [--scope user\|project] [--host <path>]` | Inspect or manage optional shell rules. |
-| `uninstall [--scope user\|project] [--host <path>] [--dry-run] [--purge]` | Remove recorded package files while preserving run artifacts; `--purge` also deletes your data and the home after one preflight and two consents (see [Uninstall and purge](docs/overview.md#uninstall-and-purge)). |
+| `uninstall [--scope user\|project] [--host <path>] [--dry-run] [--purge]` | Remove recorded package files while preserving run artifacts; `--purge` also deletes other operator data after one preflight and two consents, preserving `runs/` and its containing home (see [Uninstall and purge](docs/overview.md#uninstall-and-purge)). |
 | `inventory confirm [--scope user\|project] [--host <path>] [--dry-run]` | Confirm in a terminal that the recorded hosts are all the hosts using this home; until then the dispatcher model pin stays undetermined and `doctor` names this command. Changes only the inventory mark of the installation record. |
-| `runs move [--dry-run]` | Copy every run record from `~/.claude/codex-runs` into `~/.lyupro/.codex-bridge/runs/` and verify it; refused while a run is live. |
+| `runs move [--dry-run]` | Copy every run record from `~/.claude/codex-runs/` into `~/.lyupro/.codex-bridge/runs/`, verify each file by SHA-256, import the old repository's `codex-runs` git history, and write the move record last. Refused while a run is live; offers to remove the old folder only when every file has an identical copy in the new store. |
 | `doctor [--scope user\|project] [--host <path>] [--probe-contract] [--probe-executable <path>]` | Diagnose the selected host and Codex connection, including the handback witness and four dispatcher contract lines. `--probe-contract` targets the newest observed host, accepting `CLAUDE_CODE_EXECPATH` or `claude` on `PATH` only when each reports that version with `--version`; use `--probe-executable <path>` to name an executable (`--host` selects the Claude Code configuration). The probe prints its target and records nothing if the completed host run reports another transcript version. |
 | `run --agent <type> --task-file "<abs path>" [--no-wait]` | Start or attach to a delegated run through the permission-stable package command. The task-file header carries the whole order; its body carries the statement, scout questions and verification command. Its path must be absolute and use forward slashes; `$`, doubled backslashes and a final backslash are refused. Every other runner flag is a free refusal; stdin is not an input channel. |
 | `model [list\|set\|unset\|speed]` | Show the model, effort, pinned speed tier and provenance of each role, with the config path; `model list` prints the live catalogue from Codex, hidden models included and marked; `model set <role> <model> [effort]` checks the pair and any retained speed tier against that model's catalogue entry, and `model unset <role>` removes the profile. `model speed <role> <tier>` previews a live accelerated tier and its quoted cost description; repeat with trailing `confirm` to pin it. `model speed <role> unset` removes only speed, without confirmation. The profile is machine-wide, shared by every project on this machine. |
