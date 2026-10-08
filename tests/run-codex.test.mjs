@@ -263,9 +263,21 @@ function withRunsRoot(value, body) {
 
 test('the runs root defaults to the existing home directory location', () => {
   withHomeRepo((home) => {
+    // Plan_77 D7 preserves the old store only when it exists and the move is still pending.
+    fs.mkdirSync(path.join(home, '.claude', 'codex-runs'), { recursive: true });
     for (const value of [undefined, '', '   ']) {
       withRunsRoot(value, () => {
         assert.equal(runsRoot(), path.join(home, '.claude', 'codex-runs'));
+      });
+    }
+  });
+});
+
+test('the runs root defaults to the package home without a legacy directory', () => {
+  withHomeRepo(() => {
+    for (const value of [undefined, '', '   ']) {
+      withRunsRoot(value, () => {
+        assert.equal(runsRoot(), path.join(process.env.CODEX_BRIDGE_HOME, 'runs'));
       });
     }
   });
@@ -294,6 +306,7 @@ test('the run folder prefix is calculated from the environment root', () => {
 
 test('the run folders are located relative to the repository that hosts them', () => {
   withHomeRepo((home) => {
+    fs.mkdirSync(path.join(home, '.claude', 'codex-runs'), { recursive: true });
     // ~/.claude itself: the runs sit one level down, and the prefix ends on a separator so
     // that a sibling folder named `codex-runs-old` cannot match it.
     assert.equal(runsPrefixInside(path.join(home, '.claude')), 'codex-runs/');
