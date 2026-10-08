@@ -25,9 +25,14 @@ export async function fixture(t) {
   };
 }
 
-export async function packageFixture(root, name, { version = '0.0.0', extraFile } = {}) {
+export async function packageFixture(root, name, { version = '0.0.0', extraFile, omit } = {}) {
   const packageRoot = path.join(root, name);
-  await fs.cp(path.join(ROOT, 'src'), path.join(packageRoot, 'src'), { recursive: true });
+  // `omit` builds a package that predates a source folder; copying less beats removing a tree after the copy.
+  const omitted = omit && path.join(ROOT, 'src', omit);
+  await fs.cp(path.join(ROOT, 'src'), path.join(packageRoot, 'src'), {
+    recursive: true,
+    filter: (source) => !omitted || (source !== omitted && !source.startsWith(`${omitted}${path.sep}`)),
+  });
   const manifest = JSON.parse(await fs.readFile(path.join(ROOT, 'package.json'), 'utf8'));
   manifest.version = version;
   await fs.writeFile(path.join(packageRoot, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`);

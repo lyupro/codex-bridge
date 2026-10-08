@@ -11,9 +11,8 @@ const CORE = 'Package core rules\n';
 
 async function hostWithNewRulesFile(t, existing) {
   const { root, host } = await fixture(t);
-  const oldPackage = await packageFixture(root, 'old-package');
   // The real package ships a core since Plan_64 B7a; the old package must predate it for the path to be new.
-  await fs.rm(path.join(oldPackage, 'src', 'claude', 'rules'), { recursive: true, force: true });
+  const oldPackage = await packageFixture(root, 'old-package', { omit: path.join('claude', 'rules') });
   assert.equal((await install({ host, packageRoot: oldPackage })).exitCode, 0);
   const newPackage = await packageFixture(root, 'new-package', { version: '0.0.1' });
   const source = path.join(newPackage, 'src', 'claude', 'rules', 'core.md');
