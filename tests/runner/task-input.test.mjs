@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { makeHomeImage } from '../home-image.mjs';
 import { orderInvocation, orderTaskText } from './order-invocation.mjs';
+import { repositoryRefusal } from '../../src/home/lib/runner/task-input.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const RUNNER = path.join(ROOT, 'src', 'home', 'lib', 'run-codex.mjs');
@@ -144,5 +145,28 @@ test('a malformed scout marker refuses before any run folder or quota is spent',
   assert.match(result.stderr, /Q1/);
   assert.match(result.stderr, /\[context-only\]/);
   assert.match(result.stderr, /no quota was spent/);
+  assert.equal(fs.existsSync(path.join(root, 'runs')), false);
+});
+
+test('OW-061: repository must be an existing absolute directory kept verbatim by Windows', (t) => {
+  const root = fixture(t);
+  assert.equal(repositoryRefusal(root), null);
+  assert.match(repositoryRefusal('tradeforge.loc (do not cd into codex-runs).'), /must be an absolute path/);
+  assert.match(repositoryRefusal(path.join(root, 'Obsidian. Run the scope phase.')), /ending in a dot or a space/);
+  assert.match(repositoryRefusal(path.join(root, 'trailing ')), /ending in a dot or a space/);
+  assert.match(repositoryRefusal(path.join(root, 'missing')), /must name an existing directory/);
+  fs.writeFileSync(path.join(root, 'file.txt'), 'x');
+  assert.match(repositoryRefusal(path.join(root, 'file.txt')), /must name an existing directory/);
+});
+
+test('OW-061: a phrase in repository is refused for free before a runs folder exists', (t) => {
+  const root = fixture(t);
+  const taskFile = path.join(root, 'task.md');
+  fs.writeFileSync(taskFile, taskText('Obsidian. Run the scope phase.', 'task from file'));
+  // raw argv: this case tests the explicit --task-file channel with a malformed repository value.
+  const result = run(RUNNER, args(taskFile), root);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /`repository:` must be an absolute path/);
+  assert.match(result.stderr, /quota was not spent/);
   assert.equal(fs.existsSync(path.join(root, 'runs')), false);
 });
