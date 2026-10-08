@@ -361,3 +361,12 @@ test('blocked files still block the combined plan when the record does not block
 test('the combined plan for a missing home and record contains no file or directory rows', () => {
   assert.deepEqual(planHomeRemoval({ command: 'uninstall', recordState: 'missing', inspection: { root: 'missing', files: [], unknown: [], links: [], errors: [], directories: [] }, imageMembers: [], imageEvidence: new Map(), imagePolicy: { remove: false, reason: 'no record' } }), { rows: [], directories: [], record: { operation: 'none', reason: 'no installation record', dependsOnDetach: false, blocked: false }, blocked: false });
 });
+
+test('the run records folder of the home is kept and named, never removed (Plan_77 D1)', () => {
+  for (const command of ['uninstall', 'purge']) {
+    const result = plan({ unknown: [{ relative: 'runs', kind: 'directory' }] }, { command });
+    assert.deepEqual(rowAt(result, 'runs'), { relative: 'runs', id: null, role: null, removal: null, action: 'keep', reason: 'run records' });
+  }
+  const file = plan({ unknown: [{ relative: 'runs', kind: 'file' }] });
+  assert.equal(rowAt(file, 'runs').reason, 'unknown');
+});

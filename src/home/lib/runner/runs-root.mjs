@@ -11,11 +11,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { resolveBrandHome } from '../brand-home.mjs';
+import { RUN_RECORDS_DIR } from '../home-registry.mjs';
 import { readRunsMoveRecord, retiredRootOf, retiredRootRefusal } from './retired-roots.mjs';
 
 export function runsRootResolution({ env = process.env, homedir = os.homedir() } = {}) {
   const brandHome = resolveBrandHome({ env, homedir });
-  const homeRoot = path.join(brandHome.root, 'runs');
+  const homeRoot = path.join(brandHome.root, RUN_RECORDS_DIR);
   const legacyRoot = path.join(homedir, '.claude', 'codex-runs');
   const record = readRunsMoveRecord(brandHome.stateDir);
   const retired = record?.retired ?? [];

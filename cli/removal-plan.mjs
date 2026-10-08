@@ -8,6 +8,7 @@
 import {
   HOME_ARTIFACTS,
   HOME_DIRECTORIES,
+  RUN_RECORDS_DIR,
   classifyHomePath,
   homeArtifact,
 } from '../src/home/lib/home-registry.mjs';
@@ -99,7 +100,9 @@ export function planHomeFiles({ command, inspection, imageMembers, imageEvidence
   }
   for (const entry of inspection.unknown) {
     add(entry.relative, { id: null, role: null, removal: null }, {
-      action: 'keep', reason: entry.kind === 'directory' ? 'unknown directory' : 'unknown',
+      // The inspection never walks an undeclared folder; the run records folder is one, by design.
+      action: 'keep', reason: entry.relative === RUN_RECORDS_DIR && entry.kind === 'directory' ? 'run records'
+        : entry.kind === 'directory' ? 'unknown directory' : 'unknown',
     });
   }
   for (const file of inspection.files) {

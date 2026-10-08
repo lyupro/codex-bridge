@@ -124,6 +124,13 @@ export const HOME_ARTIFACTS = Object.freeze(entries.map((entry) => Object.freeze
   sides: Object.freeze([...entry.sides]),
 })));
 
+/**
+ * Plan_77 D1: run records live in this folder of the home once they move out of ~/.claude. They are
+ * operator data, not an artifact of the package: the folder is never walked or removed, and naming it
+ * here keeps the resolver and the removal plan on one spelling.
+ */
+export const RUN_RECORDS_DIR = 'runs';
+
 export const HOME_DIRECTORIES = Object.freeze([
   'state',
   'state/dispatchers',
