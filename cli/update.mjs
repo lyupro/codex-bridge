@@ -73,8 +73,11 @@ function displayFile(file) {
   return `${entry.root}/${entry.path}`;
 }
 
-function classifyPlanned(state) {
-  if (!state.recorded) return 'new';
+function classifyPlanned(state, { adoptUnrecorded = false } = {}) {
+  // A planned path the record does not name but someone already filled is not ours to overwrite:
+  // install refuses it without --force, and update used to call it 'new' and copy over it — for
+  // the host rules file (Plan_64 B2c) that would silently replace the operator's own text.
+  if (!state.recorded) return state.exists && !state.matchesPackage && !adoptUnrecorded ? 'unowned' : 'new';
   if (!state.exists) return 'missing';
   if (state.matchesPackage) return 'up-to-date';
   if (state.recordedFingerprint === state.fingerprint) return 'outdated';
@@ -93,7 +96,7 @@ function appliedOutput(states) {
     [count('outdated'), 'updated'],
     [count('new'), 'added'],
     [count('missing'), 'restored'],
-    [states.filter((state) => state.status === 'modified' && state.item).length, 'overwritten'],
+    [states.filter((state) => ['modified', 'unowned'].includes(state.status) && state.item).length, 'overwritten'],
     [states.filter((state) => state.status === 'orphaned' && state.exists).length, 'removed'],
   ].filter(([total]) => total > 0).map(([total, label]) => `${total} ${label}`);
   return parts.length ? `Updated codex-bridge: ${parts.join(', ')}.` : 'Updated codex-bridge.';
@@ -103,7 +106,7 @@ function conflictOutput(conflicts, legacy, dryRun) {
   const heading = dryRun ? 'Update would stop for these paths:' : 'Update stopped for these paths:';
   const lines = conflicts.map((state) => `  ${state.relative} (${state.status})`);
   if (legacy) lines.push('Installation record has no fingerprints; differing files are treated as modified.');
-  lines.push('Run update again with --force to overwrite modified files and restore missing files.');
+  lines.push('Run update again with --force to overwrite modified or unowned files and restore missing files.');
   return [heading, ...lines].join('\n');
 }
 
@@ -112,7 +115,7 @@ function dryRunOutput(states, hookStates, legacy, oldHooks) {
   for (const state of states) {
     if (state.status === 'outdated') lines.push(`Would update ${state.relative}.`);
     if (state.status === 'new') lines.push(`Would create ${state.relative}.`);
-    if (state.status === 'modified' && state.item) lines.push(`Would overwrite ${state.relative}.`);
+    if (['modified', 'unowned'].includes(state.status) && state.item) lines.push(`Would overwrite ${state.relative}.`);
     if (state.status === 'missing') lines.push(`Would restore ${state.relative}.`);
     if (state.status === 'orphaned' && state.exists) lines.push(`Would remove ${state.relative}.`);
     if (state.status === 'modified' && !state.item) lines.push(`Would preserve modified orphan ${state.relative}.`);
@@ -228,7 +231,9 @@ async function updateInRun({
     matchesPackage: ruleExists && await targetMatches(rule, host.brandRoot),
     fingerprint: ruleExists ? await fileFingerprint(rule.target) : null,
   };
-  ruleState.status = classifyPlanned(ruleState);
+  // Records written before the Codex rules file was recorded name no rules, yet the file under the
+  // package's own name was written by this package: adopting it is the migration, not a collision.
+  ruleState.status = classifyPlanned(ruleState, { adoptUnrecorded: true });
   const orphanStates = await Promise.all(record.files
     .filter((file) => !planned.has(recordFileKey(file)))
     .map(async (file) => {
@@ -245,7 +250,7 @@ async function updateInRun({
       return { ...state, status: classifyOrphan(state) };
     }));
   const states = [...plannedStates, ruleState, ...orphanStates];
-  const conflicts = states.filter((state) => state.status === 'modified' || state.status === 'missing');
+  const conflicts = states.filter((state) => ['modified', 'unowned', 'missing'].includes(state.status));
   const legacy = !record.fingerprints;
   if (conflicts.length && !force) {
     return { exitCode: 1, output: conflictOutput(conflicts, legacy, dryRun) };
