@@ -40,6 +40,7 @@ test('nested copy preserves empty folders, bytes and verbatim dot/space names', 
     const oddFile = process.platform === 'win32' ? 'reply.' : 'reply ';
     fs.mkdirSync(path.join(from, oddFolder));
     fs.writeFileSync(path.join(from, oddFolder, oddFile), 'reply');
+    fs.mkdirSync(to);
     const before = snapshot(from);
     const flags = [];
     const copy = fs.copyFileSync;
@@ -141,7 +142,7 @@ for (const existing of [false, true]) {
   test(`a differing injected hash removes the ${existing ? 'initially empty' : 'new'} copy, never the source`, async () => {
     await withTempTree('runs-move-hash-', (root) => {
       const { from, to } = fixture(root);
-      if (existing) fs.mkdirSync(to);
+      fs.mkdirSync(to); // F1: both cases use staging created exclusively by the caller.
       const before = snapshot(from);
       const badFile = path.join(to, 'project', 'events.jsonl');
       assert.throws(() => copyRunStore({ from, to, hash: (file) => file === badFile ? 'different' : sha256File(file) }),
@@ -156,6 +157,7 @@ for (const failure of ['size', 'hash', 'extra-file', 'extra-empty-folder', 'miss
   test(`verification catches ${failure} and cleans only the copy`, async (t) => {
     await withTempTree('runs-move-verify-', (root) => {
       const { from, to } = fixture(root);
+      fs.mkdirSync(to);
       const before = snapshot(from);
       const copy = fs.copyFileSync;
       t.mock.method(fs, 'copyFileSync', (src, dst, flags) => {
@@ -180,6 +182,7 @@ for (const failure of ['size', 'hash', 'extra-file', 'extra-empty-folder', 'miss
 test('copy failures roll back partial files and keep the original bytes', async (t) => {
   await withTempTree('runs-move-copy-error-', (root) => {
     const { from, to } = fixture(root);
+    fs.mkdirSync(to);
     const before = snapshot(from);
     const copy = fs.copyFileSync;
     t.mock.method(fs, 'copyFileSync', (src, dst, flags) => {
@@ -208,5 +211,16 @@ test('sha256File hashes large logs in 1 MiB chunks and closes the descriptor', a
     assert.equal(lengths.length, 4);
     assert.ok(lengths.every((length) => length === 1024 * 1024));
     assert.equal(close.mock.callCount(), 1);
+  });
+});
+
+// Plan_77 F1: copying must never create or claim an unowned destination.
+test('copy requires the caller to have created staging and leaves absent staging absent', async () => {
+  await withTempTree('runs-move-no-staging-', (root) => {
+    const { from, to } = fixture(root);
+    const before = snapshot(from);
+    assert.throws(() => copyRunStore({ from, to }), /staging folder must already exist/);
+    assert.equal(fs.existsSync(to), false);
+    assert.deepEqual(snapshot(from), before);
   });
 });

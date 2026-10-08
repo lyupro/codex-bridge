@@ -40,6 +40,20 @@ function differencesResult(from, { paths, count }) {
 
 export async function removeOldStore({ from, to, ask = askYesNo, interactive = isInteractive,
   questionOptions = {}, hash }) {
+  let quarantine;
+  const restore = () => {
+    if (!quarantine) return '';
+    if (!fs.existsSync(from)) {
+      try {
+        fs.renameSync(quarantine, from);
+        quarantine = undefined;
+        return '';
+      } catch (error) {
+        return `\nCould not restore ${quarantine} to ${from}: ${error.message}. Records remain in ${quarantine}.`;
+      }
+    }
+    return `\nThe old records remain in ${quarantine}; ${from} also exists. Both folders were kept.`;
+  };
   try {
     const differences = oldStoreDifferences({ from, to, hash });
     if (differences.count) return differencesResult(from, differences);
@@ -51,12 +65,28 @@ export async function removeOldStore({ from, to, ask = askYesNo, interactive = i
       + 'It stays in the history of the git repository that holds it until that project commits the removal.', questionOptions);
     if (answer === 'cancel') return { exitCode: 130, output: 'Cancelled; nothing was removed.' };
     if (answer !== 'yes') return { exitCode: 0, output: 'The old folder was kept.' };
-    // D3/B5c: an older-version writer may add or change a record while the operator answers.
-    const confirmed = oldStoreDifferences({ from, to, hash });
-    if (confirmed.count) return differencesResult(from, confirmed);
-    fs.rmSync(from, { recursive: true });
+    // Plan_77 F1: isolate the old tree before comparing; never delete a newly recreated from.
+    const isolated = `${from}.removing-${process.pid}-${Date.now()}`;
+    try {
+      fs.renameSync(from, isolated);
+    } catch (error) {
+      if (['EPERM', 'EBUSY', 'EACCES'].includes(error.code)) {
+        return { exitCode: 1,
+          output: `A process still uses a file in ${from}; nothing was removed. Close it and repeat.` };
+      }
+      throw error;
+    }
+    quarantine = isolated;
+    const confirmed = oldStoreDifferences({ from: quarantine, to, hash });
+    if (confirmed.count) {
+      const result = differencesResult(from, confirmed);
+      result.output += restore();
+      return result;
+    }
+    fs.rmSync(quarantine, { recursive: true });
+    quarantine = undefined;
     return { exitCode: 0, output: `Removed ${from}.` };
   } catch (error) {
-    return { exitCode: 1, output: `${error.message}\nNothing was removed.` };
+    return { exitCode: 1, output: `${error.message}\nNothing was removed.${restore()}` };
   }
 }

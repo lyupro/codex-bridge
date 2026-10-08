@@ -1,5 +1,5 @@
 /**
- * Copies a run store into an empty destination and proves every byte arrived.
+ * Copies a run store into a caller-created staging folder and proves every byte arrived.
  *
  * Plan_77 D1: the 2026-10-07 VaultForge journal cost $16.57 instead of $0.3-0.8
  * because records lived in another project's git tree. Every record must survive.
@@ -91,10 +91,8 @@ function verifyPaths(expected, actual, root) {
 export function copyRunStore({ from, to, hash = sha256File }) {
   const destinationExists = checkRunStoreDestination({ from, to });
   const original = inspectRunStore(from);
-  let copyStarted = false;
+  if (!destinationExists) throw new Error(`Run store staging folder must already exist: ${to}.`);
   try {
-    if (!destinationExists) fs.mkdirSync(to, { recursive: true });
-    copyStarted = true;
     for (const [relative, entry] of original.entries) {
       const src = path.join(from, relative);
       const dst = path.join(to, relative);
@@ -118,8 +116,8 @@ export function copyRunStore({ from, to, hash = sha256File }) {
     verifyPaths(source.entries, inspectRunStore(to).entries, to);
     return { files: source.files, directories: source.directories, bytes: source.bytes };
   } catch (error) {
-    // D3 copy -> verify -> switch: only this initially absent/empty copy can be rolled back.
-    if (copyStarted) fs.rmSync(to, { recursive: true, force: true });
+    // Plan_77 F1: the caller guarantees this staging folder was exclusively created by this process.
+    fs.rmSync(to, { recursive: true, force: true });
     throw error;
   }
 }

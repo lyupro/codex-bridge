@@ -195,3 +195,76 @@ if (process.platform === 'win32') {
     });
   });
 }
+
+// Plan_77 F1 finding 2: the final comparison and removal use quarantine, never a recreated root.
+for (const recreate of [false, true]) {
+  test(`late records after yes survive isolation; recreated root: ${recreate}`, async (t) => {
+    await withTempTree('runs-remove-isolate-', async (root) => {
+      const stores = fixture(root);
+      const newBefore = snapshot(stores.to);
+      const rename = fs.renameSync;
+      let quarantine;
+      t.mock.method(fs, 'renameSync', (from, to) => {
+        rename(from, to);
+        if (from !== stores.from) return;
+        quarantine = to;
+        assert.ok(to.startsWith(`${stores.from}.removing-`));
+        if (recreate) {
+          fs.mkdirSync(stores.from);
+          fs.writeFileSync(path.join(stores.from, 'new-writer'), 'new');
+        }
+      });
+      const result = await removeOldStore({ ...stores, interactive: () => true, ask: () => {
+        fs.writeFileSync(path.join(stores.from, 'late-run'), 'late');
+        return 'yes';
+      } });
+      assert.equal(result.exitCode, 1);
+      assert.match(result.output, /late-run/);
+      assert.equal(fs.readFileSync(path.join(recreate ? quarantine : stores.from, 'late-run'), 'utf8'), 'late');
+      assert.deepEqual(snapshot(stores.to), newBefore);
+      if (recreate) {
+        assert.ok(result.output.includes(quarantine));
+        assert.ok(result.output.includes(stores.from));
+        assert.equal(fs.readFileSync(path.join(stores.from, 'new-writer'), 'utf8'), 'new');
+      } else assert.equal(fs.existsSync(quarantine), false);
+    });
+  });
+}
+
+for (const code of ['EPERM', 'EBUSY', 'EACCES']) {
+  test(`${code} isolating the old store refuses and deletes nothing`, async (t) => {
+    await withTempTree('runs-remove-rename-error-', async (root) => {
+      const stores = fixture(root);
+      const before = snapshot(root);
+      t.mock.method(fs, 'renameSync', () => { throw Object.assign(new Error('Locked file'), { code }); });
+      t.mock.method(fs, 'rmSync', () => assert.fail('rename failure must not remove anything'));
+      assert.deepEqual(await removeOldStore({ ...stores, ...yes }), { exitCode: 1,
+        output: `A process still uses a file in ${stores.from}; nothing was removed. Close it and repeat.` });
+      assert.deepEqual(snapshot(root), before);
+    });
+  });
+}
+
+test('a root recreated during the final comparison is untouched by quarantine removal', async (t) => {
+  await withTempTree('runs-remove-recreated-', async (root) => {
+    const stores = fixture(root);
+    const newBefore = snapshot(stores.to);
+    let isolated = false;
+    let deleted;
+    const remove = fs.rmSync;
+    t.mock.method(fs, 'rmSync', (dir, options) => { deleted = dir; return remove(dir, options); });
+    const result = await removeOldStore({ ...stores, ...yes, hash: (file) => {
+      if (file.startsWith(`${stores.from}.removing-`) && !isolated) {
+        isolated = true;
+        fs.mkdirSync(stores.from);
+        fs.writeFileSync(path.join(stores.from, 'new-writer'), 'keep');
+      }
+      return sha256File(file);
+    } });
+    assert.equal(result.exitCode, 0, result.output);
+    assert.ok(isolated, 'final comparison must run against quarantine');
+    assert.ok(deleted.startsWith(`${stores.from}.removing-`));
+    assert.equal(fs.readFileSync(path.join(stores.from, 'new-writer'), 'utf8'), 'keep');
+    assert.deepEqual(snapshot(stores.to), newBefore);
+  });
+});

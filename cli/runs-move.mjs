@@ -6,12 +6,14 @@
  * The 2026-10-07 VaultForge $16.57 journal incident is why records leave foreign git.
  */
 import fs from 'node:fs';
+import path from 'node:path';
 import { runsRootResolution } from '../src/home/lib/runner/runs-root.mjs';
 import { resolveBrandHome } from '../src/home/lib/brand-home.mjs';
 import { writeRunsMoveRecord } from '../src/home/lib/runner/retired-roots.mjs';
 import { allLiveRuns } from '../src/home/hooks/live-runs.mjs';
 import { checkRunStoreDestination, copyRunStore, inspectRunStore } from './runs-move-copy.mjs';
 import { importRunHistory, inspectRunHistory, runGit } from './runs-move-history.mjs';
+import { oldStoreDifferences } from './runs-move-remove.mjs';
 
 export function runsMove({ dryRun = false, resolution = runsRootResolution(), liveRuns = allLiveRuns,
   stateDir, importHistory = importRunHistory, git = runGit } = {}) {
@@ -42,8 +44,17 @@ export function runsMove({ dryRun = false, resolution = runsRootResolution(), li
   } catch (error) {
     return refuse(error.message);
   }
+  const staging = `${homeRoot}.moving-${process.pid}-${Date.now()}`;
+  let ownsStaging = false;
+  let published = false;
   try {
-    const counts = dryRun ? inspectRunStore(legacyRoot) : copyRunStore({ from: legacyRoot, to: homeRoot });
+    if (!dryRun) {
+      fs.lstatSync(legacyRoot);
+      fs.mkdirSync(path.dirname(homeRoot), { recursive: true });
+      fs.mkdirSync(staging);
+      ownsStaging = true;
+    }
+    const counts = dryRun ? inspectRunStore(legacyRoot) : copyRunStore({ from: legacyRoot, to: staging });
     const megabytes = (counts.bytes / (1024 * 1024)).toFixed(2);
     if (dryRun) {
       const history = inspectRunHistory({ from: legacyRoot, git });
@@ -51,20 +62,30 @@ export function runsMove({ dryRun = false, resolution = runsRootResolution(), li
       return { exitCode: 0, oldStore: null, homeRoot,
         output: `Would copy ${counts.files} files (${megabytes} MB) in ${counts.directories} folders from ${legacyRoot} to ${homeRoot}; history: ${description}. Dry run: nothing changed.` };
     }
-    let history;
-    try {
-      history = importHistory({ from: legacyRoot, to: homeRoot, git });
-    } catch (error) {
-      // D4/D7: this initially empty/absent copy is ours; a failed import must never switch roots.
-      fs.rmSync(homeRoot, { recursive: true, force: true });
-      throw error;
+    const history = importHistory({ from: legacyRoot, to: staging, git });
+    // Plan_77 F1: a writer may start or change records during copy/history import.
+    const live = liveRuns(legacyRoot);
+    const differences = oldStoreDifferences({ from: legacyRoot, to: staging });
+    if (live.length || differences.count) {
+      fs.rmSync(staging, { recursive: true, force: true });
+      ownsStaging = false;
+      return refuse(`A run started or a record changed during the move: ${[
+        ...live.map(({ dir }) => dir), ...differences.paths,
+      ].slice(0, 20).join(', ')}. Nothing was switched; repeat when no project is running.`);
     }
+    // Plan_77 F1: publish only our exclusive staging folder; never roll back a competing store.
+    if (checkRunStoreDestination({ from: legacyRoot, to: homeRoot })) fs.rmdirSync(homeRoot);
+    fs.renameSync(staging, homeRoot);
+    ownsStaging = false;
+    published = true;
+    const description = history.imported ? `imported ${history.commits} commits` : history.reason;
     // D7: publishing the record is the last write, after copy verification and D4 history import.
     writeRunsMoveRecord(stateDir ?? resolution.stateDir ?? resolveBrandHome().stateDir, { root: legacyRoot });
-    const description = history.imported ? `imported ${history.commits} commits` : history.reason;
     return { exitCode: 0, oldStore: legacyRoot, homeRoot,
       output: `Moved ${counts.files} files (${megabytes} MB) from ${legacyRoot} to ${homeRoot}; history: ${description}. New runs write to ${homeRoot}. The old folder is untouched.` };
   } catch (error) {
+    if (ownsStaging) fs.rmSync(staging, { recursive: true, force: true });
+    if (published) fs.rmSync(homeRoot, { recursive: true, force: true });
     return refuse(`${error.message}\nNothing was switched; the old folder is untouched.`);
   }
 }
