@@ -15,6 +15,7 @@ import { model } from './model.mjs';
 import { projects } from './projects.mjs';
 import { read } from './read.mjs';
 import { runCodex } from './run-launcher.mjs';
+import { runsMove } from './runs-move.mjs';
 import { permissions } from './permissions.mjs';
 import { prune } from './prune.mjs';
 import { stop } from './stop.mjs';
@@ -27,7 +28,7 @@ export function commandOptions(command, argv) {
   const options = {};
   const booleanFlags = command === 'install' || command === 'update' ? new Set(['--dry-run', '--force'])
     : command === 'uninstall' ? new Set(['--dry-run', '--purge'])
-      : command === 'inventory' ? new Set(['--dry-run'])
+      : command === 'inventory' || command === 'runs' ? new Set(['--dry-run'])
       : command === 'doctor' ? new Set(['--probe-contract']) : new Set();
   const flagNames = new Map([
     ['--dry-run', 'dryRun'],
@@ -41,6 +42,7 @@ export function commandOptions(command, argv) {
       options[flagNames.get(arg)] = true;
       continue;
     }
+    if (command === 'runs') throw new Error(`unknown runs option "${arg}"`);
     if (arg !== '--scope' && arg !== '--host' && !(command === 'doctor' && arg === '--probe-executable')) throw new Error(`unknown ${command} option "${arg}"`);
     const value = argv[index + 1];
     if (!value || value.startsWith('-')) throw new Error(`${arg} requires a value`);
@@ -134,6 +136,25 @@ export const COMMANDS = [
       const options = commandOptions('inventory', argv.slice(1));
       const host = resolveHost(options);
       const result = await inventoryConfirm({ host, dryRun: options.dryRun });
+      io.log(result.output);
+      return result.exitCode;
+    },
+  },
+  {
+    name: 'runs',
+    summary: 'Move run records into the package home (Plan_77)',
+    usage: ['codex-bridge runs move [--dry-run]'],
+    section: 'public',
+    actions: {
+      move: {
+        summary: 'Move run records into the package home (Plan_77)',
+        usage: ['codex-bridge runs move [--dry-run]'],
+      },
+    },
+    async handler(argv, io) {
+      if (argv[0] !== 'move') throw new Error(`unknown runs action "${argv[0] ?? ''}"`);
+      const options = commandOptions('runs', argv.slice(1));
+      const result = runsMove({ dryRun: options.dryRun });
       io.log(result.output);
       return result.exitCode;
     },

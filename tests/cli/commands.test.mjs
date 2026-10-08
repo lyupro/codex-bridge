@@ -2,6 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +11,7 @@ import { commandOptions, HELP, main } from '../../bin/codex-bridge.mjs';
 import { COMMANDS } from '../../cli/command-registry.mjs';
 import { renderCommandHelp } from '../../cli/command-help.mjs';
 import { withOwner } from '../../cli/install-owners.mjs';
+import { withTempTree } from '../temp-tree.mjs';
 
 test('doctor accepts a probe executable and other commands reject it', () => {
   assert.deepEqual(commandOptions('doctor', ['--probe-contract', '--probe-executable', 'x.exe']),
@@ -143,6 +145,52 @@ test('help lists the public inventory confirmation command', async () => {
   assert.equal(await main(['--help'], io), 0);
   assert.ok(helpCommands(io.output[0]).includes('inventory'));
   assert.ok(io.output[0].includes('codex-bridge inventory confirm [--scope user|project] [--host <path>] [--dry-run]'));
+});
+
+test('runs move --dry-run reaches the copy preflight and leaves the store unchanged', async (t) => {
+  await withTempTree('runs-move-dispatch-', async (homedir) => {
+    const legacyRoot = path.join(homedir, '.claude', 'codex-runs');
+    await fs.mkdir(path.join(legacyRoot, 'project', 'empty'), { recursive: true });
+    await fs.writeFile(path.join(legacyRoot, 'reply.txt'), 'reply');
+    t.mock.method(os, 'homedir', () => homedir);
+    // Plan_77 D7: an isolated legacy root must remain active until a later move record.
+    for (const key of ['CODEX_RUNS_ROOT', 'CODEX_BRIDGE_HOME']) {
+      const old = process.env[key];
+      delete process.env[key];
+      t.after(() => { if (old === undefined) delete process.env[key]; else process.env[key] = old; });
+    }
+    const io = captureIO();
+    assert.equal(await main(['runs', 'move', '--dry-run'], io), 0);
+    assert.match(io.output[0], /^Would copy 1 files \(0\.00 MB\) in 2 folders from /);
+    assert.ok(io.output[0].includes(legacyRoot));
+    assert.match(io.output[0], /Dry run: nothing changed\./);
+    assert.deepEqual(io.errors, []);
+    assert.deepEqual(commandOptions('runs', ['--dry-run']), { dryRun: true });
+    assert.equal(await fs.readFile(path.join(legacyRoot, 'reply.txt'), 'utf8'), 'reply');
+    assert.deepEqual(await fs.readdir(homedir), ['.claude']);
+  });
+});
+
+test('runs requires move and accepts only --dry-run', async () => {
+  for (const argv of [['runs'], ['runs', 'unknown'], ['runs', '--dry-run']]) {
+    await assert.rejects(main(argv, captureIO()), /unknown runs action/);
+  }
+  for (const option of ['--unknown', '--host', '--force', 'extra']) {
+    await assert.rejects(main(['runs', 'move', option], captureIO()), /unknown runs option/);
+  }
+});
+
+test('help lists the public runs move command and its usage', async () => {
+  const io = captureIO();
+  assert.equal(await main(['--help'], io), 0);
+  assert.ok(helpCommands(io.output[0]).includes('runs'));
+  assert.ok(io.output[0].includes('codex-bridge runs move [--dry-run]'));
+  for (const flag of ['-h', '--help']) {
+    const actionIO = captureIO();
+    assert.equal(await main(['runs', 'move', flag], actionIO), 0);
+    assert.ok(actionIO.output[0].includes('codex-bridge runs move [--dry-run]'));
+    assert.deepEqual(actionIO.errors, []);
+  }
 });
 
 // Plan_71 D1: help must be intercepted before handlers can read state, launch or mutate anything.
