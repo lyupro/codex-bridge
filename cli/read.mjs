@@ -3,7 +3,6 @@ import path from 'node:path';
 import { readJsonFileSync } from '../src/home/lib/json-file.mjs';
 import { readEvents } from '../src/home/lib/meta/events.mjs';
 import { safeSlice } from '../src/home/lib/meta/paths.mjs';
-import { runsRoot } from '../src/home/lib/runner/runs-root.mjs';
 import { resolveRunFolder } from './run-lookup.mjs';
 
 const result = (exitCode, output) => ({ exitCode, output });
@@ -85,7 +84,7 @@ function renderEvent(event, transportError) {
   }
 }
 
-export function read({ run, cwd = process.cwd(), runsRootPath = runsRoot() } = {}) {
+export function read({ run, cwd = process.cwd(), runsRootPath } = {}) {
   const lookup = resolveRunFolder({ command: 'read', run, cwd, runsRootPath });
   if (lookup.error) return result(1, lookup.error);
 

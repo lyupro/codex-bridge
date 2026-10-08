@@ -11,7 +11,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { resolveBrandHome } from '../brand-home.mjs';
-import { readRunsMoveRecord, retiredRootOf } from './retired-roots.mjs';
+import { readRunsMoveRecord, retiredRootOf, retiredRootRefusal } from './retired-roots.mjs';
 
 export function runsRootResolution({ env = process.env, homedir = os.homedir() } = {}) {
   const brandHome = resolveBrandHome({ env, homedir });
@@ -37,4 +37,17 @@ export function runsRootResolution({ env = process.env, homedir = os.homedir() }
 
 export function runsRoot() {
   return runsRootResolution().root;
+}
+
+/** Plan_77 D6: diagnose the old address before callers read it; never silently remap it. */
+export function retiredPathRefusal(candidate, resolution = runsRootResolution()) {
+  const retired = retiredRootOf(candidate, resolution.retired);
+  return retired ? retiredRootRefusal({ candidate, retired, destination: resolution.homeRoot }) : null;
+}
+
+export function staleOverrideRefusal(resolution = runsRootResolution()) {
+  if (!resolution.staleOverride) return null;
+  return retiredRootRefusal({ candidate: resolution.root, retired: resolution.staleOverride,
+    destination: resolution.homeRoot }) + '\n' +
+    'CODEX_RUNS_ROOT points under a retired runs root; remove it or set it to the new location.';
 }

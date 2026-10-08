@@ -33,7 +33,7 @@ import { agentRole } from '../agents.mjs';
 import { codexArgs, runProfile } from './codex-args.mjs';
 import { writeWorkerOrder } from './worker-order.mjs';
 import { unsafeForCmd } from './codex-cmd.mjs';
-import { runsRoot } from './runs-root.mjs';
+import { runsRootResolution, staleOverrideRefusal } from './runs-root.mjs';
 import { resolveProjectRunsDir } from './project-dir.mjs';
 import { cleanupRetention } from '../retention.mjs';
 import { renderConventions } from './conventions.mjs';
@@ -95,8 +95,9 @@ export async function launcher(argv = process.argv.slice(2)) {
   const opts = parseArgs(argv);
   const { task: taskText, header } = settleTaskInput(opts);
   opts.phase = resolveRunPhase(opts, RUN_ENV.budgets);
+  const resolution = runsRootResolution();
   // Plan_59 D5/D6: blind choices and design authority must be checked before the paid probe.
-  const taskGate = taskPreflight({ agent: opts.agent, taskText, header });
+  const taskGate = taskPreflight({ agent: opts.agent, taskText, header, resolution });
   if (taskGate.refusal) die(taskGate.refusal, EXIT.FAIL);
   const topLevel = git(opts.repo, ['rev-parse', '--show-toplevel']);
   const isGitRepo = topLevel.status === 0;
@@ -113,7 +114,11 @@ export async function launcher(argv = process.argv.slice(2)) {
         `Action: ${scopeRefusal.action}. The run folder was not created; quota was not spent.`,
     );
   }
-  const projectRunsRoot = resolveProjectRunsDir(runsRoot(), repoRoot).dir;
+  // Plan_77 D6: project-dir.mjs:84 recursively recreated a retired CODEX_RUNS_ROOT.
+  // Refuse before that mkdir, using the same resolution that checked the advice header.
+  const stale = staleOverrideRefusal(resolution);
+  if (stale) die(`${stale}\nThe run folder was not created; quota was not spent.`, EXIT.FAIL);
+  const projectRunsRoot = resolveProjectRunsDir(resolution.root, repoRoot).dir;
   // Plan_60 D4c, 2026-09-24: two launchers of one order both billed. The claim comes before markAbandoned, or a
   // contender could close a run whose worker is admitting itself and start a second paid one.
   const claim = await acquireOrderClaim({ projectRunsRoot, orderId: opts.orderId, role: 'launcher' });

@@ -6,6 +6,7 @@ import path from 'node:path';
 import { resolveProjectRunsDir } from '../../src/home/lib/runner/project-dir.mjs';
 import { main } from '../../bin/codex-bridge.mjs';
 import { read } from '../../cli/read.mjs';
+import { resolveRunFolder } from '../../cli/run-lookup.mjs';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 
 function fixture(t) {
@@ -226,4 +227,52 @@ test('read reports transport status and message from an event payload', (t) => {
 
   assert.equal(result.exitCode, 0);
   assert.match(result.output, /error[\s\S]*Status: 503[\s\S]*Message: service unavailable/);
+});
+
+// Plan_77 D6, run-lookup.mjs:51-55: retired paths must refuse before stat, naming the new address.
+test('read lookup refuses an absolute retired path before stat and names its equivalent', (t) => {
+  const data = fixture(t);
+  const oldRoot = path.join(data.project, 'old-runs');
+  const run = path.join(oldRoot, 'Project', 'Run-ID');
+  const resolution = { root: data.runsRoot, homeRoot: data.runsRoot,
+    retired: [{ root: oldRoot }], staleOverride: null };
+  const stat = t.mock.method(fs, 'statSync');
+  const result = resolveRunFolder({ command: 'read', run, cwd: data.project, resolution });
+  assert.deepEqual(result, { runDir: null,
+    error: `codex-bridge read: Run records moved from ${oldRoot} to ${data.runsRoot}. ` +
+      `Equivalent path: ${path.join(data.runsRoot, 'Project', 'Run-ID')}. ` +
+      'Update advice: or pass this new path explicitly. No path was remapped.' });
+  assert.equal(stat.mock.callCount(), 0);
+});
+
+test('read lookup keeps bare names under the injected current root', (t) => {
+  const data = fixture(t);
+  const dir = runDir(data);
+  const resolution = { root: data.runsRoot, homeRoot: data.runsRoot,
+    retired: [{ root: path.join(data.project, 'old-runs') }], staleOverride: null };
+  assert.deepEqual(resolveRunFolder({
+    command: 'read', run: path.basename(dir), cwd: data.project, resolution,
+  }), { runDir: dir, error: null });
+});
+
+test('read lookup refuses a stale default override but honors an explicit current root', (t) => {
+  const data = fixture(t);
+  const dir = runDir(data);
+  const oldRoot = path.join(data.project, 'old-runs');
+  const staleRoot = path.join(oldRoot, 'Project');
+  const resolution = { root: staleRoot, homeRoot: data.runsRoot,
+    retired: [{ root: oldRoot }], staleOverride: { root: oldRoot, suffix: 'Project' } };
+  const stat = t.mock.method(fs, 'statSync');
+  const result = resolveRunFolder({ command: 'read', run: path.basename(dir), cwd: data.project, resolution });
+  assert.equal(result.runDir, null);
+  assert.equal(result.error, `codex-bridge read: Run records moved from ${oldRoot} to ${data.runsRoot}. ` +
+    `Equivalent path: ${path.join(data.runsRoot, 'Project')}. ` +
+    'Update advice: or pass this new path explicitly. No path was remapped.\n' +
+    'CODEX_RUNS_ROOT points under a retired runs root; remove it or set it to the new location.');
+  assert.equal(stat.mock.callCount(), 0);
+  stat.mock.restore();
+  assert.deepEqual(resolveRunFolder({
+    command: 'read', run: path.basename(dir), cwd: data.project, runsRootPath: data.runsRoot, resolution,
+  }), { runDir: dir, error: null });
+  assert.equal(fs.existsSync(oldRoot), false);
 });

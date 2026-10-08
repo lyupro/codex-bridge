@@ -12,6 +12,7 @@ import { probeCodexAvailability } from './codex-availability.mjs';
 import { agentRole } from '../agents.mjs';
 import { die } from './args.mjs';
 import { orderInputName } from '../order-schema.mjs';
+import { retiredPathRefusal, runsRootResolution } from './runs-root.mjs';
 
 /** Plan_60 D2: only conclusive evidence says UNAVAILABLE; an unclear probe stays an ordinary refusal. */
 export async function codexAvailabilityRefusal({ probe = probeCodexAvailability } = {}) {
@@ -29,7 +30,7 @@ export async function codexAvailabilityRefusal({ probe = probeCodexAvailability 
 }
 
 /** Plan_59 D5/D6: settle design authority before any probe can spend quota. */
-export function taskPreflight({ agent, taskText, header }) {
+export function taskPreflight({ agent, taskText, header, resolution = runsRootResolution() }) {
   const freeRefusal = (reason) => ({
     refusal: `${reason}\nThe run folder was not created; quota was not spent.`,
   });
@@ -44,6 +45,10 @@ export function taskPreflight({ agent, taskText, header }) {
       return { refusal: null, advice };
     }
     if (path.isAbsolute(advice)) {
+      // Plan_77 D6: preflight.mjs:46-58 swallowed the old-path read failure as missing advice.
+      // Diagnose before stat/read so neither existing nor absent retired evidence is opened.
+      const retired = retiredPathRefusal(advice, resolution);
+      if (retired) return freeRefusal(retired);
       try {
         // Plan_59 D26: only a judged advice authorizes a construction. On 2026-09-24 the gate took
         // any codex-advisor folder, so a scope run or a FAIL advice would have passed as a second opinion.

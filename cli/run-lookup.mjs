@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { git } from '../src/home/lib/runner/git-state.mjs';
 import { resolveProjectRunsDir } from '../src/home/lib/runner/project-dir.mjs';
-import { runsRoot } from '../src/home/lib/runner/runs-root.mjs';
+import { retiredPathRefusal, runsRootResolution, staleOverrideRefusal } from '../src/home/lib/runner/runs-root.mjs';
 
 function projectRoot(cwd) {
   const result = git(cwd, ['rev-parse', '--show-toplevel']);
@@ -23,12 +23,24 @@ export function resolveRunFolder({
   command = 'stop',
   run,
   cwd = process.cwd(),
-  runsRootPath = runsRoot(),
+  runsRootPath,
+  resolution = runsRootResolution(),
 } = {}) {
   const commandName = String(command || 'stop');
   const value = String(run ?? '').trim();
   if (!value || value === '.' || value === '..') {
     return refusal(commandName, `${commandName} requires a run folder (full path or bare folder name)`);
+  }
+
+  // Plan_77 D6: run-lookup.mjs:51-55 only said "Run folder not found" after stat on an old path.
+  if (path.isAbsolute(value)) {
+    const retired = retiredPathRefusal(value, resolution);
+    if (retired) return refusal(commandName, retired);
+  }
+  if (runsRootPath === undefined) {
+    const stale = staleOverrideRefusal(resolution);
+    if (stale) return refusal(commandName, stale);
+    runsRootPath = resolution.root;
   }
 
   let runDir;

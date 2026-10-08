@@ -10,7 +10,6 @@ import {
   processAlive,
 } from '../src/home/lib/process-identity.mjs';
 import { markAbandoned, readJson } from '../src/home/lib/write-meta.mjs';
-import { runsRoot } from '../src/home/lib/runner/runs-root.mjs';
 import { resolveRunFolder } from './run-lookup.mjs';
 
 const EXIT_POLL_MS = 25;
@@ -52,7 +51,7 @@ function result(exitCode, output) {
 export async function stop({
   run,
   cwd = process.cwd(),
-  runsRootPath = runsRoot(),
+  runsRootPath,
   commandRunner,
 } = {}) {
   const lookup = resolveRunFolder({ command: 'stop', run, cwd, runsRootPath });

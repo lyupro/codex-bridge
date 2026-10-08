@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { runsRootResolution } from '../../src/home/lib/runner/runs-root.mjs';
+import { retiredPathRefusal, runsRootResolution, staleOverrideRefusal } from '../../src/home/lib/runner/runs-root.mjs';
 import {
   RUNS_MOVE_RECORD, readRunsMoveRecord, retiredRootOf, retiredRootRefusal,
 } from '../../src/home/lib/runner/retired-roots.mjs';
@@ -202,5 +202,50 @@ test('retired root refusal gives the exact new address with and without a suffix
         `Run records moved from ${legacyRoot} to ${homeRoot}. Equivalent path: ${equivalent}. ` +
         'Update advice: or pass this new path explicitly. No path was remapped.');
     }
+  });
+});
+
+test('retiredPathRefusal returns null outside retired roots and the exact equivalent address inside', async () => {
+  await withHome(({ tree, homedir, env, legacyRoot, homeRoot, record, writeRecord }) => {
+    const earlierRoot = path.join(tree, 'earlier-runs');
+    record.retired.push({ root: earlierRoot, movedAt: '2026-09-01T00:00:00Z' });
+    writeRecord(record);
+    const resolution = runsRootResolution({ env, homedir });
+    for (const candidate of [null, '', homeRoot, `${legacyRoot}-old`]) {
+      assert.equal(retiredPathRefusal(candidate, resolution), null);
+    }
+    assert.equal(retiredPathRefusal(legacyRoot, { ...resolution, retired: [] }), null);
+    for (const root of [legacyRoot, earlierRoot]) {
+      for (const suffix of ['', 'Project/Run-ID']) {
+        const candidate = path.join(root, suffix);
+        assert.equal(retiredPathRefusal(candidate, resolution),
+          `Run records moved from ${root} to ${homeRoot}. Equivalent path: ${path.join(homeRoot, suffix)}. ` +
+          'Update advice: or pass this new path explicitly. No path was remapped.');
+      }
+      assert.equal(fs.existsSync(root), false);
+    }
+    assert.equal(fs.existsSync(homeRoot), false);
+  });
+});
+
+test('staleOverrideRefusal returns null for current roots and names a stale override without remapping', async () => {
+  await withHome(({ tree, homedir, env, legacyRoot, homeRoot, writeRecord }) => {
+    writeRecord();
+    for (const override of [undefined, homeRoot, path.join(tree, 'custom')]) {
+      assert.equal(staleOverrideRefusal(runsRootResolution({
+        env: { ...env, CODEX_RUNS_ROOT: override }, homedir,
+      })), null);
+    }
+    for (const suffix of ['', 'Project/Run-ID']) {
+      const root = path.join(legacyRoot, suffix);
+      const resolution = runsRootResolution({ env: { ...env, CODEX_RUNS_ROOT: `  ${root}  ` }, homedir });
+      assert.equal(staleOverrideRefusal(resolution),
+        `Run records moved from ${legacyRoot} to ${homeRoot}. Equivalent path: ${path.join(homeRoot, suffix)}. ` +
+        'Update advice: or pass this new path explicitly. No path was remapped.\n' +
+        'CODEX_RUNS_ROOT points under a retired runs root; remove it or set it to the new location.');
+      assert.equal(resolution.root, root);
+    }
+    assert.equal(fs.existsSync(legacyRoot), false);
+    assert.equal(fs.existsSync(homeRoot), false);
   });
 });
