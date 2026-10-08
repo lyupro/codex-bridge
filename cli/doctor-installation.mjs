@@ -65,6 +65,23 @@ export async function agentsCheck(host, record) {
     : check('agents', 'ok', `${agents.length} installed agent definition(s) match this package`);
 }
 
+export async function claudeRulesCheck(host, record) {
+  if (!record) return check('claudeRules', 'warn', 'Host rules were not checked; run codex-bridge install');
+  const plan = await buildInstallPlan(host);
+  // Plan_64 B1: source-path selection hid an empty plan as a healthy installation.
+  const rules = plan.filter((item) => path.dirname(item.target) === host.rulesDir);
+  if (rules.length === 0) return check('claudeRules', 'fail', 'This package plans no host rules; the package tree is broken');
+  const mismatches = [];
+  for (const item of rules) {
+    const expected = contentFingerprint(await plannedContent(item, host.brandRoot));
+    if (await fileFingerprint(item.target) !== expected) mismatches.push(path.basename(item.target));
+  }
+  // Plan_64 B3: equal bytes imply no paths frontmatter; tests/claude-rules-core.test.mjs guards the package core.
+  return mismatches.length
+    ? check('claudeRules', 'fail', `Host rules differ from this package or are missing: ${mismatches.join(', ')}; run codex-bridge update --force`)
+    : check('claudeRules', 'ok', `${rules.length} host rules file(s) match this package`);
+}
+
 export async function conventionsCheck(host) {
   const file = host.brandConventionsPath;
   let content;

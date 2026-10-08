@@ -17,6 +17,8 @@ const lockReleaseReason = 'Releases a held lock file on a timer to play its hold
 const exclusions = new Map([
   ['cli/doctor.test.mjs', installerOwnedReason],
   ['cli/doctor-rules.test.mjs', installerOwnedReason],
+  // Deletes the installed rules core to prove doctor fails on a missing one (Plan_64 B3). Not a tree removal.
+  ['cli/doctor-claude-rules.test.mjs', installerOwnedReason],
   ['cli/install.test.mjs', installerOwnedReason],
   // The test writes the lock file itself to stand in for a live holder, then removes it on a timer
   // so the holder is seen releasing it: the removal is the thing being tested (2026-08-11 — the

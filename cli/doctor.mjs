@@ -11,6 +11,7 @@ import { homeOwnersCheck, hostSideCheck, ownerEntry, ownersInSyncCheck } from '.
 import { inspectHost } from './host-inspection.mjs';
 import {
   agentsCheck,
+  claudeRulesCheck,
   conventionsCheck,
   exists,
   isFile,
@@ -145,6 +146,8 @@ export async function diagnose({
   checks.push(agents);
   const rules = await rulesCheck(host, record);
   checks.push(rules);
+  const claudeRules = await claudeRulesCheck(host, record);
+  checks.push(claudeRules);
   checks.push(await permissionsCheck(host));
   const bridge = bridgeProbe();
   checks.push(bridgeCommandCheck(bridge));
@@ -210,6 +213,7 @@ export async function diagnose({
 
   return {
     exitCode: !record || recordBroken || missingFiles.length || agents.status === 'fail' || rules.status === 'fail'
+      || claudeRules.status === 'fail'
       || hostContractStatus === 'fail' || retention.status === 'fail' || conventions.status === 'fail'
       || runsRoot.status === 'fail' || projectRuns.status === 'fail'
       || checks.some((item) => /^(hook|dispatcherContract|dispatcherModel):/.test(item.key) && item.status === 'fail')

@@ -33,13 +33,14 @@ export async function hostFixture(t) {
 
 export async function installedFixture(t) {
   const host = await hostFixture(t);
-  const agentPlan = (await buildInstallPlan(host))
-    .filter((item) => path.dirname(item.target) === host.agentsDir && item.target.endsWith('.md'));
+  const hostPlan = (await buildInstallPlan(host))
+    .filter((item) => (path.dirname(item.target) === host.agentsDir && item.target.endsWith('.md'))
+      || path.dirname(item.target) === host.rulesDir);
   const hookFiles = [...new Set(HOOK_DEFINITIONS.map(({ file }) => file))];
   const files = [
     { root: 'claude', path: 'agents/codex-bridge/run-codex.mjs' },
     { root: 'claude', path: 'agents/codex-bridge/required-inputs.mjs' },
-    ...agentPlan.map((item) => ({ root: item.root, path: item.relativeToRoot })),
+    ...hostPlan.map((item) => ({ root: item.root, path: item.relativeToRoot })),
     ...hookFiles.map((file) => ({ root: 'brand', path: `hooks/${file}` })),
   ];
   for (const file of files) {
@@ -47,8 +48,8 @@ export async function installedFixture(t) {
     await fs.mkdir(path.dirname(target), { recursive: true });
     await fs.writeFile(target, file.root === 'brand' ? 'process.exitCode = 0;\n' : file.path);
   }
-  const { writer, idFor } = planHomeWriter(host.brandRoot, agentPlan);
-  for (const item of agentPlan) await copyPlannedFile(item, host.brandRoot, { writer, id: idFor(item) });
+  const { writer, idFor } = planHomeWriter(host.brandRoot, hostPlan);
+  for (const item of hostPlan) await copyPlannedFile(item, host.brandRoot, { writer, id: idFor(item) });
   const record = {
     ...ownPackage,
     installedAt: '2026-08-02T10:00:00.000Z',
