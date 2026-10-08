@@ -8,6 +8,7 @@ import { collect } from '../../src/home/lib/write-meta.mjs';
 import { codexArgs } from '../../src/home/lib/runner/codex-args.mjs';
 import { loadRunEnv } from '../../src/home/lib/runner/run-env.mjs';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
+import { makeHomeImage } from '../home-image.mjs';
 import { buildResult, makeRun } from './test-fixtures.mjs';
 
 const packageJson = JSON.parse(
@@ -43,7 +44,8 @@ test('every runner mode selects only a contract sandbox', () => {
   }
 });
 
-test('a run without runner_version is reported as legacy without a sandbox warning', (t) => {
+test('a run without runner_version is reported as legacy without a sandbox warning', async (t) => {
+  const home = await makeHomeImage(t);
   const root = makeTempTree('codex-usage-');
   t.after(() => removeTempTree(root));
   const runDir = path.join(root, 'project', '2026-07-29_2325_review-codex-agents');
@@ -52,13 +54,20 @@ test('a run without runner_version is reported as legacy without a sandbox warni
     path.join(runDir, 'meta.json'),
     JSON.stringify({ tokens: 100, agent: 'codex-review', sandbox: 'danger-full-access' }),
   );
+  const gitRunDir = path.join(root, '.git', '2026-07-29_2325_internal');
+  fs.mkdirSync(gitRunDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(gitRunDir, 'meta.json'),
+    JSON.stringify({ tokens: 999, agent: 'codex-build', runner_version: packageJson.version }),
+  );
 
   const usage = fs.readFileSync(new URL('../../src/commands/usage.md', import.meta.url), 'utf8');
   const match = usage.match(/```bash\r?\nnode -e "\r?\n([\s\S]*?)\r?\n"\r?\n```/);
   assert.ok(match, 'usage command must remain an embedded node -e script');
+  assert.doesNotMatch(match[1], /["$`]/, 'the script body must remain safe inside shell double quotes');
   const result = spawnSync(process.execPath, ['-e', match[1]], {
     encoding: 'utf8',
-    env: { ...process.env, CODEX_RUNS_ROOT: root },
+    env: { ...process.env, CODEX_BRIDGE_HOME: home, CODEX_RUNS_ROOT: root },
   });
 
   assert.equal(result.status, 0, result.stderr);
@@ -67,4 +76,5 @@ test('a run without runner_version is reported as legacy without a sandbox warni
     /Before the runner: 1 runs carry no runner version and are not judged by the sandbox contract/,
   );
   assert.doesNotMatch(result.stdout, /WARNING: .*went outside the usual sandbox/);
+  assert.doesNotMatch(result.stdout, /\.git/);
 });

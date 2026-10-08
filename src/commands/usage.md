@@ -11,9 +11,9 @@ allowed-tools: Bash
 Count how much ChatGPT quota the runs delegated to Codex burned. This is spending on the Codex side,
 not on the Claude side.
 
-The root of the run folders comes from `CODEX_RUNS_ROOT` when it is set, otherwise from
-`~/.claude/codex-runs` — the same order the runner itself uses, because otherwise the accounting
-would stop seeing runs whenever the root is overridden.
+The root of the run folders comes from the runner's own resolver, so usage counts exactly where
+runs are written: the `CODEX_RUNS_ROOT` override, `~/.lyupro/.codex-bridge/runs/` after the move,
+or `~/.claude/codex-runs/` while the move is pending.
 
 The source is the `meta.json` in each run folder: it holds the spending, the model and the sandbox.
 Transport files are not kept in git and may be deleted, so parsing them is not allowed — the
@@ -33,11 +33,14 @@ Run exactly this command and recompute nothing by hand:
 
 ```bash
 node -e "
-const fs=require('fs'),path=require('path');
-const root=(process.env.CODEX_RUNS_ROOT||'').trim()||path.join(process.env.USERPROFILE||process.env.HOME,'.claude','codex-runs');
+const fs=require('fs'),path=require('path'),os=require('os');
+const home=(process.env.CODEX_BRIDGE_HOME||'').trim()||path.join(os.homedir(),'.lyupro','.codex-bridge');
+import(require('url').pathToFileURL(path.join(home,'lib','runner','runs-root.mjs')).href).then(m=>{
+const root=m.runsRoot();
 if(!fs.existsSync(root)){console.log('No runs yet.');process.exit(0)}
 const runs=[],unknown=[];
 for(const proj of fs.readdirSync(root)){
+  if(proj==='.git')continue;
   const pdir=path.join(root,proj);
   if(!fs.statSync(pdir).isDirectory())continue;
   let repo=null;
@@ -81,6 +84,7 @@ if(runs.length){
   console.log('');console.log('Most expensive runs:');
   runs.sort((a,b)=>b.tokens-a.tokens).slice(0,5).forEach(r=>console.log('  '+fmt(r.tokens).padStart(11)+'  '+r.proj+'/'+r.run));
 }
+}).catch(e=>{console.error(e.message);process.exit(1)});
 "
 ```
 

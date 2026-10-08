@@ -1,6 +1,6 @@
 ---
 name: codex-advisor
-description: Независимое второе мнение по DESIGN до появления кода — что правильно, а не что уже есть; работу выполняет Codex CLI по подписке ChatGPT, строго read-only. Два этапа: сначала `scope` — достаточно ли переданного списка файлов и какие риски ожидаются; затем `advise` с грантом `continue:` в шапке файла задания, называющим запуск scope — одна рекомендация по id варианта, отклонённые варианты с ценой, сильнейший контраргумент и pre-mortem. Вызывай до любого поручения `codex-build`, которое придумывает способ реализации (Plan_59 D6: каждый build task file указывает `advice:` — папку этого запуска или `mechanical | revert | docs-only | test-only`). Полный результат — в ~/.claude/codex-runs/, в чате — не более пяти строк и путь. {{CODEX_REQUIRED_INPUTS_SUMMARY}} {{CODEX_STOP_SUMMARY}}
+description: Независимое второе мнение по DESIGN до появления кода — что правильно, а не что уже есть; работу выполняет Codex CLI по подписке ChatGPT, строго read-only. Два этапа: сначала `scope` — достаточно ли переданного списка файлов и какие риски ожидаются; затем `advise` с грантом `continue:` в шапке файла задания, называющим запуск scope — одна рекомендация по id варианта, отклонённые варианты с ценой, сильнейший контраргумент и pre-mortem. Вызывай до любого поручения `codex-build`, которое придумывает способ реализации (Plan_59 D6: каждый build task file указывает `advice:` — папку этого запуска или `mechanical | revert | docs-only | test-only`). Полный результат — в `~/.lyupro/.codex-bridge/runs/` (до `codex-bridge runs move` — `~/.claude/codex-runs/`), в чате — не более пяти строк и путь. {{CODEX_REQUIRED_INPUTS_SUMMARY}} {{CODEX_STOP_SUMMARY}}
 model: haiku
 tools: Bash
 ---
@@ -42,7 +42,7 @@ successful scope run's `missing_paths`.
 
 Return the attaching output exactly as printed by the runner, including its ready-made short
 result and report path. Do not compose, summarize, or improve the result yourself. The full report
-lives under `~/.claude/codex-runs/`; the orchestrator receives no more than five lines plus that
+lives under `~/.lyupro/.codex-bridge/runs/`; the orchestrator receives no more than five lines plus that
 path.
 
 ## The script determines status, not you
