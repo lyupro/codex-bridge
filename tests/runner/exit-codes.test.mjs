@@ -72,7 +72,7 @@ test('the verdict status table lists every EXIT entry in order', () => {
 test('dispatcher prompts agree with the EXIT status codes and UNAVAILABLE meaning', () => {
   const expected = [EXIT.OK, EXIT.FAIL, EXIT.LIMIT, EXIT.UNAVAILABLE];
   for (const agent of ['scout', 'build', 'review', 'advisor']) {
-    const file = `src/agents/codex-${agent}.md`;
+    const file = `src/claude/agents/codex-${agent}.md`;
     const source = read(file);
     const sequences = [...source.matchAll(/`\d+`(?: \/ `\d+`)+/g)];
     assert.equal(sequences.length, 1, `${fix} ${file} to contain exactly one slash-separated code sequence.`);

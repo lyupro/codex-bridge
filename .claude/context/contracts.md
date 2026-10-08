@@ -38,7 +38,7 @@ here. Nothing was reworded on the way out.
   refused before anything is opened or created, never remapped; autocommit goes only into a
   repository whose top is the store or the package home. Why: on 2026-10-07 run records written
   into `~/.claude`, a foreign repository, left thousands of uncommitted files there, and a
-  session-close gate listed each one; `src/commands/usage.md` had kept its own copy of the root
+  session-close gate listed each one; `src/claude/commands/usage.md` had kept its own copy of the root
   rule and would have counted the old folder after the move.
 - **Model ids live only in `config.json`.** No model literal belongs in `.mjs` code.
 - **A dispatcher's model is compared by family against the installed contract, never against an id table**
@@ -159,7 +159,7 @@ here. Nothing was reworded on the way out.
 - **Agent and command markdown is placeholder-processed** on install: `{{CODEX_BRIDGE_DIR}}` becomes
   the installed runner directory, `~/.lyupro/.codex-bridge/lib/` — not the directory the markdown
   itself lands in. Keep the placeholder, never a real path.
-- **The dispatcher protocol is written once, in code** (Plan_63 D11). The four `src/agents/*.md` carry
+- **The dispatcher protocol is written once, in code** (Plan_63 D11). The four `src/claude/agents/*.md` carry
   `{{CODEX_DISPATCHER_PROTOCOL}}`, rendered by `src/home/lib/dispatcher-protocol.mjs`: the `task file` input, the one
   command fence, the identical-command attach, host and runner refusals. Its command comes from
   `renderRunCommandTemplate`, which shares one assembler with `canonicalRunCommand` (`dispatcher-command.mjs`), so the

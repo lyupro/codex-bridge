@@ -10,7 +10,7 @@ import { canonicalRunCommand, renderRunCommandTemplate } from '../src/home/lib/d
 import { orderSpellings } from './order-spelling-scan.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const AGENTS_DIR = path.join(ROOT, 'src', 'agents');
+const AGENTS_DIR = path.join(ROOT, 'src', 'claude', 'agents');
 const INSTALLATION_ROOT = path.join(os.tmpdir(), 'bridge-command-boundary-host');
 
 function commandBlocks(source) {

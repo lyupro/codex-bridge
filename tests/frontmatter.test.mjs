@@ -111,7 +111,7 @@ test('every installed agent frontmatter round-trips the real placeholder substit
     brandRoot: path.join(root, 'brand'),
   });
   const agents = (await buildInstallPlan(host))
-    .filter((item) => /[\\/]src[\\/]agents[\\/][^\\/]+\.md$/.test(item.source));
+    .filter((item) => path.dirname(item.target) === host.agentsDir && item.target.endsWith('.md'));
 
   assert.ok(agents.length > 0, 'the package must produce agent definitions');
   for (const item of agents) {

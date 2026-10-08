@@ -17,7 +17,7 @@ test('doctor confirms installed agent definitions match the package tree', async
     key: 'agents',
     status: 'ok',
     // Counted from the package tree: a hard-coded 3 broke the day the fourth agent shipped.
-    value: `${(await fs.readdir('src/agents')).filter((name) => name.endsWith('.md')).length} installed agent definition(s) match this package`,
+    value: `${(await fs.readdir('src/claude/agents')).filter((name) => name.endsWith('.md')).length} installed agent definition(s) match this package`,
   });
   assert.equal(result.checks.find((item) => item.key === 'command').status, 'ok');
 });

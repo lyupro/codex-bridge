@@ -34,7 +34,7 @@ export async function hostFixture(t) {
 export async function installedFixture(t) {
   const host = await hostFixture(t);
   const agentPlan = (await buildInstallPlan(host))
-    .filter((item) => /[\\/]src[\\/]agents[\\/][^\\/]+\.md$/.test(item.source));
+    .filter((item) => path.dirname(item.target) === host.agentsDir && item.target.endsWith('.md'));
   const hookFiles = [...new Set(HOOK_DEFINITIONS.map(({ file }) => file))];
   const files = [
     { root: 'claude', path: 'agents/codex-bridge/run-codex.mjs' },

@@ -32,7 +32,11 @@ export async function isFile(target) {
 export async function agentsCheck(host, record) {
   if (!record) return check('agents', 'warn', 'Agent definitions were not checked; run codex-bridge install');
   const plan = await buildInstallPlan(host);
-  const agents = plan.filter((item) => /[\\/]src[\\/]agents[\\/][^\\/]+\.md$/.test(item.source));
+  // Selected by where the file lands, not by where it comes from: Plan_64 B1 moved the sources
+  // under src/claude/, a source-path pattern matched nothing, and this check reported
+  // "0 installed agent definition(s) match" as ok.
+  const agents = plan.filter((item) => path.dirname(item.target) === host.agentsDir && item.target.endsWith('.md'));
+  if (agents.length === 0) return check('agents', 'fail', 'This package plans no agent definitions; the package tree is broken');
   const mismatches = [];
   const unreadable = [];
   for (const item of agents) {

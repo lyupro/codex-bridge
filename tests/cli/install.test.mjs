@@ -65,7 +65,7 @@ test('a rendered file is fingerprinted as written, not as shipped', async (t) =>
   const file = record.files.find((entry) => entry.path.endsWith('codex-build.md'));
   const hash = async (target) => createHash('sha256').update(await fs.readFile(target)).digest('hex');
   assert.equal(record.fingerprints[file.root][file.path], await hash(recordTarget(host, file)));
-  assert.notEqual(record.fingerprints[file.root][file.path], await hash('src/agents/codex-build.md'));
+  assert.notEqual(record.fingerprints[file.root][file.path], await hash('src/claude/agents/codex-build.md'));
 });
 
 test('install copies the exact plan, expands placeholders, and writes a valid record', async (t) => {
@@ -93,7 +93,7 @@ test('install copies the exact plan, expands placeholders, and writes a valid re
   assert.deepEqual(record.files, plan.map((item) => ({ root: item.root, path: item.relativeToRoot })));
   assert.equal(record.rules.path, path.join(host.codexRulesDir, 'codex-bridge.rules'));
   const rulesBytes = await fs.readFile(record.rules.path);
-  assert.deepEqual(rulesBytes, await fs.readFile('src/rules/codex-bridge.rules'));
+  assert.deepEqual(rulesBytes, await fs.readFile('src/codex/rules/codex-bridge.rules'));
   assert.equal(record.rules.fingerprint, createHash('sha256').update(rulesBytes).digest('hex'));
   // From the definitions, not restated: a literal list here has to be edited every time the
   // package registers another hook, and until someone remembers, it contradicts the installer.
@@ -297,7 +297,7 @@ test('a foreign rules file conflicts unless --force replaces it', async (t) => {
   assert.match(refused.output, /--force/);
   assert.equal(await fs.readFile(target, 'utf8'), 'foreign rules');
   assert.equal((await install({ host, force: true })).exitCode, 0);
-  assert.deepEqual(await fs.readFile(target), await fs.readFile('src/rules/codex-bridge.rules'));
+  assert.deepEqual(await fs.readFile(target), await fs.readFile('src/codex/rules/codex-bridge.rules'));
 });
 
 test('recorded manual changes conflict instead of being overwritten', async (t) => {
@@ -320,7 +320,7 @@ test('install restores a missing recorded rules file instead of reporting a no-o
   const restored = await install({ host });
   assert.equal(restored.exitCode, 0);
   assert.doesNotMatch(restored.output, /nothing to do/);
-  assert.deepEqual(await fs.readFile(record.rules.path), await fs.readFile('src/rules/codex-bridge.rules'));
+  assert.deepEqual(await fs.readFile(record.rules.path), await fs.readFile('src/codex/rules/codex-bridge.rules'));
   assert.equal((await readInstallRecord(host)).rules.fingerprint, await fileHash(record.rules.path));
 });
 

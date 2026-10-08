@@ -174,7 +174,7 @@ test('uninstall accepts a legacy record without rules metadata', async (t) => {
   await fs.writeFile(recordPath, `${JSON.stringify(legacy, null, 2)}\n`);
   // D6 keeps format-1 images because their complete owner inventory cannot be proven.
   assert.equal((await uninstall({ host })).exitCode, 1);
-  assert.equal(await fs.readFile(rulesPath, 'utf8'), await fs.readFile('src/rules/codex-bridge.rules', 'utf8'));
+  assert.equal(await fs.readFile(rulesPath, 'utf8'), await fs.readFile('src/codex/rules/codex-bridge.rules', 'utf8'));
 });
 
 test('uninstall without an ownership registry uses the legacy fingerprint behavior', async (t) => {
@@ -197,7 +197,7 @@ test('uninstall completes with a corrupt registry and preserves shared rules', a
   const result = await uninstall({ host });
   assert.equal(result.exitCode, 0);
   assert.match(result.output, /Left .*rules ownership registry is invalid.*ownership is unknown/i);
-  assert.deepEqual(await fs.readFile(record.rules.path), await fs.readFile('src/rules/codex-bridge.rules'));
+  assert.deepEqual(await fs.readFile(record.rules.path), await fs.readFile('src/codex/rules/codex-bridge.rules'));
   for (const file of record.files) {
     await assert.rejects(() => fs.access(recordTarget(host, file)), { code: 'ENOENT' });
   }

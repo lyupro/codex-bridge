@@ -45,7 +45,7 @@ export {
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const PACKAGE_ROOT = path.resolve(HERE, '..');
-const RULES_SOURCE = `src/rules/${RULES_NAME}`;
+const RULES_SOURCE = `src/codex/rules/${RULES_NAME}`;
 
 /**
  * Files the operator owns once they exist. Seeded on first install so the defaults are
@@ -57,8 +57,8 @@ const RULES_SOURCE = `src/rules/${RULES_NAME}`;
 export const SEEDED_SOURCES = Object.freeze(['src/home/config.json', 'src/home/conventions.md']);
 
 export const INSTALL_TABLE = Object.freeze([
-  { source: 'src/agents/*.md', root: 'claude', target: 'agentsDir', processing: 'placeholders' },
-  { source: 'src/commands/*.md', root: 'claude', target: 'commandsDir', processing: 'placeholders' },
+  { source: 'src/claude/agents/*.md', root: 'claude', target: 'agentsDir', processing: 'placeholders' },
+  { source: 'src/claude/commands/*.md', root: 'claude', target: 'commandsDir', processing: 'placeholders' },
   // The source is the host image. Keeping one source root and one target root makes any future
   // remapping visible as a test failure instead of another clone-only import success.
   { source: 'src/home/**', root: 'brand', target: 'brandRoot', processing: 'copy' },

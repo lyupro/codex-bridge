@@ -30,17 +30,17 @@ async function fixture(t) {
     codexHome: path.join(root, 'codex-home'),
     brandRoot: path.join(root, 'brand'),
   });
-  await fs.mkdir(path.join(packageRoot, 'src', 'agents'), { recursive: true });
-  await fs.mkdir(path.join(packageRoot, 'src', 'commands'), { recursive: true });
+  await fs.mkdir(path.join(packageRoot, 'src', 'claude', 'agents'), { recursive: true });
+  await fs.mkdir(path.join(packageRoot, 'src', 'claude', 'commands'), { recursive: true });
   await fs.mkdir(path.join(packageRoot, 'src', 'home', 'hooks'), { recursive: true });
   await fs.mkdir(path.join(packageRoot, 'src', 'home', 'lib'), { recursive: true });
-  await fs.mkdir(path.join(packageRoot, 'src', 'rules'), { recursive: true });
-  await fs.writeFile(path.join(packageRoot, 'src', 'agents', 'build.md'), 'agent');
-  await fs.writeFile(path.join(packageRoot, 'src', 'agents', 'notes.txt'), 'notes');
-  await fs.writeFile(path.join(packageRoot, 'src', 'commands', 'env.md'), 'command');
+  await fs.mkdir(path.join(packageRoot, 'src', 'codex', 'rules'), { recursive: true });
+  await fs.writeFile(path.join(packageRoot, 'src', 'claude', 'agents', 'build.md'), 'agent');
+  await fs.writeFile(path.join(packageRoot, 'src', 'claude', 'agents', 'notes.txt'), 'notes');
+  await fs.writeFile(path.join(packageRoot, 'src', 'claude', 'commands', 'env.md'), 'command');
   await fs.writeFile(path.join(packageRoot, 'src', 'home', 'hooks', 'guard.mjs'), 'guard');
   await fs.writeFile(path.join(packageRoot, 'src', 'home', 'lib', 'runtime.mjs'), 'runtime');
-  await fs.writeFile(path.join(packageRoot, 'src', 'rules', 'codex-bridge.rules'), 'rules');
+  await fs.writeFile(path.join(packageRoot, 'src', 'codex', 'rules', 'codex-bridge.rules'), 'rules');
   return { root, packageRoot, host };
 }
 
@@ -58,8 +58,8 @@ const record = {
 
 test('installation table is exported data', () => {
   assert.deepEqual(INSTALL_TABLE, [
-    { source: 'src/agents/*.md', root: 'claude', target: 'agentsDir', processing: 'placeholders' },
-    { source: 'src/commands/*.md', root: 'claude', target: 'commandsDir', processing: 'placeholders' },
+    { source: 'src/claude/agents/*.md', root: 'claude', target: 'agentsDir', processing: 'placeholders' },
+    { source: 'src/claude/commands/*.md', root: 'claude', target: 'commandsDir', processing: 'placeholders' },
     { source: 'src/home/**', root: 'brand', target: 'brandRoot', processing: 'copy' },
     { source: 'package.json', root: 'brand', target: 'brandRoot', processing: 'copy' },
   ]);
@@ -92,7 +92,7 @@ test('install plan maps agents, commands, and the literal home tree', async (t) 
   ]);
   assert.deepEqual(plan.map((item) => item.processing), ['copy', 'copy', 'placeholders', 'placeholders']);
   assert.deepEqual(rulesPlan(host, packageRoot), {
-    source: path.join(packageRoot, 'src', 'rules', 'codex-bridge.rules'),
+    source: path.join(packageRoot, 'src', 'codex', 'rules', 'codex-bridge.rules'),
     target: path.join(host.codexRulesDir, 'codex-bridge.rules'),
     name: 'codex-bridge.rules',
   });

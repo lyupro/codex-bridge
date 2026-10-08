@@ -1,6 +1,6 @@
 # codex-bridge installs this file to constrain delegated Codex runs.
 # It exists because a delegated run must not rewrite the operator's repository history or branches.
-# Check it with: codex execpolicy check --rules src/rules/codex-bridge.rules -- <command> <args>.
+# Check it with: codex execpolicy check --rules src/codex/rules/codex-bridge.rules -- <command> <args>.
 # Codex combines this file with other active rule files, and the strictest matching decision wins.
 # Known limit: prefix rules cannot detect shell redirection into .git/HEAD or equivalent indirect writes.
 

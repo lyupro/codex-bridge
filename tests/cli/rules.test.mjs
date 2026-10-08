@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
-const RULES = path.resolve('src', 'rules', 'codex-bridge.rules');
+const RULES = path.resolve('src', 'codex', 'rules', 'codex-bridge.rules');
 const lookup = process.platform === 'win32'
   ? spawnSync('powershell.exe', [
     '-NoProfile', '-Command', '(Get-Command codex -ErrorAction Stop).Source',

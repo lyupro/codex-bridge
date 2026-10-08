@@ -20,7 +20,7 @@ import { renderStopSummary } from '../src/home/lib/stop-contract.mjs';
 
 const taskFile = 'C:/scratch/task.md';
 const validCall = `task file: ${taskFile}`;
-const agentDirectory = path.join('src', 'agents');
+const agentDirectory = path.join('src', 'claude', 'agents');
 const freeTextReason = 'not a `label: value` line; free text belongs in the task file';
 
 function movedReason(label) {

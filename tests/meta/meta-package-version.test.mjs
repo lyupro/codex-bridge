@@ -61,7 +61,7 @@ test('a run without runner_version is reported as legacy without a sandbox warni
     JSON.stringify({ tokens: 999, agent: 'codex-build', runner_version: packageJson.version }),
   );
 
-  const usage = fs.readFileSync(new URL('../../src/commands/usage.md', import.meta.url), 'utf8');
+  const usage = fs.readFileSync(new URL('../../src/claude/commands/usage.md', import.meta.url), 'utf8');
   const match = usage.match(/```bash\r?\nnode -e "\r?\n([\s\S]*?)\r?\n"\r?\n```/);
   assert.ok(match, 'usage command must remain an embedded node -e script');
   assert.doesNotMatch(match[1], /["$`]/, 'the script body must remain safe inside shell double quotes');

@@ -13,7 +13,7 @@ import { makeTempTree, removeTempTree } from './temp-tree.mjs';
 import { orderSpellings } from './order-spelling-scan.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const AGENTS_DIR = path.join(ROOT, 'src', 'agents');
+const AGENTS_DIR = path.join(ROOT, 'src', 'claude', 'agents');
 const GATE = path.join(ROOT, 'src', 'home', 'hooks', 'order-gate.mjs');
 
 function commandBlocks(source) {
