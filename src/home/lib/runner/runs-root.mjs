@@ -37,7 +37,9 @@ export function runsRootResolution({ env = process.env, homedir = os.homedir() }
 }
 
 export function runsRoot() {
-  return runsRootResolution().root;
+  const resolution = runsRootResolution();
+  if (resolution.staleOverride) throw new Error(staleOverrideRefusal(resolution));
+  return resolution.root;
 }
 
 /** Plan_77 D6: diagnose the old address before callers read it; never silently remap it. */

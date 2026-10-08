@@ -1,6 +1,9 @@
 /** Guards Plan_65 D12 items 4 and 7: report facts, preserve reasons, and fail for unsafe removal. */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { outcomeLines, outcomeExitCode, planLines, planExitCode } from '../../cli/removal-outcomes.mjs';
 
 const host = { brandRoot: '/home/brand', root: '/home/host' };
@@ -188,6 +191,32 @@ test('run artifacts are always last, including empty outcomes and empty plans', 
   assert.deepEqual(outcomeLines([], { host }), [expected]);
   assert.equal(planLines(plan, { host }).at(-1), expected);
   assert.equal(outcomeExitCode([]), 0);
+});
+
+test('a stale override keeps uninstall messages nonthrowing and names the home root (Plan_77 F2)', (t) => {
+  const tree = makeTempTree('removal-outcomes-stale-');
+  t.after(() => removeTempTree(tree));
+  const brandRoot = path.join(tree, 'brand');
+  const retiredRoot = path.join(tree, 'retired');
+  fs.mkdirSync(path.join(brandRoot, 'state'), { recursive: true });
+  fs.writeFileSync(path.join(brandRoot, 'state', 'runs-root.json'), JSON.stringify({
+    version: 1, retired: [{ root: retiredRoot, movedAt: '2026-10-08T12:30:00.000Z' }],
+  }));
+  for (const [key, value] of Object.entries({
+    CODEX_BRIDGE_HOME: brandRoot, CODEX_RUNS_ROOT: path.join(retiredRoot, 'project'),
+  })) {
+    const previous = process.env[key];
+    process.env[key] = value;
+    t.after(() => {
+      if (previous === undefined) delete process.env[key];
+      else process.env[key] = previous;
+    });
+  }
+  const expected = `Run artifacts in ${path.join(brandRoot, 'runs')} are outside uninstall and stay.`;
+  const plan = { rows: [], record: { operation: 'none', reason: 'missing' }, directories: [] };
+  assert.deepEqual(outcomeLines([], { host }), [expected]);
+  assert.deepEqual(planLines(plan, { host }), [expected]);
+  assert.equal(fs.existsSync(retiredRoot), false);
 });
 
 test('message groups stay ordered even when file outcomes arrive in a different order', () => {

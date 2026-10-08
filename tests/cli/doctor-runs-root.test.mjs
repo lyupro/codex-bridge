@@ -146,6 +146,46 @@ test('a corrupt move record fails default resolution and keeps all doctor run di
   assert.equal(result.exitCode, 1);
 });
 
+test('doctor marks stale-root checks unavailable without reading it (Plan_77 F2)', async (t) => {
+  const resolution = fixture(t);
+  const brandRoot = path.dirname(resolution.homeRoot);
+  const runDir = path.join(resolution.legacyRoot, 'stale-project', 'live-run');
+  fs.mkdirSync(runDir, { recursive: true });
+  fs.writeFileSync(path.join(runDir, 'status.json'), JSON.stringify({
+    status: 'working', pid: process.pid, dispatcherPid: process.pid,
+    startedAt: new Date().toISOString(),
+  }));
+  fs.mkdirSync(path.join(brandRoot, 'state'));
+  fs.writeFileSync(path.join(brandRoot, 'state', 'runs-root.json'), JSON.stringify({
+    version: 1, retired: [{ root: resolution.legacyRoot, movedAt: '2026-10-08T12:30:00.000Z' }],
+  }));
+  setEnv(t, 'CODEX_BRIDGE_HOME', brandRoot);
+  setEnv(t, 'CODEX_RUNS_ROOT', resolution.legacyRoot);
+  const { host } = await installedFixture(t);
+  let staleReads = 0;
+  for (const [api, methods] of [[fs, ['readdirSync', 'readFileSync']], [fs.promises, ['readdir', 'readFile']]]) {
+    for (const method of methods) {
+      const original = api[method];
+      t.mock.method(api, method, function (target, ...args) {
+        if (typeof target === 'string' && (target === resolution.legacyRoot
+          || target.startsWith(resolution.legacyRoot + path.sep))) staleReads += 1;
+        return original.call(this, target, ...args);
+      });
+    }
+  }
+  const result = await diagnose({ host, codexProbe, currentPackage: ownPackage });
+  assert.equal(staleReads, 0, 'Plan_77 D6 refuses the retired root before any run reads');
+  for (const key of ['projectRuns', 'liveRuns']) {
+    assert.deepEqual(result.checks.find((item) => item.key === key), {
+      key, status: 'fail', value: 'unavailable: CODEX_RUNS_ROOT points under a retired runs root',
+    });
+  }
+  const root = result.checks.find((item) => item.key === 'runsRoot');
+  assert.equal(root.status, 'fail');
+  assert.match(root.value, /CODEX_RUNS_ROOT points under a retired runs root/);
+  assert.equal(result.exitCode, 1);
+});
+
 test('project and live checks use the supplied root rather than a fresh env override', (t) => {
   const resolution = fixture(t);
   fs.mkdirSync(resolution.root);

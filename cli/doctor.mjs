@@ -200,9 +200,12 @@ export async function diagnose({
   let resolution;
   const runsRoot = runsRootCheck({ get resolution() { return (resolution = runsRootResolution()); } });
   checks.push(runsRoot);
-  const projectRuns = resolution ? projectRunsCheck(resolution) : check('projectRuns', 'fail', runsRoot.value);
-  checks.push(resolution ? liveRunsCheck(resolution)
-    : check('liveRuns', 'warn', `working-run count unavailable: ${runsRoot.value}`));
+  const unavailable = 'unavailable: CODEX_RUNS_ROOT points under a retired runs root';
+  const projectRuns = resolution?.staleOverride ? check('projectRuns', 'fail', unavailable)
+    : resolution ? projectRunsCheck(resolution) : check('projectRuns', 'fail', runsRoot.value);
+  checks.push(resolution?.staleOverride ? check('liveRuns', 'fail', unavailable)
+    : resolution ? liveRunsCheck(resolution)
+      : check('liveRuns', 'warn', `working-run count unavailable: ${runsRoot.value}`));
   checks.push(projectRuns);
 
   return {

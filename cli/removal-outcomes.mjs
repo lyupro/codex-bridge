@@ -4,7 +4,7 @@
  * Plan_65 D12 item 7 requires actual counts and named keeps: planned removal must not claim
  * that edited image files disappeared, or confuse removing an owner with deleting its record.
  */
-import { runsRoot } from '../src/home/lib/runner/runs-root.mjs';
+import { runsRootResolution } from '../src/home/lib/runner/runs-root.mjs';
 
 const unsafeReason = (reason) => reason.startsWith('link') || reason.startsWith('unreadable');
 // An image file kept by content evidence is named; one kept by policy (another owner, an incomplete
@@ -12,7 +12,10 @@ const unsafeReason = (reason) => reason.startsWith('link') || reason.startsWith(
 const EVIDENCE_KEEP = new Set(['changed', 'link']);
 const namedKeep = (entry) => unsafeReason(entry.reason) || entry.id === null
   || (entry.id === 'install-image' && EVIDENCE_KEEP.has(entry.reason));
-const artifactsLine = () => `Run artifacts in ${runsRoot()} are outside uninstall and stay.`;
+const artifactsLine = () => {
+  const resolution = runsRootResolution();
+  return `Run artifacts in ${resolution.staleOverride ? resolution.homeRoot : resolution.root} are outside uninstall and stay.`;
+};
 
 function fileLines(files, host, dryRun) {
   const lines = [];

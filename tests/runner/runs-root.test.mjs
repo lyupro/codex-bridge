@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { retiredPathRefusal, runsRootResolution, staleOverrideRefusal } from '../../src/home/lib/runner/runs-root.mjs';
+import { retiredPathRefusal, runsRoot, runsRootResolution, staleOverrideRefusal } from '../../src/home/lib/runner/runs-root.mjs';
 import {
   RUNS_MOVE_RECORD, readRunsMoveRecord, retiredRootOf, retiredRootRefusal, writeRunsMoveRecord,
 } from '../../src/home/lib/runner/retired-roots.mjs';
@@ -115,6 +115,31 @@ test('an override under a retired root is reported without remapping or creating
       assert.deepEqual(result.staleOverride, { root: legacyRoot, suffix });
       assert.equal(fs.existsSync(legacyRoot), false);
     }
+  });
+});
+
+test('runsRoot refuses retired overrides and preserves ordinary overrides (Plan_77 F2)', async (t) => {
+  await withHome(({ tree, env, legacyRoot, writeRecord }) => {
+    for (const key of ['CODEX_BRIDGE_HOME', 'CODEX_RUNS_ROOT']) {
+      const previous = process.env[key];
+      t.after(() => {
+        if (previous === undefined) delete process.env[key];
+        else process.env[key] = previous;
+      });
+    }
+    process.env.CODEX_BRIDGE_HOME = env.CODEX_BRIDGE_HOME;
+    writeRecord();
+    for (const suffix of ['', 'Project/Run-ID']) {
+      process.env.CODEX_RUNS_ROOT = path.join(legacyRoot, suffix);
+      const message = staleOverrideRefusal(runsRootResolution());
+      assert.match(message, /CODEX_RUNS_ROOT points under a retired runs root/);
+      assert.throws(() => runsRoot(), { name: 'Error', message });
+    }
+    const root = path.join(tree, 'custom');
+    process.env.CODEX_RUNS_ROOT = `  ${root}  `;
+    assert.equal(runsRoot(), root);
+    assert.equal(fs.existsSync(root), false);
+    assert.equal(fs.existsSync(legacyRoot), false);
   });
 });
 
