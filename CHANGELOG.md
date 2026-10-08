@@ -12,7 +12,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   `~/.lyupro/.codex-bridge/runs/`. It refuses while a run is live, copies every record, verifies
   each file by SHA-256, imports the old repository's `codex-runs` git history, and writes
   `state/runs-root.json` last. Only this command writes the move record. It offers to remove the
-  old folder only when every file in it has an identical copy in the new store.
+  old folder only when every file in it has an identical copy in the new store. Like
+  `uninstall --purge --dry-run`, a dry run names every refusal and still shows the counts, since
+  some project is nearly always running when the operator plans the move.
 - A finished run autocommits its own folder and the project marker when the git repository top
   is the run store or package home. It never commits into a foreign repository such as
   `~/.claude`, and a commit failure does not change the run verdict. On 2026-10-07 run records

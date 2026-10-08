@@ -34,15 +34,19 @@ export function runsMove({ dryRun = false, resolution = runsRootResolution(), li
     return refuse(`Run records already live in ${homeRoot}.`);
   }
   if (source === 'default') return refuse(`No run store to move: ${legacyRoot} does not exist.`);
+  let liveRefusal = null;
   try {
     const live = liveRuns(legacyRoot);
     if (live.length) {
-      return refuse(`Runs are still live in ${legacyRoot}:\n${live.map(({ dir }) => dir).join('\n')}. `
-        + 'Wait for them or stop them with codex-bridge stop, then repeat.');
+      liveRefusal = `Runs are still live in ${legacyRoot}:\n${live.map(({ dir }) => dir).join('\n')}. `
+        + 'Wait for them or stop them with codex-bridge stop, then repeat.';
+      // Like purge --dry-run: a preview names the refusal and still shows the move, since some
+      // project is nearly always running and the operator plans the move from these numbers.
+      if (!dryRun) return refuse(liveRefusal);
     }
     checkRunStoreDestination({ from: legacyRoot, to: homeRoot });
   } catch (error) {
-    return refuse(error.message);
+    return refuse(liveRefusal ? `${liveRefusal}\n${error.message}` : error.message);
   }
   const staging = `${homeRoot}.moving-${process.pid}-${Date.now()}`;
   let ownsStaging = false;
@@ -59,8 +63,9 @@ export function runsMove({ dryRun = false, resolution = runsRootResolution(), li
     if (dryRun) {
       const history = inspectRunHistory({ from: legacyRoot, git });
       const description = history.imported === false ? history.reason : `would import ${history.commits} commits`;
-      return { exitCode: 0, oldStore: null, homeRoot,
-        output: `Would copy ${counts.files} files (${megabytes} MB) in ${counts.directories} folders from ${legacyRoot} to ${homeRoot}; history: ${description}. Dry run: nothing changed.` };
+      const preview = `Would copy ${counts.files} files (${megabytes} MB) in ${counts.directories} folders from ${legacyRoot} to ${homeRoot}; history: ${description}. Dry run: nothing changed.`;
+      return { exitCode: liveRefusal ? 1 : 0, oldStore: null, homeRoot,
+        output: liveRefusal ? `${liveRefusal}\n${preview}` : preview };
     }
     const history = importHistory({ from: legacyRoot, to: staging, git });
     // Plan_77 F1: a writer may start or change records during copy/history import.
