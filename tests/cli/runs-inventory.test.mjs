@@ -80,9 +80,23 @@ test('lists one measured summary per project and marks live runs', (t) => {
   assert.equal(fs.existsSync(live), true);
 });
 
+test('JSON run rows carry an absolute existing path even when the store root is relative', (t) => {
+  const root = fixture(t);
+  const dir = makeRun(root, 'project', 'finished', {
+    'meta.json': JSON.stringify({ agent: 'codex-build', status: 'PASS', tokens: 12 }),
+  });
+
+  const [row] = JSON.parse(JSON.stringify(listProjectRuns(path.relative(process.cwd(), root), 'project')));
+
+  assert.equal(path.isAbsolute(row.path), true);
+  assert.equal(row.path, path.resolve(dir));
+  assert.equal(fs.statSync(row.path).isDirectory(), true);
+  assert.deepEqual(Object.keys(row), ['run', 'path', 'agent', 'verdict', 'tokens', 'size', 'live']);
+});
+
 test('uses status facts when meta is missing and keeps unreadable runs as unknown rows', (t) => {
   const root = fixture(t);
-  makeRun(root, 'legacy', '2026-08-05_110000_fallback', {
+  const fallback = makeRun(root, 'legacy', '2026-08-05_110000_fallback', {
     'status.json': JSON.stringify({
       state: 'finished',
       agent: 'legacy-agent',
@@ -99,6 +113,7 @@ test('uses status facts when meta is missing and keeps unreadable runs as unknow
   assert.equal(rows.length, 2);
   assert.deepEqual(rows[0], {
     run: '2026-08-05_110000_fallback',
+    path: path.resolve(fallback),
     agent: 'legacy-agent',
     verdict: 'finished',
     tokens: null,
@@ -107,12 +122,15 @@ test('uses status facts when meta is missing and keeps unreadable runs as unknow
   });
   assert.deepEqual(rows[1], {
     run: '2026-08-05_120000_damaged',
+    path: path.resolve(damaged),
     agent: null,
     verdict: null,
     tokens: null,
     size: recursiveSize(damaged),
     live: false,
   });
+  assert.equal(path.isAbsolute(rows[1].path), true);
+  assert.equal(fs.statSync(rows[1].path).isDirectory(), true);
 });
 
 test('returns null for an unknown project without throwing', (t) => {

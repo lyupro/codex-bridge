@@ -108,6 +108,7 @@ function readRun(runDir, livePaths) {
   const live = livePaths.has(pathKey(runDir));
   return {
     run: path.basename(runDir),
+    path: path.resolve(runDir),
     agent: text(facts?.agent),
     verdict: live ? 'running' : text(meta ? meta.status : runLiveness({ runDir, status }).state),
     tokens: meta ? number(meta.tokens) : null,
@@ -120,6 +121,8 @@ function readRun(runDir, livePaths) {
 function publicRun(run) {
   return {
     run: run.run,
+    // D10: the core names no run root, so each JSON row must carry its address.
+    path: run.path,
     agent: run.agent,
     verdict: run.verdict,
     tokens: run.tokens,
