@@ -23,6 +23,7 @@ export const HOME_WRITE_INVENTORY = Object.freeze([
   outside('cli/runs-move-history.mjs', 'mkdtempSync', 1, 'Creates a temporary history clone in the system temp folder, keeping the source repository untouched (Plan_77 D4/B5b).'),
   outside('cli/runs-move-history.mjs', 'rmSync', 2, 'Removes the temporary history clone in the system temp folder and metadata this import created on failure (Plan_77 D4/B5b).'),
   outside('cli/runs-move.mjs', 'rmSync', 1, 'Removes only the run store copy this command created when the history import fails (Plan_77 B5b).'),
+  outside('cli/runs-move-remove.mjs', 'rmSync', 1, 'Removes the old run store after the operator agrees and every file in it is proven identical in the new store (Plan_77 D3/B5c).'),
   outside('cli/remove-layout.mjs', 'rmdir', 1, 'Removes empty host package directories (agents, commands, their legacy layout); home folders go through the adapter (Plan_65 B15b2).'),
   outside('cli/rules-owners.mjs', 'rename', 1, 'Publishes the shared host rules ownership registry.'),
   outside('cli/rules-owners.mjs', 'rm', 2, 'Removes a failed temporary copy or the host rules ownership registry.'),

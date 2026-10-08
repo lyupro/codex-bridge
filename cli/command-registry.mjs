@@ -16,6 +16,7 @@ import { projects } from './projects.mjs';
 import { read } from './read.mjs';
 import { runCodex } from './run-launcher.mjs';
 import { runsMove } from './runs-move.mjs';
+import { removeOldStore } from './runs-move-remove.mjs';
 import { permissions } from './permissions.mjs';
 import { prune } from './prune.mjs';
 import { stop } from './stop.mjs';
@@ -156,6 +157,11 @@ export const COMMANDS = [
       const options = commandOptions('runs', argv.slice(1));
       const result = runsMove({ dryRun: options.dryRun });
       io.log(result.output);
+      if (result.exitCode === 0 && result.oldStore) {
+        const removal = await removeOldStore({ from: result.oldStore, to: result.homeRoot });
+        io.log(removal.output);
+        return removal.exitCode;
+      }
       return result.exitCode;
     },
   },

@@ -164,10 +164,49 @@ test('runs move --dry-run reaches the copy preflight and leaves the store unchan
     assert.match(io.output[0], /^Would copy 1 files \(0\.00 MB\) in 2 folders from /);
     assert.ok(io.output[0].includes(legacyRoot));
     assert.match(io.output[0], /Dry run: nothing changed\./);
+    assert.equal(io.output.length, 1);
     assert.deepEqual(io.errors, []);
     assert.deepEqual(commandOptions('runs', ['--dry-run']), { dryRun: true });
     assert.equal(await fs.readFile(path.join(legacyRoot, 'reply.txt'), 'utf8'), 'reply');
     assert.deepEqual(await fs.readdir(homedir), ['.claude']);
+  });
+});
+
+// D3/B5c: piped input cannot consent to deleting records after the D7 switch.
+test('runs move with non-interactive stdin reports the old folder after the move and on retry', async (t) => {
+  await withTempTree('runs-move-dispatch-real-', async (homedir) => {
+    const legacyRoot = path.join(homedir, '.claude', 'codex-runs');
+    const home = path.join(homedir, 'home');
+    const homeRoot = path.join(home, 'runs');
+    await fs.mkdir(path.join(legacyRoot, 'project', 'empty'), { recursive: true });
+    await fs.writeFile(path.join(legacyRoot, 'reply.txt'), 'reply');
+    t.mock.method(os, 'homedir', () => homedir);
+    for (const key of ['CODEX_RUNS_ROOT', 'CODEX_BRIDGE_HOME']) {
+      const old = process.env[key];
+      delete process.env[key];
+      t.after(() => { if (old === undefined) delete process.env[key]; else process.env[key] = old; });
+    }
+    process.env.CODEX_BRIDGE_HOME = home;
+    const tty = Object.getOwnPropertyDescriptor(process.stdin, 'isTTY');
+    Object.defineProperty(process.stdin, 'isTTY', { configurable: true, value: false });
+    t.after(() => { if (tty) Object.defineProperty(process.stdin, 'isTTY', tty); else delete process.stdin.isTTY; });
+    const hint = `The old folder ${legacyRoot} is still there; run codex-bridge runs move in a terminal to remove it.`;
+    for (const repeated of [false, true]) {
+      const io = captureIO();
+      assert.equal(await main(['runs', 'move'], io), 0);
+      assert.equal(io.output.length, 2);
+      assert.match(io.output[0], repeated ? /^Run records already live in / : /^Moved 1 files /);
+      assert.equal(io.output[1], hint);
+      assert.deepEqual(io.errors, []);
+      assert.equal(await fs.readFile(path.join(legacyRoot, 'reply.txt'), 'utf8'), 'reply');
+      assert.equal(await fs.readFile(path.join(homeRoot, 'reply.txt'), 'utf8'), 'reply');
+    }
+    await fs.writeFile(path.join(legacyRoot, 'late-run'), 'written by an older package');
+    const io = captureIO();
+    assert.equal(await main(['runs', 'move'], io), 1);
+    assert.match(io.output[1], /has 1 entries the new store does not hold identically:/);
+    assert.match(io.output[1], /late-run\nNothing was removed\./);
+    assert.equal(await fs.readFile(path.join(legacyRoot, 'late-run'), 'utf8'), 'written by an older package');
   });
 });
 

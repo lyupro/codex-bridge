@@ -34,18 +34,17 @@ function fixture(root) {
   return { root: legacyRoot, source: 'legacy', legacyRoot, homeRoot, stateDir: path.join(root, 'home', 'state') };
 }
 
-for (const source of ['CODEX_RUNS_ROOT', 'moved', 'default']) {
+for (const source of ['CODEX_RUNS_ROOT', 'default']) {
   test(`${source} resolution refuses before liveness or any write`, async () => {
     await withTempTree('runs-move-refusal-', (root) => {
       const resolution = { ...fixture(root), source };
       const before = snapshot(root);
       const expected = source === 'CODEX_RUNS_ROOT'
         ? `CODEX_RUNS_ROOT is set to ${resolution.root}; unset it to move the default run store.`
-        : source === 'moved' ? `Run records already live in ${resolution.homeRoot}.`
-          : `No run store to move: ${resolution.legacyRoot} does not exist.`;
+        : `No run store to move: ${resolution.legacyRoot} does not exist.`;
       for (const dryRun of [false, true]) {
         const result = runsMove({ resolution, dryRun, liveRuns: () => assert.fail('resolution refuses first') });
-        assert.deepEqual(result, { exitCode: 1, output: expected });
+        assert.deepEqual(result, { exitCode: 1, output: expected, oldStore: null, homeRoot: resolution.homeRoot });
         assert.deepEqual(snapshot(root), before);
       }
     });
@@ -66,7 +65,7 @@ test('any live run under the legacy root refuses before destination checks, incl
         assert.equal(scannedRoot, resolution.legacyRoot);
         return dirs.map((dir) => ({ dir, status: { state: 'running' } }));
       } });
-      assert.deepEqual(result, { exitCode: 1,
+      assert.deepEqual(result, { exitCode: 1, oldStore: null, homeRoot: resolution.homeRoot,
         output: `Runs are still live in ${resolution.legacyRoot}:\n${dirs.join('\n')}. Wait for them or stop them with codex-bridge stop, then repeat.` });
       assert.equal(calls, 1);
       assert.deepEqual(snapshot(root), before);
@@ -85,7 +84,7 @@ test('non-empty home root and a file home root are refused without changing eith
     for (const homeRoot of [resolution.homeRoot, file]) {
       for (const dryRun of [false, true]) {
         assert.deepEqual(runsMove({ resolution: { ...resolution, homeRoot }, dryRun, liveRuns: () => [] }),
-          { exitCode: 1, output: `Run store destination is not an empty directory: ${homeRoot}.` });
+          { exitCode: 1, oldStore: null, homeRoot, output: `Run store destination is not an empty directory: ${homeRoot}.` });
       }
     }
     assert.deepEqual(snapshot(root), before);
@@ -98,7 +97,7 @@ test('dry run counts files, empty folders and MiB without creating the home', as
     fs.writeFileSync(path.join(resolution.legacyRoot, 'large.log'), Buffer.alloc(1024 * 1024, 42));
     const before = snapshot(root);
     const result = runsMove({ resolution, dryRun: true, liveRuns: () => [] });
-    assert.deepEqual(result, { exitCode: 0,
+    assert.deepEqual(result, { exitCode: 0, oldStore: null, homeRoot: resolution.homeRoot,
       output: `Would copy 3 files (1.00 MB) in 2 folders from ${resolution.legacyRoot} to ${resolution.homeRoot}; history: not in git. Dry run: nothing changed.` });
     assert.deepEqual(snapshot(root), before);
     assert.equal(fs.existsSync(path.dirname(resolution.homeRoot)), false);
@@ -110,7 +109,7 @@ test('real move preserves every legacy byte and writes the record that switches 
     const resolution = fixture(root);
     const before = snapshot(resolution.legacyRoot);
     const result = runsMove({ resolution, liveRuns: () => [] });
-    assert.deepEqual(result, { exitCode: 0,
+    assert.deepEqual(result, { exitCode: 0, oldStore: resolution.legacyRoot, homeRoot: resolution.homeRoot,
       output: `Moved 2 files (0.00 MB) from ${resolution.legacyRoot} to ${resolution.homeRoot}; history: not in git. New runs write to ${resolution.homeRoot}. The old folder is untouched.` });
     assert.deepEqual(snapshot(resolution.legacyRoot), before);
     assert.deepEqual(snapshot(resolution.homeRoot), before);
@@ -135,7 +134,7 @@ test('copy error reports nothing switched and removes only the partial destinati
       return copy(src, dst, flags);
     });
     const result = runsMove({ resolution, liveRuns: () => [] });
-    assert.deepEqual(result, { exitCode: 1,
+    assert.deepEqual(result, { exitCode: 1, oldStore: null, homeRoot: resolution.homeRoot,
       output: `Cannot copy ${path.join(resolution.legacyRoot, 'project', 'events.jsonl')}\nNothing was switched; the old folder is untouched.` });
     assert.equal(fs.existsSync(resolution.homeRoot), false);
     assert.deepEqual(snapshot(resolution.legacyRoot), before);
@@ -148,6 +147,8 @@ test('missing legacy source fails loudly with no switch or destination', async (
       legacyRoot: path.join(root, 'missing'), homeRoot: path.join(root, 'home', 'runs') };
     const result = runsMove({ resolution, liveRuns: () => [] });
     assert.equal(result.exitCode, 1);
+    assert.equal(result.oldStore, null);
+    assert.equal(result.homeRoot, resolution.homeRoot);
     assert.ok(result.output.includes(resolution.legacyRoot));
     assert.match(result.output, /Nothing was switched; the old folder is untouched\./);
     assert.deepEqual(fs.readdirSync(root), []);
@@ -187,7 +188,7 @@ test('history import sees the verified copy before the D7 record and success rep
       }
       return git(cwd, args);
     } });
-    assert.deepEqual(result, { exitCode: 0,
+    assert.deepEqual(result, { exitCode: 0, oldStore: resolution.legacyRoot, homeRoot: resolution.homeRoot,
       output: `Moved 2 files (0.00 MB) from ${resolution.legacyRoot} to ${resolution.homeRoot}; history: imported 1 commits. New runs write to ${resolution.homeRoot}. The old folder is untouched.` });
     assert.equal(git(resolution.homeRoot, ['status', '--porcelain']).stdout.trim(), '');
     assert.equal(readRunsMoveRecord(resolution.stateDir).retired[0].root, resolution.legacyRoot);
@@ -207,6 +208,8 @@ test('dry run reports history eligibility using only read commands, without copy
         return git(cwd, args);
       } });
     assert.equal(result.exitCode, 0, result.output);
+    assert.equal(result.oldStore, null);
+    assert.equal(result.homeRoot, resolution.homeRoot);
     assert.match(result.output, /history: would import 1 commits\. Dry run: nothing changed\./);
     assert.deepEqual(calls, ['rev-parse', 'rev-list']);
     assert.deepEqual(snapshot(root), before);
@@ -228,7 +231,7 @@ for (const existing of [false, true]) {
         assert.equal(readRunsMoveRecord(resolution.stateDir), null);
         throw new Error('Git subtree failed (exit 7): injected failure');
       } });
-      assert.deepEqual(result, { exitCode: 1,
+      assert.deepEqual(result, { exitCode: 1, oldStore: null, homeRoot: resolution.homeRoot,
         output: 'Git subtree failed (exit 7): injected failure\nNothing was switched; the old folder is untouched.' });
       assert.equal(fs.existsSync(resolution.homeRoot), false);
       assert.deepEqual(snapshot(resolution.legacyRoot), before);
@@ -243,7 +246,44 @@ test('an explicitly injected state directory receives the final move record', as
     const stateDir = path.join(root, 'injected', 'state');
     const result = runsMove({ resolution, stateDir, liveRuns: () => [] });
     assert.equal(result.exitCode, 0, result.output);
+    assert.equal(result.oldStore, resolution.legacyRoot);
+    assert.equal(result.homeRoot, resolution.homeRoot);
     assert.equal(readRunsMoveRecord(stateDir).retired[0].root, resolution.legacyRoot);
     assert.equal(readRunsMoveRecord(resolution.stateDir), null);
   });
 });
+
+// D3/B5c: a repeated command offers the leftover old folder without copying or switching again.
+test('moved resolution with an old directory succeeds and exposes it only outside dry runs', async () => {
+  await withTempTree('runs-move-already-', (root) => {
+    const resolution = { ...fixture(root), source: 'moved' };
+    const before = snapshot(root);
+    for (const dryRun of [false, true]) {
+      const result = runsMove({ resolution, dryRun,
+        liveRuns: () => assert.fail('already moved must not copy or inspect live runs'),
+        importHistory: () => assert.fail('already moved must not import history') });
+      assert.deepEqual(result, { exitCode: 0, oldStore: dryRun ? null : resolution.legacyRoot,
+        homeRoot: resolution.homeRoot,
+        output: `Run records already live in ${resolution.homeRoot}; the old folder ${resolution.legacyRoot} still exists.` });
+      assert.deepEqual(snapshot(root), before);
+    }
+  });
+});
+
+for (const kind of ['absent', 'file']) {
+  test(`moved resolution with an ${kind} legacy root still refuses without offering removal`, async () => {
+    await withTempTree('runs-move-no-old-directory-', (root) => {
+      const resolution = { ...fixture(root), source: 'moved' };
+      fs.renameSync(resolution.legacyRoot, path.join(root, 'preserved'));
+      if (kind === 'file') fs.writeFileSync(resolution.legacyRoot, 'keep');
+      const before = snapshot(root);
+      for (const dryRun of [false, true]) {
+        const result = runsMove({ resolution, dryRun,
+          liveRuns: () => assert.fail('already moved must not inspect live runs') });
+        assert.deepEqual(result, { exitCode: 1, oldStore: null, homeRoot: resolution.homeRoot,
+          output: `Run records already live in ${resolution.homeRoot}.` });
+        assert.deepEqual(snapshot(root), before);
+      }
+    });
+  });
+}

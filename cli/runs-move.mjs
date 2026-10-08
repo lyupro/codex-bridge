@@ -16,11 +16,21 @@ import { importRunHistory, inspectRunHistory, runGit } from './runs-move-history
 export function runsMove({ dryRun = false, resolution = runsRootResolution(), liveRuns = allLiveRuns,
   stateDir, importHistory = importRunHistory, git = runGit } = {}) {
   const { source, root, legacyRoot, homeRoot } = resolution;
-  const refuse = (output) => ({ exitCode: 1, output });
+  const refuse = (output) => ({ exitCode: 1, output, oldStore: null, homeRoot });
   if (source === 'CODEX_RUNS_ROOT') {
     return refuse(`CODEX_RUNS_ROOT is set to ${root}; unset it to move the default run store.`);
   }
-  if (source === 'moved') return refuse(`Run records already live in ${homeRoot}.`);
+  if (source === 'moved') {
+    try {
+      if (fs.existsSync(legacyRoot) && fs.lstatSync(legacyRoot).isDirectory()) {
+        return { exitCode: 0, oldStore: dryRun ? null : legacyRoot, homeRoot,
+          output: `Run records already live in ${homeRoot}; the old folder ${legacyRoot} still exists.` };
+      }
+    } catch (error) {
+      return refuse(error.message);
+    }
+    return refuse(`Run records already live in ${homeRoot}.`);
+  }
   if (source === 'default') return refuse(`No run store to move: ${legacyRoot} does not exist.`);
   try {
     const live = liveRuns(legacyRoot);
@@ -38,7 +48,7 @@ export function runsMove({ dryRun = false, resolution = runsRootResolution(), li
     if (dryRun) {
       const history = inspectRunHistory({ from: legacyRoot, git });
       const description = history.imported === false ? history.reason : `would import ${history.commits} commits`;
-      return { exitCode: 0,
+      return { exitCode: 0, oldStore: null, homeRoot,
         output: `Would copy ${counts.files} files (${megabytes} MB) in ${counts.directories} folders from ${legacyRoot} to ${homeRoot}; history: ${description}. Dry run: nothing changed.` };
     }
     let history;
@@ -52,7 +62,7 @@ export function runsMove({ dryRun = false, resolution = runsRootResolution(), li
     // D7: publishing the record is the last write, after copy verification and D4 history import.
     writeRunsMoveRecord(stateDir ?? resolution.stateDir ?? resolveBrandHome().stateDir, { root: legacyRoot });
     const description = history.imported ? `imported ${history.commits} commits` : history.reason;
-    return { exitCode: 0,
+    return { exitCode: 0, oldStore: legacyRoot, homeRoot,
       output: `Moved ${counts.files} files (${megabytes} MB) from ${legacyRoot} to ${homeRoot}; history: ${description}. New runs write to ${homeRoot}. The old folder is untouched.` };
   } catch (error) {
     return refuse(`${error.message}\nNothing was switched; the old folder is untouched.`);
