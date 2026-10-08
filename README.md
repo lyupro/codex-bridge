@@ -62,7 +62,7 @@ Run records in `~/.lyupro/.codex-bridge/runs/` (or `~/.claude/codex-runs/` befor
 - **Every run leaves an audit folder.** The verbatim task, scope, before/after git state, events, report, verdict, and reason remain together.
 - **Zero runtime dependencies and zero build steps.** The package is plain `.mjs` on the Node.js standard library.
 
-The current suite contains **3448 automated tests: 3447 passing and 1 skipped**.
+The current suite contains **3461 automated tests: 3460 passing and 1 skipped**.
 
 ## Verify
 
@@ -146,6 +146,7 @@ Transport files from runs at least **30 days** old are pruned automatically when
 | `doctor [--scope user\|project] [--host <path>] [--probe-contract] [--probe-executable <path>]` | Diagnose the selected host and Codex connection, including the handback witness and four dispatcher contract lines. `--probe-contract` targets the newest observed host, accepting `CLAUDE_CODE_EXECPATH` or `claude` on `PATH` only when each reports that version with `--version`; use `--probe-executable <path>` to name an executable (`--host` selects the Claude Code configuration). The probe prints its target and records nothing if the completed host run reports another transcript version. |
 | `run --agent <type> --task-file "<abs path>" [--no-wait]` | Start or attach to a delegated run through the permission-stable package command. The task-file header carries the whole order; its body carries the statement, scout questions and verification command. Its path must be absolute and use forward slashes; `$`, doubled backslashes and a final backslash are refused. Every other runner flag is a free refusal; stdin is not an input channel. |
 | `model [list\|set\|unset\|speed]` | Show the model, effort, pinned speed tier and provenance of each role, with the config path; `model list` prints the live catalogue from Codex, hidden models included and marked; `model set <role> <model> [effort]` checks the pair and any retained speed tier against that model's catalogue entry, and `model unset <role>` removes the profile. `model speed <role> <tier>` previews a live accelerated tier and its quoted cost description; repeat with trailing `confirm` to pin it. `model speed <role> unset` removes only speed, without confirmation. The profile is machine-wide, shared by every project on this machine. |
+| `guidance [<topic>]` | Print the package's detailed rules for one topic from the installed home; without a topic, list the topics. The always-loaded rules core routes the orchestrator here. |
 | `projects [<name>] [--json]` | List projects or runs in the run store. |
 | `prune <project> [<run>] [--purge] [--older-than <age>] [-f] [--json]`<br>`prune --all-projects [--older-than <age>] [-f] [--json]` | Plan or perform operator-confirmed cleanup, for one project or across the whole run store. |
 | `unlock [<project>\|--all]`<br>`unlock --lifecycle [--clear]` | Close records whose runner is gone, or show who holds the lock that serializes install, update and uninstall of this home; `--clear` removes that lock only when it is a file left by a holder proven dead (macOS; Windows and Linux locks are released by the kernel). |

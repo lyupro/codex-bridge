@@ -8,6 +8,7 @@ import { probeContract } from './probe-contract.mjs';
 import { resolveProbeTarget } from './probe-target.mjs';
 import { brandStateDir } from '../src/home/lib/brand-home.mjs';
 import { hook } from './hook.mjs';
+import { guidance } from './guidance.mjs';
 import { resolveHost } from './hosts.mjs';
 import { install } from './install.mjs';
 import { inventoryConfirm } from './inventory-confirm.mjs';
@@ -272,6 +273,18 @@ export const COMMANDS = [
     async handler(argv, io) {
       const result = await unlock(argv);
       io.log(result.output);
+      return result.exitCode;
+    },
+  },
+  {
+    name: 'guidance',
+    summary: "Print the package's detailed rules for one topic",
+    usage: ['codex-bridge guidance [<topic>]'],
+    section: 'public',
+    async handler(argv, io) {
+      const result = guidance(argv);
+      if (result.exitCode === 2) io.error(result.output);
+      else io.log(result.output);
       return result.exitCode;
     },
   },
