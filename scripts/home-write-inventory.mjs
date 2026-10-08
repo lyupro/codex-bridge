@@ -61,6 +61,7 @@ export const HOME_WRITE_INVENTORY = Object.freeze([
   outside('src/home/lib/runner/project-dir.mjs', 'mkdirSync', 2, 'Creates the runs root and a project folder under the runs root.'),
   outside('src/home/lib/runner/project-dir.mjs', 'writeFileSync', 1, 'Writes the project ownership marker under the runs root.'),
   outside('src/home/lib/runner/run-context.mjs', 'writeFileSync', 1, 'Writes a worker reply inside a run folder.'),
+  outside('src/home/lib/runner/run-autocommit.mjs', 'appendFileSync', 1, 'Appends an autocommit failure line to stderr.log inside the run folder (Plan_77 B6).'),
   outside('src/home/lib/runner/worker-order.mjs', 'writeFileSync', 1, 'Writes worker.json inside a run folder.'),
   outside('src/home/lib/runner/worker.mjs', 'writeFileSync', 1, 'Writes report.md inside a run folder.'),
   outside('src/home/lib/write-meta.mjs', 'writeFileSync', 1, 'Writes meta.json inside a run folder under the runs root.'),

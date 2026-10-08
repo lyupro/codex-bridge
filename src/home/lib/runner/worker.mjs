@@ -21,6 +21,7 @@ import { runCodex } from './codex-cmd.mjs';
 import { admitWorker } from './worker-admission.mjs';
 import { orderClaimHolderText } from './order-claim.mjs';
 import { EXIT } from './exit-codes.mjs';
+import { commitRunRecord } from './run-autocommit.mjs';
 
 /**
  * Runs the order in runDir and answers into reply.txt, never to a console — nothing here
@@ -39,6 +40,8 @@ export async function worker(runDir) {
         [`Claim held by ${orderClaimHolderText(admission.holder)}`, 'Codex was not started; quota was not spent'],
       );
       emitReply(reply);
+      // Plan_77 B6: publish the verdict before Git can wait on a lock or repository hook.
+      commitRunRecord({ runDir });
     }
     process.exit(EXIT.FAIL);
   }
@@ -78,5 +81,7 @@ export async function worker(runDir) {
   // seeing a reply is proof the verdict behind it is already on disk.
   const { meta, reply } = collect(runDir, cfg.agent, run.exit);
   emitReply(reply);
+  // Plan_77 B6: the launcher must receive its reply before any autocommit delay.
+  commitRunRecord({ runDir });
   process.exit(exitCodeFor(meta.status));
 }
