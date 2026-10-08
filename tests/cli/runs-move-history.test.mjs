@@ -7,6 +7,12 @@ import { copyRunStore } from '../../cli/runs-move-copy.mjs';
 import { importRunHistory, inspectRunHistory, runGit } from '../../cli/runs-move-history.mjs';
 import { withTempTree } from '../temp-tree.mjs';
 
+// Plan_77 F1: the caller creates the staging folder that copyRunStore fills and may roll back.
+function copyIntoStaging({ from, to }) {
+  fs.mkdirSync(to);
+  return copyRunStore({ from, to });
+}
+
 function isolatedGit(root, work) {
   const keys = ['HOME', 'USERPROFILE', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_SYSTEM'];
   const saved = keys.map((key) => [key, process.env[key]]);
@@ -77,7 +83,7 @@ test('imports three root-rewritten commits and the current records without touch
     fs.writeFileSync(path.join(from, 'keep.txt'), 'current\n');
     fs.writeFileSync(path.join(from, 'new.txt'), 'untracked\n');
     const before = sourceState(git, top);
-    copyRunStore({ from, to });
+    copyIntoStaging({ from, to });
     assert.deepEqual(importRunHistory({ from, to, git, tmpdir: root }), { imported: true, commits: 4 });
     assert.deepEqual(checked(git, to, ['log', '--reverse', '--format=%s']).split('\n'), [
       'first run records', 'second run records', 'delete old record',
@@ -96,7 +102,7 @@ test('imports three root-rewritten commits and the current records without touch
 test('matching copied records keep only the three history commits, with no empty import commit', async () => {
   await withTempTree('runs-history-matching-', (root) => isolatedGit(root, (git) => {
     const { from, to } = fixture(root, git);
-    copyRunStore({ from, to });
+    copyIntoStaging({ from, to });
     assert.deepEqual(importRunHistory({ from, to, git, tmpdir: root }), { imported: true, commits: 3 });
     assert.equal(checked(git, to, ['status', '--porcelain']), '');
     assert.equal(checked(git, to, ['log', '-1', '--format=%s']), 'delete old record');
@@ -109,7 +115,7 @@ test('a store outside git skips history without creating metadata or a clone', a
     const to = path.join(root, 'copy');
     fs.mkdirSync(from);
     fs.writeFileSync(path.join(from, 'record'), 'record');
-    copyRunStore({ from, to });
+    copyIntoStaging({ from, to });
     const before = fs.readdirSync(root);
     assert.deepEqual(importRunHistory({ from, to, tmpdir: root }), { imported: false, reason: 'not in git' });
     assert.equal(fs.existsSync(path.join(to, '.git')), false);
@@ -153,7 +159,7 @@ for (const step of ['clone', 'checkout', 'subtree', 'init', 'fetch', 'reset', 'a
     await withTempTree(`runs-history-${step}-failure-`, (root) => isolatedGit(root, (git) => {
       const { top, from, to } = fixture(root, git);
       fs.writeFileSync(path.join(from, 'new.txt'), 'current');
-      copyRunStore({ from, to });
+      copyIntoStaging({ from, to });
       const before = sourceState(git, top);
       const failing = (cwd, args) => {
         // The final rev-list is a separate failure point from the read-only source probe.
@@ -176,7 +182,7 @@ for (const step of ['clone', 'checkout', 'subtree', 'init', 'fetch', 'reset', 'a
 test('an existing destination repository is not removed when import fails', async () => {
   await withTempTree('runs-history-existing-git-', (root) => isolatedGit(root, (git) => {
     const { from, to } = fixture(root, git);
-    copyRunStore({ from, to });
+    copyIntoStaging({ from, to });
     checked(git, to, ['init', '--quiet']);
     assert.throws(() => importRunHistory({ from, to, tmpdir: root, git: (cwd, args) =>
       args[0] === 'fetch' ? { status: 9, stdout: '', stderr: 'fetch failed' } : git(cwd, args) }), /Git fetch failed \(exit 9\)/);
