@@ -8,6 +8,7 @@ export function claudePaths(root) {
   return {
     agentsDir: path.join(root, 'agents', 'codex-bridge'),
     commandsDir: path.join(root, 'commands', 'codex-bridge'),
+    rulesDir: path.join(root, 'rules', 'codex-bridge'),
     legacyAgentsDir: path.join(root, 'agents', 'codex'),
     legacyCommandsDir: path.join(root, 'commands', 'codex'),
   };

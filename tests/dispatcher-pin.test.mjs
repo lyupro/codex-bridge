@@ -50,11 +50,12 @@ function expectReasons(result, count) {
   for (const reason of result.reasons) assert.match(reason, /^[^\r\n]+\.$/);
 }
 
-test('shared layout preserves all four package paths used by the installer', () => {
+test('shared layout preserves all five package paths used by the installer', () => {
   const root = path.join('a', '.claude');
   assert.deepEqual(claudePaths(root), {
     agentsDir: path.join(root, 'agents', 'codex-bridge'),
     commandsDir: path.join(root, 'commands', 'codex-bridge'),
+    rulesDir: path.join(root, 'rules', 'codex-bridge'),
     legacyAgentsDir: path.join(root, 'agents', 'codex'),
     legacyCommandsDir: path.join(root, 'commands', 'codex'),
   });

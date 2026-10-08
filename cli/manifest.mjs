@@ -59,6 +59,7 @@ export const SEEDED_SOURCES = Object.freeze(['src/home/config.json', 'src/home/c
 export const INSTALL_TABLE = Object.freeze([
   { source: 'src/claude/agents/*.md', root: 'claude', target: 'agentsDir', processing: 'placeholders' },
   { source: 'src/claude/commands/*.md', root: 'claude', target: 'commandsDir', processing: 'placeholders' },
+  { source: 'src/claude/rules/*.md', base: 'src/claude/rules', root: 'claude', target: 'rulesDir', processing: 'copy' },
   // The source is the host image. Keeping one source root and one target root makes any future
   // remapping visible as a test failure instead of another clone-only import success.
   { source: 'src/home/**', root: 'brand', target: 'brandRoot', processing: 'copy' },
@@ -139,6 +140,8 @@ function rootFor(host, mapping) {
 }
 
 function targetRelative(packageRoot, source, mapping) {
+  // Plan_64 D9: copy rows outside src/home need their own base to avoid escaping the target directory.
+  if (mapping.base) return path.relative(path.join(packageRoot, mapping.base), source);
   if (mapping.processing === 'placeholders' || mapping.source === 'package.json') {
     return path.basename(source);
   }

@@ -60,6 +60,7 @@ test('installation table is exported data', () => {
   assert.deepEqual(INSTALL_TABLE, [
     { source: 'src/claude/agents/*.md', root: 'claude', target: 'agentsDir', processing: 'placeholders' },
     { source: 'src/claude/commands/*.md', root: 'claude', target: 'commandsDir', processing: 'placeholders' },
+    { source: 'src/claude/rules/*.md', base: 'src/claude/rules', root: 'claude', target: 'rulesDir', processing: 'copy' },
     { source: 'src/home/**', root: 'brand', target: 'brandRoot', processing: 'copy' },
     { source: 'package.json', root: 'brand', target: 'brandRoot', processing: 'copy' },
   ]);
