@@ -7,6 +7,8 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { writeHomeJsonAtomic } from '../atomic-json.mjs';
+import { stateDirWriter } from '../home-write.mjs';
 import { parseJsonText } from '../json-file.mjs';
 import { normalizeRepoPath } from './project-dir.mjs';
 
@@ -63,4 +65,17 @@ export function retiredRootRefusal({ candidate, retired, destination }) {
   const equivalent = retired.suffix ? path.join(destination, retired.suffix) : destination;
   return `Run records moved from ${retired.root} to ${destination}. Equivalent path: ${equivalent}. ` +
     'Update advice: or pass this new path explicitly. No path was remapped.';
+}
+
+/**
+ * Plan_77 D7: the move record is written last, by the move command, after the copy is verified — its
+ * presence is what switches the resolver. A later move appends to the list instead of replacing it, so
+ * every root the records ever left keeps answering with a refusal rather than an empty lookup.
+ */
+export function writeRunsMoveRecord(stateDir, { root, movedAt = new Date().toISOString() }) {
+  const previous = readRunsMoveRecord(stateDir);
+  const retired = [...(previous?.retired ?? []), { root, movedAt }];
+  const record = { version: 1, retired };
+  writeHomeJsonAtomic(stateDirWriter(stateDir), 'runs-move-record', path.join(stateDir, RUNS_MOVE_RECORD), record);
+  return record;
 }

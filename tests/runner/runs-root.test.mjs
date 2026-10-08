@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { retiredPathRefusal, runsRootResolution, staleOverrideRefusal } from '../../src/home/lib/runner/runs-root.mjs';
 import {
-  RUNS_MOVE_RECORD, readRunsMoveRecord, retiredRootOf, retiredRootRefusal,
+  RUNS_MOVE_RECORD, readRunsMoveRecord, retiredRootOf, retiredRootRefusal, writeRunsMoveRecord,
 } from '../../src/home/lib/runner/retired-roots.mjs';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 
@@ -247,5 +247,21 @@ test('staleOverrideRefusal returns null for current roots and names a stale over
     }
     assert.equal(fs.existsSync(legacyRoot), false);
     assert.equal(fs.existsSync(homeRoot), false);
+  });
+});
+
+test('the move record is published atomically, read back, and appended on a later move (Plan_77 D7)', async () => {
+  await withHome(({ homedir, env, legacyRoot, homeRoot, stateDir }) => {
+    fs.mkdirSync(legacyRoot, { recursive: true });
+    assert.equal(runsRootResolution({ env, homedir }).source, 'legacy');
+    const first = writeRunsMoveRecord(stateDir, { root: legacyRoot, movedAt: '2026-10-08T13:00:00.000Z' });
+    assert.deepEqual(readRunsMoveRecord(stateDir), first);
+    const resolution = runsRootResolution({ env, homedir });
+    assert.equal(resolution.source, 'moved');
+    assert.equal(resolution.root, homeRoot);
+    const later = path.join(path.dirname(homeRoot), 'older-runs');
+    writeRunsMoveRecord(stateDir, { root: later, movedAt: '2026-10-09T13:00:00.000Z' });
+    assert.deepEqual(readRunsMoveRecord(stateDir).retired.map(({ root }) => root), [legacyRoot, later]);
+    assert.deepEqual(fs.readdirSync(stateDir), [RUNS_MOVE_RECORD]);
   });
 });

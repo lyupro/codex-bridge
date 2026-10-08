@@ -91,6 +91,13 @@ const entries = [
     sides: ['lock', 'atomic-temporary'],
   },
   {
+    id: 'runs-move-record',
+    removal: 'purge-only',
+    consequence: 'The package forgets that run records moved, and new runs write to the old store again while it still exists.',
+    primary: ['state/runs-root.json'],
+    sides: ['atomic-temporary'],
+  },
+  {
     id: 'host-observations',
     removal: 'purge-only',
     consequence: 'Doctor forgets which host versions sessions ran on until the next shell command in a session.',
