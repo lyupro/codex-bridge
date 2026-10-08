@@ -155,16 +155,21 @@ function buildProject(projectDir) {
 }
 
 function projectDirectory(root, name) {
-  return directoryEntries(root)
+  return projectEntries(root)
     .find((entry) => entry.name === name)
     ? path.join(root, name)
     : null;
 }
 
+function projectEntries(root) {
+  // Plan_77 B5b makes the moved store a git repository; its metadata is not a project.
+  return directoryEntries(root).filter((entry) => entry.name !== '.git');
+}
+
 /** Lists one summary row per project directory. */
 export function listProjects(runsRootPath = runsRoot()) {
   const root = normalizeRoot(runsRootPath);
-  return directoryEntries(root).map((entry) => buildProject(path.join(root, entry.name)).summary);
+  return projectEntries(root).map((entry) => buildProject(path.join(root, entry.name)).summary);
 }
 
 /** Lists one detail row per run directory in a named project, or null when there is no such project. */

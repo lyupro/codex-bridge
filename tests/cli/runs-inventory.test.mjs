@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { listProjectRuns, listProjects, recursiveSize } from '../../cli/runs-inventory.mjs';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
+import { allLiveRuns, liveRuns } from '../../src/home/hooks/live-runs.mjs';
 
 function fixture(t) {
   const root = makeTempTree('runs-inventory-');
@@ -171,4 +172,28 @@ test('keeps missing and non-object status verdicts unknown', (t) => {
 
   assert.deepEqual(listProjectRuns(root, 'project').map((row) => row.verdict), Array(6).fill(null));
   assert.equal(listProjects(root)[0].liveNow, 0);
+});
+
+test('the moved store git directory is not listed or addressable as a project', (t) => {
+  const root = fixture(t);
+  makeRun(root, '.git', 'objects');
+  makeRun(root, 'real-project', 'run');
+
+  assert.deepEqual(listProjects(root).map((row) => row.project), ['real-project']);
+  assert.equal(listProjectRuns(root, '.git'), null);
+  assert.equal(listProjectRuns(root, 'real-project').length, 1);
+});
+
+test('allLiveRuns skips git metadata while retaining real live projects', (t) => {
+  const root = fixture(t);
+  const files = {
+    'status.json': JSON.stringify({
+      state: 'running', pid: process.pid, agent: 'codex-build', slug: 'live', repo: root,
+    }),
+  };
+  const fake = makeRun(root, '.git', 'fake-run', files);
+  const real = makeRun(root, 'real-project', 'real-run', files);
+
+  assert.deepEqual(liveRuns(path.join(root, '.git')).map(({ dir }) => dir), [fake]);
+  assert.deepEqual(allLiveRuns(root).map(({ dir }) => dir), [real]);
 });

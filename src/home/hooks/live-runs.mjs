@@ -107,7 +107,8 @@ export function allLiveRuns(runsRoot, options = {}) {
   }
   const result = [];
   for (const project of projects) {
-    if (!project.isDirectory()) continue;
+    // Plan_77 B5b makes the moved store a git repository; its metadata is not a project.
+    if (!project.isDirectory() || project.name === '.git') continue;
     result.push(...liveRuns(path.join(runsRoot, project.name), options));
   }
   return result;

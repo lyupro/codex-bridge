@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { packageSource } from './package-source.mjs';
 import { readInstallRecord, packageInfo } from './manifest.mjs';
 import { readInstallRecordFile, recordTarget } from './install-record.mjs';
-import { runsRoot } from '../src/home/lib/runner/runs-root.mjs';
+import { runsRootResolution } from '../src/home/lib/runner/runs-root.mjs';
 import { check, renderDoctor } from './doctor-format.mjs';
 import { homeOwnersCheck, hostSideCheck, ownerEntry, ownersInSyncCheck } from './doctor-host-side.mjs';
 import { inspectHost } from './host-inspection.mjs';
@@ -30,7 +30,7 @@ import { brandStateDir } from '../src/home/lib/brand-home.mjs';
 import { readHostObservations } from '../src/home/lib/host-observations.mjs';
 import { activeHostVersions } from './active-hosts.mjs';
 import { otherHostCheck, sessionHostCheck, sessionHostVersions } from './session-hosts.mjs';
-import { liveRunsCheck, projectRunsCheck, retentionCheck } from './doctor-runs.mjs';
+import { liveRunsCheck, projectRunsCheck, retentionCheck, runsRootCheck } from './doctor-runs.mjs';
 
 export { renderDoctor };
 
@@ -196,15 +196,19 @@ export async function diagnose({
   checks.push(check('codex', codex.available ? 'ok' : 'warn', codex.value || 'available'));
   const nodeMajor = Number.parseInt(process.versions.node.split('.')[0], 10);
   checks.push(check('node', nodeMajor >= 24 ? 'ok' : 'fail', `${process.versions.node} (requires >=24)`));
-  checks.push(check('runsRoot', 'ok', path.resolve(runsRoot())));
-  const projectRuns = projectRunsCheck();
-  checks.push(liveRunsCheck());
+  // Plan_77 D6: catch a corrupt move record without aborting doctor, and share one resolution.
+  let resolution;
+  const runsRoot = runsRootCheck({ get resolution() { return (resolution = runsRootResolution()); } });
+  checks.push(runsRoot);
+  const projectRuns = resolution ? projectRunsCheck(resolution) : check('projectRuns', 'fail', runsRoot.value);
+  checks.push(resolution ? liveRunsCheck(resolution)
+    : check('liveRuns', 'warn', `working-run count unavailable: ${runsRoot.value}`));
   checks.push(projectRuns);
 
   return {
     exitCode: !record || recordBroken || missingFiles.length || agents.status === 'fail' || rules.status === 'fail'
       || hostContractStatus === 'fail' || retention.status === 'fail' || conventions.status === 'fail'
-      || projectRuns.status === 'fail'
+      || runsRoot.status === 'fail' || projectRuns.status === 'fail'
       || checks.some((item) => /^(hook|dispatcherContract|dispatcherModel):/.test(item.key) && item.status === 'fail')
       || checks.some((item) => item.key.startsWith('otherHost:') && item.status === 'fail') ? 1 : 0,
     checks,
