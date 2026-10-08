@@ -2,14 +2,19 @@
  * Moves the run records from the retired default root into the package home, on the operator's signal.
  *
  * Plan_77 D3/D7: projects are closed by the operator; refuse live runs and prove
- * the copy before any later order switches roots. B5a never writes a move record.
+ * the copy and import D4 history before writing the D7 move record that switches roots.
  * The 2026-10-07 VaultForge $16.57 journal incident is why records leave foreign git.
  */
+import fs from 'node:fs';
 import { runsRootResolution } from '../src/home/lib/runner/runs-root.mjs';
+import { resolveBrandHome } from '../src/home/lib/brand-home.mjs';
+import { writeRunsMoveRecord } from '../src/home/lib/runner/retired-roots.mjs';
 import { allLiveRuns } from '../src/home/hooks/live-runs.mjs';
 import { checkRunStoreDestination, copyRunStore, inspectRunStore } from './runs-move-copy.mjs';
+import { importRunHistory, inspectRunHistory, runGit } from './runs-move-history.mjs';
 
-export function runsMove({ dryRun = false, resolution = runsRootResolution(), liveRuns = allLiveRuns } = {}) {
+export function runsMove({ dryRun = false, resolution = runsRootResolution(), liveRuns = allLiveRuns,
+  stateDir, importHistory = importRunHistory, git = runGit } = {}) {
   const { source, root, legacyRoot, homeRoot } = resolution;
   const refuse = (output) => ({ exitCode: 1, output });
   if (source === 'CODEX_RUNS_ROOT') {
@@ -30,9 +35,25 @@ export function runsMove({ dryRun = false, resolution = runsRootResolution(), li
   try {
     const counts = dryRun ? inspectRunStore(legacyRoot) : copyRunStore({ from: legacyRoot, to: homeRoot });
     const megabytes = (counts.bytes / (1024 * 1024)).toFixed(2);
-    return { exitCode: 0, output: dryRun
-      ? `Would copy ${counts.files} files (${megabytes} MB) in ${counts.directories} folders from ${legacyRoot} to ${homeRoot}. Dry run: nothing changed.`
-      : `Copied and verified ${counts.files} files (${megabytes} MB) from ${legacyRoot} to ${homeRoot}. The old folder is untouched; runs still write there until the move is completed.` };
+    if (dryRun) {
+      const history = inspectRunHistory({ from: legacyRoot, git });
+      const description = history.imported === false ? history.reason : `would import ${history.commits} commits`;
+      return { exitCode: 0,
+        output: `Would copy ${counts.files} files (${megabytes} MB) in ${counts.directories} folders from ${legacyRoot} to ${homeRoot}; history: ${description}. Dry run: nothing changed.` };
+    }
+    let history;
+    try {
+      history = importHistory({ from: legacyRoot, to: homeRoot, git });
+    } catch (error) {
+      // D4/D7: this initially empty/absent copy is ours; a failed import must never switch roots.
+      fs.rmSync(homeRoot, { recursive: true, force: true });
+      throw error;
+    }
+    // D7: publishing the record is the last write, after copy verification and D4 history import.
+    writeRunsMoveRecord(stateDir ?? resolution.stateDir ?? resolveBrandHome().stateDir, { root: legacyRoot });
+    const description = history.imported ? `imported ${history.commits} commits` : history.reason;
+    return { exitCode: 0,
+      output: `Moved ${counts.files} files (${megabytes} MB) from ${legacyRoot} to ${homeRoot}; history: ${description}. New runs write to ${homeRoot}. The old folder is untouched.` };
   } catch (error) {
     return refuse(`${error.message}\nNothing was switched; the old folder is untouched.`);
   }
