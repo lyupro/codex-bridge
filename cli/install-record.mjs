@@ -78,8 +78,10 @@ function normalizedFiles(record) {
     validPath(entry.path, 'installation record file path');
     // Run artifacts are the user's data, not ours. Refusing them here means neither uninstall nor
     // update needs its own guard against deleting a run folder someone listed as an installed file.
-    if (entry.path === 'codex-runs' || entry.path.split(/[\\/]/)[0] === 'codex-runs') {
-      throw new Error('installation record files must not name run artifacts under codex-runs');
+    // Plan_77 D1: the records move to runs/ of the brand home, so that folder is refused too.
+    const top = entry.path.split(/[\\/]/)[0];
+    if (top === 'codex-runs' || (entry.root === 'brand' && top === 'runs')) {
+      throw new Error(`installation record files must not name run artifacts under ${top}`);
     }
     return { root: entry.root, path: entry.path };
   });

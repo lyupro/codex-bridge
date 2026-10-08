@@ -287,3 +287,9 @@ test('record validation refuses codex-runs entries before any migration can remo
     files: [...files, { root: 'brand', path: 'codex-runs/run.json' }],
   })), /must not name run artifacts/);
 });
+
+test('record validation refuses the runs folder of the brand home, where run records move (Plan_77 D1)', () => {
+  assert.throws(() => normalizeInstallRecord(record({
+    files: [...files, { root: 'brand', path: 'runs/codex-bridge/run/meta.json' }],
+  })), /must not name run artifacts under runs/);
+});
