@@ -33,15 +33,15 @@ export async function removeEmptyParents(target, boundary) {
 }
 
 /**
- * The directory an emptied-parent walk must stop at. Plan_25 gave the host four package-owned
- * directories at once — the current agents and commands subdirectories and the two the previous
- * layout used — and a walk that started inside one of them but stopped at host.root would delete
- * the operator's own emptied directories on the way up.
+ * The directory an emptied-parent walk must stop at: five package-owned directories: current
+ * agents, commands and rules (Plan_64 D5, D9), plus the two legacy directories (Plan_25).
+ * Stopping there preserves the operator's own emptied parent directories.
  */
 export function claudeBoundary(host, target) {
   const directories = [
     host.agentsDir,
     host.commandsDir,
+    host.rulesDir,
     host.legacyAgentsDir,
     host.legacyCommandsDir,
   ].filter(Boolean);

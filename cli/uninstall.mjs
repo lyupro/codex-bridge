@@ -109,6 +109,7 @@ no host is recorded as using it.`,
   const plan = await buildHomeRemovalPlan({ command: 'uninstall', host, packageRoot: options.packageRoot,
     imagePolicy });
   await removeEmpty(host.commandsDir);
+  await removeEmpty(host.rulesDir);
   await removeEmpty(host.agentsDir);
   await removeEmptyLayout(host.legacyAgentsDir);
   await removeEmptyLayout(host.legacyCommandsDir);
@@ -221,6 +222,7 @@ using ${host.brandRoot}.`);
   const { outcomes } = await executeHomePlan(host, plan,
     { detached: hostSide.detached, imageMembers: plan.imageMembers });
   await removeEmpty(host.commandsDir);
+  await removeEmpty(host.rulesDir);
   if (detachedRecord) await removeOutside(writer, legacyInstallRecordPath(host));
   await removeEmpty(host.agentsDir);
   await removeEmptyLayout(host.legacyAgentsDir);

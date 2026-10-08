@@ -7,6 +7,7 @@ import { resolveHost } from '../../cli/hosts.mjs';
 import { install } from '../../cli/install.mjs';
 import {
   buildInstallPlan,
+  contentFingerprint,
   fileFingerprint,
   legacyInstallRecordPath,
 } from '../../cli/manifest.mjs';
@@ -161,4 +162,60 @@ test('an empty host has no files, hooks, or settings error', async (t) => {
   assert.equal(inspection.permissions.present, 0);
   assert.equal(inspection.settingsError, null);
   assert.equal(hasPackageMarks(inspection), false);
+});
+
+// Plan_64 D5, D9: host rules use the same content evidence as agents and commands, not seeds.
+test('host rules with package bytes are removable and edits need this host fingerprint', async (t) => {
+  const { root, host } = fixture(t);
+  const packageRoot = path.join(root, 'package');
+  const source = path.join(packageRoot, 'src', 'claude', 'rules', 'core.md');
+  const target = path.join(host.rulesDir, 'core.md');
+  const original = 'Package host rules\n';
+  fs.mkdirSync(path.dirname(source), { recursive: true });
+  fs.writeFileSync(source, original);
+  fs.mkdirSync(host.rulesDir, { recursive: true });
+  fs.writeFileSync(target, original);
+
+  const inspection = await inspectHost(host, { packageRoot });
+  const matching = inspection.files.find((file) => file.target === target);
+  assert.equal(matching.relativeToHost, 'rules/codex-bridge/core.md');
+  assert.equal(matching.disposition, 'remove');
+  assert.equal(matching.reason, 'matches the package');
+  assert.equal(hasPackageMarks(inspection), true);
+
+  const edited = 'Operator-edited host rules\n';
+  fs.writeFileSync(target, edited);
+  const changed = await inspectHost(host, { packageRoot });
+  const kept = changed.files.find((file) => file.target === target);
+  assert.equal(kept.disposition, 'keep');
+  assert.equal(kept.reason, 'changed');
+
+  const owner = { fingerprints: { claude: { [matching.relativeToHost]: contentFingerprint(edited) } } };
+  const recorded = await inspectHost(host, { packageRoot, owner });
+  const removable = recorded.files.find((file) => file.target === target);
+  assert.equal(removable.disposition, 'remove');
+  assert.equal(removable.reason, "matches this host's record");
+});
+
+test('unknown host rules and directory links are kept without following links', async (t) => {
+  const { root, host } = fixture(t);
+  const outside = path.join(root, 'outside-rules');
+  const link = path.join(host.rulesDir, 'linked');
+  fs.mkdirSync(outside, { recursive: true });
+  fs.writeFileSync(path.join(outside, 'hidden.md'), 'outside rule');
+  fs.mkdirSync(host.rulesDir, { recursive: true });
+  fs.writeFileSync(path.join(host.rulesDir, 'extra.md'), 'operator rule');
+  fs.writeFileSync(path.join(host.rulesDir, 'conventions.md'), 'not a seed here');
+  fs.symlinkSync(outside, link, process.platform === 'win32' ? 'junction' : 'dir');
+
+  const inspection = await inspectHost(host);
+  for (const name of ['extra.md', 'conventions.md']) {
+    const unknown = inspection.files.find((file) => file.target === path.join(host.rulesDir, name));
+    assert.equal(unknown.disposition, 'keep');
+    assert.equal(unknown.reason, 'unknown');
+  }
+  const linked = inspection.files.find((file) => file.target === link);
+  assert.equal(linked.disposition, 'keep');
+  assert.equal(linked.reason, 'link');
+  assert.equal(inspection.files.some((file) => file.target.includes('hidden.md')), false);
 });

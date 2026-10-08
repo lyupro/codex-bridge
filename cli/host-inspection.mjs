@@ -144,6 +144,7 @@ export async function inspectHost(host, { owner = null, packageRoot } = {}) {
   };
   await walk(context, host.agentsDir);
   await walk(context, host.commandsDir);
+  await walk(context, host.rulesDir);
   await inspectLegacyDirectory(context, host.legacyAgentsDir, plan.filter((item) => isWithin(host.agentsDir, item.target)));
   await inspectLegacyDirectory(context, host.legacyCommandsDir, plan.filter((item) => isWithin(host.commandsDir, item.target)));
   await inspectLegacyRecord(context);

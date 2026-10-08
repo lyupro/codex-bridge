@@ -82,6 +82,7 @@ async function purgeInRun(options, ticket) {
     detached: true, imageMembers: plan.imageMembers, authorization,
   });
   await removeEmpty(host.commandsDir);
+  await removeEmpty(host.rulesDir);
   if (record) await removeOutside(writer, legacyInstallRecordPath(host));
   await removeEmpty(host.agentsDir);
   await removeEmptyLayout(host.legacyAgentsDir);
