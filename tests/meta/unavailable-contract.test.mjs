@@ -20,7 +20,7 @@ test('UNAVAILABLE rows give the shared refusal signal and operator check', () =>
   const rows = unavailableRows('codex login status: Not logged in');
   assert.ok(rows[0].startsWith('UNAVAILABLE — '));
   assert.deepEqual(rows, [
-    'UNAVAILABLE — Codex is not available (missing or signed out); ' +
+    'UNAVAILABLE — Codex is not available (signed out); ' +
       'hand the task to the next executor, do not retry',
     'Signal: codex login status: Not logged in',
     'Operator check: codex --version; codex login status (sign in with codex login)',

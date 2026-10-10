@@ -27,4 +27,6 @@ A failed or interrupted run may have no complete result. Read the recorded statu
 
 `LIMIT` means the ChatGPT quota window is exhausted, not a task defect. For a writing run, also check the runner's indication of whether the tree was touched.
 
-`UNAVAILABLE` means Codex is missing or signed out on this host; the task could not run. A pre-start availability refusal may leave no run folder. Neither verdict is a reason to retry the same bridge. Preserve the verdict and any existing artifacts.
+`UNAVAILABLE` means Codex is signed out on this host; the task could not run. A pre-start availability refusal may leave no run folder. Neither verdict is a reason to retry the same bridge. Preserve the verdict and any existing artifacts.
+
+A refusal starting `Codex CLI readiness unconfirmed:` is not `UNAVAILABLE`: it leaves no run folder and costs no quota. Do not skip the bridge; follow its second line — check `codex --version` for up to ~2 minutes. When it answers, repeat the same order exactly once; if it does not, hand the order to the next executor and name that in the summary.

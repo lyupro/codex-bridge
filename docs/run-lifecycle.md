@@ -108,9 +108,11 @@ complete job before detaching from the launcher.
    folder creation unless the named run's `meta.json` records `agent: codex-advisor`, `phase: scope`,
    and `status: OK`; an `advise` retry carries the original `OK` scope instead.
 9. First, `codexAvailabilityRefusal()` (`runner/preflight.mjs`, built on `runner/codex-availability.mjs`)
-   looks `codex` up on PATH and asks `codex login status` (10-second deadline each, through
-   `spawnCaptured()`). A missing binary or the measured `Not logged in` answer produces an `UNAVAILABLE`
-   block on stdout, exit 5, no folder, no quota; an unclear probe produces the ordinary
+   looks `codex` up on PATH (once more after ~1 s on a miss) and asks `codex login status` (10-second
+   deadline each, through `spawnCaptured()`). The measured `Not logged in` answer produces an `UNAVAILABLE`
+   block on stdout, exit 5, no folder, no quota. A second PATH miss produces the free
+   `Codex CLI readiness unconfirmed:` refusal, exit 1: a miss proves only "not found right now", as during
+   the npm update of the CLI on 2026-10-10 (Plan_78 D5). Any other unclear probe produces the ordinary
    `Codex CLI unavailable:` refusal, exit 1. It runs before the sandbox probe because that probe can spend
    quota, and after attach and the repeat refusal so a live same-order run is still joined first
    (Plan_60 D2).

@@ -238,7 +238,7 @@ export function limitReply(ctx, meta) {
 /** Plan_60 D2: pre-start and post-start refusals share the same handoff contract. */
 export function unavailableRows(signal) {
   return [
-    'UNAVAILABLE — Codex is not available (missing or signed out); ' +
+    'UNAVAILABLE — Codex is not available (signed out); ' +
       'hand the task to the next executor, do not retry',
     `Signal: ${line(signal, 170)}`,
     'Operator check: codex --version; codex login status (sign in with codex login)',

@@ -17,8 +17,11 @@ code: a `scope` phase, then `advise`).
 - A writing run has a hard deadline: slice the task before the launch, not after a failure. After a deadline `FAIL`,
   look at `git status` before deciding anything.
 - One writing run per working tree; read-only runs may go alongside it.
-- `LIMIT` means the ChatGPT quota window is spent, `UNAVAILABLE` means Codex is not usable on this host. Neither is a
+- `LIMIT` means the ChatGPT quota window is spent, `UNAVAILABLE` means Codex is signed out on this host. Neither is a
   task error: do not retry the same bridge.
+  A refusal starting `Codex CLI readiness unconfirmed` is not `UNAVAILABLE`: do not skip the bridge; follow its second
+  line — check `codex --version` for up to ~2 minutes, then repeat the same order exactly once if it answers, otherwise
+  hand it to the next executor and name that in the summary.
 - `OK — scope: insufficient` from `codex-advisor` is a success: it names the paths the `advise` phase needs.
 - Stop a live run with `codex-bridge stop <run>` before `TaskStop`; `TaskStop` alone leaves the run writing.
 - A run's folder is the `ATTACH=` path in the dispatcher's reply. Earlier runs: `codex-bridge projects [<project>]

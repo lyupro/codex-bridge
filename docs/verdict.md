@@ -221,7 +221,7 @@ was done.” Service paths are checked before chain lookup so an earlier run can
 | `USAGE` | Argument error: the order itself must be rewritten. A call outcome, not a run status. | `2` |
 | `LIMIT` | There is no result, and the event stream contains a transport refusal caused by exhausted quota. | `3` |
 | `PENDING` | `--no-wait` only: the run is still in progress, or no run exists. A call outcome, not a run status. | `4` |
-| `UNAVAILABLE` | Codex is missing or signed out.[^codex-unavailable] | `5` |
+| `UNAVAILABLE` | Codex is signed out.[^codex-unavailable] | `5` |
 
 The numbers are defined only in `src/home/lib/runner/exit-codes.mjs`, and
 `tests/runner/exit-codes.test.mjs` fails when this table, the dispatcher prompts or a runner module
@@ -229,8 +229,10 @@ disagree with it.
 
 An unclear probe is never `UNAVAILABLE`; an unfamiliar sign-in error stays `FAIL` with its raw text until
 its sample is measured and added as a fixture (`tests/meta/fixtures/`); `2` is the launcher's argument error.
+A `codex` not found on PATH is unclear too (Plan_78 D5, the 2026-10-10 refusal during an npm update of the CLI)
+and gets the `Codex CLI readiness unconfirmed:` refusal with exit 1.
 
-[^codex-unavailable]: Before start by the runner's own PATH lookup and `codex login status` (exit 1 with
+[^codex-unavailable]: Before start by `codex login status` (exit 1 with
     the line `Not logged in`); after start only when the final `turn.failed` matches a measured signed-out
     sample (codex-cli 0.159.0:
     `unexpected status 401 Unauthorized: Missing bearer or basic authentication in header`).

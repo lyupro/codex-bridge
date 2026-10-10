@@ -80,7 +80,7 @@ and the wait can be repeated for free, so neither has any reason to restart anyt
 - `LIMIT` — the result is empty and the log signals a limit. The ChatGPT quota is exhausted, and the
   review was not
   completed; this is not a review failure and not a reason to restart.
-- `UNAVAILABLE` — Codex is missing or signed out (checked before start, or recognised from the CLI's own
+- `UNAVAILABLE` — Codex is signed out (checked before start, or recognised from the CLI's own
   sign-in refusal after start). The task was not attempted or could not run; this is not a task failure and
   not a reason to restart — return the block as is, the orchestrator hands the task to the next executor.
 
@@ -98,10 +98,11 @@ Token spending now goes into `meta.json` (the `review` subcommand did not print 
 
 ## Codex is unavailable
 
-The runner looks `codex` up on PATH and asks `codex login status` before starting. A missing binary
-or the measured "Not logged in" answer prints a ready-made `UNAVAILABLE` block (first line
-`UNAVAILABLE — `, exit 5, no run folder). An unclear probe prints an ordinary refusal starting
-`Codex CLI unavailable:` (exit 1). Return that output verbatim.
+The runner looks `codex` up on PATH and retries once after ~1 s. If the lookup still fails, it prints
+an ordinary refusal starting `Codex CLI readiness unconfirmed:` (exit 1, no run folder).
+When found, it asks `codex login status` before starting. The measured "Not logged in" answer prints
+a ready-made `UNAVAILABLE` block (first line `UNAVAILABLE — `, exit 5, no run folder). Any other unclear
+probe prints an ordinary refusal starting `Codex CLI unavailable:` (exit 1). Return that output verbatim.
 
 ## What a violation looks like
 
