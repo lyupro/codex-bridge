@@ -67,6 +67,8 @@ export const LOCKED_TOOL_MATCHER = [...WRITE_TOOLS, ...SHELL_TOOLS].join('|');
  * dispatcher must consume this one list instead of guessing a name from a path at its call site.
  */
 export const HOOK_DEFINITIONS = Object.freeze([
+  // Plan_64 D11: loading evidence observes only; this hook can never refuse anything.
+  Object.freeze({ name: 'load-witness', event: 'InstructionsLoaded', matcher: '*', file: 'load-witness.mjs' }),
   Object.freeze({ name: 'reply-guard', event: 'SubagentStop', matcher: '*', file: 'reply-guard.mjs' }),
   Object.freeze({ name: 'order-gate', event: 'PreToolUse', matcher: SUBAGENT_TOOL_MATCHER, file: 'order-gate.mjs' }),
   Object.freeze({ name: 'worktree-lock', event: 'PreToolUse', matcher: LOCKED_TOOL_MATCHER, file: 'worktree-lock.mjs' }),

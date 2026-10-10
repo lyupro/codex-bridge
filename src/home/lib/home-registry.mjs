@@ -105,6 +105,13 @@ const entries = [
     sides: ['lock', 'atomic-temporary'],
   },
   {
+    id: 'load-witness',
+    removal: 'purge-only',
+    consequence: 'Doctor forgets which sessions witnessed the rules core loading until the next session start.',
+    primary: ['state/load-witness.json'],
+    sides: ['lock', 'atomic-temporary'],
+  },
+  {
     id: 'guard-tries',
     removal: 'purge-only',
     consequence: 'Guard budgets start over.',

@@ -1,6 +1,6 @@
 # codex-bridge
 
-**Delegate implementation, reconnaissance, review and design advice from Claude Code to Codex — seven host guards, zero runtime dependencies, zero build steps.**
+**Delegate implementation, reconnaissance, review and design advice from Claude Code to Codex — eight host guards, zero runtime dependencies, zero build steps.**
 
 [![npm version](https://img.shields.io/npm/v/@lyupro/codex-bridge)](https://www.npmjs.com/package/@lyupro/codex-bridge)
 [![Node.js](https://img.shields.io/node/v/@lyupro/codex-bridge)](https://www.npmjs.com/package/@lyupro/codex-bridge)
@@ -57,12 +57,12 @@ Run records in `~/.lyupro/.codex-bridge/runs/` (or `~/.claude/codex-runs/` befor
 - **Invalid work is rejected before quota is spent.** Scope, order, retry, branch, and continuation checks run before a run folder is created.
 - **Verdicts come from artifacts.** CLI events, git state, and the declared report decide the result, not model claims about itself.
 - **Identical retries attach safely.** Repeating the same command joins the active run instead of starting another one.
-- **7 host guards enforce the boundary.** `reply-guard`, `order-gate`, `worktree-lock`, `prune-guard`, and `stop-guard` cover replies, orders, edits, deletion, and stopping; `worktree-witness` stands behind the lock and names a write that reached the tree anyway; `dispatcher-gate` lets a dispatcher run only the one runner command of its order and hands its caller the runner's own words.
+- **8 host guards enforce and witness the boundary.** `reply-guard`, `order-gate`, `worktree-lock`, `prune-guard`, and `stop-guard` cover replies, orders, edits, deletion, and stopping; `worktree-witness` stands behind the lock and names a write that reached the tree anyway; `dispatcher-gate` lets a dispatcher run only the one runner command of its order and hands its caller the runner's own words; `load-witness` only observes — it records that the host loaded the package's rules core, the one proof `doctor` accepts that the rules are in context.
 - **Installation is identifiable and reversible.** Writes to `settings.json` are merged and backed up; uninstall removes recorded package files only.
 - **Every run leaves an audit folder.** The verbatim task, scope, before/after git state, events, report, verdict, and reason remain together.
 - **Zero runtime dependencies and zero build steps.** The package is plain `.mjs` on the Node.js standard library.
 
-The current suite contains **3536 automated tests: 3533 passing and 3 skipped**.
+The current suite contains **3546 automated tests: 3543 passing and 3 skipped**.
 
 ## Verify
 

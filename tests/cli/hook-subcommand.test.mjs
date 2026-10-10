@@ -139,6 +139,21 @@ test('every definition name reaches its existing top-level guard', async (t) => 
       assert.equal(JSON.parse(result.stdout).hookSpecificOutput.permissionDecision, 'deny');
       continue;
     }
+    if (definition.file === 'load-witness.mjs') {
+      const core = path.join(root, '.claude', 'rules', 'codex-bridge', 'core.md');
+      await fs.mkdir(path.dirname(core), { recursive: true });
+      await fs.writeFile(core, 'core\n');
+      const result = run(['hook', definition.name], JSON.stringify({
+        hook_event_name: definition.event, session_id: 'session-load-witness', file_path: core,
+        load_reason: 'session_start', transcript_path: path.join(root, 'transcript.jsonl'), cwd: root,
+      }), env);
+      assert.equal(result.status, 0, `${definition.name}: ${result.stderr}`);
+      assert.equal(result.stdout, '', definition.name);
+      const saved = JSON.parse(await fs.readFile(
+        path.join(root, '.lyupro', '.codex-bridge', 'state', 'load-witness.json'), 'utf8'));
+      assert.equal(saved.sessions['session-load-witness'].loads[0].path, core, definition.name);
+      continue;
+    }
     if (definition.file === 'dispatcher-gate.mjs') {
       const input = {
         agent_type: 'codex-build',
