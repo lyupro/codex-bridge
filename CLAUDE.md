@@ -19,6 +19,7 @@ npm test -- tests/meta/verdict.test.mjs    # one file
 npm test -- "tests/cli/*.test.mjs"         # one directory
 npm run check:size                         # 400-line source-file gate, .file-size-limit.json
 npm run check:open-work                    # open-work register + live-step thresholds (strict)
+npm run release-check:rules-load-claude -- --model haiku   # before a release: both Claude binaries load a project install's rules core (paid, ~10 s)
 node bin/codex-bridge.mjs doctor           # what is installed on this host, is codex alive
 npm run dev:install                        # update --force into ~/.claude from this clone
 git config core.hooksPath .githooks        # enable the pre-commit size gate (once per clone)

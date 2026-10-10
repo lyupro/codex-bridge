@@ -1,7 +1,7 @@
 {
   "name": "@lyupro/codex-bridge",
   "version": "0.6.13",
-  "description": "Claude Code-to-Codex delegation with 8 guards, 3616 tests, zero runtime dependencies, and zero build steps.",
+  "description": "Claude Code-to-Codex delegation with 8 guards, 3640 tests, zero runtime dependencies, and zero build steps.",
   "keywords": [
     "claude-code",
     "codex",
@@ -34,6 +34,7 @@
     "cli",
     "src",
     "scripts",
+    "!scripts/release-check",
     "README.md",
     "LICENSE",
     "CHANGELOG.md"
@@ -41,6 +42,7 @@
   "scripts": {
     "dev:install": "node bin/codex-bridge.mjs update --force",
     "test": "node scripts/run-tests.mjs",
+    "release-check:rules-load-claude": "node scripts/release-check/rules-load-claude.mjs",
     "check:size": "node scripts/check-file-size.mjs",
     "check:open-work": "node scripts/open-work/check.mjs --strict"
   },
