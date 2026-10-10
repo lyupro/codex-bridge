@@ -29,6 +29,8 @@ const BASELINE = {
   'tests/dispatcher-command.test.mjs': 2,
   'tests/dispatcher-gate.test.mjs': 0,
   'tests/mode-is-not-a-name.test.mjs': 1,
+  // +1 (Plan_64 B6c2): `install --scope project` into the release-check throwaway project is the install scope.
+  'tests/release-check/rules-load-isolation.test.mjs': 1,
   'tests/required-inputs.test.mjs': 0,
   'tests/runner/advisor-run.test.mjs': 1,
   'tests/runner/args-refusal-order.test.mjs': 7,
