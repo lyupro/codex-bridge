@@ -19,6 +19,7 @@ import {
   rulesCheck,
 } from './doctor-installation.mjs';
 import { hookChecks } from './doctor-hooks.mjs';
+import { loadWitnessChecks } from './doctor-load-witness.mjs';
 import { contractStatus, readHostContract } from './host-contract.mjs';
 import { handbackWitnessStatus } from './handback-witness-check.mjs';
 import { dispatcherModelChecks } from './dispatcher-model-check.mjs';
@@ -164,6 +165,7 @@ export async function diagnose({
   const modelRecord = dispatcherModelRecord === undefined ? readDispatcherModel({ stateDir }) : dispatcherModelRecord;
   const activeHosts = injectedActiveHosts ?? (hostVersion !== undefined ? [hostVersion].filter(Boolean)
     : activeHostVersions({ observations: hostObservations, witnessRecord, modelRecord, now }));
+  checks.push(...await loadWitnessChecks({ host, record, stateDir, activeHosts }));
   checks.push(sessionHostCheck(observedVersions, hostObservations));
   const refusalRecord = contractRecord === undefined ? await readHostContract(host) : contractRecord;
   const hostContract = contractStatus({
