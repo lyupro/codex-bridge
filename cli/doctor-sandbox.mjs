@@ -10,8 +10,9 @@ import { formatSandboxDiagnosis } from '../src/home/lib/runner/sandbox-diagnosis
 // Probe reasons are full sentences; joining one to "; probed folder" printed "process.; probed" live.
 const clause = (reason) => String(reason).replace(/\.$/, '');
 
-// Plan_78 B2b: healthy probes took 0.6-1.7 s on 2026-10-10; the worst case of two forms,
-// three attempts each at 15 s plus the version check stays under the host shell's 120 s default.
+// Plan_78 B4a: a timed-out attempt ends its form: at most 15 s plus ~15 s stopping
+// (taskkill 10 s, then stop grace). Only one form can time out with the guard below;
+// including the version check, the worst case stays well under the host shell's 120 s default.
 export async function sandboxChecks({
   codexAvailable, cwd = process.cwd(), probe = probeSandbox, platform = process.platform,
   timeoutMs = 15_000,
@@ -19,6 +20,7 @@ export async function sandboxChecks({
   const root = repositoryRoot(cwd);
   const folder = `${root} (${fs.existsSync(path.join(root, '.git')) ? 'git repository' : 'current folder'})`;
   const rows = [];
+  let readOnlyInconclusive = false;
   // Plan_57: concurrent helper setups race on one access-rights state file. Keep both forms sequential.
   for (const agent of ['codex-scout', 'codex-build']) {
     const key = `sandbox:${sandboxModeFor(agent)}`;
@@ -26,7 +28,13 @@ export async function sandboxChecks({
       rows.push(check(key, 'warn', `not probed: Codex CLI is unavailable; folder: ${folder}`));
       continue;
     }
+    // Plan_57: if taskkill fails, only cmd.exe dies; Codex may still update shared sandbox state.
+    if (agent === 'codex-build' && readOnlyInconclusive) {
+      rows.push(check(key, 'warn', `not probed: the read-only probe was inconclusive; rerun codex-bridge doctor; probed folder: ${folder}`));
+      continue;
+    }
     const result = await probe({ agent, repo: root, platform, timeoutMs });
+    if (agent === 'codex-scout') readOnlyInconclusive = result.outcome === 'inconclusive';
     switch (result.outcome) {
       case 'alive':
         rows.push(check(key, 'ok', `${clause(result.reason)}; probed folder: ${folder}`));

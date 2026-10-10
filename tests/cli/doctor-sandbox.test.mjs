@@ -35,15 +35,19 @@ test('a full-sentence probe reason joins the folder clause without a stray perio
 for (const [outcome, status, expected] of [
   ['alive', 'ok', 'probe reason; probed folder:'],
   ['dead', 'fail', 'probe reason\n'],
-  ['inconclusive', 'warn', 'readiness not established: probe reason'],
   ['skipped', 'warn', "not probed on darwin: the package has never observed this platform's sandbox"],
 ]) {
   test(`${outcome} maps to ${status} and names the folder`, async () => {
     await withTempTree('doctor-sandbox-outcome-', async (cwd) => {
+      const calls = [];
       const rows = await sandboxChecks({
         codexAvailable: true, cwd, platform: 'darwin',
-        probe: async () => ({ outcome, reason: 'probe reason', diagnosis }),
+        probe: async ({ agent }) => {
+          calls.push(agent);
+          return { outcome, reason: 'probe reason', diagnosis };
+        },
       });
+      assert.deepEqual(calls, ['codex-scout', 'codex-build']);
       assert.deepEqual(rows.map(({ key }) => key), ['sandbox:read-only', 'sandbox:workspace-write']);
       for (const row of rows) {
         assert.equal(row.status, status);
@@ -53,6 +57,23 @@ for (const [outcome, status, expected] of [
     });
   });
 }
+
+test('an inconclusive read-only probe warns without starting workspace-write', async () => {
+  await withTempTree('doctor-sandbox-inconclusive-', async (cwd) => {
+    const calls = [];
+    const rows = await sandboxChecks({ cwd, probe: async ({ agent }) => {
+      calls.push(agent);
+      return { outcome: 'inconclusive', reason: 'timed out.' };
+    } });
+    assert.deepEqual(calls, ['codex-scout']);
+    assert.deepEqual(rows.map(({ key, status }) => ({ key, status })), [
+      { key: 'sandbox:read-only', status: 'warn' },
+      { key: 'sandbox:workspace-write', status: 'warn' },
+    ]);
+    assert.equal(rows[0].value, `readiness not established: timed out; probed folder: ${cwd} (current folder)`);
+    assert.equal(rows[1].value, `not probed: the read-only probe was inconclusive; rerun codex-bridge doctor; probed folder: ${cwd} (current folder)`);
+  });
+});
 
 test('dead prints each shared diagnosis row indented and tells the operator to rerun doctor', async () => {
   await withTempTree('doctor-sandbox-diagnosis-', async (cwd) => {

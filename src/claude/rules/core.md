@@ -21,7 +21,8 @@ code: a `scope` phase, then `advise`).
   task error: do not retry the same bridge.
   A refusal starting `Codex CLI readiness unconfirmed` is not `UNAVAILABLE`: do not skip the bridge; follow its second
   line — check `codex --version` for up to ~2 minutes, then repeat the same order exactly once if it answers, otherwise
-  hand it to the next executor and name that in the summary.
+  hand it to the next executor and name that in the summary. If the repeat gets the same refusal, hand it to the next
+  executor too; no second repeat.
 - `OK — scope: insufficient` from `codex-advisor` is a success: it names the paths the `advise` phase needs.
 - Stop a live run with `codex-bridge stop <run>` before `TaskStop`; `TaskStop` alone leaves the run writing.
 - A run's folder is the `ATTACH=` path in the dispatcher's reply. Earlier runs: `codex-bridge projects [<project>]

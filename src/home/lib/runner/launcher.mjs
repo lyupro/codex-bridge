@@ -146,7 +146,8 @@ export async function launcher(argv = process.argv.slice(2)) {
     if ('exitCode' in gate) return gate.exitCode;
     const { taskHash, chain, startedChain, continuationGrant, advisorTask, retryOf } = gate;
 
-    // Plan_60 D2: a missing or signed-out Codex answers UNAVAILABLE (exit 5) before the paid sandbox probe.
+    // Plan_60 D2: a signed-out Codex answers UNAVAILABLE (exit 5) before the paid sandbox probe;
+    // a PATH miss, after one retry, is the free readiness-unconfirmed refusal (exit 1, Plan_78 D5).
     const availability = await codexAvailabilityRefusal();
     if (availability?.unavailable) { process.stdout.write(`${availability.text}\n`); return EXIT.UNAVAILABLE; }
     if (availability) die(availability.text, EXIT.FAIL);

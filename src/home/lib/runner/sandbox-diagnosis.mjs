@@ -35,9 +35,19 @@ function logPath(codexHome, date) {
   return path.join(codexHome, '.sandbox', `sandbox.${day}.log`);
 }
 
-function fileSize(file) {
+function sandboxState(codexHome) {
   try {
-    const stat = fs.statSync(file);
+    // Plan_78 B4a: a linked sandbox folder can redirect every evidence read outside CODEX_HOME.
+    return fs.lstatSync(path.join(codexHome, '.sandbox')).isDirectory() ? 'ready' : 'unknown';
+  } catch (error) {
+    return error.code === 'ENOENT' ? 'missing' : 'unknown';
+  }
+}
+
+function fileSize(file, folderState) {
+  if (folderState !== 'ready') return folderState === 'missing' ? 0 : null;
+  try {
+    const stat = fs.lstatSync(file);
     return stat.isFile() ? stat.size : null;
   } catch (error) {
     // Only ENOENT proves absence; permission failures must not become a zero-byte baseline.
@@ -45,9 +55,12 @@ function fileSize(file) {
   }
 }
 
-function readRange(file, start, limit, tail) {
+function readRange(file, start, limit, tail, folderState) {
+  if (folderState !== 'ready') return { state: folderState };
   let fd;
   try {
+    // Plan_78 B4a: opening a FIFO can block; links must not redirect sandbox evidence reads.
+    if (!fs.lstatSync(file).isFile()) return { state: 'unknown' };
     fd = fs.openSync(file, 'r');
     const stat = fs.fstatSync(fd);
     if (!stat.isFile()) return { state: 'unknown' };
@@ -76,8 +89,8 @@ function readRange(file, start, limit, tail) {
   }
 }
 
-function readSetupError(file) {
-  const result = readRange(file, 0, SETUP_LIMIT, false);
+function readSetupError(file, folderState) {
+  const result = readRange(file, 0, SETUP_LIMIT, false, folderState);
   return {
     state: result.state,
     text: result.state === 'read' ? result.text : result.state === 'missing' ? null
@@ -86,19 +99,21 @@ function readSetupError(file) {
 }
 
 export function snapshotSandboxLogs({ codexHome, now = new Date() }) {
+  const folderState = sandboxState(codexHome);
   const previous = new Date(now);
   // Local calendar arithmetic survives DST; subtracting 24 hours can choose the wrong day.
   previous.setDate(previous.getDate() - 1);
   return {
     logs: [now, previous].map((date) => {
       const file = logPath(codexHome, date);
-      return { path: file, size: fileSize(file) };
+      return { path: file, size: fileSize(file, folderState) };
     }),
-    setupError: readSetupError(path.join(codexHome, '.sandbox', 'setup_error.json')),
+    setupError: readSetupError(path.join(codexHome, '.sandbox', 'setup_error.json'), folderState),
   };
 }
 
 export function diagnoseSandbox({ codexHome, before, now = new Date() }) {
+  const folderState = sandboxState(codexHome);
   const baselines = new Map(before.logs.map((log) => [log.path, log.size]));
   const paths = [...new Set([...baselines.keys(), logPath(codexHome, now)])].sort();
   const sources = [];
@@ -108,7 +123,7 @@ export function diagnoseSandbox({ codexHome, before, now = new Date() }) {
   let attributed = false;
   for (const file of paths) {
     const baseline = baselines.has(file) ? baselines.get(file) : 0;
-    const result = readRange(file, baseline ?? 0, LOG_LIMIT, true);
+    const result = readRange(file, baseline ?? 0, LOG_LIMIT, true, folderState);
     if (result.state === 'missing') continue;
     sources.push(file);
     if (result.state === 'unknown') {
@@ -126,7 +141,7 @@ export function diagnoseSandbox({ codexHome, before, now = new Date() }) {
   let text = appended.join('\n');
   if (!attributed && recent.length) {
     const newest = recent.sort((a, b) => b.mtime - a.mtime || b.file.localeCompare(a.file))[0];
-    const fallback = readRange(newest.file, 0, LOG_LIMIT, true);
+    const fallback = readRange(newest.file, 0, LOG_LIMIT, true, folderState);
     if (fallback.state === 'read') text = fallback.text;
     else unknown.push(`Unknown: unable to read ${newest.file}.`);
   }
@@ -135,7 +150,7 @@ export function diagnoseSandbox({ codexHome, before, now = new Date() }) {
   const match = attributed && [...errors].reverse()
     .map((line) => SIGNATURES.find((signature) => signature.predicate(line))).find(Boolean);
   const setupPath = path.join(codexHome, '.sandbox', 'setup_error.json');
-  const setup = readSetupError(setupPath);
+  const setup = readSetupError(setupPath, folderState);
   if (setup.state !== 'missing') sources.push(setupPath);
   return {
     codexHome, sources, attributed,

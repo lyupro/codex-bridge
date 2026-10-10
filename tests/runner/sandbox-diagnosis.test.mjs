@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { withTempTree } from '../temp-tree.mjs';
 import { resolveCodexHome } from '../../src/home/lib/codex-home.mjs';
 import { snapshotSandboxLogs, diagnoseSandbox, formatSandboxDiagnosis }
@@ -282,10 +283,10 @@ test('unreadable log and setup files are unknown rather than absent and cannot p
     const { log, setup } = fixture(codexHome);
     fs.writeFileSync(log, `${locked}\n`);
     fs.writeFileSync(setup, '{}');
-    const stat = fs.statSync;
+    const stat = fs.lstatSync;
     const open = fs.openSync;
     const denied = () => Object.assign(new Error('permission denied'), { code: 'EACCES' });
-    t.mock.method(fs, 'statSync', (file, ...args) => {
+    t.mock.method(fs, 'lstatSync', (file, ...args) => {
       if (file === log) throw denied();
       return stat(file, ...args);
     });
@@ -312,8 +313,8 @@ test('a newly readable log with an unknown snapshot size remains unattributed', 
   await withTempTree('sandbox-baseline-unknown-', async (codexHome) => {
     const { log } = fixture(codexHome);
     fs.writeFileSync(log, `${locked}\n`);
-    const stat = fs.statSync;
-    const mock = t.mock.method(fs, 'statSync', (file, ...args) => {
+    const stat = fs.lstatSync;
+    const mock = t.mock.method(fs, 'lstatSync', (file, ...args) => {
       if (file === log) throw Object.assign(new Error('denied'), { code: 'EPERM' });
       return stat(file, ...args);
     });
@@ -326,3 +327,72 @@ test('a newly readable log with an unknown snapshot size remains unattributed', 
     assert.ok(result.lines.some((line) => line.includes('pre-probe size unavailable')));
   });
 });
+
+for (const kind of ['symlink', 'directory', 'FIFO']) {
+  test(`${kind} log is unknown and never opened`, async (t) => {
+    if (kind === 'FIFO' && process.platform === 'win32') return t.skip('mkfifo is not available on Windows');
+    await withTempTree('sandbox-special-log-', async (codexHome) => {
+      const { log } = fixture(codexHome);
+      const before = snapshotSandboxLogs({ codexHome, now });
+      if (kind === 'symlink') {
+        const target = path.join(codexHome, 'outside.log');
+        fs.writeFileSync(target, `${locked}\n`);
+        try { fs.symlinkSync(target, log, 'file'); } catch (error) {
+          if (['EPERM', 'EACCES'].includes(error.code)) return t.skip(`symlink creation refused: ${error.code}`);
+          throw error;
+        }
+      } else if (kind === 'directory') fs.mkdirSync(log);
+      else {
+        const result = spawnSync('mkfifo', [log], { timeout: 5000 });
+        if (result.error?.code === 'ENOENT' || result.status !== 0) return t.skip(`mkfifo unavailable: ${result.error?.message ?? result.stderr}`);
+      }
+      const opened = [], open = fs.openSync;
+      t.mock.method(fs, 'openSync', (file, ...args) => {
+        if (file === log) { opened.push(file); throw new Error('unsafe log must not be opened'); }
+        return open(file, ...args);
+      });
+      assert.equal(snapshotSandboxLogs({ codexHome, now }).logs[0].size, null);
+      const result = diagnose(codexHome, before);
+      assert.equal(result.attributed, false);
+      assert.equal(result.signature, null);
+      assert.ok(result.lines.includes(`Unknown: unable to read ${log}.`));
+      assert.deepEqual(opened, []);
+    });
+  });
+}
+
+for (const kind of ['symlink', 'file']) {
+  test(`${kind} sandbox folder is checked once per call and never read`, async (t) => {
+    await withTempTree('sandbox-special-folder-', async (codexHome) => {
+      const folder = path.join(codexHome, '.sandbox');
+      if (kind === 'file') fs.writeFileSync(folder, locked);
+      else {
+        const target = path.join(codexHome, 'outside');
+        const files = fixture(target);
+        fs.writeFileSync(files.log, `${locked}\n`);
+        fs.writeFileSync(files.setup, locked);
+        // A junction needs no privilege on Windows, so this case runs on the platform that had the incident.
+        const type = process.platform === 'win32' ? 'junction' : 'dir';
+        try { fs.symlinkSync(path.join(target, '.sandbox'), folder, type); } catch (error) {
+          if (['EPERM', 'EACCES'].includes(error.code)) return t.skip(`symlink creation refused: ${error.code}`);
+          throw error;
+        }
+      }
+      let checks = 0;
+      const stat = fs.lstatSync;
+      t.mock.method(fs, 'lstatSync', (file, ...args) => { if (file === folder) checks++; return stat(file, ...args); });
+      const opened = [];
+      t.mock.method(fs, 'openSync', (file) => { opened.push(file); throw new Error('unsafe folder must not be read'); });
+      const before = snapshotSandboxLogs({ codexHome, now });
+      assert.ok(before.logs.every(({ size }) => size === null));
+      const result = diagnose(codexHome, before);
+      assert.equal(checks, 2);
+      assert.equal(result.attributed, false);
+      assert.equal(result.signature, null);
+      assert.ok(result.lines.every((line) => line.startsWith('Unknown:')) && result.lines.length > 0);
+      assert.match(result.setupError.text, /Unknown: unable to read/);
+      assert.equal(result.setupError.changed, null);
+      assert.deepEqual(opened, []);
+    });
+  });
+}
