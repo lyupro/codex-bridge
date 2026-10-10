@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import fsSync from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
@@ -7,7 +8,8 @@ import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { HOOK_DEFINITIONS } from '../../src/home/lib/hook-definitions.mjs';
 import {
-  LOAD_WITNESS_FILE, isCoreLoadCandidate, readLoadWitness, recordCoreLoad,
+  CORE_CHARACTER_CEILING, CORE_BYTE_CEILING, LOAD_WITNESS_FILE,
+  isCoreLoadCandidate, readLoadWitness, recordCoreLoad,
 } from '../../src/home/lib/load-witness.mjs';
 import { withTempTree } from '../temp-tree.mjs';
 
@@ -26,6 +28,37 @@ async function fixture(root) {
   await fs.mkdir(path.dirname(core), { recursive: true });
   await fs.writeFile(core, bytes);
   return { stateDir, core, bytes };
+}
+
+// D15 / review B8: measure the actual descriptor reads, not just the recorded overflow result.
+function observeCoreReads(t, core, { chunkSize = Infinity, failAfterRead = false } = {}) {
+  const { openSync, readSync, closeSync } = fsSync;
+  const calls = { opens: 0, closes: 0, bytes: 0, requests: [], descriptor: null };
+  t.mock.method(fsSync, 'openSync', (file, ...args) => {
+    const descriptor = openSync(file, ...args);
+    if (file === core) {
+      assert.deepEqual(args, ['r']);
+      calls.opens += 1;
+      calls.descriptor = descriptor;
+    }
+    return descriptor;
+  });
+  t.mock.method(fsSync, 'readSync', (descriptor, buffer, offset, length, position) => {
+    if (descriptor !== calls.descriptor) return readSync(descriptor, buffer, offset, length, position);
+    calls.requests.push(length);
+    if (failAfterRead && calls.bytes > 0) throw Object.assign(new Error('read failed'), { code: 'EIO' });
+    const count = readSync(descriptor, buffer, offset, Math.min(length, chunkSize), position);
+    calls.bytes += count;
+    return count;
+  });
+  t.mock.method(fsSync, 'closeSync', (descriptor) => {
+    if (descriptor === calls.descriptor) {
+      calls.closes += 1;
+      calls.descriptor = null;
+    }
+    return closeSync(descriptor);
+  });
+  return calls;
 }
 
 test('D11 registers an observing InstructionsLoaded hook', () => {
@@ -66,6 +99,75 @@ test('records exact bytes and paths before the transcript exists, once per sessi
   });
 });
 
+test('D15 hashes exactly the byte ceiling and closes its single descriptor after EOF', async (t) => {
+  await withTempTree('load-witness-ceiling-', async (root) => {
+    const { stateDir, core } = await fixture(root);
+    assert.equal(CORE_CHARACTER_CEILING, 2400);
+    assert.equal(CORE_BYTE_CEILING, 3 * CORE_CHARACTER_CEILING);
+    const bytes = Buffer.alloc(CORE_BYTE_CEILING, 'a');
+    await fs.writeFile(core, bytes);
+    const calls = observeCoreReads(t, core);
+    await recordCoreLoad({ stateDir, now, input: event(core) });
+    assert.equal(calls.opens, 1);
+    assert.equal(calls.closes, 1);
+    assert.equal(calls.bytes, CORE_BYTE_CEILING);
+    assert.deepEqual(calls.requests, [CORE_BYTE_CEILING + 1, 1]);
+    const load = readLoadWitness({ stateDir }).sessions['session-1'].loads[0];
+    assert.equal(load.sha256, createHash('sha256').update(bytes).digest('hex'));
+    assert.equal(Object.hasOwn(load, 'hashSkippedReason'), false);
+    assert.equal(Object.hasOwn(load, 'readError'), false);
+  });
+});
+
+test('D15 overflow reads at most ceiling plus one byte and closes without a read error', async (t) => {
+  await withTempTree('load-witness-overflow-', async (root) => {
+    const { stateDir, core } = await fixture(root);
+    for (const size of [CORE_BYTE_CEILING + 1, CORE_BYTE_CEILING * 2]) {
+      await fs.writeFile(core, Buffer.alloc(size, 'a'));
+      const calls = observeCoreReads(t, core, { chunkSize: 97 });
+      await recordCoreLoad({ stateDir, now, input: event(core, { session_id: `overflow-${size}` }) });
+      assert.equal(calls.opens, 1);
+      assert.equal(calls.closes, 1);
+      assert.equal(calls.bytes, CORE_BYTE_CEILING + 1);
+      const load = readLoadWitness({ stateDir }).sessions[`overflow-${size}`].loads[0];
+      assert.equal(load.sha256, null);
+      assert.equal(load.hashSkippedReason, 'core-too-large');
+      assert.equal(Object.hasOwn(load, 'readError'), false);
+      t.mock.restoreAll();
+    }
+  });
+});
+
+test('D15 short reads keep hashing exact bytes until EOF and close the descriptor', async (t) => {
+  await withTempTree('load-witness-short-reads-', async (root) => {
+    const { stateDir, core, bytes } = await fixture(root);
+    const calls = observeCoreReads(t, core, { chunkSize: 2 });
+    await recordCoreLoad({ stateDir, now, input: event(core) });
+    assert.equal(calls.opens, 1);
+    assert.equal(calls.closes, 1);
+    assert.equal(calls.bytes, bytes.length);
+    assert.ok(calls.requests.length > 2);
+    const load = readLoadWitness({ stateDir }).sessions['session-1'].loads[0];
+    assert.equal(load.sha256, createHash('sha256').update(bytes).digest('hex'));
+    assert.equal(Object.hasOwn(load, 'hashSkippedReason'), false);
+  });
+});
+
+test('D15 closes after a partial read failure and preserves the read error code', async (t) => {
+  await withTempTree('load-witness-descriptor-error-', async (root) => {
+    const { stateDir, core } = await fixture(root);
+    const calls = observeCoreReads(t, core, { chunkSize: 2, failAfterRead: true });
+    await recordCoreLoad({ stateDir, now, input: event(core) });
+    assert.equal(calls.opens, 1);
+    assert.equal(calls.closes, 1);
+    assert.equal(calls.bytes, 2);
+    const load = readLoadWitness({ stateDir }).sessions['session-1'].loads[0];
+    assert.equal(load.sha256, null);
+    assert.equal(load.readError, 'EIO');
+    assert.equal(Object.hasOwn(load, 'hashSkippedReason'), false);
+  });
+});
+
 test('ignores other load reasons, events, files and missing identifiers without touching state', async () => {
   await withTempTree('load-witness-ignore-', async (root) => {
     const stateDir = path.join(root, 'state');
@@ -77,7 +179,7 @@ test('ignores other load reasons, events, files and missing identifiers without 
       event(core, { session_id: '' }), event(core, { session_id: ' ' }),
       event(core, { file_path: undefined }), event(core, { file_path: '' }),
     ]) {
-      const result = await recordCoreLoad({ stateDir, input, readFile: () => assert.fail('must not read core') });
+      const result = await recordCoreLoad({ stateDir, input, readCore: () => assert.fail('must not read core') });
       assert.equal(result.recorded, false);
       assert.equal(typeof result.reason, 'string');
     }
@@ -94,7 +196,7 @@ test('unreadable core records a null hash and the read error code', async () => 
     assert.equal(load.sha256, null);
     assert.equal(load.readError, 'ENOENT');
     await recordCoreLoad({ stateDir, now, input: event(core, { session_id: 'denied' }),
-      readFile: () => { throw Object.assign(new Error('denied'), { code: 'EACCES' }); },
+      readCore: () => { throw Object.assign(new Error('denied'), { code: 'EACCES' }); },
     });
     load = readLoadWitness({ stateDir }).sessions.denied.loads[0];
     assert.equal(load.sha256, null);

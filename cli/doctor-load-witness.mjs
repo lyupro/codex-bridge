@@ -40,13 +40,15 @@ export async function loadWitnessChecks({ host, record, stateDir, activeHosts, r
     }
     const entries = byVersion.get(version) ?? [];
     for (const load of loads) {
-      entries.push({ sessionId, at: load.at, matches: load.sha256 === expected.get(normalizedPath(load.path)) });
+      entries.push({ sessionId, at: load.at, matches: load.sha256 === expected.get(normalizedPath(load.path)),
+        hashSkippedReason: load.hashSkippedReason });
     }
     byVersion.set(version, entries);
   }
   const pendingNote = pending ? ` (${pending} session(s) awaiting their transcript)` : '';
   const versions = activeHosts.length ? [...new Set(activeHosts)]
-    : [...byVersion].filter(([, entries]) => entries.some((entry) => entry.matches)).map(([version]) => version);
+    : [...byVersion].filter(([, entries]) => entries.some((entry) => entry.matches
+      || entry.hashSkippedReason === 'core-too-large')).map(([version]) => version);
   if (!versions.length) {
     return [check('claudeRulesLoad', 'warn',
       `no session has witnessed the rules core loading yet; open a new Claude Code session${pendingNote}`)];
@@ -55,6 +57,11 @@ export async function loadWitnessChecks({ host, record, stateDir, activeHosts, r
     const entries = byVersion.get(version) ?? [];
     const verified = entries.filter((entry) => entry.matches);
     const latest = [...entries].sort((a, b) => String(b.at).localeCompare(String(a.at)))[0];
+    // D15 / review B8: an oversized newest load cannot be proof, even after an older matching load.
+    if (latest?.hashSkippedReason === 'core-too-large') {
+      return check(`claudeRulesLoad:${version}`, 'warn',
+        `rules core hash skipped: core-too-large (host ${version}, latest ${latest.at})${pendingNote}`);
+    }
     // D11: a newer load of another package hash invalidates the older positive witness.
     if (latest?.matches && verified.length) {
       const count = new Set(verified.map((entry) => entry.sessionId)).size;

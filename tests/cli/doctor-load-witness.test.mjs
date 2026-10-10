@@ -119,6 +119,47 @@ test('a newest stale load overrides earlier valid evidence regardless of state e
   });
 });
 
+test('D15 newest core-too-large warns over older matching evidence regardless of entry order', async () => {
+  await scenario(async ({ load, session, write, checks }) => {
+    const oversized = session([load({ sha256: null, hashSkippedReason: 'core-too-large', at: later })]);
+    for (const sessions of [{ oversized, verified: session() }, { verified: session(), oversized }]) {
+      await write(sessions);
+      for (const activeHosts of [[version], []]) {
+        const rows = await checks({ activeHosts });
+        assert.equal(rows.length, 1);
+        assert.equal(rows[0].key, `claudeRulesLoad:${version}`);
+        assert.equal(rows[0].status, 'warn');
+        assert.match(rows[0].value, /core-too-large/);
+        assert.ok(rows[0].value.includes(later));
+      }
+    }
+  });
+});
+
+test('D15 oversized-only evidence names core-too-large even without active hosts', async () => {
+  await scenario(async ({ load, session, write, checks }) => {
+    await write({ oversized: session([load({ sha256: null, hashSkippedReason: 'core-too-large' })]) });
+    for (const activeHosts of [[version], []]) {
+      const rows = await checks({ activeHosts });
+      assert.equal(rows[0].key, `claudeRulesLoad:${version}`);
+      assert.equal(rows[0].status, 'warn');
+      assert.match(rows[0].value, /core-too-large/);
+    }
+  });
+});
+
+test('D15 a newer matching load restores evidence after an oversized load', async () => {
+  await scenario(async ({ load, session, write, checks }) => {
+    await write({
+      oversized: session([load({ sha256: null, hashSkippedReason: 'core-too-large' })]),
+      verified: session([load({ at: later })]),
+    });
+    const rows = await checks();
+    assert.equal(rows[0].status, 'ok');
+    assert.doesNotMatch(rows[0].value, /core-too-large/);
+  });
+});
+
 test('a newest valid load restores evidence and counts distinct qualifying sessions', async () => {
   await scenario(async ({ load, session, write, checks }) => {
     await write({

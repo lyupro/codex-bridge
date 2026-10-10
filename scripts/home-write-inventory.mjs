@@ -44,7 +44,7 @@ export const HOME_WRITE_INVENTORY = Object.freeze([
   outside('src/home/lib/file-lock.mjs', 'rm', 1, 'Raw route of the lock, taken only after writer.assertOutside proves the lock is beyond the home (Codex rules registry).'),
   outside('src/home/lib/heartbeat.mjs', 'writeFileSync', 1, 'Heartbeat stamp inside a run folder under the runs root.'),
   outside('src/home/lib/host-version.mjs', 'open', 1, 'Read-only open of a run transcript tail with the r flag.'),
-  outside('src/home/lib/load-witness.mjs', 'fs-binding-escape', 1, 'The injected reader defaults to fs.readFileSync to hash the host rules core bytes; all witness state writes use the registered load-witness artifact (Plan_64 D11).'),
+  outside('src/home/lib/load-witness.mjs', 'openSync', 1, 'Read-only open with the r flag, reading at most the shared core byte ceiling plus one sentinel byte (Plan_64 D15 / review B8); all witness state writes use the registered load-witness artifact.'),
   outside('src/home/lib/meta/run-state.mjs', 'writeFileSync', 3, 'Writes status.json and meta.json inside run folders under the runs root.'),
   outside('src/home/lib/run-codex.mjs', 'appendFileSync', 1, 'Appends a crash diagnostic to stderr.log inside a run folder.'),
   outside('src/home/lib/retention.mjs', 'fs-binding-escape', 1, 'The injected filesystem falls back to fs while cleaning run folders under the runs root, which is operator data outside the home writer even when it is runs/ of the home (Plan_77).'),

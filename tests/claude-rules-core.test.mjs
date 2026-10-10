@@ -14,17 +14,18 @@ import { fileURLToPath } from 'node:url';
 import { AGENTS } from '../src/home/lib/agents.mjs';
 import { COMMANDS } from '../cli/command-registry.mjs';
 import { GUIDANCE_TOPICS } from '../cli/guidance.mjs';
+import { CORE_CHARACTER_CEILING, CORE_BYTE_CEILING } from '../src/home/lib/load-witness.mjs';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const corePath = path.join(root, 'src', 'claude', 'rules', 'core.md');
 const core = fs.readFileSync(corePath, 'utf8');
 
-// ~4 characters per token for English prose: 600 tokens.
-const CORE_CHARACTER_CEILING = 2400;
-
 test('the rules core stays under its token ceiling', () => {
   assert.ok(core.length <= CORE_CHARACTER_CEILING,
     `core.md has ${core.length} characters; the ceiling is ${CORE_CHARACTER_CEILING} (~600 tokens)`);
+  const byteLength = Buffer.byteLength(core, 'utf8');
+  assert.ok(byteLength <= CORE_BYTE_CEILING,
+    `core.md has ${byteLength} UTF-8 bytes; the ceiling is ${CORE_BYTE_CEILING}`);
 });
 
 test('the rules core has no frontmatter, so the host loads it at session start', () => {

@@ -8,8 +8,26 @@ import { stateDirWriter } from './home-write.mjs';
 import { parseJsonText } from './json-file.mjs';
 
 export const LOAD_WITNESS_FILE = 'load-witness.json';
+// Plan_64 D15 / review B8: larger files cannot be the package core; each UTF-16 unit needs at most 3 UTF-8 bytes.
+export const CORE_CHARACTER_CEILING = 2400;
+export const CORE_BYTE_CEILING = 3 * CORE_CHARACTER_CEILING;
 const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
-const { readFileSync: readCoreBytes } = fs;
+
+function readBoundedCoreBytes(filePath) {
+  const buffer = Buffer.alloc(CORE_BYTE_CEILING + 1);
+  const descriptor = fs.openSync(filePath, 'r');
+  try {
+    let length = 0;
+    while (length < buffer.length) {
+      const count = fs.readSync(descriptor, buffer, length, buffer.length - length, null);
+      if (count === 0) return buffer.subarray(0, length);
+      length += count;
+    }
+    return null;
+  } finally {
+    fs.closeSync(descriptor);
+  }
+}
 
 export function readLoadWitness({ stateDir }) {
   const file = path.join(stateDir, LOAD_WITNESS_FILE);
@@ -37,7 +55,7 @@ export function isCoreLoadCandidate(filePath) {
     && filePath.replaceAll('\\', '/').toLowerCase().endsWith('/rules/codex-bridge/core.md');
 }
 
-export async function recordCoreLoad({ stateDir, input, now = new Date(), readFile = readCoreBytes }) {
+export async function recordCoreLoad({ stateDir, input, now = new Date(), readCore = readBoundedCoreBytes }) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
     return { recorded: false, reason: 'invalid-input' };
   }
@@ -53,8 +71,11 @@ export async function recordCoreLoad({ stateDir, input, now = new Date(), readFi
 
   let sha256 = null;
   let readError;
+  let hashSkippedReason;
   try {
-    sha256 = createHash('sha256').update(readFile(input.file_path)).digest('hex');
+    const bytes = readCore(input.file_path);
+    if (bytes === null) hashSkippedReason = 'core-too-large';
+    else sha256 = createHash('sha256').update(bytes).digest('hex');
   } catch (error) {
     readError = error.code ?? null;
   }
@@ -79,6 +100,7 @@ export async function recordCoreLoad({ stateDir, input, now = new Date(), readFi
       session.loads.push({
         path: input.file_path, loadReason: input.load_reason, memoryType: input.memory_type ?? null,
         sha256, at, ...(readError !== undefined ? { readError } : {}),
+        ...(hashSkippedReason !== undefined ? { hashSkippedReason } : {}),
       });
     }
     session.transcriptPath ??= input.transcript_path;
