@@ -79,6 +79,31 @@ test('missing or different SHA-256 fails before missing or mismatched transcript
   }
 });
 
+test('D15 oversized project core fails before hash comparison and transcript version checks', () => {
+  for (const sha256 of [null, frozenSha256]) {
+    const witness = withLoads([{ ...load, sha256, hashSkippedReason: 'core-too-large' }]);
+    assert.deepEqual(judgeCell(inputs({ witness, transcriptVersion: undefined })), {
+      outcome: 'failed', reason: 'installed core exceeds the package size ceiling',
+    });
+  }
+});
+
+test('D15 oversized markers do not change invariant, corrupt-witness or exact-load precedence', () => {
+  const oversized = { ...load, sha256: null, hashSkippedReason: 'core-too-large' };
+  const witness = withLoads([oversized]);
+  assert.deepEqual(judgeCell(inputs({ witness, invariant: 'earlier invariant' })), {
+    outcome: 'failed', reason: 'earlier invariant',
+  });
+  assert.deepEqual(judgeCell(inputs({ witness: { ...witness, corrupt: true } })), {
+    outcome: 'failed', reason: 'Load witness is corrupt.',
+  });
+  for (const unrelated of [{ ...oversized, path: '/other/core.md' }, { ...oversized, loadReason: 'manual' }]) {
+    assert.equal(judgeCell(inputs({ witness: withLoads([unrelated]) })).outcome, 'inconclusive');
+    assert.equal(judgeCell(inputs({ witness: withLoads([unrelated, load]) })).outcome, 'verified');
+  }
+  assert.equal(judgeCell(inputs({ witness: withLoads([{ ...load, hashSkippedReason: 'another-reason' }]) })).outcome, 'verified');
+});
+
 test('missing transcript version is inconclusive after a matching witness', () => {
   for (const transcriptVersion of [undefined, null, '']) {
     const result = judgeCell(inputs({ transcriptVersion }));

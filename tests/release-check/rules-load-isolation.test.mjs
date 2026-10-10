@@ -101,15 +101,106 @@ test('git init is injected, hidden, shell-free, timed, and protected from inheri
 });
 
 test('git init failures throw with stderr, and required inputs stay loud', () => {
+  // D15 / review B8: failed construction must leave no unreturned role tree.
+  const failureRoot = makeTempTree('git-failures-');
   for (const result of [
     { status: 1, stderr: 'git boundary refused' },
     { status: 0, signal: 'SIGTERM', stderr: 'git boundary refused' },
     { status: null, error: new Error('spawn failed'), stderr: 'git boundary refused' },
   ]) {
-    assert.throws(() => createRoleTree({ role: 'cli', tmpRoot, run: () => result }), /git boundary refused/);
+    assert.throws(() => createRoleTree({ role: 'cli', tmpRoot: failureRoot, run: () => result }), (error) => {
+      assert.equal(error.message, `git init failed: ${result.error?.message ?? result.signal ?? result.status}\ngit boundary refused`);
+      return true;
+    });
+    assert.deepEqual(fs.readdirSync(failureRoot), []);
   }
   assert.throws(() => createRoleTree({ role: '../escape', tmpRoot, run: spawnSync }), /role name/);
   assert.throws(() => createRoleTree({ role: 'cli', tmpRoot }), /runner is required/);
+});
+
+test('throwing git runner leaves no partial tree and rethrows the original error', () => {
+  const failureRoot = makeTempTree('runner-failure-');
+  const cause = new Error('runner construction cause');
+  assert.throws(() => createRoleTree({ role: 'cli', tmpRoot: failureRoot, run() { throw cause; } }),
+    (error) => error === cause);
+  assert.equal(cause.message, 'runner construction cause');
+  assert.deepEqual(fs.readdirSync(failureRoot), []);
+});
+
+test('each directory maker failure removes the partial tree and preserves its original cause', (t) => {
+  const failureRoot = makeTempTree('mkdir-failures-');
+  const mkdir = fs.mkdirSync;
+  for (const name of ['project', 'brand', 'codex', 'runs']) {
+    const cause = Object.assign(new Error(`mkdir ${name} refused`), { code: 'EACCES' });
+    t.mock.method(fs, 'mkdirSync', (file, ...args) => {
+      if (path.basename(file) === name) throw cause;
+      return mkdir(file, ...args);
+    });
+    assert.throws(() => createRoleTree({ role: 'cli', tmpRoot: failureRoot, run() {
+      assert.fail('runner must not execute after mkdir failure');
+    } }), (error) => error === cause);
+    assert.equal(cause.message, `mkdir ${name} refused`);
+    assert.deepEqual(fs.readdirSync(failureRoot), []);
+    t.mock.restoreAll();
+  }
+});
+
+test('construction cleanup synchronously retries all transient Windows lock codes', (t) => {
+  const failureRoot = makeTempTree('construction-retries-');
+  const remove = fs.rmSync;
+  const cause = new Error('original runner error');
+  let attempts = 0;
+  t.mock.method(fs, 'rmSync', (root, options) => {
+    assert.equal(path.dirname(root), failureRoot);
+    assert.match(path.basename(root), /^codex-bridge-release-check-/);
+    assert.deepEqual(options, { recursive: true, force: true });
+    const code = ['EPERM', 'EBUSY', 'ENOTEMPTY'][attempts++];
+    if (code) throw Object.assign(new Error(code), { code });
+    return remove(root, options);
+  });
+  assert.throws(() => createRoleTree({ role: 'cli', tmpRoot: failureRoot, run() { throw cause; } }),
+    (error) => error === cause);
+  assert.equal(attempts, 4);
+  assert.equal(cause.message, 'original runner error');
+  assert.deepEqual(fs.readdirSync(failureRoot), []);
+});
+
+test('non-retryable cleanup failure retains the original error and reports the remaining root', (t) => {
+  const failureRoot = makeTempTree('removal-failure-');
+  const cause = new Error('original construction failure');
+  let remainingRoot;
+  let attempts = 0;
+  t.mock.method(fs, 'rmSync', (root) => {
+    remainingRoot = root;
+    attempts++;
+    throw Object.assign(new Error('removal refused'), { code: 'EACCES' });
+  });
+  assert.throws(() => createRoleTree({ role: 'cli', tmpRoot: failureRoot, run() { throw cause; } }),
+    (error) => error === cause);
+  assert.equal(attempts, 1);
+  assert.equal(cause.message, `original construction failure\nCannot remove partial role tree: ${remainingRoot}`);
+  assert.deepEqual(fs.readdirSync(failureRoot), [path.basename(remainingRoot)]);
+  assert.ok(fs.statSync(remainingRoot).isDirectory());
+});
+
+test('persistent construction cleanup locks stop after the bounded retry window', { timeout: 10_000 }, (t) => {
+  const failureRoot = makeTempTree('persistent-lock-');
+  const cause = new Error('original locked construction failure');
+  let remainingRoot;
+  let attempts = 0;
+  t.mock.method(fs, 'rmSync', (root) => {
+    remainingRoot = root;
+    attempts++;
+    throw Object.assign(new Error('persistent lock'), { code: 'EBUSY' });
+  });
+  const started = Date.now();
+  assert.throws(() => createRoleTree({ role: 'cli', tmpRoot: failureRoot, run() { throw cause; } }),
+    (error) => error === cause);
+  const elapsed = Date.now() - started;
+  assert.ok(attempts > 1);
+  assert.ok(elapsed >= 2000 && elapsed < 5000, `retry window took ${elapsed}ms`);
+  assert.equal(cause.message, `original locked construction failure\nCannot remove partial role tree: ${remainingRoot}`);
+  assert.deepEqual(fs.readdirSync(failureRoot), [path.basename(remainingRoot)]);
 });
 
 test('installer uses only Node and the project install with the isolated environment and timeout', () => {

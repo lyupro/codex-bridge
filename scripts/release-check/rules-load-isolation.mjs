@@ -23,19 +23,38 @@ export function createRoleTree({ role, tmpRoot = os.tmpdir(), run }) {
   }
   if (typeof run !== 'function') throw new Error('The git runner is required.');
   const root = fs.mkdtempSync(path.join(tmpRoot, `${TREE_PREFIX}${role}-`));
-  const tree = { root };
-  for (const name of ['project', 'brand', 'codex', 'runs']) {
-    tree[name] = path.join(root, name);
-    fs.mkdirSync(tree[name]);
+  try {
+    const tree = { root };
+    for (const name of ['project', 'brand', 'codex', 'runs']) {
+      tree[name] = path.join(root, name);
+      fs.mkdirSync(tree[name]);
+    }
+    const result = run('git', ['init', '-q'], {
+      cwd: tree.project, env: isolatedEnv({ baseEnv: process.env, tree }),
+      shell: false, windowsHide: true, encoding: 'utf8', timeout: 10_000,
+    });
+    if (!result || result.error || result.signal || result.status !== 0) {
+      throw new Error(`git init failed: ${result?.error?.message ?? result?.signal ?? result?.status}\n${result?.stderr ?? ''}`);
+    }
+    return tree;
+  } catch (error) {
+    // D15 / review B8: the caller never receives a failed tree, so construction owns cleanup and preserves its cause.
+    const deadline = Date.now() + 2000;
+    const wait = new Int32Array(new SharedArrayBuffer(4));
+    for (;;) {
+      try {
+        fs.rmSync(root, { recursive: true, force: true });
+        break;
+      } catch (removalError) {
+        if (!RETRYABLE_CODES.has(removalError.code) || Date.now() >= deadline) {
+          error.message += `\nCannot remove partial role tree: ${root}`;
+          break;
+        }
+        Atomics.wait(wait, 0, 0, 25);
+      }
+    }
+    throw error;
   }
-  const result = run('git', ['init', '-q'], {
-    cwd: tree.project, env: isolatedEnv({ baseEnv: process.env, tree }),
-    shell: false, windowsHide: true, encoding: 'utf8', timeout: 10_000,
-  });
-  if (!result || result.error || result.signal || result.status !== 0) {
-    throw new Error(`git init failed: ${result?.error?.message ?? result?.signal ?? result?.status}\n${result?.stderr ?? ''}`);
-  }
-  return tree;
 }
 
 export function isolatedEnv({ baseEnv, tree }) {

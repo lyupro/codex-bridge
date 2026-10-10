@@ -22,6 +22,10 @@ export function judgeCell({ witness, expectedPath, frozenSha256, sessionId, tran
     : undefined;
   // Advice A6 in D12: absence of the exact project event cannot prove a load failure.
   if (!load) return { outcome: 'inconclusive', reason: 'No session_start witness for the expected project core in this session.' };
+  // D15 / review B8: an oversized core violates the package invariant before any hash or version comparison.
+  if (load.hashSkippedReason === 'core-too-large') {
+    return { outcome: 'failed', reason: 'installed core exceeds the package size ceiling' };
+  }
   if (load.sha256 !== frozenSha256) return { outcome: 'failed', reason: 'Project-core witness SHA-256 differs from the frozen SHA-256.' };
   if (!transcriptVersion) return { outcome: 'inconclusive', reason: 'Transcript host version is missing.' };
   if (transcriptVersion !== preflightVersion) {
