@@ -49,7 +49,10 @@ function sourceCheck() {
 export function probeCodex() {
   const command = process.platform === 'win32' ? process.env.ComSpec || 'cmd.exe' : 'codex';
   const args = process.platform === 'win32' ? ['/d', '/s', '/c', 'codex --version'] : ['--version'];
-  const result = spawnSync(command, args, { encoding: 'utf8', windowsHide: true });
+  const result = spawnSync(command, args, { encoding: 'utf8', windowsHide: true, timeout: 15_000 });
+  if (result.error?.code === 'ETIMEDOUT') {
+    return { available: false, value: 'Codex CLI version check timed out after 15000 ms.' };
+  }
   if (result.error || result.status !== 0) {
     return { available: false, value: (result.stderr || result.error?.message || 'not found').trim() };
   }
@@ -82,6 +85,7 @@ function dispatcherContractChecks({ record, version, stateDir }) {
 export async function diagnose({
   host,
   codexProbe = probeCodex,
+  sandbox,
   bridgeProbe = probeCodexBridge,
   launcherProbe,
   currentPackage,
@@ -197,6 +201,7 @@ export async function diagnose({
 
   const codex = codexProbe();
   checks.push(check('codex', codex.available ? 'ok' : 'warn', codex.value || 'available'));
+  if (typeof sandbox === 'function') checks.push(...await sandbox({ codexAvailable: codex.available }));
   const nodeMajor = Number.parseInt(process.versions.node.split('.')[0], 10);
   checks.push(check('node', nodeMajor >= 24 ? 'ok' : 'fail', `${process.versions.node} (requires >=24)`));
   // Plan_77 D6: catch a corrupt move record without aborting doctor, and share one resolution.
@@ -216,7 +221,7 @@ export async function diagnose({
       || claudeRules.status === 'fail'
       || hostContractStatus === 'fail' || retention.status === 'fail' || conventions.status === 'fail'
       || runsRoot.status === 'fail' || projectRuns.status === 'fail'
-      || checks.some((item) => /^(hook|dispatcherContract|dispatcherModel):/.test(item.key) && item.status === 'fail')
+      || checks.some((item) => /^(hook|dispatcherContract|dispatcherModel|sandbox):/.test(item.key) && item.status === 'fail')
       || checks.some((item) => item.key.startsWith('otherHost:') && item.status === 'fail') ? 1 : 0,
     checks,
     record,

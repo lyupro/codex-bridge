@@ -4,8 +4,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { resolveBrandHome } from '../src/home/lib/brand-home.mjs';
 import { claudePaths } from '../src/home/lib/claude-layout.mjs';
+import { resolveCodexHome } from '../src/home/lib/codex-home.mjs';
 
-function repositoryRoot(start) {
+export function repositoryRoot(start) {
   let current = path.resolve(start);
   while (true) {
     if (fs.existsSync(path.join(current, '.git'))) return current;
@@ -23,7 +24,7 @@ export function resolveHost({
   codexHome,
   brandRoot,
 } = {}) {
-  const resolvedCodexHome = codexHome || process.env.CODEX_HOME || path.join(homedir, '.codex');
+  const resolvedCodexHome = codexHome || resolveCodexHome({ homedir });
   const codexRulesDir = path.join(resolvedCodexHome, 'rules');
   // Plan_25 moves package-owned runtime files out of foreign Claude settings, whose absolute
   // hook paths caused the package-file-layout incident. Keep the brand root overrideable so tests
