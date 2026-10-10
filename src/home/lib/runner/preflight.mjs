@@ -14,12 +14,15 @@ import { die } from './args.mjs';
 import { orderInputName } from '../order-schema.mjs';
 import { retiredPathRefusal, runsRootResolution } from './runs-root.mjs';
 
-/** Plan_60 D2: only conclusive evidence says UNAVAILABLE; an unclear probe stays an ordinary refusal. */
+/** Plan_60 D2: only conclusive evidence says UNAVAILABLE; a PATH miss is inconclusive (Plan_78 D5). */
 export async function codexAvailabilityRefusal({ probe = probeCodexAvailability } = {}) {
   const result = await probe();
   if (result.state === 'available') return null;
-  const unavailable = result.state === 'missing' || result.state === 'logged-out';
-  const rows = unavailable ? unavailableRows(result.detail) : [
+  const unavailable = result.state === 'logged-out';
+  const rows = unavailable ? unavailableRows(result.detail) : result.pathMiss === true ? [
+    `Codex CLI readiness unconfirmed: ${result.detail}`,
+    'Do not skip this bridge: check codex --version for up to about 2 minutes; when it answers, repeat the same order exactly once; if it does not answer, hand the order to the next executor and name that in the summary.',
+  ] : [
     `Codex CLI unavailable: ${result.detail}`,
     'Operator check: codex --version (and codex login if authorization is rejected)',
   ];

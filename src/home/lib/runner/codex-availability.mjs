@@ -1,5 +1,5 @@
 /**
- * Decides from conclusive evidence only whether Codex is missing, signed out, available, or cannot be judged.
+ * Decides from conclusive evidence only whether Codex is signed out, available, or cannot be judged.
  * Plan_60 D2: an inconclusive probe must never become "do not retry".
  */
 import { resolveCommandOnPath } from '../command-path.mjs';
@@ -21,10 +21,19 @@ function failureDetail(result, command) {
 export async function probeCodexAvailability({
   env = process.env, platform = process.platform,
   run = spawnCaptured, resolve = resolveCommandOnPath, timeoutMs = PROBE_TIMEOUT_MS,
+  retryDelayMs = 1_000, delay = (ms) => new Promise((done) => setTimeout(done, ms)),
 } = {}) {
   try {
     if (resolve('codex', env) === null) {
-      return { state: 'missing', detail: 'codex is not on PATH' };
+      // Plan_78 D5: the 2026-10-10 TradeForge refusal during an npm update showed that
+      // a transient PATH miss cannot prove absence; retry once before leaving readiness unconfirmed.
+      await delay(retryDelayMs);
+      if (resolve('codex', env) === null) {
+        return {
+          state: 'inconclusive', pathMiss: true,
+          detail: 'codex could not be resolved in this process PATH; readiness is unconfirmed',
+        };
+      }
     }
     const capture = (args) => {
       const spec = codexSpawnSpec(args, platform);

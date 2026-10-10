@@ -9,10 +9,10 @@ test('available Codex does not refuse', async () => {
   assert.equal(refusal, null);
 });
 
-// Plan_60 D2: only completed evidence of absence or sign-out may tell the dispatcher not to retry.
-for (const state of ['missing', 'logged-out']) {
+// Plan_78 D5: only completed evidence of sign-out may tell the dispatcher not to retry.
+for (const state of ['logged-out']) {
   test(`${state} Codex returns the shared UNAVAILABLE rows without spending quota`, async () => {
-    const detail = state === 'missing' ? 'codex is not on PATH' : 'codex login status: Not logged in';
+    const detail = 'codex login status: Not logged in';
     const refusal = await codexAvailabilityRefusal({ probe: async () => ({ state, detail }) });
     assert.equal(refusal.unavailable, true);
     const rows = refusal.text.split('\n');
@@ -23,6 +23,21 @@ for (const state of ['missing', 'logged-out']) {
     assert.equal(rows.at(-1), quotaRow);
   });
 }
+
+test('a PATH miss keeps the bridge eligible with the exact recovery and quota rows', async () => {
+  const detail = 'codex could not be resolved in this process PATH; readiness is unconfirmed';
+  const refusal = await codexAvailabilityRefusal({
+    probe: async () => ({ state: 'inconclusive', pathMiss: true, detail }),
+  });
+  assert.deepEqual(refusal, {
+    unavailable: false,
+    text: [
+      `Codex CLI readiness unconfirmed: ${detail}`,
+      'Do not skip this bridge: check codex --version for up to about 2 minutes; when it answers, repeat the same order exactly once; if it does not answer, hand the order to the next executor and name that in the summary.',
+      quotaRow,
+    ].join('\n'),
+  });
+});
 
 test('inconclusive evidence keeps the exact ordinary three-row refusal', async () => {
   const detail = 'codex login status timed out';

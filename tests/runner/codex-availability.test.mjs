@@ -26,11 +26,13 @@ function fixture(results, overrides = {}) {
   return { calls, probe: () => probeCodexAvailability(options) };
 }
 
-test('missing command is resolved in the supplied env before any spawn', async () => {
+test('two PATH misses in the supplied env leave readiness inconclusive before any spawn', async () => {
   const env = { PATH: '/empty', CODEX_HOME: '/auth' };
   let resolutions = 0;
+  const delays = [];
   const { probe, calls } = fixture([], {
     env,
+    delay: async (ms) => { delays.push(ms); },
     resolve: (command, receivedEnv) => {
       resolutions += 1;
       assert.equal(command, 'codex');
@@ -38,9 +40,33 @@ test('missing command is resolved in the supplied env before any spawn', async (
       return null;
     },
   });
-  assert.deepEqual(await probe(), { state: 'missing', detail: 'codex is not on PATH' });
-  assert.equal(resolutions, 1);
+  assert.deepEqual(await probe(), {
+    state: 'inconclusive', pathMiss: true,
+    detail: 'codex could not be resolved in this process PATH; readiness is unconfirmed',
+  });
+  assert.equal(resolutions, 2);
+  assert.deepEqual(delays, [1000]);
   assert.equal(calls.length, 0);
+});
+
+test('a PATH miss then a hit retries once with the injected delay before version and login status', async () => {
+  const env = { PATH: '/updating', CODEX_HOME: '/auth' };
+  const events = [];
+  let resolutions = 0;
+  const { probe, calls } = fixture([success, success], {
+    env,
+    retryDelayMs: 42,
+    delay: async (ms) => { events.push(['delay', ms]); },
+    resolve: (command, receivedEnv) => {
+      assert.equal(command, 'codex');
+      assert.equal(receivedEnv, env);
+      events.push(['resolve', ++resolutions]);
+      return resolutions === 1 ? null : '/fake/codex';
+    },
+  });
+  assert.deepEqual(await probe(), { state: 'available' });
+  assert.deepEqual(events, [['resolve', 1], ['delay', 42], ['resolve', 2]]);
+  assert.deepEqual(calls.map(({ args }) => args), [['--version'], ['login', 'status']]);
 });
 
 test('version failure stops before login and uses the last non-empty stderr line', async () => {
@@ -52,8 +78,12 @@ test('version failure stops before login and uses the last non-empty stderr line
 });
 
 test('signed in is available only after version then login status', async () => {
-  const { probe, calls } = fixture([success, success]);
+  const delays = [];
+  const { probe, calls } = fixture([success, success], {
+    delay: async (ms) => { delays.push(ms); },
+  });
   assert.deepEqual(await probe(), { state: 'available' });
+  assert.deepEqual(delays, []);
   assert.deepEqual(calls.map(({ command, args }) => ({ command, args })), [
     { command: 'codex', args: ['--version'] },
     { command: 'codex', args: ['login', 'status'] },
@@ -144,9 +174,25 @@ test('Windows probes use ComSpec and the shared spawn specification', async () =
   }
 });
 
-test('resolver exceptions cannot become missing', async () => {
+test('resolver exceptions cannot become absence', async () => {
   const { probe, calls } = fixture([], { resolve: () => { throw new Error('cannot inspect PATH'); } });
   assert.deepEqual(await probe(), { state: 'inconclusive', detail: 'cannot inspect PATH' });
+  assert.equal(calls.length, 0);
+});
+
+test('a resolver exception on retry stays inconclusive without claiming a PATH miss', async () => {
+  let resolutions = 0;
+  const delays = [];
+  const { probe, calls } = fixture([], {
+    delay: async (ms) => { delays.push(ms); },
+    resolve: () => {
+      if (++resolutions === 1) return null;
+      throw new Error('cannot inspect PATH');
+    },
+  });
+  assert.deepEqual(await probe(), { state: 'inconclusive', detail: 'cannot inspect PATH' });
+  assert.equal(resolutions, 2);
+  assert.deepEqual(delays, [1000]);
   assert.equal(calls.length, 0);
 });
 
