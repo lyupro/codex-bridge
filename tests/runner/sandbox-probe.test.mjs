@@ -1,6 +1,9 @@
 /** Guards Plan_57's host verdict without starting Codex or spending quota. */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { withTempTree } from '../temp-tree.mjs';
 import { sandboxModeFor } from '../../src/home/lib/runner/codex-args.mjs';
 import { codexSpawnSpec } from '../../src/home/lib/runner/codex-cmd.mjs';
 import {
@@ -11,6 +14,17 @@ const repo = 'C:\\repository with spaces & punctuation';
 const success = { status: 0, stdout: `${MARKER}\r\n` };
 const failure = { status: 1 };
 const version = { status: 0, stdout: 'codex-cli fixture' };
+const now = new Date(2026, 9, 10, 12);
+const locked = 'runtime read/execute validation failed: C:\\Codex\\runtimes\\file.dll: '
+  + 'open ACL target for root-only update: C:\\Codex\\runtimes\\file.dll (os error 32)';
+
+function logFixture(codexHome) {
+  const folder = path.join(codexHome, '.sandbox');
+  fs.mkdirSync(folder, { recursive: true });
+  const day = [now.getFullYear(), String(now.getMonth() + 1).padStart(2, '0'),
+    String(now.getDate()).padStart(2, '0')].join('-');
+  return path.join(folder, `sandbox.${day}.log`);
+}
 
 function fixture(replies) {
   const calls = [];
@@ -26,9 +40,13 @@ function fixture(replies) {
 }
 
 async function probe(replies, options = {}) {
-  const { run, calls } = fixture(replies);
-  const result = await probeSandbox({ agent: 'codex-scout', repo, platform: 'win32', ...options, run });
-  return { result, calls };
+  return withTempTree('sandbox-probe-', async (codexHome) => {
+    const { run, calls } = fixture(replies);
+    const result = await probeSandbox({ agent: 'codex-scout', repo, platform: 'win32', codexHome,
+      ...options, run });
+    if (result.outcome !== 'dead') assert.equal(Object.hasOwn(result, 'diagnosis'), false);
+    return { result, calls };
+  });
 }
 
 function assertAttempts(result, calls, forms) {
@@ -173,7 +191,9 @@ test('a flagged marker needs exit zero and cannot override an interrupted attemp
 });
 
 test('darwin is skipped immediately without running or validating an unused role', async () => {
-  const { result, calls } = await probe({}, { platform: 'darwin', agent: 'codex-unknown', repo: undefined });
+  const { result, calls } = await probe({}, { platform: 'darwin', agent: 'codex-unknown', repo: undefined,
+    codexHome: path.join(repo, 'nonexistent-codex-home'),
+    clock: () => { throw new Error('skipped platforms must not snapshot logs'); } });
   assert.deepEqual(result, { outcome: 'skipped' });
   assert.equal(calls.length, 0);
 });
@@ -274,11 +294,90 @@ test('codexSpawnSpec uses ComSpec when set and cmd.exe when absent', () => {
 });
 
 test('a promise-returning injected run still proves the sandbox alive', async () => {
-  const { run, calls } = fixture({ flagged: success });
-  const result = await probeSandbox({
-    agent: 'codex-scout', repo, platform: 'win32',
-    run: (...args) => Promise.resolve(run(...args)),
+  await withTempTree('sandbox-probe-async-', async (codexHome) => {
+    const { run, calls } = fixture({ flagged: success });
+    const result = await probeSandbox({
+      agent: 'codex-scout', repo, platform: 'win32', codexHome,
+      run: (...args) => Promise.resolve(run(...args)),
+    });
+    assert.equal(result.outcome, 'alive');
+    assert.equal(Object.hasOwn(result, 'diagnosis'), false);
+    assertAttempts(result, calls, ['flagged']);
   });
-  assert.equal(result.outcome, 'alive');
-  assertAttempts(result, calls, ['flagged']);
+});
+
+// The 2026-10-10 TradeForge refusals exposed only "setup refresh had errors"; the log must
+// explain the failure without turning a stale incident into advice for the current probe.
+test('a log error appended during the flagged attempt supplies the shared diagnosis and repair', async () => {
+  await withTempTree('sandbox-probe-fresh-', async (codexHome) => {
+    const log = logFixture(codexHome);
+    const { run, calls } = fixture({ flagged: failure, control: failure, version });
+    const result = await probeSandbox({ agent: 'codex-scout', repo, platform: 'win32', codexHome,
+      clock: () => now, run: (...args) => {
+        const response = run(...args);
+        if (calls.at(-1).form === 'flagged') fs.appendFileSync(log, `${locked}\n`);
+        return response;
+      } });
+    assert.equal(result.outcome, 'dead');
+    assert.equal(result.diagnosis.signature.id, 'runtime-file-locked');
+    assert.equal(result.diagnosis.attributed, true);
+    assert.deepEqual(result.diagnosis.lines, [locked]);
+    const paragraphs = sandboxRefusal(result, 'win32').split('\n\n');
+    assert.ok(paragraphs.at(-2).includes(result.diagnosis.signature.summary));
+    assert.ok(paragraphs.at(-2).includes(result.diagnosis.signature.repair));
+    assert.match(paragraphs.at(-3), /^control stderr:/);
+    assert.equal(paragraphs.at(-1), 'The run folder was not created; quota was not spent.');
+  });
+});
+
+test('a log error written before the probe stays unattributed and supplies only fallback advice', async () => {
+  await withTempTree('sandbox-probe-stale-', async (codexHome) => {
+    fs.writeFileSync(logFixture(codexHome), `${locked}\n`);
+    const { result } = await probe({ flagged: failure, control: failure, version },
+      { codexHome, clock: () => now });
+    assert.equal(result.outcome, 'dead');
+    assert.equal(result.diagnosis.attributed, false);
+    assert.equal(result.diagnosis.signature, null);
+    assert.deepEqual(result.diagnosis.lines, [locked]);
+    assert.ok(sandboxRefusal(result, 'win32').includes('No verified repair signature; inspect this log.'));
+  });
+});
+
+test('alive and inconclusive outcomes snapshot once and never request a diagnosis', async () => {
+  for (const flagged of [success, { status: 2 }]) {
+    let clockCalls = 0;
+    const { result } = await probe({ flagged }, { clock: () => { clockCalls += 1; return now; } });
+    assert.equal(clockCalls, 1);
+    assert.equal(Object.hasOwn(result, 'diagnosis'), false);
+  }
+});
+
+test('a diagnosis throw preserves the dead verdict with a null diagnosis', async () => {
+  let clockCalls = 0;
+  const { result } = await probe({ flagged: failure, control: failure, version },
+    { clock: () => ++clockCalls === 1 ? now : null });
+  assert.equal(clockCalls, 2);
+  assert.equal(result.outcome, 'dead');
+  assert.equal(result.diagnosis, null);
+  assert.match(result.reason, /cannot start a process/);
+});
+
+test('a snapshot throw preserves the dead verdict with a null diagnosis', async () => {
+  const { result } = await probe({ flagged: failure, control: failure, version },
+    { clock: () => { throw new Error('clock unavailable'); } });
+  assert.equal(result.outcome, 'dead');
+  assert.equal(result.diagnosis, null);
+});
+
+test('a refusal without diagnosis preserves the exact existing text', () => {
+  const result = { reason: 'The Codex sandbox on this host cannot start a process.', attempts: [
+    { form: 'flagged', stderrTail: 'setup refresh had errors\r\nsecond line' },
+    { form: 'control', stderrTail: '' }, { form: 'version', stderrTail: 'ignored' },
+  ] };
+  const expected = [result.reason, 'Repair the host sandbox; do not rewrite or retry the order.',
+    `Operator check (run from the repository directory): codex sandbox -- cmd /d /c echo ${MARKER}`,
+    'flagged stderr:\n> setup refresh had errors\n> second line', 'control stderr:\n> (empty)',
+    'The run folder was not created; quota was not spent.'].join('\n\n');
+  assert.equal(sandboxRefusal(result, 'win32'), expected);
+  assert.equal(sandboxRefusal({ ...result, diagnosis: null }, 'win32'), expected);
 });

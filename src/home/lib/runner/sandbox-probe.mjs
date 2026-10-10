@@ -3,6 +3,8 @@ import { performance } from 'node:perf_hooks';
 import { sandboxModeFor } from './codex-args.mjs';
 import { codexSpawnSpec, spawnCaptured } from './codex-cmd.mjs';
 import { platformSandboxArgs } from './sandbox-flags.mjs';
+import { resolveCodexHome } from '../codex-home.mjs';
+import { snapshotSandboxLogs, diagnoseSandbox, formatSandboxDiagnosis } from './sandbox-diagnosis.mjs';
 
 export const SANDBOX_PROBE_MARKER = 'codex-bridge-sandbox-ok';
 // Plan_57 D12/D19: a platform is judged only after both outcomes were seen live. Linux joined on
@@ -37,13 +39,37 @@ function inconclusiveReason(result, form) {
 
 export async function probeSandbox({
   agent, repo, platform = process.platform, run = spawnCaptured, timeoutMs = 30_000,
+  codexHome = resolveCodexHome(), clock = () => new Date(),
 }) {
   if (!PROBED_PLATFORMS.has(platform)) return { outcome: 'skipped' };
   const sandbox = sandboxModeFor(agent);
   if (typeof repo !== 'string' || !repo) throw new Error('sandbox probe requires a repository path');
   const echo = echoArgs(platform);
   const attempts = [];
-  const finish = (outcome, reason) => ({ outcome, reason, attempts });
+  // The 2026-10-10 TradeForge refusals showed only "setup refresh had errors"; capture the
+  // baseline before any attempt so old log errors cannot prescribe a repair for this probe.
+  let before = null;
+  try {
+    before = snapshotSandboxLogs({ codexHome, now: clock() });
+  } catch {
+    // Same rule as the diagnosis below: a log that cannot be read never stops the probe.
+  }
+  const finish = (outcome, reason) => {
+    const result = { outcome, reason, attempts };
+    if (outcome === 'dead') {
+      if (before === null) {
+        result.diagnosis = null;
+        return result;
+      }
+      // D2: logs, like stderr, are operator evidence, never input to the verdict.
+      try {
+        result.diagnosis = diagnoseSandbox({ codexHome, before, now: clock() });
+      } catch {
+        result.diagnosis = null;
+      }
+    }
+    return result;
+  };
   const attempt = async (form, args) => {
     const spec = codexSpawnSpec(args, platform);
     const started = performance.now();
@@ -104,6 +130,8 @@ export function sandboxRefusal(result, platform = process.platform) {
     ...(platform === 'linux' ? [LINUX_REPAIR] : []),
     `Operator check (run from the repository directory): ${control}`,
     ...stderr,
+    ...(result.diagnosis && typeof result.diagnosis === 'object'
+      ? [formatSandboxDiagnosis(result.diagnosis).join('\n')] : []),
     'The run folder was not created; quota was not spent.',
   ].join('\n\n');
 }
