@@ -176,11 +176,15 @@ and dots cannot be a safe directory name.
 For `codex-build`, `scope:` is required in the header and contains comma-separated glob patterns relative to
 the repository root. The runner refuses before creating a paid call if scope is empty.
 
+<!-- service-folders:begin -->
 Pattern format is checked before Codex starts for all agents that accept scope patterns. The
 refusal is immediate and free if a pattern cannot match anything: an absolute path or drive path,
 backslashes, a `..` segment, a pattern inside a service directory (`.git/`, `.claude/`, `.codex/`,
 `.omx/`, `.omc/`, `node_modules/`, which no scope can authorise — the verdict fails every change
-there), or a pattern that matches no file in the repository. The file list
+there), or a pattern that matches no file in the repository.
+<!-- service-folders:end -->
+
+The file list
 comes from the repository itself: `git ls-files --cached --others --exclude-standard`, meaning
 tracked plus new uncommitted files, excluding ignored files; a directory without git is traversed manually while
 skipping `.git` and `node_modules`. Before scope validation moved ahead of execution, such a scope
@@ -199,10 +203,14 @@ hole: declaring `muse/scripts` as a new-file scope passed validation, then autho
 while every file created inside the folder counted as a stray, and the 2026-09-19 run was failed after
 ten minutes of finished work.
 
+<!-- service-folders:begin -->
 Scope is more than an instruction in the prompt. Before and after the run, the runner snapshots
 the tree, computes the paths actually touched, and ends the run with `FAIL` if a path is not
 covered by any pattern. Service directories `.git/`, `.claude/`, `.codex/`, `.omx/`, `.omc/`,
-and `node_modules/` cannot be allowed through scope. Paths classified by configuration as
+and `node_modules/` cannot be allowed through scope.
+<!-- service-folders:end -->
+
+Paths classified by configuration as
 environment changes are excluded from this check and recorded separately in the report.
 
 ### Why `codex-build` declares an outcome

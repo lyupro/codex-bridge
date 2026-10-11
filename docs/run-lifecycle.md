@@ -58,6 +58,7 @@ complete job before detaching from the launcher.
    These task-contract refusals happen before the run folder exists and spend no quota.
 4. The repository root is determined through git; header `repository:` is used for a non-git directory
    and defaults to the current directory when omitted.
+   <!-- service-folders:begin -->
    Immediately afterward, `validateScope()` checks scope patterns against repository contents and
    rejects a pattern that cannot match: an absolute or drive path, backslashes, `..`, a pattern inside
    a service directory (`.git/`, `.claude/`, `.codex/`, `.omx/`, `.omc/`, `node_modules/` — the verdict
@@ -68,6 +69,7 @@ complete job before detaching from the launcher.
    the requirement to exist — and only from that one, because the exemption is what let a bare directory
    through on 2026-09-19 and failed a finished run for the files it created inside it. The repository root
    is needed before validation, which is why this check belongs here rather than in `parseArgs()`.
+   <!-- service-folders:end -->
 5. Immediately after resolving the project run folder, the launcher takes one claim for that run
    store and the exact, case-sensitive order id. The store is identified by `dev:ino`, so path aliases
    share the claim. `kernel-lock.mjs` supplies the same primitive as the install/update lifecycle lock:

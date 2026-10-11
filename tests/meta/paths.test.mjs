@@ -10,8 +10,31 @@ import path from 'node:path';
 import { makeTempTree } from '../temp-tree.mjs';
 import {
   globToRegExp, expandDeclared, line, readJson, safeSlice, snapshotMap, changedPaths,
+  SERVICE_FOLDERS, SERVICE_RE,
 } from '../../src/home/lib/meta/paths.mjs';
 import { encodeSnapshot } from '../../src/home/lib/meta/snapshot-format.mjs';
+
+// OW-064: one immutable list must preserve the existing scope and verdict prohibition.
+test('service folders are frozen and retain the six prohibited root names', () => {
+  assert.ok(Object.isFrozen(SERVICE_FOLDERS));
+  assert.deepEqual(SERVICE_FOLDERS, ['.omx', '.omc', '.claude', '.codex', '.git', 'node_modules']);
+});
+
+test('service matcher keeps literal root names, the slash boundary and existing flags', () => {
+  const previous = /^(\.omx|\.omc|\.claude|\.codex|\.git|node_modules)\//;
+  assert.equal(SERVICE_RE.source, previous.source);
+  assert.equal(SERVICE_RE.flags, previous.flags);
+  for (const name of SERVICE_FOLDERS) {
+    assert.equal(SERVICE_RE.test(`${name}/x`), true, name);
+    assert.equal(SERVICE_RE.test(`${name}/`), true, name);
+    for (const value of [name, `x/${name}/y`, `${name}x/a`, `${name.toUpperCase()}/x`]) {
+      assert.equal(SERVICE_RE.test(value), false, value);
+    }
+  }
+  for (const value of ['.gitignore', '.git', 'x/.git/y', '.omcx/a', 'node_modulesx/a', 'xgit/a']) {
+    assert.equal(SERVICE_RE.test(value), false, value);
+  }
+});
 
 // --- line -------------------------------------------------------------------------
 

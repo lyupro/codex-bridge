@@ -89,7 +89,12 @@ export const changedPaths = (before, after) => {
 };
 
 /** Directories a delegated build has no business editing, whatever the task says. */
-export const SERVICE_RE = /^(\.omx|\.omc|\.claude|\.codex|\.git|node_modules)\//;
+export const SERVICE_FOLDERS = Object.freeze([
+  '.omx', '.omc', '.claude', '.codex', '.git', 'node_modules',
+]);
+export const SERVICE_RE = new RegExp(
+  `^(${SERVICE_FOLDERS.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})/`,
+);
 
 /**
  * Paths arrive from two sides that spell them differently: git prints repo-relative with

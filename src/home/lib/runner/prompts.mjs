@@ -8,6 +8,7 @@
  * (`…cli/install.mjs:` + U+0000) and 2026-09-28 (`…(docs/plans/Plan_` + `恋`).
  */
 import { DEFAULTS } from '../run-config.mjs';
+import { SERVICE_FOLDERS } from '../meta/paths.mjs';
 import { RUN_ENV } from './run-env.mjs';
 import { advisorSchema, schemaFor } from './schemas.mjs';
 import { QUESTION_KIND } from './question-kind.mjs';
@@ -140,8 +141,7 @@ Working rules:
   (\`dir/{a,b}.ts\`), and lists separated by \`;\` or \`,\` are prohibited: a collapsed entry will
   match no file when the report is checked against the worktree and will fail the run even if
   the work was done honestly.
-- Do not fix the environment. Service directories (\`.omx/\`, \`.claude/\`, \`.codex/\`, \`.git/\`,
-  \`node_modules/\`) and other sessions are not your task, even if they prevent you from working
+- Do not fix the environment. Service directories (${SERVICE_FOLDERS.map((name) => `\`${name}/\``).join(', ')}) and other sessions are not your task, even if they prevent you from working
   or finishing. Put the obstacle in leftovers instead of changing them.
 - report_markdown is a full markdown report with sections: “What was done”, “Changes”
   (file / what changed / why table), “Verification” (command and its actual output),
