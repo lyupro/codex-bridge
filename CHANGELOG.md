@@ -4,6 +4,78 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Install and update place an always-loaded delegation core in the Claude Code host's
+  `rules/codex-bridge/core.md`: under `~/.claude/` for user scope or `<project>/.claude/` for
+  project scope. It has no `paths` frontmatter and stays within 2,400 characters, so the short
+  contract reaches every session without loading all the detailed guidance. This is separate
+  from the Codex execpolicy file. Uninstall removes package or recorded core bytes and the empty
+  package subfolder; edited or unknown files and links are kept and named, and the host's own
+  `rules/` folder stays.
+- The `doctor` row `claudeRules` checks the installed core against the package: missing or
+  differing bytes are `fail`, with `codex-bridge update --force` as the remedy; before installation
+  it is `warn`. A deleted or edited core previously left the installation looking healthy.
+- An observing `InstructionsLoaded` hook records session-start core paths and hashes in
+  `<home>/state/load-witness.json` without blocking host actions. The `doctor` rows
+  `claudeRulesLoad:<host version>` require the latest load at this owner's exact core path to
+  match the package hash, using the version from that same session's transcript. Missing, stale,
+  unreadable or oversized evidence is `warn`, never proof of a load failure; open a new Claude
+  Code session and rerun `doctor`. A newer differing or oversized load cannot be cleared by an
+  older match, and core reads are bounded to 7,200 bytes plus one overflow byte.
+- Each run row in `codex-bridge projects <project> --json` includes `path`, the absolute run
+  folder, so orchestrators can find earlier artifacts and write an `advice:` address without
+  deriving the run store from the package's installation directory.
+- Maintainers prove before a release, with
+  `npm run release-check:rules-load-claude -- --model <model>`, that both `claude` on `PATH` and
+  the VS Code extension's binary load a real project install's core. The script lives in the
+  repository and is not part of the npm package. Each target gets an isolated throwaway project; its exact core path, frozen hash and session host
+  version must match, and the check guards the operator's installation and cleans up its trees.
+  Attempts are saved to `docs/audits/release-checks/rules-load-claude.json` by default. Exit 0
+  means both targets verified, 1 means a failure, and 2 means inconclusive without a failure;
+  missing evidence blocks the release, and an oversized core fails it. The check does not start
+  Codex, because the earlier manual check raised a UAC prompt while trying to measure Claude.
+- `doctor` probes `sandbox:read-only` and `sandbox:workspace-write` sequentially before an
+  order first discovers a dead Codex sandbox: `ok` means alive, `fail` means dead with exit 1,
+  and inconclusive or unsupported checks are `warn`. Both a dead-sandbox row and an order's
+  pre-start refusal print the diagnosis from Codex's sandbox log and `setup_error.json`, because
+  the TradeForge refusal said only "setup refresh had errors" while the log named a locked
+  runtime file. Only lines attributed to the probe justify a repair signature for a locked
+  runtime file or corrupt deny-read state; other evidence stays raw with "No verified repair
+  signature". Unreadable logs do not change the verdict, and the package does not repair the host.
+
+- `codex-bridge guidance [<topic>]` prints the package's detailed rules for one topic; without a
+  topic it lists `order`, `advisor`, `budget`, `records` and `concurrency`. The rules core sends
+  the orchestrator here before it writes a task file and tells it to stop and show the output if
+  the command fails, so orchestrator prompts need no change. Text comes from the installed home
+  rather than the clone, because the seeded-config incident exposed that difference; unknown
+  topics or extra arguments exit 2, and an unreadable topic exits 1 and names `codex-bridge update`.
+
+### Changed
+
+- **Breaking for orchestrator prompts:** `UNAVAILABLE` now means a measured sign-out, not a
+  missing `codex` on `PATH`. A lookup miss is checked again after about a second; a second miss
+  is a free pre-start refusal starting "Codex CLI readiness unconfirmed", with exit 1 and no
+  run folder. Migration cost: replace the missing-CLI skip rule with checks of `codex --version`
+  for up to about two minutes, then repeat the same order exactly once if it answers. Otherwise,
+  or if that repeat gets the same refusal, hand the order to the next executor and name the
+  handoff in the summary; no second repeat. An npm update briefly rewrote the Codex shim and
+  caused an orchestrator to drop the bridge for the whole session.
+
+### Fixed
+
+- **Breaking for operators:** update refuses an unrecorded file at a newly planned path instead
+  of silently overwriting operator text, including the host rules core. The refusal names the
+  `unowned` path. Migration cost: review that file and use `--force` only if replacement is
+  intended; identical bytes are adopted without it. The existing migration for the package's
+  Codex rules file remains available to records from before rules were recorded.
+- Sandbox checks are bounded, and an inconclusive read-only check skips the workspace-write
+  check so a timed-out setup cannot race another probe. `codex --version` is also bounded.
+  Diagnosis reads only regular files in a real `.sandbox` folder, rejecting linked folders,
+  linked logs and special files that could redirect evidence or hang before a probe starts.
+
 ## [0.6.13] - 2026-10-08
 
 ### Added
