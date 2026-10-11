@@ -387,6 +387,10 @@ dead or foreign process, `unverified` when its end cannot be proven—rather tha
 dead run keeps in its `status.json` forever. A run without usage accounting does not zero the
 project total—known values are counted.
 
+Each run row in `codex-bridge projects <project> --json` includes `path`, the absolute run folder,
+alongside its `run` name. Use that address to read artifacts rather than deriving the run root
+from the package's installation directory; the store may be elsewhere.
+
 ### Cleaning the store
 
 ```bash
@@ -519,7 +523,7 @@ variable exists primarily for tests and installation on an isolated host: the op
 must not enter tests or configuration. `CODEX_BRIDGE_CWD` exists for the same reason and names the
 directory `update` treats as the operator's own, so a test can place a checkout somewhere other
 than the process it runs in; unset, the working directory is used. Exactly what Claude Code reads
-only from its own directories remains in `~/.claude`: agent files, slash commands, and hook
+only from its own directories remains in `~/.claude`: agent files, slash commands, the rules core, and hook
 registration in `settings.json`.
 
 A delegated run does not create subagents: the runner passes `-c agents.enabled=false`, so
@@ -572,6 +576,40 @@ If the key is absent, five default patterns apply:
 ```
 
 An empty list explicitly means that no path is considered an environment change.
+
+## Rules core, guidance and load witness
+
+`src/claude/rules/core.md` is copied to the host's `rules/codex-bridge/core.md`: user scope is
+`~/.claude/rules/codex-bridge/core.md`, project scope is `<project>/.claude/rules/codex-bridge/core.md`.
+Claude Code always loads this core because it has no `paths` frontmatter. It stays within
+`CORE_CHARACTER_CEILING` (2,400 characters), keeping the delegation contract in every session
+without loading all the detailed guidance. This is Claude Code's rules folder; the Codex
+execpolicy file `codex-bridge.rules` described above is a separate restriction on commands.
+
+Before writing an order, the core routes the orchestrator to `codex-bridge guidance [<topic>]`.
+Without a topic it lists `order` (header and scope), `advisor` (phases and grants), `budget`
+(deadline and slicing), `records` (finding and reading runs), and `concurrency` (parallel and
+writing runs). A topic prints the installed `<home>/guidance/<topic>.md`, copied from
+`src/home/guidance/`, rather than the clone's copy. The 2026-08-26 seeded-config incident showed
+why a command must read the host's actual installation. Unknown topics or more than one argument
+exit 2; an unreadable topic file exits 1, names the file and asks for `codex-bridge update`.
+On failure, the orchestrator stops and shows the output rather than guessing the contract.
+
+The `load-witness` hook observes `InstructionsLoaded` events with `load_reason: session_start`
+for the core and saves their paths and hashes in `<home>/state/load-witness.json`. It never
+refuses a host action. On 2026-10-10 the event arrived before the transcript existed, so the
+hook saves evidence immediately and `doctor` resolves the host version later from that exact
+session's transcript, not from `PATH`, `memory_type` or an entrypoint label.
+
+`doctor` prints `claudeRulesLoad:<host version>` as `ok` only when the latest load at this
+owner's exact core path matches the current package hash in a session of that version. A newer
+different hash makes an older match stale. Without usable matching evidence (including when
+the transcript is pending), or when the latest core's hash was skipped as oversized, it is
+`warn`, never `fail`; open a new Claude Code session and rerun `codex-bridge doctor`.
+A missing installation, unreadable witness or no known
+version produces a general `claudeRulesLoad` warning. The [artifact format](artifact-formats.md#stateload-witnessjson)
+describes the bounded read and saved fields. Installation health and witnessed loading answer
+different questions: lost hook evidence cannot prove that the host failed to load the core.
 
 ## Convention bundle
 
@@ -836,10 +874,11 @@ the host. `package.json`, required by npm outside that image, is the one documen
 
 | Root | What lives there |
 | --- | --- |
-| `~/.lyupro/.codex-bridge/` | runner and its modules (`lib/`), guards (`hooks/`), `config.json`, `conventions.md`, installation record `.installed.json` |
-| `~/.lyupro/.codex-bridge/state/` | Per-dispatcher state (pruned after 7 days), `host-observations.json` (sessions kept 7 days, hosts 30), `handback-witness.json`, `dispatcher-model.json`, `dispatcher-contract.json`, `reply-guard-tries.json`, and `diagnostics/*.last.json`; the witness and model ledgers are purge-only; `update` removes diagnostics formerly under `~/.claude/logs/` |
+| `~/.lyupro/.codex-bridge/` | runner and its modules (`lib/`), guards (`hooks/`), detailed guidance (`guidance/`), `config.json`, `conventions.md`, installation record `.installed.json` |
+| `~/.lyupro/.codex-bridge/state/` | Per-dispatcher state (pruned after 7 days), `host-observations.json` (sessions kept 7 days, hosts 30), `load-witness.json` (loads kept 30 days), `handback-witness.json`, `dispatcher-model.json`, `dispatcher-contract.json`, `reply-guard-tries.json`, and `diagnostics/*.last.json`; the witness and model ledgers are purge-only; `update` removes diagnostics formerly under `~/.claude/logs/` |
 | `~/.claude/agents/codex-bridge/` | four agent definitions—Claude Code reads them only from here |
 | `~/.claude/commands/codex-bridge/` | two command files: `/codex-bridge:env` and `/codex-bridge:usage` |
+| `~/.claude/rules/codex-bridge/` | always-loaded delegation core (`core.md`), copied without placeholder processing |
 | `~/.codex/rules/` | Codex CLI rules file; the directory is not ours |
 
 Agent and command markdown is placeholder-processed on install, and the frontmatter is re-emitted as
@@ -852,6 +891,14 @@ definition and checks its `name`, and the suite parses everything the installer 
 than warning: the drift that matters is a call form no permission rule matches, and a host in that
 state stops every delegation while looking healthy to a script. The remedy printed with it is
 `codex-bridge update --force`.
+
+`install` also places the rules core and `update` keeps it equal to the package. A foreign file
+already at the planned rules path but absent from the installation record is `unowned`: update
+stops rather than treating it as new and overwriting operator text (Plan_64 B2c). `--force`
+explicitly permits that overwrite. The `doctor` row `claudeRules` checks the installed core
+against the package: matching bytes are `ok`, missing or differing files are `fail` with
+`codex-bridge update --force` as the remedy; before installation it is `warn`. Presence and
+matching bytes do not by themselves prove that a host session loaded the file.
 
 Exactly this minimum remains in external directories: an agent file elsewhere means the agent
 does not exist. Symlinks from `~/.claude` to our directory were rejected—creating them on Windows
@@ -900,11 +947,25 @@ existing structure without replacing unrelated hooks and backs up the file befor
 What remains is to check `codex --version` and Codex CLI authorization—the package does not install
 them.
 
+`codex-bridge doctor` also probes the Codex sandbox before an order, sequentially for
+`sandbox:read-only` and `sandbox:workspace-write`, and names the probed repository or current
+folder. A live sandbox is `ok`, a dead one is `fail`, and an inconclusive or unsupported probe
+is `warn`; an inconclusive read-only probe prevents the writing probe from racing a setup that
+may still be running.
+
+A dead-sandbox row prints the diagnosis from `$CODEX_HOME/.sandbox/` logs and
+`setup_error.json`; an order refused for the same dead sandbox prints the same diagnosis.
+The 2026-10-10 TradeForge incident exposed only “setup refresh had errors” until the log named
+the locked runtime file. The diagnosis distinguishes lines appended during the probe from
+unattributed recent lines and offers a repair only for a verified incident signature. Otherwise
+it asks the operator to inspect the log; it does not guess or repair the host. For the separate
+PATH-miss readiness verdict and its recovery contract, see [verdict.md](verdict.md#statuses-and-process-codes).
+
 ## Uninstall and purge
 
 `codex-bridge uninstall` removes one host: its permission rules, its hooks, the agent and command
-files the package placed there, and its line in the home's installation record. The shared home
-(`~/.lyupro/.codex-bridge/`) is several hosts' at once, so the image in it goes only when the
+files and rules core the package placed there, and its line in the home's installation record.
+The shared home (`~/.lyupro/.codex-bridge/`) is several hosts' at once, so the image in it goes only when the
 leaving host was the last one recorded and its hooks are really gone; a host whose hooks could not
 be removed keeps everything it shares, so a repeat run after the fix finds it whole. A file is
 removed only when its content proves it is ours — the fingerprint recorded for this host, or an
@@ -966,6 +1027,38 @@ What purge cannot guarantee:
 - [`worker.json` contract](worker-contract.md)
 - [`status.json` and `meta.json` formats](artifact-formats.md)
 - [Verdict computation order](verdict.md)
+
+Before a release, maintainers can measure rules-core loading on both host roles from a clone:
+
+```bash
+npm run release-check:rules-load-claude -- --model <model>
+```
+
+This check lives in `scripts/release-check/` and is not shipped in the npm package. The CLI
+target is `claude` on `PATH`; the VS Code target is the extension's binary, supplied with
+`--vscode-executable <path>` or taken from `CLAUDE_CODE_EXECPATH` only when it points under
+`extensions/anthropic.claude-code-*`. Each target's version and required isolation flags are
+preflighted before a session starts; a missing target or unsupported flag is inconclusive.
+
+For each target the check creates a throwaway project with its own `.git` and runs the real
+`install --scope project` with temporary `CODEX_BRIDGE_HOME`, `CODEX_HOME` and `CODEX_RUNS_ROOT`.
+It freezes the installed core's hash against the candidate bytes and the installation snapshot,
+then makes one `claude -p` call with `--setting-sources project --strict-mcp-config --tools ''`
+and the supplied model. The exact project-core `session_start` witness must match the frozen
+hash and its session transcript version must match preflight; inherited user rules are not
+release proof. Afterward it rechecks the frozen files, guards the operator's real installation
+record and Codex rules against changes, checks for escaped witness sessions, and removes the
+temporary tree. The 2026-10-10 manual run raised a UAC prompt; this check does not start Codex
+or write the operator's homes to measure Claude's rules loading.
+
+Each `cli` and `vscode` cell is `verified`, `failed` or `inconclusive`. Missing load evidence or
+a missing/different transcript version is inconclusive, not proof of failure; a hash mismatch,
+oversized core, changed installation, isolation escape or failed session/cleanup is failed.
+Exit 0 means both cells verified, 1 means a failure, and 2 means inconclusive without a failure.
+The attempt verdict is written to `docs/audits/release-checks/rules-load-claude.json` by default
+(`--attempt-file <path>` overrides it), recording candidate revision/version, timestamps and
+per-cell evidence and reasons. A release needs fresh verified evidence, not just a successful
+install or an older attempt file.
 
 Operator checklists (`docs/checklists/`), plans (`docs/plans/`), and one-off audits (`docs/audits/`)
 are not part of the repository: they are detailed working notes for the maintainer and live only

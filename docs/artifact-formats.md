@@ -372,6 +372,52 @@ for active hosts produces an `ok` `dispatcherModel` row saying “Not observed i
 entry and unresolved violation counts; recovered incidents stay in history rather than becoming
 permanent warnings (Plan_67 D8/D12). Contract checks still use the newest observed host.
 
+### `state/load-witness.json`
+
+The `load-witness` hook records rules-core `InstructionsLoaded` events at `session_start` in
+the branded home. This is a `{ sessions: {} }` record, not an observation ledger. Each session
+id maps to an entry with the following fields:
+
+| Session field | Value |
+| --- | --- |
+| `loads` | Array of core loads; the same exact path is recorded only once per session. |
+| `transcriptPath` | Host-supplied transcript path, when supplied; used later to identify this session's host version. |
+| `cwd` | Host-supplied working directory, when supplied. |
+
+Each load contains:
+
+| Load field | Value |
+| --- | --- |
+| `path` | Host-supplied path ending in `/rules/codex-bridge/core.md`; candidate detection accepts either slash spelling and ignores case. |
+| `loadReason` | `session_start`; other load reasons are not recorded. |
+| `memoryType` | Host-supplied memory type, or `null`; it is not evidence of which host loaded the core. |
+| `sha256` | SHA-256 of the core's bytes, or `null` when reading failed or the bounded read found an oversized file. |
+| `at` | ISO timestamp of the observation. |
+| `readError` | Present on a read failure: the filesystem error code, or `null` if unavailable. |
+| `hashSkippedReason` | Present when the file exceeds the byte ceiling: `core-too-large`, with `sha256: null`. |
+
+The package core has a `CORE_CHARACTER_CEILING` of 2,400 characters. Its read is bounded by
+`CORE_BYTE_CEILING` (7,200 bytes, three UTF-8 bytes per UTF-16 unit), plus one byte to detect
+overflow, so a foreign large file cannot make the hook read without limit. Sessions whose newest
+load is older than 30 days, or whose loads array is invalid, are dropped on the next write.
+Updates use the load-witness lock and atomic JSON replacement. A missing file reads as empty;
+an unreadable or corrupt record is preserved and writers refuse to overwrite it. The observing
+hook always exits 0, including on missing evidence or a write failure.
+
+The 2026-10-10 live event fired before its transcript existed. Recording therefore happens
+without a version; `doctor` later reads the version from that same session's transcript, never
+from the current `PATH` host, a neighboring session, `memoryType` or an entrypoint. Unresolved
+transcripts remain pending evidence.
+
+`claudeRulesLoad:<host version>` is `ok` only when the latest witnessed load at the installed
+owner's exact core path has the current package hash for that host version. Path comparison
+normalizes separators and ignores case on Windows. A newer differing hash invalidates an older
+match; a newest `core-too-large` load warns even after a matching load. Missing/stale evidence
+warns with a request to open a new Claude Code session and rerun `doctor`. Before installation,
+on a corrupt witness or without an identified host, a general `claudeRulesLoad` row warns.
+These rows never fail: absence of a hook record cannot prove a load failure. The separate
+`claudeRules` row checks installed bytes, not witnessed loading.
+
 ## File relationships
 
 - `status.json` answers “is the process running, and how did it end?”
@@ -387,5 +433,7 @@ permanent warnings (Plan_67 D8/D12). Contract checks still use the newest observ
   under `--json` it duplicated `events.jsonl`, and a verdict cannot depend on a file that
   `/codex-bridge:usage` itself declares removable.
 - `reply.txt` is only a brief representation of meta; it is not a source of truth.
+- `state/load-witness.json` records session-start core paths and hashes in the branded home,
+  independently of run verdicts; `doctor` joins those sessions to their transcripts for host-version evidence.
 - Recomputing an old run takes `environmentPaths` from its `env.json`, not from the current
   `config.json`.
