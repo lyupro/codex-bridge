@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.15] - 2026-10-12
+
+### Fixed
+
+- The `codex-bridge guidance order` topic and the instruction given to Codex itself now name all six folders a
+  build scope may never include, `.omc/` among them. Both had dropped it, so an orchestrator could be refused for a
+  folder its guidance never mentioned, and Codex was never told the folder was off limits. The scope check, the
+  verdict and the Codex instruction now share one list, and a repository test fails when any complete list in the
+  docs falls out of step with it.
+
 ## [0.6.14] - 2026-10-11
 
 ### Added
