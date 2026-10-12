@@ -121,7 +121,7 @@ if (fixture) {
       const messages = [
         orderRuleMessage('verify-line', { violation: 'empty' }),
         orderDiagnosticMessage('agent-required'),
-        orderRefusalAt('location', 'refusal'),
+        orderRefusalAt('location', recordOrderText('refusal')),
         renderOrderHeaderHelp('codex-scout'),
         renderOrderProblems('codex-scout', [{ lineNo: null, reason: 'pending schema refusal' }]),
         taskHeaderRefusal(parseTaskHeader(${JSON.stringify('continue: . — reason\n\nTask')})),
@@ -164,9 +164,10 @@ if (fixture) {
     assert.equal(entries[0].caller, entries[0].stack.split('\n')[2].trim());
   });
 
-  function journalCase(files, pendingMigration, { ancestor = '', omitCaller = false, caller } = {}) {
+  function journalCase(files, pendingMigration, { ancestor = '', omitCaller = false, caller, omitKind = false } = {}) {
     const directory = makeTempTree('order-text-journal-');
     const entry = (file) => JSON.stringify({
+      ...(!omitKind && { kind: 'outgoing' }),
       transport: 'die', message: 'handwritten refusal', pid: 1,
       ...(!omitCaller && { caller: caller ?? `    at refusalCaller (${file}:111:1)` }),
       stack: '    at checkOutgoingRefusal (file:///C:/fixture/src/home/lib/order-text-record.mjs:20:1)\n' +
@@ -238,6 +239,20 @@ if (fixture) {
     const output = [];
     assert.equal(inspectOutgoingRefusals(directory, new Set([pending]), (line) => output.push(line)), 1);
     assert.deepEqual(output, ['run-tests: refusal text outside the registry: {"caller":\n']);
+  });
+
+  // Plan_79 D6 retry: every current journal has a kind; a pending caller cannot excuse its absence.
+  test('a journal without kind is fatal even when its caller is pending', () => {
+    const pending = 'src/home/lib/runner/preflight.mjs';
+    const { fatal, output } = journalCase([
+      `file:///C:/fixture/${pending}`,
+    ], new Set([pending]), { omitKind: true });
+    assert.equal(fatal, 1);
+    assert.equal(output.length, 1);
+    assert.match(output[0], /^run-tests: refusal text outside the registry: /);
+    const entry = JSON.parse(output[0].slice('run-tests: refusal text outside the registry: '.length));
+    assert.equal(Object.hasOwn(entry, 'kind'), false);
+    assert.equal(entry.message, 'handwritten refusal');
   });
 
   test('the same refusal from a migrated file remains fatal alongside pending refusals', () => {

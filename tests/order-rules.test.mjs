@@ -17,6 +17,7 @@ import { repositoryRefusal } from '../src/home/lib/runner/task-input.mjs';
 import { orderOptions } from '../src/home/lib/runner/order-options.mjs';
 import { ADMISSION_FILES, PENDING_MIGRATION } from './order-guard/admission-files.mjs';
 import { checkRefusalSites } from './order-guard/refusal-checker.mjs';
+import { recordOrderText } from '../src/home/lib/order-text-record.mjs';
 
 test('registry maps and entries are frozen and have exactly their contracted fields', () => {
   assert.ok(Object.isFrozen(ORDER_RULES));
@@ -27,12 +28,12 @@ test('registry maps and entries are frozen and have exactly their contracted fie
   ].sort());
   for (const entry of Object.values(ORDER_RULES)) {
     assert.ok(Object.isFrozen(entry));
-    assert.deepEqual(Object.keys(entry).sort(), ['message', 'rule', 'topic']);
+    assert.deepEqual(Object.keys(entry).sort(), ['data', 'message', 'rule', 'topic']);
     assert.equal(typeof entry.message, 'function');
   }
   for (const entry of Object.values(ORDER_DIAGNOSTICS)) {
     assert.ok(Object.isFrozen(entry));
-    assert.deepEqual(Object.keys(entry).sort(), ['category', 'message']);
+    assert.deepEqual(Object.keys(entry).sort(), ['category', 'data', 'message']);
     assert.equal(typeof entry.message, 'function');
   }
   assert.deepEqual(Object.keys(ORDER_DIAGNOSTICS), [
@@ -70,7 +71,7 @@ test('diagnostic categories are closed and frozen', () => {
   assert.doesNotThrow(() => validateOrderDiagnostics(ORDER_DIAGNOSTICS));
   for (const category of DIAGNOSTIC_CATEGORIES) {
     assert.doesNotThrow(() => validateOrderDiagnostics({
-      'sample-diagnostic': { category, message: () => 'sample' },
+      'sample-diagnostic': { category, message: () => 'sample', data: [] },
     }));
   }
 });
@@ -86,7 +87,7 @@ for (const key of ['missing-rule', 'toString', 'constructor', '__proto__']) {
   });
 }
 
-const sampleRule = { topic: 'order', rule: 'Write an order.', message: () => 'sample' };
+const sampleRule = { topic: 'order', rule: 'Write an order.', message: () => 'sample', data: [] };
 const invalidRules = [
   ['unknown topic', { ...sampleRule, topic: 'unknown' }, 'unknown order rule topic: sample-rule'],
   ['inherited topic', { ...sampleRule, topic: 'toString' }, 'unknown order rule topic: sample-rule'],
@@ -95,7 +96,7 @@ const invalidRules = [
   ['non-string rule', { ...sampleRule, rule: 1 }, 'invalid order rule text: sample-rule'],
   ['placeholder', { ...sampleRule, rule: 'Use {{root}}.' }, 'invalid order rule text: sample-rule'],
   ['extra field', { ...sampleRule, extra: true }, 'invalid order rule entry: sample-rule'],
-  ['missing field', { topic: 'order', message: () => 'sample' }, 'invalid order rule entry: sample-rule'],
+  ['missing field', { topic: 'order', message: () => 'sample', data: [] }, 'invalid order rule entry: sample-rule'],
   ['non-function message', { ...sampleRule, message: 'sample' }, 'invalid order rule message: sample-rule'],
 ];
 for (const [label, entry, message] of invalidRules) {
@@ -107,7 +108,7 @@ for (const [label, entry, message] of invalidRules) {
 test('rule validator rejects a duplicate key across modules', () => {
   assert.throws(() => validateOrderRules(
     { 'sample-rule': sampleRule }, GUIDANCE_TOPICS,
-    { 'sample-rule': { category: 'internal', message: () => 'sample' } },
+    { 'sample-rule': { category: 'internal', message: () => 'sample', data: [] } },
   ), { message: 'duplicate order key: sample-rule' });
 });
 
@@ -117,18 +118,18 @@ for (const key of ['Bad-key', 'bad_key', 'bad--key', '-bad', 'bad-', '1-bad']) {
       message: `invalid order rule key: ${key}`,
     });
     assert.throws(() => validateOrderDiagnostics({
-      [key]: { category: 'internal', message: () => 'sample' },
+      [key]: { category: 'internal', message: () => 'sample', data: [] },
     }), { message: `invalid order diagnostic key: ${key}` });
   });
 }
 
 const invalidDiagnostics = [
-  ['unknown category', { category: 'unknown', message: () => 'sample' },
+  ['unknown category', { category: 'unknown', message: () => 'sample', data: [] },
     'unknown order diagnostic category: sample-diagnostic'],
-  ['extra field', { category: 'internal', message: () => 'sample', extra: true },
+  ['extra field', { category: 'internal', message: () => 'sample', data: [], extra: true },
     'invalid order diagnostic entry: sample-diagnostic'],
-  ['missing field', { message: () => 'sample' }, 'invalid order diagnostic entry: sample-diagnostic'],
-  ['non-function message', { category: 'internal', message: 'sample' },
+  ['missing field', { message: () => 'sample', data: [] }, 'invalid order diagnostic entry: sample-diagnostic'],
+  ['non-function message', { category: 'internal', message: 'sample', data: [] },
     'invalid order diagnostic message: sample-diagnostic'],
 ];
 for (const [label, entry, message] of invalidDiagnostics) {
@@ -313,7 +314,7 @@ const cliRefusals = [
   ['unknown-flag', { name: 'bogus', help: '' },
     'unknown flag --bogus: codex-bridge run takes only --agent, --task-file and --no-wait; ' +
       'the order belongs in the task-file header'],
-  ['unknown-flag', { name: 'bogus', help: 'Header help\nSecond line' },
+  ['unknown-flag', { name: 'bogus', help: recordOrderText('Header help\nSecond line') },
     'unknown flag --bogus: codex-bridge run takes only --agent, --task-file and --no-wait; ' +
       'the order belongs in the task-file header\nHeader help\nSecond line'],
   ['boolean-flag-value', { name: 'no-wait', value: '<only if the orchestrator provided continue>' },
@@ -348,7 +349,7 @@ test('filesystem diagnostic preserves the caught read error verbatim', () => {
 });
 
 test('location composition preserves forwarded header and section text without owning a rule', () => {
-  assert.equal(orderRefusalAt('C:/task file.md', 'line 1: duplicate scope label: scope: src/**\nNo quota.'),
+  assert.equal(orderRefusalAt('C:/task file.md', recordOrderText('line 1: duplicate scope label: scope: src/**\nNo quota.')),
     'C:/task file.md: line 1: duplicate scope label: scope: src/**\nNo quota.');
   assert.equal(orderRefusalAt('C:/task file.md', orderRuleMessage('verify-line', { violation: 'empty' })),
     'C:/task file.md: Verify section is empty');

@@ -45,7 +45,10 @@ folder never feeds two hosts:
   the two entry points are the only importers (D4). `order-text-record.mjs` is test-only provenance
   (D5): under `CODEX_BRIDGE_TEST_TMP` the builders record what they hand out and `die` journals a message
   not made of that output; `scripts/run-tests.mjs` fails the suite on such a line unless the transport's
-  direct caller is still in the guard's `PENDING_MIGRATION`.
+  direct caller is still in the guard's `PENDING_MIGRATION`. Each registry entry lists its `data`
+  parameters (D6); any other parameter must itself be recorded output, checked before the builder
+  records its result, and a `kind: "parameter"` line is fatal even for a pending caller. Outside the
+  builders only lines marked `pending producer` may call `recordOrderText`.
 - `runner/` is one concern per module: `run-context` holds the run in progress, `run-env` reads
   `run-config.json`, `args` refuses the command line, `pass-gate` decides before registration whether a
   call attaches, continues or is a refused repeat (Plan_75), `schemas`/`prompts` are what each agent is

@@ -1,6 +1,7 @@
 /** Plan_79 D4: owns rules for task-body sections. */
 export const RULES = Object.freeze({
   'scout-questions': Object.freeze({
+    data: Object.freeze(['violation', 'line']),
     topic: 'order',
     rule: 'For codex-scout, include a non-empty Questions section in the task document. ' +
       'Whenever Questions is present, put each question on its own line as a Markdown list item ' +
@@ -19,6 +20,7 @@ export const RULES = Object.freeze({
     },
   }),
   'question-context-marker': Object.freeze({
+    data: Object.freeze(['index', 'text', 'context']),
     topic: 'order',
     rule: 'If a question uses a context-only marker, spell it exactly [context-only] and place it ' +
       'only once, at the start, followed by whitespace (such as a space) and non-empty question text.',
@@ -31,6 +33,7 @@ export const RULES = Object.freeze({
     },
   }),
   'verify-line': Object.freeze({
+    data: Object.freeze(['violation']),
     topic: 'order',
     rule: 'When a Verify section is present, put exactly one non-empty command line in it; ' +
       'blank lines are ignored. The section runs until the next heading of the same or a higher level, ' +

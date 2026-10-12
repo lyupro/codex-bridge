@@ -43,15 +43,18 @@ export function inspectOutgoingRefusals(directory, pendingMigration, report) {
       const lines = fs.readFileSync(path.join(directory, file), 'utf8').split(/\r?\n/).filter(Boolean);
       for (const line of lines) {
         let caller;
+        let kind;
         try {
           const entry = parseJsonText(path.join(directory, file), line);
           if (typeof entry.caller === 'string') caller = entry.caller;
+          kind = entry.kind;
         } catch {}
         // Plan_79 B3j D5 acceptance: a pending launcher must not excuse a migrated caller.
         const location = caller?.replaceAll('\\', '/').trim()
           .match(/^at (?:.+ \()?(.+):\d+:\d+\)?$/)?.[1];
         // Plan_79 B3jd D5: installed homes keep only the path below src/home; require a segment boundary.
-        if (location && [...pendingMigration].some((pending) => {
+        // Plan_79 D6: pending transport migration never excuses laundering through a builder.
+        if (kind === 'outgoing' && location && [...pendingMigration].some((pending) => {
           const relative = pending.startsWith('src/home/') ? pending.slice('src/home/'.length) : pending;
           return location.endsWith(`/${relative}`);
         })) {

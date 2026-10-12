@@ -1,11 +1,13 @@
 /** Plan_79 D4: owns rules for the call line and the task file itself. */
 export const RULES = Object.freeze({
   'task-file-path': Object.freeze({
+    data: Object.freeze(['value']),
     topic: 'order',
     rule: 'The call names the task file by an absolute path to a file the orchestrator wrote with its file tool.',
     message: ({ value }) => `--task-file must be an absolute path; got ${JSON.stringify(value)}`,
   }),
   'task-body-required': Object.freeze({
+    data: Object.freeze(['channel', 'taskFile']),
     topic: 'order',
     rule: 'The task file carries a non-empty body after the header and the blank line.',
     message: ({ channel, taskFile }) => {

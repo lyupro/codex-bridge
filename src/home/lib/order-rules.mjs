@@ -8,7 +8,7 @@
 import { RULES as HEADER_RULES } from './order-rules/header.mjs';
 import { RULES as TASK_DOCUMENT_RULES } from './order-rules/task-document.mjs';
 import { RULES as CALL_RULES } from './order-rules/call.mjs';
-import { recordOrderText } from './order-text-record.mjs';
+import { recordOrderText, checkOrderTextParameters } from './order-text-record.mjs';
 
 const places = [HEADER_RULES, TASK_DOCUMENT_RULES, CALL_RULES];
 const keys = new Set();
@@ -22,11 +22,13 @@ export const ORDER_RULES = Object.freeze(Object.assign({}, ...places));
 
 export function orderRuleMessage(key, values = {}) {
   if (!Object.hasOwn(ORDER_RULES, key)) throw new Error(`unknown order rule: ${key}`);
+  checkOrderTextParameters('orderRuleMessage', key, values, ORDER_RULES[key].data);
   return recordOrderText(ORDER_RULES[key].message(values));
 }
 
 // Plan_79 B3b: adds a location to text built by the registry and owns no rule.
 export function orderRefusalAt(location, message) {
+  checkOrderTextParameters('orderRefusalAt', null, { location, message }, ['location']);
   return recordOrderText(`${location}: ${message}`);
 }
 
@@ -37,8 +39,8 @@ export function validateOrderRules(rules, topics, diagnostics) {
       throw new Error(`invalid order rule key: ${key}`);
     }
     if (Object.hasOwn(diagnostics, key)) throw new Error(`duplicate order key: ${key}`);
-    if (!entry || Object.keys(entry).length !== 3 ||
-        !['topic', 'rule', 'message'].every((field) => Object.hasOwn(entry, field))) {
+    if (!entry || Object.keys(entry).length !== 4 ||
+        !['topic', 'rule', 'message', 'data'].every((field) => Object.hasOwn(entry, field))) {
       throw new Error(`invalid order rule entry: ${key}`);
     }
     if (!Object.hasOwn(topics, entry.topic)) throw new Error(`unknown order rule topic: ${key}`);
@@ -46,5 +48,10 @@ export function validateOrderRules(rules, topics, diagnostics) {
       throw new Error(`invalid order rule text: ${key}`);
     }
     if (typeof entry.message !== 'function') throw new Error(`invalid order rule message: ${key}`);
+    if (!Array.isArray(entry.data) ||
+        ![...entry.data].every((name) => typeof name === 'string' && name.trim()) ||
+        new Set(entry.data).size !== entry.data.length) {
+      throw new Error(`invalid order rule data: ${key}`);
+    }
   }
 }
