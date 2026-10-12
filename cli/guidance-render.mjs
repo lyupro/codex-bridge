@@ -1,7 +1,7 @@
 /** Plan_79 B1: guidance derives owned values from the installed home, never a second list. */
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { GUIDANCE_TOPICS } from './guidance.mjs';
+import { GUIDANCE_TOPICS } from './guidance-topics.mjs';
 
 const codeList = (values) => values.map((value) =>
   value.includes('`') ? '`` ' + value + ' ``' : '`' + value + '`').join(', ');

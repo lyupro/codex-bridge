@@ -12,7 +12,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { COMMANDS } from '../cli/command-registry.mjs';
-import { GUIDANCE_TOPICS } from '../cli/guidance.mjs';
+import { GUIDANCE_TOPICS } from '../cli/guidance-topics.mjs';
 import { renderGuidance } from '../cli/guidance-render.mjs';
 import { ORDER_RULES } from '../src/home/lib/order-rules.mjs';
 import { SHELL_UNSAFE_SEQUENCES } from '../src/home/lib/shell-unsafe.mjs';

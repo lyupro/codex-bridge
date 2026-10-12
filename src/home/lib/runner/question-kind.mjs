@@ -3,6 +3,8 @@
  * Plan_60 D1: only the orderer knows whether a question concerns handed startup context or code;
  * the scout cannot choose its own kind, and startup context currently fails without a command.
  */
+import { orderRuleMessage } from '../order-rules.mjs';
+
 export const CONTEXT_ONLY_MARKER = '[context-only]';
 export const QUESTION_KIND = Object.freeze({
   STARTUP_CONTEXT: 'startup-context',
@@ -14,13 +16,13 @@ export function questionKindRefusal(texts = []) {
     const tokens = text.matchAll(/\[\s*context[\s_-]*only\s*\]/gi);
     for (const token of tokens) {
       if (token.index !== 0 || token[0] !== CONTEXT_ONLY_MARKER) {
-        return `Q${index + 1} has an invalid context-only marker in ${JSON.stringify(text)}`;
+        return orderRuleMessage('question-context-marker', { index, text });
       }
     }
     if (text.startsWith(CONTEXT_ONLY_MARKER)) {
       const question = text.slice(CONTEXT_ONLY_MARKER.length);
       if (!/^\s/.test(question) || !question.trim()) {
-        return `Q${index + 1} has an invalid context-only marker in ${JSON.stringify(text)}`;
+        return orderRuleMessage('question-context-marker', { index, text });
       }
     }
   }

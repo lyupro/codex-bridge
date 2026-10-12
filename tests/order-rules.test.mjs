@@ -1,7 +1,7 @@
 /** Guards the Plan_79 D3 registry contract before any refusal site is migrated. */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { GUIDANCE_TOPICS } from '../cli/guidance.mjs';
+import { GUIDANCE_TOPICS } from '../cli/guidance-topics.mjs';
 import {
   ORDER_RULES, orderRuleMessage, validateOrderRules,
 } from '../src/home/lib/order-rules.mjs';

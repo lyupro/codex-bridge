@@ -6,6 +6,8 @@
  * text in the file while the headingless form preserves every existing task file.
  */
 
+import { orderRuleMessage } from '../order-rules.mjs';
+
 const SECTION_HEADING = /^ {0,3}(#{1,6})[ \t]+(.+?)[ \t]*$/;
 const LIST_ITEM = /^\s*(?:[-*]|\d+\.)[ \t]+(.+?)\s*$/;
 const SECTION_NAMES = new Map([
@@ -72,16 +74,16 @@ export function parseTaskDocument(text) {
     if (!line.trim()) continue;
     const item = LIST_ITEM.exec(line);
     if (!item) {
-      throw new Error(`Questions section contains a non-list line: ${JSON.stringify(line.trim())}`);
+      throw new Error(orderRuleMessage('scout-questions', { violation: 'non-list-line', line }));
     }
     questions.push(item[1].trim());
   }
-  if (sawQuestions && !questions.length) throw new Error('Questions section is empty');
+  if (sawQuestions && !questions.length) throw new Error(orderRuleMessage('scout-questions', { violation: 'empty' }));
 
   const verifyContent = verifyLines.filter((line) => line.trim());
-  if (sawVerify && !verifyContent.length) throw new Error('Verify section is empty');
+  if (sawVerify && !verifyContent.length) throw new Error(orderRuleMessage('verify-line', { violation: 'empty' }));
   if (verifyContent.length > 1) {
-    throw new Error('Verify section must contain exactly one non-empty line');
+    throw new Error(orderRuleMessage('verify-line', { violation: 'multiple-lines' }));
   }
 
   return {

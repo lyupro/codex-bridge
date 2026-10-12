@@ -3,14 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { resolveBrandHome } from '../src/home/lib/brand-home.mjs';
 import { renderGuidance } from './guidance-render.mjs';
-
-export const GUIDANCE_TOPICS = Object.freeze({
-  order: 'Task file, header labels, and scope.',
-  advisor: 'Scope and advise phases, and the continue grant.',
-  budget: 'Run deadline and slicing.',
-  records: 'Finding and reading runs.',
-  concurrency: 'Parallel and writing runs.',
-});
+import { GUIDANCE_TOPICS } from './guidance-topics.mjs';
 
 const topicList = () => [
   'Topics:',

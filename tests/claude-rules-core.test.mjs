@@ -13,7 +13,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AGENTS } from '../src/home/lib/agents.mjs';
 import { COMMANDS } from '../cli/command-registry.mjs';
-import { GUIDANCE_TOPICS } from '../cli/guidance.mjs';
+import { GUIDANCE_TOPICS } from '../cli/guidance-topics.mjs';
 import { CORE_CHARACTER_CEILING, CORE_BYTE_CEILING } from '../src/home/lib/load-witness.mjs';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
