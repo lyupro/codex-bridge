@@ -28,4 +28,22 @@ export const RULES = Object.freeze({
       ].join('\n');
     },
   }),
+  'order-launch-exclusive': Object.freeze({
+    data: Object.freeze(['variant', 'orderId', 'role', 'pid', 'acquiredAt', 'run']),
+    topic: 'order',
+    rule: 'Launch one run per order id at a time; repeat the same command to attach to that run.',
+    message: ({ variant, orderId, role, pid, acquiredAt, run, holderDescription }) => {
+      if (variant === 'holder-unverified') return 'a process that did not answer (unverified)';
+      if (variant === 'holder') return `${role} pid ${pid} since ${acquiredAt}`;
+      if (variant === 'busy') {
+        return `order id "${orderId}" is being launched by ${holderDescription}; repeat the same command later — ` +
+          'it attaches to that run instead of starting another.';
+      }
+      if (variant === 'race') {
+        return `another launch of order id "${orderId}" registered ${run} while this one was preparing; ` +
+          'repeat the same command — it attaches to that run.';
+      }
+      throw new Error(`unknown order-launch-exclusive variant: ${variant}`);
+    },
+  }),
 });

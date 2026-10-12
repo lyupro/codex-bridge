@@ -10,17 +10,19 @@ import {
 } from '../kernel-lock.mjs';
 import { parseJsonText } from '../json-file.mjs';
 import { chainRuns, readJson } from '../write-meta.mjs';
+import { orderRuleMessage } from '../order-rules.mjs';
+import { orderDiagnosticMessage } from '../order-diagnostics.mjs';
 
 // Plan_60 D4/D4c: preparation takes seconds; expiry must refuse rather than permit double billing.
 export const ORDER_CLAIM_TIMING = Object.freeze({ waitMs: 60_000, retryMs: 100, answerTimeoutMs: 1_000 });
 
 export function orderClaimAddress(projectRunsRoot, orderId, platform = process.platform) {
   if (typeof orderId !== 'string' || orderId.length === 0) {
-    throw new TypeError('orderId must be a non-empty string');
+    throw new TypeError(orderDiagnosticMessage('order-claim-input-valid', { violation: 'order-id' }));
   }
   // Plan_60 A4 r5: owner matching is case-sensitive; retries must retain the exact order id.
   const digest = directoryDigest(projectRunsRoot, { suffix: orderId });
-  if (digest === null) throw new Error(`project runs folder does not exist: ${projectRunsRoot}`);
+  if (digest === null) throw new Error(orderDiagnosticMessage('project-runs-folder-required', { projectRunsRoot }));
   if (kernelLockStrategy(platform) === null) return null;
   return kernelLockAddress('order', digest, platform);
 }
@@ -30,7 +32,7 @@ export async function acquireOrderClaim({
   timing = ORDER_CLAIM_TIMING, createServer,
 }) {
   if (role !== 'launcher' && role !== 'worker') {
-    throw new TypeError('role must be launcher or worker');
+    throw new TypeError(orderDiagnosticMessage('order-claim-input-valid', { violation: 'role' }));
   }
   const address = orderClaimAddress(projectRunsRoot, orderId, platform);
   if (address === null) return { claimed: false, unsupported: true, release: async () => {} };
@@ -60,13 +62,16 @@ export function parseClaimHolder(line) {
 // Plan_60 D4/D4c: a holder answer diagnoses contention but cannot authorize anything.
 export function orderClaimHolderText(holder) {
   return holder === null
-    ? 'a process that did not answer (unverified)'
-    : `${holder.role} pid ${holder.pid} since ${holder.acquiredAt}`;
+    ? orderRuleMessage('order-launch-exclusive', { variant: 'holder-unverified' })
+    : orderRuleMessage('order-launch-exclusive', {
+      variant: 'holder', role: holder.role, pid: holder.pid, acquiredAt: holder.acquiredAt,
+    });
 }
 
 export function orderClaimBusyText(orderId, holder) {
-  return `order id "${orderId}" is being launched by ${orderClaimHolderText(holder)}; repeat the same command later — `
-    + 'it attaches to that run instead of starting another. The run folder was not created; quota was not spent.';
+  return [orderRuleMessage('order-launch-exclusive', {
+    variant: 'busy', orderId, holderDescription: orderClaimHolderText(holder),
+  }), orderDiagnosticMessage('run-not-created')].join(' ');
 }
 
 /**
@@ -79,6 +84,7 @@ export function unclaimedRaceRefusal({ projectRunsRoot, repoRoot, slug, taskHash
   const appeared = chain.find((run) => !before.has(run)
     && readJson(path.join(projectRunsRoot, run, 'status.json'))?.order_id === orderId);
   if (!appeared) return null;
-  return `another launch of order id "${orderId}" registered ${appeared} while this one was preparing; `
-    + 'repeat the same command — it attaches to that run. The run folder was not created; quota was not spent.';
+  return [orderRuleMessage('order-launch-exclusive', {
+    variant: 'race', orderId, run: appeared,
+  }), orderDiagnosticMessage('run-not-created')].join(' ');
 }

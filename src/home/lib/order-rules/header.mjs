@@ -177,4 +177,23 @@ export const RULES = Object.freeze({
       return `${reason} for ${agent}. Action: pass ${phaseLabel} <name>; allowed phases: ${names.join(', ')}.`;
     },
   }),
+  'order-id-owner': Object.freeze({
+    data: Object.freeze(['violation', 'orderId', 'ownerDir', 'slug', 'startedAt', 'hashScheme', 'labelName']),
+    topic: 'order',
+    rule: 'Use a new order id for a new task; another pass of an owned order needs a continue or retry header grant.',
+    message: ({ violation, orderId, ownerDir, slug, startedAt, hashScheme, labelName }) => {
+      const identity = `Order id collision: ${JSON.stringify(String(orderId ?? ''))} already belongs to run folder ${ownerDir} ` +
+        `(slug ${slug}, started_at ${startedAt})`;
+      if (violation === 'predates-hash-scheme') {
+        return `${identity}, recorded before the task header (hash scheme ${hashScheme}), so its task cannot be compared. ` +
+          `Its answer is already on disk in that folder (codex-bridge read "${ownerDir}"). ` +
+          'Another pass of that order needs a continue:/retry: header line; a new task needs a new order id.';
+      }
+      if (violation === 'different-task') {
+        return `${identity} with a different task. Use a new order id (${labelName}), or a continue:/retry: header line ` +
+          'if this is another pass of that order.';
+      }
+      throw new Error(`unknown order-id-owner violation: ${violation}`);
+    },
+  }),
 });

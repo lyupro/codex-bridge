@@ -1,6 +1,7 @@
 /** Keeps the runner and producer hook on one definition of which task owns an order id. */
 import { TASK_HASH_SCHEME } from '../meta/chain.mjs';
 import { orderInputName } from '../order-schema.mjs';
+import { orderRuleMessage } from '../order-rules.mjs';
 
 const byStartThenName = (left, right) => {
   const leftAt = String(left.status.started_at || '');
@@ -34,14 +35,15 @@ export function ownerPredatesHashScheme(owner) {
 }
 
 export function orderOwnerConflictText(owner, ownerDir, orderId) {
-  const identity = `Order id collision: ${JSON.stringify(String(orderId ?? ''))} already belongs to run folder ${ownerDir} ` +
-    `(slug ${owner.status.slug}, started_at ${owner.status.started_at})`;
   // Plan_75 D5, 2026-10-03: an old hash cannot prove that a repeated order is a different task.
   if (ownerPredatesHashScheme(owner)) {
-    return `${identity}, recorded before the task header (hash scheme ${TASK_HASH_SCHEME}), so its task cannot be compared. ` +
-      `Its answer is already on disk in that folder (codex-bridge read "${ownerDir}"). ` +
-      'Another pass of that order needs a continue:/retry: header line; a new task needs a new order id.';
+    return orderRuleMessage('order-id-owner', {
+      violation: 'predates-hash-scheme', orderId, ownerDir,
+      slug: owner.status.slug, startedAt: owner.status.started_at, hashScheme: TASK_HASH_SCHEME,
+    });
   }
-  return `${identity} with a different task. Use a new order id (${orderInputName('order id')}), or a continue:/retry: header line ` +
-    'if this is another pass of that order.';
+  return orderRuleMessage('order-id-owner', {
+    violation: 'different-task', orderId, ownerDir,
+    slug: owner.status.slug, startedAt: owner.status.started_at, labelName: orderInputName('order id'),
+  });
 }

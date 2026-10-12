@@ -15,4 +15,13 @@ export const DIAGNOSTICS = Object.freeze({
     category: 'internal',
     message: () => 'Cannot carry advise scope result: runsRoot and grantRun are required.',
   }),
+  'order-claim-input-valid': Object.freeze({
+    data: Object.freeze(['violation']),
+    category: 'internal',
+    message: ({ violation }) => {
+      if (violation === 'order-id') return 'orderId must be a non-empty string';
+      if (violation === 'role') return 'role must be launcher or worker';
+      throw new Error(`unknown order-claim-input-valid violation: ${violation}`);
+    },
+  }),
 });

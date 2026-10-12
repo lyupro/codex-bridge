@@ -145,6 +145,11 @@ const expectedData = {
   'writing-run-exclusive': ['run', 'activePath', 'identity'],
   'codex-readiness-unconfirmed': ['detail'],
   'codex-unavailable': ['detail'],
+  'order-launch-exclusive': ['variant', 'orderId', 'role', 'pid', 'acquiredAt', 'run'],
+  'order-id-owner': ['violation', 'orderId', 'ownerDir', 'slug', 'startedAt', 'hashScheme', 'labelName'],
+  'order-claim-input-valid': ['violation'],
+  'project-runs-folder-required': ['projectRunsRoot'],
+  'codex-availability-detail': ['variant', 'command', 'status', 'message'],
 };
 
 test('each entry freezes the caller-classified data allowlist and excludes forwarded prose', () => {

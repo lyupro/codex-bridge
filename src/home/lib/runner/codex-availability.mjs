@@ -4,6 +4,7 @@
  */
 import { resolveCommandOnPath } from '../command-path.mjs';
 import { codexSpawnSpec, spawnCaptured } from './codex-cmd.mjs';
+import { orderDiagnosticMessage } from '../order-diagnostics.mjs';
 
 // A signed-in answer takes ~200 ms; ten seconds bounds a hung CLI without delaying a healthy start.
 export const PROBE_TIMEOUT_MS = 10_000;
@@ -13,9 +14,10 @@ function lines(text) {
 }
 
 function failureDetail(result, command) {
-  return lines(result.stderr).at(-1)
-    || lines(result.error?.message).at(-1)
-    || `${command} exited ${result.status}`;
+  const message = lines(result.stderr).at(-1) || lines(result.error?.message).at(-1);
+  return orderDiagnosticMessage('codex-availability-detail', message
+    ? { variant: 'message', message }
+    : { variant: 'exit-status', command, status: result.status });
 }
 
 export async function probeCodexAvailability({
@@ -31,7 +33,7 @@ export async function probeCodexAvailability({
       if (resolve('codex', env) === null) {
         return {
           state: 'inconclusive', pathMiss: true,
-          detail: 'codex could not be resolved in this process PATH; readiness is unconfirmed',
+          detail: orderDiagnosticMessage('codex-availability-detail', { variant: 'path-miss' }),
         };
       }
     }
@@ -50,10 +52,12 @@ export async function probeCodexAvailability({
     }
     if (login.status === 0) return { state: 'available' };
     if (login.status === 1 && [...lines(login.stderr), ...lines(login.stdout)].includes('Not logged in')) {
-      return { state: 'logged-out', detail: 'codex login status: Not logged in' };
+      return { state: 'logged-out', detail: orderDiagnosticMessage('codex-availability-detail', { variant: 'logged-out' }) };
     }
     return { state: 'inconclusive', detail: failureDetail(login, 'codex login status') };
   } catch (error) {
-    return { state: 'inconclusive', detail: lines(error?.message).at(-1) || 'codex availability probe failed' };
+    const message = lines(error?.message).at(-1);
+    return { state: 'inconclusive', detail: orderDiagnosticMessage('codex-availability-detail', message
+      ? { variant: 'message', message } : { variant: 'failed' }) };
   }
 }

@@ -9,6 +9,9 @@ import { readJsonFileSync } from '../json-file.mjs';
 import { writeStatus } from '../meta/run-state.mjs';
 import { acquireOrderClaim } from './order-claim.mjs';
 
+// Plan_79 B4e: admission reasons are machine-readable codes, not refusal prose.
+const REASONS = Object.freeze({ claimTimeout: 'claim-timeout', closed: 'closed' });
+
 export async function admitWorker({ runDir, orderId, timing, platform, createServer }) {
   const claim = await acquireOrderClaim({
     projectRunsRoot: path.dirname(runDir),
@@ -19,7 +22,7 @@ export async function admitWorker({ runDir, orderId, timing, platform, createSer
     ...(createServer !== undefined ? { createServer } : {}),
   });
   try {
-    if (claim.busy) return { admitted: false, reason: 'claim-timeout', holder: claim.holder };
+    if (claim.busy) return { admitted: false, reason: REASONS.claimTimeout, holder: claim.holder };
     let status = null;
     try {
       status = readJsonFileSync(path.join(runDir, 'status.json'));
@@ -27,7 +30,7 @@ export async function admitWorker({ runDir, orderId, timing, platform, createSer
       // Plan_60 A4 r4: an unreadable run cannot authorize paid work after a launcher dies.
     }
     if (status?.state !== 'running' || fs.existsSync(path.join(runDir, 'meta.json'))) {
-      return { admitted: false, reason: 'closed', state: status?.state ?? null };
+      return { admitted: false, reason: REASONS.closed, state: status?.state ?? null };
     }
     // The launcher cannot know this detached process's clock origin; takeover must record the
     // worker's own identity before it starts producing the run's artifacts.

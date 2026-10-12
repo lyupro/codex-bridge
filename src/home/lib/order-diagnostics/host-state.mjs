@@ -16,4 +16,16 @@ export const DIAGNOSTICS = Object.freeze({
       'Operator check: codex --version (and codex login if authorization is rejected)',
     ].join('\n'),
   }),
+  'codex-availability-detail': Object.freeze({
+    data: Object.freeze(['variant', 'command', 'status', 'message']),
+    category: 'host-state',
+    message: ({ variant, command, status, message }) => {
+      if (variant === 'path-miss') return 'codex could not be resolved in this process PATH; readiness is unconfirmed';
+      if (variant === 'exit-status') return `${command} exited ${status}`;
+      if (variant === 'failed') return 'codex availability probe failed';
+      if (variant === 'logged-out') return 'codex login status: Not logged in';
+      if (variant === 'message') return message;
+      throw new Error(`unknown codex-availability-detail variant: ${variant}`);
+    },
+  }),
 });
