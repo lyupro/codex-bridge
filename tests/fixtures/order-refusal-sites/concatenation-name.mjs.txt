@@ -1,0 +1,2 @@
+// Plan_79 B3i / D3: a leading identifier must not hide unregistered text.
+die(name + 'literal message');

@@ -1,0 +1,3 @@
+// Plan_79 B3i / D3: joining a message array must not bypass a forwarding wrapper.
+const refuse = message => die(message);
+refuse([name, `literal message`].join('\n'));

@@ -1,0 +1,2 @@
+// Plan_79 B3i / D3: array elements form the message, unlike the join separator.
+die([name, 'literal message'].join('\n'));

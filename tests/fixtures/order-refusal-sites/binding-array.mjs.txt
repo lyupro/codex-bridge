@@ -1,0 +1,3 @@
+// Plan_79 B3i / D3: tracing must inspect literal array elements at initialization.
+const message = [name, `literal message`].join('\n');
+die(message);

@@ -1,0 +1,7 @@
+// Plan_79 B3i / D3: builder arguments and join separators remain opaque.
+die([name, orderRuleMessage('known-rule', { violation: 'known-violation' }), renderOrderHeaderHelp(agent)].join('\n'));
+die(orderRuleMessage('known-rule') + orderDiagnosticMessage('known-diagnostic'));
+const message = [name, orderRuleMessage('known-rule')].join(' ');
+die(message);
+const refuse = message => die(message);
+refuse(orderRuleMessage('known-rule') + renderOrderHeaderHelp(agent));

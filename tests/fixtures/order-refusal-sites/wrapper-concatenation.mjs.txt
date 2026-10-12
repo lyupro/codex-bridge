@@ -1,0 +1,3 @@
+// Plan_79 B3i / D3: forwarding wrappers must check complete message expressions.
+const refuse = message => die(message);
+refuse(name + 'literal message');

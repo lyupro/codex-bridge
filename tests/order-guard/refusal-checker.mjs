@@ -10,9 +10,13 @@
  * - A value beginning with a quoted string or ANY template is a violation, including a
  *   template wrapping a registry builder. Identifiers and orderRuleMessage/orderDiagnosticMessage
  *   calls are allowed; builder key/parameter literals are not themselves refusal messages.
+ * - Plan_79 B3i / D3 (A3 pre-mortem): text outside the registry must not hide after a name.
+ *   Quoted/template operands of + anywhere in a message, including grouping parentheses,
+ *   and literal elements of message arrays or arrays joined into messages fail at their
+ *   opening lines. Call arguments remain opaque, including builder inputs and join separators.
  * - Same-file literal binding rule: message identifiers are checked against const/let/var
  *   initializers and plain assignments of that name, regardless of declaration/use order.
- *   Quoted/template literals (including wrapped builders) fail at their opening line.
+ *   Initializers and assignments use the same literal/composition scan and opening lines.
  *   Calls, destructuring and other identifiers are not resolved or followed.
  * - Plan_79 B3h / D3: same-file functions forwarding a parameter to a refusal message
  *   are refusal constructs at that argument position, including array/concatenation/template
@@ -75,6 +79,37 @@ export function checkRefusalSites(source, file) {
       start = stop + 1;
     }
     return args;
+  };
+  const messageLiterals = (start, end, leading = true) => {
+    const literals = [];
+    for (let index = start; index < end;) {
+      const next = after(index);
+      const operand = at(index - 1) === '+' || at(next) === '+';
+      const first = leading && index === start;
+      if (tokens[index]?.literal) {
+        if (first || operand) literals.push(index);
+      } else if (at(index) === '(' || at(index) === '[') {
+        // B3i: inspect composition, but never reinterpret call arguments or member indices.
+        const receiver = index > start && ((identifier(index - 1)
+          && !['typeof', 'void', 'delete', 'await', 'yield', 'new', 'in', 'instanceof'].includes(at(index - 1)))
+          || tokens[index - 1]?.literal || [')', ']', '.'].includes(at(index - 1)));
+        const close = closes.get(index);
+        if (!receiver && close !== undefined) {
+          if (at(index) === '(') {
+            literals.push(...messageLiterals(index + 1, close, first || operand));
+          } else {
+            for (let element = index + 1; element < close;) {
+              if (at(element) === ',') { element += 1; continue; }
+              const stop = expressionEnd(element, close);
+              literals.push(...messageLiterals(element, stop));
+              element = stop + 1;
+            }
+          }
+        }
+      }
+      index = next;
+    }
+    return literals;
   };
   const functions = [];
   const declarations = new Set();
@@ -174,7 +209,11 @@ export function checkRefusalSites(source, file) {
       || (at(end + 1) === '{' && !['if', 'while', 'for', 'switch', 'with'].includes(at(start - 1)))
     : at(end + 1) === '=' || ['const', 'let', 'var'].includes(at(start - 1)));
   for (let index = 0; index < tokens.length; index += 1) {
-    for (const { construct, start } of sitesAt(index)) {
+    for (const { construct, start, end } of sitesAt(index)) {
+      for (const literal of messageLiterals(start, end)) {
+        const line = lineAt(source, tokens[literal].start);
+        if (!optOuts.has(line)) violations.push(`${file}:${line}: ${construct} carries a literal message`);
+      }
       let valueIndex = start;
       let grouping = 0;
       while (at(valueIndex) === '(') { valueIndex += 1; grouping += 1; }
@@ -185,8 +224,6 @@ export function checkRefusalSites(source, file) {
             && !['(', '.', '['].includes(at(following))) messageNames.add(at(valueIndex));
         continue;
       }
-      const line = lineAt(source, tokens[valueIndex].start);
-      if (!optOuts.has(line)) violations.push(`${file}:${line}: ${construct} carries a literal message`);
     }
   }
   for (let index = 0; index < tokens.length; index += 1) {
@@ -194,11 +231,11 @@ export function checkRefusalSites(source, file) {
     if (!messageNames.has(name) || at(index - 1) === '.' || at(index + 1) !== '='
         || ['=', '>'].includes(at(index + 2))
         || defaults.some(([start, end]) => start < index && index < end)) continue;
-    let valueIndex = index + 2;
-    while (at(valueIndex) === '(') valueIndex += 1;
-    if (!tokens[valueIndex]?.literal) continue;
-    const line = lineAt(source, tokens[valueIndex].start);
-    if (!optOuts.has(line)) violations.push(`${file}:${line}: ${name} is a literal message`);
+    const start = index + 2;
+    for (const literal of messageLiterals(start, expressionEnd(start))) {
+      const line = lineAt(source, tokens[literal].start);
+      if (!optOuts.has(line)) violations.push(`${file}:${line}: ${name} is a literal message`);
+    }
   }
   return { violations, optOuts: [...optOuts].map(([line, comment]) => `${file}:${line}: ${comment}`) };
 }

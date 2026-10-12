@@ -1,0 +1,2 @@
+// Plan_79 B3i / D3: grouping must not hide literal concatenation operands.
+die((name + ('literal message')));

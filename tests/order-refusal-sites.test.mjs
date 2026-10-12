@@ -36,6 +36,7 @@ const negativeFixtures = [
   ['deny', 'deny('], ['reason', 'reason:'], ['refusal', 'refusal:'],
   ['problems-push', 'problems.push('], ['return', 'return'],
   ['template-builder', 'die('], ['opt-out-without-reason', 'deny('],
+  ['concatenation-name', 'die('], ['concatenation-grouped', 'die('], ['array-joined', 'die('],
 ];
 for (const [name, construct] of negativeFixtures) {
   test(`negative fixture reports exactly one literal refusal: ${name}`, () => {
@@ -229,4 +230,78 @@ test('wrapper discovery ignores builder arguments, defaults, member calls and un
   ]) assertGuard(t, `${definition}\nformat("ordinary input");`, 'not-forwarded');
   assertGuard(t, 'const refuse = (message = "default") => die(message); object.refuse("ordinary input");', 'wrapper-default');
   assertGuard(t, 'const refuse = message => die(message); const text = "refuse(\\"text\\")"; // refuse("comment")', 'wrapper-lexical');
+});
+
+for (const [name, line, diagnostic] of [
+  ['wrapper-concatenation', 3, 'refuse( carries'], ['wrapper-array', 3, 'refuse( carries'],
+  ['binding-concatenation', 2, 'message is'], ['binding-array', 2, 'message is'],
+]) {
+  test(`message composition rejects fixture: ${name}`, () => {
+    const file = `tests/fixtures/order-refusal-sites/${name}.mjs.txt`;
+    const result = checkRefusalSites(read(file), file);
+    assert.deepEqual(result.violations, [`${file}:${line}: ${diagnostic} a literal message`]);
+    assert.deepEqual(result.optOuts, []);
+  });
+}
+
+test('message composition fixture permits identifiers, builders and literal join separators', (t) => {
+  const file = 'tests/fixtures/order-refusal-sites/composition-positive.mjs.txt';
+  assertGuard(t, read(file), file);
+});
+
+test('all refusal constructs and traced bindings reject composed literal messages', () => {
+  for (const [name, construct] of negativeFixtures.slice(0, 8)) {
+    const refusal = read(`tests/fixtures/order-refusal-sites/${name}.mjs.txt`);
+    for (const literal of ['"literal"', "'literal'", '`literal ${orderRuleMessage("key")}`']) {
+      for (const expression of [
+        `name +\n${literal}`, `(name + (\n${literal}))`, `name + (other +\n${literal})`,
+        `[name,\n${literal}].join("\\n")`, `[name,\n${literal}]`,
+        `[name,\n${literal}].filter(Boolean).join("\\n")`,
+        `condition ? (name +\n${literal}) : other`, `name + [, (\n${literal})].join(" ")`,
+        `typeof (name +\n${literal})`,
+      ]) {
+        const direct = refusal.replace(/(['"])literal message\1/, expression);
+        const use = refusal.replace(/(['"])literal message\1/, '((message))');
+        const wrapperBody = name === 'return' ? 'return ((message));' : use;
+        const wrapper = `function refuse(message) { ${wrapperBody} }\nrefuse(${expression});`;
+        for (const [source, diagnostic] of [
+          [direct, `${construct} carries`], [wrapper, 'refuse( carries'],
+          ...['const message =', 'let message =', 'var message =', 'message =']
+            .map(binding => [`${use}\n${binding} ${expression};`, 'message is']),
+        ]) {
+          for (const text of [source, source.replace(/\n/g, '\r\n')]) {
+            assert.deepEqual(checkRefusalSites(text, name).violations,
+              [`${name}:${lineAt(text, text.indexOf(literal))}: ${diagnostic} a literal message`]);
+          }
+        }
+      }
+    }
+  }
+});
+
+test('composition checks every literal opening line and honors only its own opt-out', () => {
+  const source = 'die(name +\n "first" +\n `second`);\ndeny([name,\n "third",\n `fourth`].join("\\n"));';
+  assert.deepEqual(checkRefusalSites(source, 'multiple').violations, [
+    'multiple:2: die( carries a literal message', 'multiple:3: die( carries a literal message',
+    'multiple:5: deny( carries a literal message', 'multiple:6: deny( carries a literal message',
+  ]);
+  const exempted = source.replace('"first" +', '"first" + // order-guard: not-a-refusal — informational status only');
+  assert.deepEqual(checkRefusalSites(exempted, 'opt-out').violations, [
+    'opt-out:3: die( carries a literal message', 'opt-out:5: deny( carries a literal message',
+    'opt-out:6: deny( carries a literal message',
+  ]);
+});
+
+test('message composition leaves call arguments and member indices opaque', (t) => {
+  for (const expression of [
+    'orderRuleMessage("key", { value: name + "text", parts: ["text"] }) + renderOrderHeaderHelp(agent)',
+    '[name, orderDiagnosticMessage("key", ["text"])].join("\\n")',
+    '[name, renderOrderHeaderHelp(agent)].filter(value => value + "text").join("\\n")',
+    '(orderRuleMessage)("key" + "suffix") + (renderOrderHeaderHelp)(agent)',
+    'messages["key"] + messages[name + "suffix"]',
+    'format?.(name + "text", ["text"]) + messages?.[name + "key"]',
+  ]) {
+    assertGuard(t, `die(${expression});`, 'opaque');
+    assertGuard(t, `const message = ${expression}; die(message);`, 'opaque-binding');
+  }
 });

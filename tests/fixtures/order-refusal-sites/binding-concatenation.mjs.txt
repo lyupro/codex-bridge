@@ -1,0 +1,3 @@
+// Plan_79 B3i / D3: traced names must use the same composition scan.
+const message = name + 'literal message';
+die(message);
