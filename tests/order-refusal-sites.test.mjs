@@ -51,8 +51,6 @@ const ADMISSION_FILES = [
 // Later Plan_79 slices move these files onto the registry and remove their entries; delete this list when empty.
 const PENDING_MIGRATION = new Set([
   'src/home/lib/runner/args.mjs',
-  'src/home/lib/runner/task-input.mjs',
-  'src/home/lib/runner/order-options.mjs',
   'src/home/lib/order-schema.mjs',
   'src/home/lib/order-values.mjs',
   'src/home/lib/task-header.mjs',
@@ -240,7 +238,7 @@ test('Plan_79 S1a-S1c lists 26 unique existing admission files', () => {
   assert.equal(new Set(ADMISSION_FILES).size, 26);
   for (const file of ADMISSION_FILES) assert.ok(fs.statSync(new URL(`../${file}`, import.meta.url)).isFile(), file);
   for (const file of PENDING_MIGRATION) assert.ok(ADMISSION_FILES.includes(file), file);
-  for (const name of ['task-file', 'question-kind']) {
+  for (const name of ['task-file', 'question-kind', 'task-input', 'order-options']) {
     assert.ok(!PENDING_MIGRATION.has(`src/home/lib/runner/${name}.mjs`));
   }
 });

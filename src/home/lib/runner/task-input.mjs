@@ -10,6 +10,8 @@ import { die, readTaskDocument } from './args.mjs';
 import { questionKindRefusal } from './question-kind.mjs';
 import { orderFromHeader, orderInputName, renderOrderProblems } from '../order-schema.mjs';
 import { orderOptions } from './order-options.mjs';
+import { orderRuleMessage } from '../order-rules.mjs';
+import { orderDiagnosticMessage } from '../order-diagnostics.mjs';
 
 /**
  * OW-061: outside git the launcher keeps `repository:` as given and the project folder takes its
@@ -21,18 +23,17 @@ import { orderOptions } from './order-options.mjs';
  */
 export function repositoryRefusal(value) {
   if (!path.isAbsolute(value)) {
-    return `must be an absolute path to the repository; got ${JSON.stringify(value)}.`;
+    return orderRuleMessage('repository-path', { violation: 'relative', value });
   }
   const altered = value.split(/[\\/]/).find((segment) => /[. ]$/.test(segment) && segment !== '.' && segment !== '..');
   if (altered !== undefined) {
-    return `has a path segment ending in a dot or a space (${JSON.stringify(altered)}), which Windows strips; ` +
-      `got ${JSON.stringify(value)}.`;
+    return orderRuleMessage('repository-path', { violation: 'altered-segment', value, segment: altered });
   }
   let isDirectory = false;
   try {
     isDirectory = fs.statSync(value).isDirectory();
   } catch {}
-  return isDirectory ? null : `must name an existing directory; ${JSON.stringify(value)} is not one.`;
+  return isDirectory ? null : orderRuleMessage('repository-path', { violation: 'not-directory', value });
 }
 
 export function settleTaskInput(opts, { cwd = process.cwd() } = {}) {
@@ -47,7 +48,9 @@ export function settleTaskInput(opts, { cwd = process.cwd() } = {}) {
   }
   const repositoryReason = order.has('repository') ? repositoryRefusal(order.get('repository')) : null;
   if (repositoryReason) {
-    die(`${orderInputName('repository')} ${repositoryReason}\nThe run folder was not created; quota was not spent.`);
+    die(orderRuleMessage('repository-path', {
+      context: 'task-input', label: orderInputName('repository'), reason: repositoryReason,
+    }));
   }
   Object.assign(opts, normalized.options);
   opts.continue = Boolean(header.grant);
@@ -56,23 +59,16 @@ export function settleTaskInput(opts, { cwd = process.cwd() } = {}) {
   // Still before the run folder exists and before a token of someone else's quota is touched,
   // which is where every refusal of this kind belongs.
   if (opts.agent === 'codex-scout' && !opts.questions?.length) {
-    die(
-      'a sub-question is required for codex-scout: put one Markdown list item per sub-question ' +
-        'under a `Questions` heading in the task document. ' +
-        'The runner will not infer questions from the task text; no quota was spent.',
-    );
+    die(orderRuleMessage('scout-questions', { violation: 'missing' }));
   }
   if (opts.agent === 'codex-scout') {
     const refusal = questionKindRefusal(opts.questions);
     if (refusal) {
-      die(
-        `${refusal}; the marker is exactly [context-only] followed by a space and the question; no quota was spent.`,
-      );
+      die(orderRuleMessage('question-context-marker', { context: 'task-input', refusal }));
     }
   }
   if (opts.noWait && opts.continue) {
-    die(`--no-wait cannot be combined with a ${orderInputName(header.grant.kind)} grant: ` +
-      'checking an existing run must never authorize a new one.');
+    die(orderDiagnosticMessage('no-wait-grant-conflict', { grant: orderInputName(header.grant.kind) }));
   }
   return { task, header };
 }

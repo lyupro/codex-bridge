@@ -4,7 +4,14 @@ export const DIAGNOSTIC_CATEGORIES = Object.freeze([
   'cli-flags', 'filesystem', 'host-state', 'run-state', 'internal',
 ]);
 
-export const ORDER_DIAGNOSTICS = Object.freeze({});
+export const ORDER_DIAGNOSTICS = Object.freeze({
+  'no-wait-grant-conflict': Object.freeze({
+    category: 'cli-flags',
+    message: ({ grant }) =>
+      `--no-wait cannot be combined with a ${grant} grant: ` +
+      'checking an existing run must never authorize a new one.',
+  }),
+});
 
 export function orderDiagnosticMessage(key, values = {}) {
   if (!Object.hasOwn(ORDER_DIAGNOSTICS, key)) throw new Error(`unknown order diagnostic: ${key}`);

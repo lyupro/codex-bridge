@@ -1,6 +1,41 @@
 /** Defines order-authoring rules and their refusal text once, as required by Plan_79 D3. */
 
 export const ORDER_RULES = Object.freeze({
+  'effort-value': Object.freeze({
+    topic: 'order',
+    rule: 'When effort is present, use a non-empty single word with no whitespace.',
+    message: ({ value }) =>
+      `must be a non-empty single word with no whitespace; got ${JSON.stringify(value)}`,
+  }),
+  'run-slug': Object.freeze({
+    topic: 'order',
+    rule: 'The slug, or order id when slug is absent or empty, must contain a letter or digit ' +
+      'after replacing characters outside A-Z, a-z, 0-9, dot, underscore and hyphen with hyphens.',
+    message: ({ value }) =>
+      `produces an unusable run folder name after sanitization: ${JSON.stringify(value)} must contain a letter or digit.`,
+  }),
+  'repository-path': Object.freeze({
+    topic: 'order',
+    rule: 'When repository is present, use an absolute path to an existing directory; ' +
+      'no path segment other than . or .. may end in a dot or a space, which Windows strips.',
+    message: ({ violation, value, segment, context, label, reason }) => {
+      if (context === 'task-input') {
+        return `${label} ${reason}\nThe run folder was not created; quota was not spent.`;
+      }
+      if (context !== undefined) throw new Error(`unknown repository-path context: ${context}`);
+      if (violation === 'relative') {
+        return `must be an absolute path to the repository; got ${JSON.stringify(value)}.`;
+      }
+      if (violation === 'altered-segment') {
+        return `has a path segment ending in a dot or a space (${JSON.stringify(segment)}), which Windows strips; ` +
+          `got ${JSON.stringify(value)}.`;
+      }
+      if (violation === 'not-directory') {
+        return `must name an existing directory; ${JSON.stringify(value)} is not one.`;
+      }
+      throw new Error(`unknown repository-path violation: ${violation}`);
+    },
+  }),
   'scout-questions': Object.freeze({
     topic: 'order',
     rule: 'For codex-scout, include a non-empty Questions section in the task document. ' +
@@ -11,6 +46,11 @@ export const ORDER_RULES = Object.freeze({
         return `Questions section contains a non-list line: ${JSON.stringify(line.trim())}`;
       }
       if (violation === 'empty') return 'Questions section is empty';
+      if (violation === 'missing') {
+        return 'a sub-question is required for codex-scout: put one Markdown list item per sub-question ' +
+          'under a `Questions` heading in the task document. ' +
+          'The runner will not infer questions from the task text; no quota was spent.';
+      }
       throw new Error(`unknown scout-questions violation: ${violation}`);
     },
   }),
@@ -18,8 +58,13 @@ export const ORDER_RULES = Object.freeze({
     topic: 'order',
     rule: 'If a question uses a context-only marker, spell it exactly [context-only] and place it ' +
       'only once, at the start, followed by whitespace (such as a space) and non-empty question text.',
-    message: ({ index, text }) =>
-      `Q${index + 1} has an invalid context-only marker in ${JSON.stringify(text)}`,
+    message: ({ index, text, context, refusal }) => {
+      if (context === 'task-input') {
+        return `${refusal}; the marker is exactly [context-only] followed by a space and the question; no quota was spent.`;
+      }
+      if (context !== undefined) throw new Error(`unknown question-context-marker context: ${context}`);
+      return `Q${index + 1} has an invalid context-only marker in ${JSON.stringify(text)}`;
+    },
   }),
   'verify-line': Object.freeze({
     topic: 'order',

@@ -1,5 +1,6 @@
 /** Normalises one order's values into runner options, whatever channel carried them (Plan_63 D5). */
 import path from 'node:path';
+import { orderRuleMessage } from '../order-rules.mjs';
 
 export function orderOptions(agentType, order, { cwd = process.cwd() } = {}) {
   const options = { orderId: (order.get('order id') ?? '').trim() };
@@ -10,7 +11,7 @@ export function orderOptions(agentType, order, { cwd = process.cwd() } = {}) {
     options.effort = order.get('effort');
     if (!options.effort || /\s/.test(options.effort)) {
       problems.push({ label: 'effort',
-        reason: `must be a non-empty single word with no whitespace; got ${JSON.stringify(options.effort)}` });
+        reason: orderRuleMessage('effort-value', { value: options.effort }) });
     }
   }
   options.repo = path.resolve(order.get('repository') || cwd);
@@ -18,7 +19,7 @@ export function orderOptions(agentType, order, { cwd = process.cwd() } = {}) {
   // Plan_29 incident: a generic slug let an honest order inherit a days-old chain.
   if (!/[A-Za-z0-9]/.test(options.slug)) {
     problems.push({ label: order.has('slug') ? 'slug' : 'order id',
-      reason: `produces an unusable run folder name after sanitization: ${JSON.stringify(options.slug)} must contain a letter or digit.` });
+      reason: orderRuleMessage('run-slug', { value: options.slug }) });
   }
   options.changeset = order.get('changeset') || 'uncommitted';
   const declaredScopePatterns = (order.get('scope') || '').split(',').map((p) => p.trim()).filter(Boolean);
