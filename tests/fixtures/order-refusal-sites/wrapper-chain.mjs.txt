@@ -1,0 +1,5 @@
+// Plan_79 B3h / D3: discover forwarding chains to a fixed point, not in definition order.
+const refuse = (message) => forward(message);
+function forward(message) { finalRefusal(message); }
+const finalRefusal = function (message) { deny(message); };
+refuse('literal message');

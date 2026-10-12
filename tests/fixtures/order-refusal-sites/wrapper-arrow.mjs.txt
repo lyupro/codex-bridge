@@ -1,0 +1,3 @@
+// Plan_79 B3h / D3: array formatting must not hide a forwarded literal refusal.
+const refuse = (message) => die([message, renderOrderHeaderHelp(agent)].filter(Boolean).join('\n'));
+refuse('literal message');

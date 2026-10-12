@@ -1,0 +1,7 @@
+// Plan_79 B3h / D3: wrappers remain valid when their callers use registry builders.
+const refuse = (message) => die([message, renderOrderHeaderHelp(agent)].filter(Boolean).join('\n'));
+function declareRefusal(message) { throw new Error(message); }
+const forward = function (message) { refuse(message); };
+refuse(orderRuleMessage('known-rule', { violation: 'known-violation' }));
+declareRefusal(orderDiagnosticMessage('known-diagnostic'));
+forward(orderRuleMessage('known-rule'));

@@ -1,264 +1,13 @@
-/**
- * Plan_79 B3g / D3: admission refusals must not acquire text outside the registries.
- * This is a text guard, not a JavaScript parser or data-flow resolver:
- * - Strip line/block comments lexically, retaining original offsets and physical lines.
- *   Quoted strings, regexes and template text are opaque; template expressions are scanned.
- *   Regexes start at expression-start tokens or after control-statement parentheses.
- * - Check the first argument of die/deny/new Error/new RunnerUsageError/problems.push,
- *   object properties reason/refusal, and return values. Whitespace, comments and grouping
- *   parentheses may intervene. A newline after return ends that return (JavaScript ASI).
- * - A value beginning with a quoted string or ANY template is a violation, including a
- *   template wrapping a registry builder. Identifiers and orderRuleMessage/orderDiagnosticMessage
- *   calls are allowed; builder key/parameter literals are not themselves refusal messages.
- * - Same-file literal binding rule: message identifiers are checked against const/let/var
- *   initializers and plain assignments of that name, regardless of declaration/use order.
- *   Quoted/template literals (including wrapped builders) fail at their opening line.
- *   Calls, parameters, destructuring and other identifiers are not resolved or followed.
- * - Only a trailing line comment on the literal's opening line can exempt it:
- *   // order-guard: not-a-refusal — <reason of at least three words>
- *   Every accepted exemption is printed for review. Missing/short reasons exempt nothing.
- * Pending admission files are visibly skipped until their Plan_79 migration slice lands.
- */
+// Plan_79 D3: refusal-guard rules live in ./order-guard/refusal-checker.mjs.
+// Keep this file focused on admission coverage and guard regression tests.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-
-const ADMISSION_FILES = [
-  'src/home/lib/runner/args.mjs',
-  'src/home/lib/runner/task-input.mjs',
-  'src/home/lib/runner/task-file.mjs',
-  'src/home/lib/runner/question-kind.mjs',
-  'src/home/lib/runner/order-options.mjs',
-  'src/home/lib/order-schema.mjs',
-  'src/home/lib/order-values.mjs',
-  'src/home/lib/task-header.mjs',
-  'src/home/lib/runner/launcher.mjs',
-  'src/home/lib/runner/scope-check.mjs',
-  'src/home/lib/runner/pass-gate.mjs',
-  'src/home/lib/runner/continuation.mjs',
-  'src/home/lib/runner/advise-carry.mjs',
-  'src/home/lib/runner/preflight.mjs',
-  'src/home/lib/runner/order-claim.mjs',
-  'src/home/lib/runner/order-owner.mjs',
-  'src/home/lib/runner/codex-availability.mjs',
-  'src/home/lib/runner/worker-admission.mjs',
-  'src/home/hooks/order-gate.mjs',
-  'src/home/lib/dispatcher-call.mjs',
-  'src/home/lib/dispatcher-command.mjs',
-  'src/home/lib/dispatcher-gate.mjs',
-  'src/home/lib/dispatcher-order.mjs',
-  'src/home/lib/dispatcher-state.mjs',
-  'src/home/lib/dispatcher-pin.mjs',
-  'src/home/lib/dispatcher-model.mjs',
-];
-
-// Later Plan_79 slices move these files onto the registry and remove their entries; delete this list when empty.
-const PENDING_MIGRATION = new Set([
-  'src/home/lib/runner/args.mjs',
-  'src/home/lib/order-schema.mjs',
-  'src/home/lib/order-values.mjs',
-  'src/home/lib/task-header.mjs',
-  'src/home/lib/runner/launcher.mjs',
-  'src/home/lib/runner/scope-check.mjs',
-  'src/home/lib/runner/pass-gate.mjs',
-  'src/home/lib/runner/continuation.mjs',
-  'src/home/lib/runner/advise-carry.mjs',
-  'src/home/lib/runner/preflight.mjs',
-  'src/home/lib/runner/order-claim.mjs',
-  'src/home/lib/runner/order-owner.mjs',
-  'src/home/lib/runner/codex-availability.mjs',
-  'src/home/lib/runner/worker-admission.mjs',
-  'src/home/hooks/order-gate.mjs',
-  'src/home/lib/dispatcher-call.mjs',
-  'src/home/lib/dispatcher-command.mjs',
-  'src/home/lib/dispatcher-gate.mjs',
-  'src/home/lib/dispatcher-order.mjs',
-  'src/home/lib/dispatcher-state.mjs',
-  'src/home/lib/dispatcher-pin.mjs',
-  'src/home/lib/dispatcher-model.mjs',
-]);
+import { lineAt } from './order-guard/lexer.mjs';
+import { checkRefusalSites } from './order-guard/refusal-checker.mjs';
+import { ADMISSION_FILES, PENDING_MIGRATION } from './order-guard/admission-files.mjs';
 
 const read = (file) => fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
-const lineAt = (source, offset) => source.slice(0, offset).split(/\r\n|\r|\n/).length;
-
-function lex(source) {
-  const tokens = [];
-  const optOuts = new Map();
-  const add = (start, end, literal = false) => {
-    const token = { value: source.slice(start, end), start, end, literal };
-    tokens.push(token);
-    return token;
-  };
-  const quotedEnd = (start) => {
-    let cursor = start + 1;
-    while (cursor < source.length) {
-      if (source[cursor] === '\\') cursor += 2;
-      else if (source[cursor++] === source[start]) break;
-    }
-    return cursor;
-  };
-  const regexEnd = (start) => {
-    let inClass = false;
-    for (let cursor = start + 1; cursor < source.length; cursor += 1) {
-      const char = source[cursor];
-      if (char === '\r' || char === '\n') return start + 1;
-      if (char === '\\') cursor += 1;
-      else if (char === '[') inClass = true;
-      else if (char === ']') inClass = false;
-      else if (char === '/' && !inClass) {
-        cursor += 1;
-        while (/[a-z]/i.test(source[cursor] ?? '')) cursor += 1;
-        return cursor;
-      }
-    }
-    return start + 1;
-  };
-  const scan = (start, interpolation = false) => {
-    let cursor = start;
-    let braces = 0;
-    let regexAllowed = true;
-    let previousWord = '';
-    const controlParens = [];
-    while (cursor < source.length) {
-      const char = source[cursor];
-      const next = source[cursor + 1];
-      if (/\s/.test(char)) { cursor += 1; continue; }
-      if (char === '/' && (next === '/' || next === '*')) {
-        const commentStart = cursor;
-        if (next === '/') {
-          while (cursor < source.length && !/[\r\n]/.test(source[cursor])) cursor += 1;
-          const comment = source.slice(commentStart, cursor);
-          const marker = /^\/\/\s*order-guard: not-a-refusal —\s*(.*?)\s*$/.exec(comment);
-          const lineStart = Math.max(source.lastIndexOf('\n', commentStart - 1), source.lastIndexOf('\r', commentStart - 1)) + 1;
-          const words = marker?.[1].match(/[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu) ?? [];
-          if (words.length >= 3 && /\S/.test(source.slice(lineStart, commentStart))) {
-            optOuts.set(lineAt(source, commentStart), comment);
-          }
-        } else {
-          const end = source.indexOf('*/', cursor + 2);
-          cursor = end < 0 ? source.length : end + 2;
-        }
-        continue;
-      }
-      if (char === '"' || char === "'") {
-        const end = quotedEnd(cursor);
-        add(cursor, end, true);
-        cursor = end;
-        regexAllowed = false;
-        previousWord = '';
-        continue;
-      }
-      if (char === '`') {
-        const token = add(cursor, cursor + 1, true);
-        cursor += 1;
-        while (cursor < source.length) {
-          if (source[cursor] === '\\') cursor += 2;
-          else if (source[cursor] === '`') { cursor += 1; break; }
-          else if (source[cursor] === '$' && source[cursor + 1] === '{') cursor = scan(cursor + 2, true);
-          else cursor += 1;
-        }
-        token.end = cursor;
-        regexAllowed = false;
-        previousWord = '';
-        continue;
-      }
-      if (char === '/' && regexAllowed) {
-        const end = regexEnd(cursor);
-        if (end > cursor + 1) {
-          add(cursor, end);
-          cursor = end;
-          regexAllowed = false;
-          previousWord = '';
-          continue;
-        }
-      }
-      if (/[\w$]/.test(char)) {
-        const wordStart = cursor++;
-        while (/[\w$]/.test(source[cursor] ?? '')) cursor += 1;
-        previousWord = add(wordStart, cursor).value;
-        regexAllowed = /^(?:return|throw|case|typeof|void|delete|new|in|of|yield|await|else|do)$/.test(previousWord);
-        continue;
-      }
-      if (char === '}' && interpolation && braces === 0) return cursor + 1;
-      if (char === '{') braces += 1;
-      if (char === '}') braces -= 1;
-      if (char === '(') {
-        controlParens.push(/^(?:if|while|for|with|switch|catch)$/.test(previousWord));
-        regexAllowed = true;
-      } else if (char === ')') regexAllowed = controlParens.pop() === true;
-      else regexAllowed = '([{,=:!&|?};+-*%<>~^'.includes(char);
-      add(cursor, cursor + 1);
-      cursor += 1;
-      previousWord = '';
-    }
-    return cursor;
-  };
-  scan(0);
-  return { tokens, optOuts };
-}
-
-function checkRefusalSites(source, file) {
-  const { tokens, optOuts } = lex(source);
-  const violations = [];
-  const messageNames = new Set();
-  const at = (index) => tokens[index]?.value;
-  const groups = [];
-  const stack = [];
-  for (let index = 0; index < tokens.length; index += 1) {
-    if (['(', '{', '['].includes(at(index))) stack.push(index);
-    else if ([')', '}', ']'].includes(at(index)) && stack.length) groups.push([stack.pop(), index]);
-  }
-  const defaults = groups.filter(([start, end]) => at(start) === '('
-    ? (at(end + 1) === '=' && at(end + 2) === '>')
-      || (at(end + 1) === '{' && !['if', 'while', 'for', 'switch', 'with'].includes(at(start - 1)))
-    : at(end + 1) === '=' || ['const', 'let', 'var'].includes(at(start - 1)));
-  for (let index = 0; index < tokens.length; index += 1) {
-    const word = at(index);
-    let construct;
-    let valueIndex;
-    if (['die', 'deny'].includes(word) && at(index + 1) === '(') {
-      construct = `${word}(`;
-      valueIndex = index + 2;
-    } else if (word === 'new' && ['Error', 'RunnerUsageError'].includes(at(index + 1)) && at(index + 2) === '(') {
-      construct = `new ${at(index + 1)}(`;
-      valueIndex = index + 3;
-    } else if (word === 'problems' && at(index + 1) === '.' && at(index + 2) === 'push' && at(index + 3) === '(') {
-      construct = 'problems.push(';
-      valueIndex = index + 4;
-    } else if (['reason', 'refusal', "'reason'", '"reason"', "'refusal'", '"refusal"'].includes(word)
-        && ['{', ','].includes(at(index - 1)) && at(index + 1) === ':') {
-      construct = `${word.replace(/['"]/g, '')}:`;
-      valueIndex = index + 2;
-    } else if (word === 'return') {
-      if (/[\r\n]/.test(source.slice(tokens[index].end, tokens[index + 1]?.start))) continue;
-      construct = 'return';
-      valueIndex = index + 1;
-    } else continue;
-    let grouping = 0;
-    while (at(valueIndex) === '(') { valueIndex += 1; grouping += 1; }
-    if (!tokens[valueIndex]?.literal) {
-      let following = valueIndex + 1;
-      while (grouping > 0 && at(following) === ')') { following += 1; grouping -= 1; }
-      if (/^[A-Za-z_$][\w$]*$/.test(at(valueIndex) ?? '')
-          && !['(', '.', '['].includes(at(following))) messageNames.add(at(valueIndex));
-      continue;
-    }
-    const line = lineAt(source, tokens[valueIndex].start);
-    if (!optOuts.has(line)) violations.push(`${file}:${line}: ${construct} carries a literal message`);
-  }
-  for (let index = 0; index < tokens.length; index += 1) {
-    const name = at(index);
-    if (!messageNames.has(name) || at(index - 1) === '.' || at(index + 1) !== '='
-        || ['=', '>'].includes(at(index + 2))
-        || defaults.some(([start, end]) => start < index && index < end)) continue;
-    let valueIndex = index + 2;
-    while (at(valueIndex) === '(') valueIndex += 1;
-    if (!tokens[valueIndex]?.literal) continue;
-    const line = lineAt(source, tokens[valueIndex].start);
-    if (!optOuts.has(line)) violations.push(`${file}:${line}: ${name} is a literal message`);
-  }
-  return { violations, optOuts: [...optOuts].map(([line, comment]) => `${file}:${line}: ${comment}`) };
-}
 
 function assertGuard(t, source, file) {
   const result = checkRefusalSites(source, file);
@@ -393,4 +142,91 @@ test('reasoned trailing opt-outs are accepted and printed, never supplied by lit
     'deny("// order-guard: not-a-refusal — text inside message");',
     'deny("literal"); /* order-guard: not-a-refusal — not a line comment */',
   ]) assert.equal(checkRefusalSites(fake, 'fake-opt-out').violations.length, 1);
+});
+
+for (const [name, line] of [['wrapper-arrow', 3], ['wrapper-declaration', 3], ['wrapper-chain', 5]]) {
+  test(`forwarding wrapper rejects fixture: ${name}`, () => {
+    const file = `tests/fixtures/order-refusal-sites/${name}.mjs.txt`;
+    const result = checkRefusalSites(read(file), file);
+    assert.deepEqual(result.violations, [`${file}:${line}: refuse( carries a literal message`]);
+    assert.deepEqual(result.optOuts, []);
+  });
+}
+
+test('forwarding wrapper fixture permits only builder calls as messages', (t) => {
+  const file = 'tests/fixtures/order-refusal-sites/wrapper-positive.mjs.txt';
+  assertGuard(t, read(file), file);
+});
+
+test('all function forms forward parameters through every refusal construct and message composition', () => {
+  const bodies = [
+    ['die(VALUE);', 'die('], ['deny(VALUE);', 'deny('], ['throw new Error(VALUE);', 'new Error('],
+    ['throw new RunnerUsageError(VALUE);', 'new RunnerUsageError('], ['problems.push(VALUE);', 'problems.push('],
+    ['const result = { reason: VALUE };', 'reason:'], ['const result = { refusal: VALUE };', 'refusal:'], ['return VALUE;', 'return'],
+  ];
+  const forms = [
+    (body) => `function refuse(code, message) { ${body} }`,
+    (body) => `const refuse = (code, message) => { ${body} };`,
+    (body) => `const refuse = function (code, message) { ${body} };`,
+  ];
+  for (const [body, construct] of bodies) {
+    for (const value of ['message', '((message))', '[message].filter(Boolean).join("\\n")', '"prefix " + message', '`prefix ${message}`']) {
+      for (const form of forms) {
+        const definition = form(body.replace('VALUE', value));
+        for (const literal of ['"literal"', "'literal'", '`literal ${orderRuleMessage("key")}`']) {
+          const source = `${definition}\nrefuse("unused argument", /* gap */ (\n${literal}));`;
+          for (const text of [source, source.replace(/\n/g, '\r\n')]) {
+            // D3 still rejects literal-leading messages at the definition as well as the wrapper call.
+            const existing = /^["`]/.test(value) ? [`wrapper-matrix:1: ${construct} carries a literal message`] : [];
+            assert.deepEqual(checkRefusalSites(text, 'wrapper-matrix').violations,
+              [...existing, 'wrapper-matrix:3: refuse( carries a literal message']);
+          }
+        }
+      }
+    }
+  }
+});
+
+test('forwarding wrappers retain message positions and reach a fixed point in either definition order', (t) => {
+  const definitions = [
+    'function refuse(message, code) { die(message, code); }',
+    'const middle = (unused, message) => refuse(message, unused);',
+    'const outer = function (message, unused) { middle(unused, message); };',
+  ];
+  for (const ordered of [definitions, definitions.toReversed()]) {
+    const source = `${ordered.join('\n')}\nouter("literal", orderRuleMessage("key"));`;
+    assert.deepEqual(checkRefusalSites(source, 'chain').violations, ['chain:4: outer( carries a literal message']);
+    assertGuard(t, `${ordered.join('\n')}\nouter(orderRuleMessage("key"), "not a message");`, 'positions');
+  }
+  const multiple = 'function refuse(code, first, second) { die(first, code); deny(second); }';
+  assert.deepEqual(checkRefusalSites(`${multiple}\nrefuse("code", "first", "second");`, 'multiple-positions').violations,
+    ['multiple-positions:2: refuse( carries a literal message', 'multiple-positions:2: refuse( carries a literal message']);
+  const cycle = 'const left = (message) => right(message); const right = (message) => { left(message); die(message); };';
+  assert.deepEqual(checkRefusalSites(`${cycle}\nleft("literal");`, 'anchored-cycle').violations,
+    ['anchored-cycle:2: left( carries a literal message']);
+  assertGuard(t, 'const left = (message) => right(message); const right = (message) => left(message); left("data");', 'unanchored-cycle');
+});
+
+test('wrapper literals use original opening lines, binding tracing and reasoned opt-outs', (t) => {
+  const definition = 'const refuse = message => die(message);';
+  const source = `${definition}\nrefuse(\n "status"); // order-guard: not-a-refusal — informational status only`;
+  assertGuard(t, source, 'wrapper-opt-out');
+  assert.equal(checkRefusalSites(source, 'wrapper-opt-out').optOuts.length, 1);
+  assert.deepEqual(checkRefusalSites(`${definition}\nrefuse(\n "literal"); // order-guard: not-a-refusal — too short`, 'short').violations,
+    ['short:3: refuse( carries a literal message']);
+  assert.deepEqual(checkRefusalSites(`${definition}\nconst message = "literal";\nrefuse(message);`, 'wrapper-binding').violations,
+    ['wrapper-binding:2: message is a literal message']);
+  assertGuard(t, `${definition}\nconst message = orderRuleMessage("key"); refuse(message);`, 'wrapper-builder-binding');
+});
+
+test('wrapper discovery ignores builder arguments, defaults, member calls and unrelated function bodies', (t) => {
+  for (const definition of [
+    'const format = message => die(orderRuleMessage("key", { message }));',
+    'function format(message) { die(orderDiagnosticMessage("key", message)); }',
+    'function format(message) { function inner(message) { die(message); } log(message); }',
+    'const format = message => log(message);',
+    'function format(message) { return\nmessage; }',
+  ]) assertGuard(t, `${definition}\nformat("ordinary input");`, 'not-forwarded');
+  assertGuard(t, 'const refuse = (message = "default") => die(message); object.refuse("ordinary input");', 'wrapper-default');
+  assertGuard(t, 'const refuse = message => die(message); const text = "refuse(\\"text\\")"; // refuse("comment")', 'wrapper-lexical');
 });

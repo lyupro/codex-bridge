@@ -1,0 +1,3 @@
+// Plan_79 B3h / D3: function declarations forward refusal messages too.
+function refuse(message) { throw new RunnerUsageError(message); }
+refuse('literal message');
