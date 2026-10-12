@@ -93,4 +93,39 @@ export const RULES = Object.freeze({
       throw new Error(`unknown repository-path violation: ${violation}`);
     },
   }),
+  'agent-accepted-labels': Object.freeze({
+    data: Object.freeze(['label', 'agent']),
+    topic: 'order',
+    rule: 'Use only the header labels accepted by the agent assigned to this order.',
+    message: ({ label, agent }) => `label "${label}" is not accepted by ${agent}`,
+  }),
+  'order-value-placeholder': Object.freeze({
+    data: Object.freeze(['label']),
+    topic: 'order',
+    rule: 'Replace placeholder header values with the actual values assigned to this order.',
+    message: ({ label }) => `label "${label}" is still a placeholder`,
+  }),
+  'header-shell-safety': Object.freeze({
+    data: Object.freeze(['labelName', 'sequence']),
+    topic: 'order',
+    rule: 'Keep header values short and free of forbidden shell sequences; put free text in the task file body.',
+    message: ({ labelName, sequence }) =>
+      `${labelName} contains forbidden shell sequence ${JSON.stringify(sequence)}; ` +
+      'put free text in the task file body and keep header values short',
+  }),
+  'build-existing-scope-required': Object.freeze({
+    data: Object.freeze(['labelName', 'newLabelName']),
+    topic: 'order',
+    rule: 'For codex-build, declare at least one existing path pattern in scope; scope new does not replace it.',
+    message: ({ labelName, newLabelName }) =>
+      `${labelName} is required for codex-build: declare at least one existing path pattern; ` +
+      `${newLabelName} does not replace it.`,
+  }),
+  'required-order-labels': Object.freeze({
+    data: Object.freeze(['label', 'example']),
+    topic: 'order',
+    rule: 'Include every required header label for the assigned agent, using its example as a guide.',
+    message: ({ label, example }) =>
+      `missing required header label "${label}:"; example: ${label}: ${example}`,
+  }),
 });

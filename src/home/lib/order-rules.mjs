@@ -35,7 +35,19 @@ export function orderRefusalAt(location, message) {
 // Plan_79 B3c1: adds a source location to text built by the registry and owns no rule.
 export function orderProblemLine({ lineNo, reason, line }) {
   checkOrderTextParameters('orderProblemLine', null, { lineNo, reason, line }, ['lineNo', 'line']);
-  return recordOrderText(`line ${lineNo}: ${reason}: ${line}`);
+  return recordOrderText(lineNo === null ? reason : `line ${lineNo}: ${reason}: ${line}`);
+}
+
+// Plan_79 B3c2: adds a label name to text built by the registry and owns no rule.
+export function orderLabelReason(labelName, reason) {
+  checkOrderTextParameters('orderLabelReason', null, { labelName, reason }, ['labelName']);
+  return recordOrderText(`${labelName} ${reason}`);
+}
+
+// Plan_79 B3c2: renders the label schema owned by order-schema.mjs and owns no rule.
+export function orderHeaderHelp(labels) {
+  checkOrderTextParameters('orderHeaderHelp', null, { labels }, ['labels']);
+  return recordOrderText(labels.map(({ label, example }) => `${label}: ${example}`).join('\n'));
 }
 
 // Plan_79 D3: callers supply the topic catalogue so installed rules do not depend on the CLI tree.

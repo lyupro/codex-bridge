@@ -111,10 +111,10 @@ if (fixture) {
     assert.deepEqual(entries, []);
   });
 
-  test('registry helpers and pending producers record their unchanged output', () => {
+  test('registry helpers record their unchanged output', () => {
     const lib = new URL('../src/home/lib/', import.meta.url);
     const { entries } = runCase(`
-      const { orderRuleMessage, orderRefusalAt } = await import(${JSON.stringify(new URL('order-rules.mjs', lib).href)});
+      const { orderRuleMessage, orderRefusalAt, orderLabelReason } = await import(${JSON.stringify(new URL('order-rules.mjs', lib).href)});
       const { orderDiagnosticMessage } = await import(${JSON.stringify(new URL('order-diagnostics.mjs', lib).href)});
       const { orderInputName, renderOrderHeaderHelp, renderOrderProblems } = await import(${JSON.stringify(new URL('order-schema.mjs', lib).href)});
       const { parseTaskHeader, taskHeaderRefusal } = await import(${JSON.stringify(new URL('task-header.mjs', lib).href)});
@@ -123,9 +123,9 @@ if (fixture) {
         orderDiagnosticMessage('agent-required'),
         orderRefusalAt('location', recordOrderText('refusal')),
         renderOrderHeaderHelp('codex-scout'),
-        renderOrderProblems('codex-scout', [{ lineNo: null, reason: 'pending schema refusal' }]),
+        renderOrderProblems('codex-scout', [{ lineNo: null, reason: orderRuleMessage('verify-line', { violation: 'empty' }) }]),
         taskHeaderRefusal(parseTaskHeader(${JSON.stringify('continue: . — reason\n\nTask')})),
-        orderInputName('effort') + ' ' + orderRuleMessage('effort-value', { value: 'two words' }),
+        orderLabelReason(orderInputName('effort'), orderRuleMessage('effort-value', { value: 'two words' })),
       ];
       assert.equal(messages[0], 'Verify section is empty');
       assert.equal(messages[1], '--agent is required');

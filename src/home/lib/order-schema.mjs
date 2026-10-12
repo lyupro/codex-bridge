@@ -5,7 +5,8 @@
  */
 import { isInputPlaceholder } from './order-values.mjs';
 import { firstShellUnsafeSequence } from './shell-unsafe.mjs';
-import { recordOrderText } from './order-text-record.mjs';
+import { orderRuleMessage, orderProblemLine, orderHeaderHelp } from './order-rules.mjs';
+import { orderDiagnosticMessage } from './order-diagnostics.mjs';
 
 const freezeEntries = (entries) => Object.freeze(entries.map((entry) => Object.freeze(entry)));
 
@@ -132,20 +133,21 @@ export const ALL_ORDER_LABELS = Object.freeze([...new Set(
   ORDER_AGENTS.flatMap((agentType) => orderLabelsFor(agentType).map(({ label }) => label)),
 )].sort());
 
-const inputNames = new Set(ALL_ORDER_LABELS);
+// Plan_79 D6: formatted label names are schema data, not issued refusal text.
+const inputNames = new Map(ALL_ORDER_LABELS.map((label) => [label, `\`${label}:\``]));
 
 // Plan_63 D7: switching the order input channel changes only this function.
 export function orderInputName(label) {
-  if (!inputNames.has(label)) throw new Error(`Unknown order input label "${label}"`);
-  // Plan_79 D5: pending producer, recorded until its file migrates
-  return recordOrderText(`\`${label}:\``);
+  if (!inputNames.has(label)) throw new Error(orderDiagnosticMessage('order-input-name-known', { label }));
+  return inputNames.get(label);
 }
 
 export function orderFromHeader(agentType, parsed) {
   const order = new Map();
   const problems = [];
   if (!schemas.has(agentType)) {
-    problems.push({ lineNo: null, line: '', reason: `unknown dispatcher agent "${agentType}"` });
+    problems.push({ lineNo: null, line: '',
+      reason: orderDiagnosticMessage('dispatcher-agent-known', { agent: agentType }) });
     return { order, problems };
   }
 
@@ -158,51 +160,51 @@ export function orderFromHeader(agentType, parsed) {
     const location = entry ? { lineNo: entry.lineNo, line: entry.line }
       : { lineNo: null, line: '' };
     if (!accepted.has(label)) {
-      problems.push({ ...location, reason: `label "${label}" is not accepted by ${agentType}` });
+      problems.push({ ...location,
+        reason: orderRuleMessage('agent-accepted-labels', { label, agent: agentType }) });
       continue;
     }
     // Grant values are validated by parseTaskHeader; re-reporting them would duplicate its problem.
     if (label === 'continue' || label === 'retry') continue;
     order.set(label, value);
     if (isInputPlaceholder(value, label)) {
-      problems.push({ ...location, reason: `label "${label}" is still a placeholder` });
+      problems.push({ ...location, reason: orderRuleMessage('order-value-placeholder', { label }) });
     }
     // Plan_63 D5: the flag-era refusal (Plan_42) keeps its pair in the header — an order value is a short
     // identifier, so a shell sequence in it is free text written in the wrong place.
     const sequence = firstShellUnsafeSequence(value);
     if (sequence !== null) {
-      problems.push({ ...location, reason: `${orderInputName(label)} contains forbidden shell sequence ` +
-        `${JSON.stringify(sequence)}; put free text in the task file body and keep header values short` });
+      problems.push({ ...location, reason: orderRuleMessage('header-shell-safety', {
+        labelName: orderInputName(label), sequence,
+      }) });
     }
     // Plan_63 D5: new paths cannot replace the existing-file boundary of a writing order.
     if (agentType === 'codex-build' && label === 'scope'
         && !value.split(',').some((pattern) => pattern.trim())) {
       problems.push({ ...location,
-        reason: `${orderInputName(label)} is required for codex-build: declare at least one existing path pattern; ` +
-          `${orderInputName('scope new')} does not replace it.` });
+        reason: orderRuleMessage('build-existing-scope-required', {
+          labelName: orderInputName(label), newLabelName: orderInputName('scope new'),
+        }) });
     }
   }
   for (const { label, required, example } of labels) {
     if (required && !Object.hasOwn(parsed.fields, label)) {
       problems.push({ lineNo: null, line: '',
-        reason: `missing required header label "${label}:"; example: ${label}: ${example}` });
+        reason: orderRuleMessage('required-order-labels', { label, example }) });
     }
   }
   return { order, problems };
 }
 
 export function renderOrderProblems(agentType, problems) {
-  // Plan_79 D5: pending producer, recorded until its file migrates
-  return recordOrderText([...problems.map(({ lineNo, line, reason }) => lineNo === null
-    ? reason : `line ${lineNo}: ${reason}: ${line}`), renderOrderHeaderHelp(agentType)].join('\n'));
+  return [...problems.map(orderProblemLine), renderOrderHeaderHelp(agentType)].join('\n');
 }
 
 export function renderOrderHeaderHelp(agentType) {
   const labels = orderLabelsFor(agentType);
-  // Plan_79 D5: pending producer, recorded until its file migrates
-  return recordOrderText([
+  return orderHeaderHelp([
     ...labels.filter(({ required }) => required),
     ...labels.filter(({ conditional }) => conditional),
     ...labels.filter(({ optional }) => optional),
-  ].map(({ label, example }) => `${label}: ${example}`).join('\n'));
+  ]);
 }

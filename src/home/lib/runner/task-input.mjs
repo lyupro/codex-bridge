@@ -10,7 +10,7 @@ import { die, readTaskDocument } from './args.mjs';
 import { questionKindRefusal } from './question-kind.mjs';
 import { orderFromHeader, orderInputName, renderOrderProblems } from '../order-schema.mjs';
 import { orderOptions } from './order-options.mjs';
-import { orderRuleMessage } from '../order-rules.mjs';
+import { orderRuleMessage, orderLabelReason } from '../order-rules.mjs';
 import { orderDiagnosticMessage } from '../order-diagnostics.mjs';
 
 /**
@@ -44,7 +44,7 @@ export function settleTaskInput(opts, { cwd = process.cwd() } = {}) {
   }
   const normalized = orderOptions(opts.agent, order, { cwd });
   if (normalized.problems.length) {
-    die(normalized.problems.map(({ label, reason }) => `${orderInputName(label)} ${reason}`).join('\n'));
+    die(normalized.problems.map(({ label, reason }) => orderLabelReason(orderInputName(label), reason)).join('\n'));
   }
   const repositoryReason = order.has('repository') ? repositoryRefusal(order.get('repository')) : null;
   if (repositoryReason) {

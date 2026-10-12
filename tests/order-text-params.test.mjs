@@ -119,6 +119,13 @@ const expectedData = {
   'grant-value-shape': [],
   'header-metadata-placement': ['label', 'violation'],
   'run-not-created': [],
+  'agent-accepted-labels': ['label', 'agent'],
+  'order-value-placeholder': ['label'],
+  'header-shell-safety': ['labelName', 'sequence'],
+  'build-existing-scope-required': ['labelName', 'newLabelName'],
+  'required-order-labels': ['label', 'example'],
+  'dispatcher-agent-known': ['agent'],
+  'order-input-name-known': ['label'],
 };
 
 test('each entry freezes the caller-classified data allowlist and excludes forwarded prose', () => {
