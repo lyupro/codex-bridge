@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { COMMANDS } from '../cli/command-registry.mjs';
 import { GUIDANCE_TOPICS } from '../cli/guidance.mjs';
 import { renderGuidance } from '../cli/guidance-render.mjs';
+import { ORDER_RULES } from '../src/home/lib/order-rules.mjs';
 import { SHELL_UNSAFE_SEQUENCES } from '../src/home/lib/shell-unsafe.mjs';
 import { SCHEMAS } from '../src/home/lib/runner/schemas.mjs';
 import { makeTempTree, removeTempTree } from './temp-tree.mjs';
@@ -74,4 +75,46 @@ test('records renders both required review field arrays from the schema', async 
   assert.ok(match);
   assert.equal(match[1], codeList(review.required));
   assert.equal(match[2], codeList(review.properties.findings.items.required));
+});
+test('order renders every registered rule key exactly once before free refusals', async (t) => {
+  const source = readTopic('order');
+  assert.match(source, /## Rules the runner enforces\n\nThese are the rules a pre-start refusal names\.\n\n{{order-rules:all}}/);
+  assert.ok(source.indexOf('## Rules the runner enforces') < source.indexOf('## Free refusals'));
+  const text = await renderGuidance(source, { root: installedHome(t), topic: 'order' });
+  const keys = [...text.matchAll(/^- `([^`]+)`: /gm)].map((match) => match[1]);
+  assert.deepEqual(keys.sort(), Object.keys(ORDER_RULES).sort());
+  for (const key of Object.keys(ORDER_RULES)) {
+    assert.equal(text.split(`\`${key}\``).length - 1, 1, `${key} must appear once`);
+    assert.ok(text.includes(`- \`${key}\`: ${ORDER_RULES[key].rule}`));
+  }
+});
+
+test('every rule-owning topic reads its rules from the registry', () => {
+  for (const topic of new Set(Object.values(ORDER_RULES).map((rule) => rule.topic))) {
+    assert.ok(Object.hasOwn(GUIDANCE_TOPICS, topic), `unknown rule topic: ${topic}`);
+    if (topic !== 'order') {
+      assert.ok(readTopic(topic).includes(`{{order-rules:${topic}}}`), `${topic} must render its registered rules`);
+    }
+  }
+});
+
+test('no topic keeps a verbatim handwritten copy of a registered rule', () => {
+  for (const topic of topics) {
+    const text = readTopic(topic);
+    for (const [key, rule] of Object.entries(ORDER_RULES)) {
+      assert.ok(!text.includes(rule.rule), `${topic} must not hand-copy ${key}`);
+    }
+  }
+});
+
+test('verify guidance leaves line-count and section-boundary rules in the registry', () => {
+  const text = readTopic('order');
+  assert.ok(text.includes('The dispatcher never reads that file and never puts the command on the command line.'));
+  assert.doesNotMatch(text, /heading, one line/);
+  const rule = ORDER_RULES['verify-line'].rule;
+  assert.match(rule, /exactly one non-empty command line/);
+  assert.match(rule, /blank lines are ignored/);
+  assert.match(rule, /next heading of the same or a higher level/);
+  assert.match(rule, /paragraph or a second command, counts as another line/);
+  assert.match(rule, /Put ## Verify last or follow it with another heading/);
 });

@@ -24,7 +24,9 @@ export const ORDER_RULES = Object.freeze({
   'verify-line': Object.freeze({
     topic: 'order',
     rule: 'When a Verify section is present, put exactly one non-empty command line in it; ' +
-      'blank lines are ignored.',
+      'blank lines are ignored. The section runs until the next heading of the same or a higher level, ' +
+      'so any non-empty line after the command, including a paragraph or a second command, counts as another line. ' +
+      'Put ## Verify last or follow it with another heading.',
     message: ({ violation }) => {
       if (violation === 'empty') return 'Verify section is empty';
       if (violation === 'multiple-lines') return 'Verify section must contain exactly one non-empty line';

@@ -62,7 +62,7 @@ Run records in `~/.lyupro/.codex-bridge/runs/` (or `~/.claude/codex-runs/` befor
 - **Every run leaves an audit folder.** The verbatim task, scope, before/after git state, events, report, verdict, and reason remain together.
 - **Zero runtime dependencies and zero build steps.** The package is plain `.mjs` on the Node.js standard library.
 
-The current suite contains **3723 automated tests: 3720 passing and 3 skipped**.
+The current suite contains **3734 automated tests: 3731 passing and 3 skipped**.
 
 ## Verify
 

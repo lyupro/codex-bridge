@@ -1,6 +1,7 @@
 /** Plan_79 B1: guidance derives owned values from the installed home, never a second list. */
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { GUIDANCE_TOPICS } from './guidance.mjs';
 
 const codeList = (values) => values.map((value) =>
   value.includes('`') ? '`` ' + value + ' ``' : '`' + value + '`').join(', ');
@@ -22,6 +23,23 @@ export async function renderGuidance(text, { root, topic }) {
         const { SCHEMAS } = await import(pathToFileURL(path.join(root, 'lib', 'runner', 'schemas.mjs')).href);
         const review = SCHEMAS['codex-review'];
         values.set(placeholder, `Top-level fields: ${codeList(review.required)}; finding fields: ${codeList(review.properties.findings.items.required)}`);
+      } else if (name.startsWith('order-rules:')) {
+        const ruleTopic = name.slice('order-rules:'.length);
+        if (ruleTopic !== 'all' && !Object.hasOwn(GUIDANCE_TOPICS, ruleTopic)) {
+          throw new Error(`unknown order rule topic "${ruleTopic}"`);
+        }
+        const { ORDER_RULES } = await import(pathToFileURL(path.join(root, 'lib', 'order-rules.mjs')).href);
+        const rules = Object.entries(ORDER_RULES);
+        const items = (owner) => rules.filter(([, rule]) => rule.topic === owner)
+          .map(([key, rule]) => `- \`${key}\`: ${rule.rule}`).join('\n');
+        const block = ruleTopic === 'all'
+          ? Object.keys(GUIDANCE_TOPICS).map((owner) => {
+            const list = items(owner);
+            return list ? `Topic \`${owner}\`:\n${list}` : '';
+          }).filter(Boolean).join('\n\n')
+          : items(ruleTopic);
+        if (!block) throw new Error('no order rules to render');
+        values.set(placeholder, block);
       } else {
         throw new Error('unknown placeholder');
       }

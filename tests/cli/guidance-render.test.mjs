@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { renderGuidance } from '../../cli/guidance-render.mjs';
+import { ORDER_RULES } from '../../src/home/lib/order-rules.mjs';
 import { SHELL_UNSAFE_SEQUENCES } from '../../src/home/lib/shell-unsafe.mjs';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 
@@ -114,4 +115,70 @@ test('template syntax introduced by an installed value also fails', async (t) =>
   writeModule(root, 'shell-unsafe.mjs', 'export const SHELL_UNSAFE_SEQUENCES = ["{{installed-value}}"]');
   await assertRenderFailure('{{shell-unsafe-sequences}}', root, 'order',
     '{{installed-value}}`', /unresolved placeholder/);
+});
+
+test('order rule placeholders use the installed root and preserve registry order within a topic', async (t) => {
+  const root = homeFixture(t);
+  const rules = {
+    'installed-second': { topic: 'advisor', rule: 'Second by name, first in the registry.' },
+    'other-topic': { topic: 'order', rule: 'Only in the all block.' },
+    'installed-first': { topic: 'advisor', rule: 'First by name, second in the registry.' },
+  };
+  writeModule(root, 'order-rules.mjs', `export const ORDER_RULES = ${JSON.stringify(rules)};`);
+  assert.notDeepEqual(rules, ORDER_RULES);
+  const expected = '- `installed-second`: Second by name, first in the registry.\n' +
+    '- `installed-first`: First by name, second in the registry.';
+  assert.equal(await renderGuidance('{{order-rules:advisor}}\n{{order-rules:advisor}}', { root, topic: 'advisor' }),
+    `${expected}\n${expected}`);
+  assert.equal(await renderGuidance('{{order-rules:all}}', { root, topic: 'order' }),
+    'Topic `order`:\n- `other-topic`: Only in the all block.\n\nTopic `advisor`:\n' + expected);
+});
+
+test('all order rules follow the guidance topic order and omit topics without rules', async (t) => {
+  const root = homeFixture(t);
+  const rules = {
+    'concurrency-rule': { topic: 'concurrency', rule: 'Concurrency rule.' },
+    'records-rule': { topic: 'records', rule: 'Records rule.' },
+    'budget-rule': { topic: 'budget', rule: 'Budget rule.' },
+    'advisor-rule': { topic: 'advisor', rule: 'Advisor rule.' },
+    'order-rule': { topic: 'order', rule: 'Order rule.' },
+  };
+  writeModule(root, 'order-rules.mjs', `export const ORDER_RULES = ${JSON.stringify(rules)};`);
+  assert.equal(await renderGuidance('{{order-rules:all}}', { root, topic: 'order' }),
+    ['order', 'advisor', 'budget', 'records', 'concurrency'].map((topic) =>
+      `Topic \`${topic}\`:\n- \`${topic}-rule\`: ${rules[`${topic}-rule`].rule}`).join('\n\n'));
+});
+
+test('unknown order rule topics including inherited names fail with their topic and token', async (t) => {
+  const root = homeFixture(t);
+  for (const name of ['unknown', 'constructor', '__proto__', '']) {
+    const placeholder = `{{order-rules:${name}}}`;
+    await assertRenderFailure(placeholder, root, 'order', placeholder, /unknown order rule topic/);
+  }
+});
+
+test('a known topic with no order rules fails instead of printing an empty block', async (t) => {
+  const root = homeFixture(t);
+  writeModule(root, 'order-rules.mjs', 'export const ORDER_RULES = { "order-rule": { topic: "order", rule: "Order rule." } };');
+  await assertRenderFailure('{{order-rules:budget}}', root, 'budget', '{{order-rules:budget}}', /no order rules/);
+});
+
+test('an empty order registry fails for both all and topic placeholders', async (t) => {
+  const root = homeFixture(t);
+  writeModule(root, 'order-rules.mjs', 'export const ORDER_RULES = {};');
+  for (const placeholder of ['{{order-rules:all}}', '{{order-rules:order}}']) {
+    await assertRenderFailure(placeholder, root, 'order', placeholder, /no order rules/);
+  }
+});
+
+test('a missing installed order registry fails without a clone fallback', async (t) => {
+  await assertRenderFailure('{{order-rules:all}}', homeFixture(t), 'order',
+    '{{order-rules:all}}', /Cannot find module/);
+});
+
+test('missing order rule exports fail instead of supplying a default registry', async (t) => {
+  const root = homeFixture(t);
+  writeModule(root, 'order-rules.mjs', 'export const unrelated = {};');
+  await assertRenderFailure('{{order-rules:all}}', root, 'order',
+    '{{order-rules:all}}', /undefined|null/);
 });

@@ -58,8 +58,14 @@ whose `meta.json` identifies a `codex-advisor` advise pass with status `OK`, or 
 
 ## Verify
 
-Put the verification command in the task file under a `## Verify` heading, one line.
+Put the verification command in the task file under a `## Verify` heading.
 The dispatcher never reads that file and never puts the command on the command line.
+
+## Rules the runner enforces
+
+These are the rules a pre-start refusal names.
+
+{{order-rules:all}}
 
 ## Free refusals
 
