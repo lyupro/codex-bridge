@@ -27,7 +27,7 @@ For advisor, pass `scope` first, then `advise` with a `continue:` grant naming t
 
 `repository` is the repository path; `slug` names this pass without replacing the order id.
 The runner checks accepted `effort` values. `changeset` is `uncommitted`, `base:<branch>` or `commit:<sha>`.
-Keep header values short and free of forbidden shell sequences. Empty or placeholder values are refused;
+Keep header values short. Forbidden shell sequences are {{shell-unsafe-sequences}}. Empty or placeholder values are refused;
 `phase: scope` and `effort: none` are real values.
 
 ## File boundary

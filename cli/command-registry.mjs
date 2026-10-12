@@ -283,7 +283,7 @@ export const COMMANDS = [
     usage: ['codex-bridge guidance [<topic>]'],
     section: 'public',
     async handler(argv, io) {
-      const result = guidance(argv);
+      const result = await guidance(argv);
       if (result.exitCode === 2) io.error(result.output);
       else io.log(result.output);
       return result.exitCode;

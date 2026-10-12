@@ -22,9 +22,22 @@ function assertTopics(output) {
   assert.ok(output.includes('Usage: codex-bridge guidance [<topic>]'));
 }
 
-test('guidance lists the finite topics in order with summaries and usage', (t) => {
+test('guidance always returns a Promise for usage, read errors and rendering', async (t) => {
+  const { home, env } = homeFixture(t);
+  fs.mkdirSync(path.join(home, 'guidance'));
+  fs.writeFileSync(path.join(home, 'guidance', 'order.md'), 'Installed rules');
+  fs.writeFileSync(path.join(home, 'guidance', 'records.md'), '{{unknown-field}}');
+  for (const [argv, exitCode] of [
+    [[], 0], [['unknown'], 2], [['order', 'records'], 2],
+    [['budget'], 1], [['order'], 0], [['records'], 1],
+  ]) {
+    await guidance(argv, { env }).then((result) => assert.equal(result.exitCode, exitCode));
+  }
+});
+
+test('guidance lists the finite topics in order with summaries and usage', async (t) => {
   const { env } = homeFixture(t);
-  const result = guidance([], { env });
+  const result = await guidance([], { env });
   assert.equal(result.exitCode, 0);
   assert.deepEqual(Object.keys(GUIDANCE_TOPICS), ['order', 'advisor', 'budget', 'records', 'concurrency']);
   assertTopics(result.output);
@@ -32,52 +45,52 @@ test('guidance lists the finite topics in order with summaries and usage', (t) =
     Object.entries(GUIDANCE_TOPICS).map(([topic, summary]) => `  ${topic} — ${summary}`));
 });
 
-test('guidance prints each installed topic verbatim from the injected home', (t) => {
+test('guidance prints each installed topic verbatim from the injected home', async (t) => {
   const { home, env } = homeFixture(t);
   fs.mkdirSync(path.join(home, 'guidance'));
   for (const topic of Object.keys(GUIDANCE_TOPICS)) {
     const text = `\uFEFF# ${topic}\r\n\r\nDetailed rules — naïve.  \r\n\n`;
     fs.writeFileSync(path.join(home, 'guidance', `${topic}.md`), text);
-    assert.deepEqual(guidance([topic], { env }), { exitCode: 0, output: text });
+    assert.deepEqual(await guidance([topic], { env }), { exitCode: 0, output: text });
   }
 });
 
-test('guidance also resolves the default brand home from an injected homedir', (t) => {
+test('guidance also resolves the default brand home from an injected homedir', async (t) => {
   const { home } = homeFixture(t);
   const dir = path.join(home, '.lyupro', '.codex-bridge', 'guidance');
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'order.md'), 'Default home rules');
-  assert.deepEqual(guidance(['order'], { env: {}, homedir: home }),
+  assert.deepEqual(await guidance(['order'], { env: {}, homedir: home }),
     { exitCode: 0, output: 'Default home rules' });
 });
 
-test('guidance refuses unknown topics, including inherited names and traversal', (t) => {
+test('guidance refuses unknown topics, including inherited names and traversal', async (t) => {
   const { env } = homeFixture(t);
   for (const topic of ['unknown', 'toString', '__proto__', '../order']) {
-    const result = guidance([topic], { env });
+    const result = await guidance([topic], { env });
     assert.equal(result.exitCode, 2);
     assert.ok(result.output.includes(`Unknown guidance topic "${topic}"`));
     assertTopics(result.output);
   }
 });
 
-test('guidance refuses two arguments and lists the topics', (t) => {
+test('guidance refuses two arguments and lists the topics', async (t) => {
   const { env } = homeFixture(t);
-  const result = guidance(['order', 'advisor'], { env });
+  const result = await guidance(['order', 'advisor'], { env });
   assert.equal(result.exitCode, 2);
   assert.match(result.output, /at most one topic/);
   assertTopics(result.output);
 });
 
-test('missing guidance names the absolute home path and the update command', (t) => {
+test('missing guidance names the absolute home path and the update command', async (t) => {
   const { home, env } = homeFixture(t);
-  const result = guidance(['order'], { env });
+  const result = await guidance(['order'], { env });
   assert.equal(result.exitCode, 1);
   assert.ok(result.output.includes(path.join(home, 'guidance', 'order.md')));
   assert.match(result.output, /run codex-bridge update/);
 });
 
-test('unreadable guidance names the home path and asks for update', (t) => {
+test('unreadable guidance names the home path and asks for update', async (t) => {
   const { home, env } = homeFixture(t);
   const file = path.join(home, 'guidance', 'order.md');
   const readFileSync = fs.readFileSync;
@@ -86,14 +99,14 @@ test('unreadable guidance names the home path and asks for update', (t) => {
     if (target === file) throw Object.assign(new Error('permission denied'), { code: 'EACCES' });
     return readFileSync(target, ...args);
   });
-  const result = guidance(['order'], { env });
+  const result = await guidance(['order'], { env });
   assert.equal(result.exitCode, 1);
   assert.ok(result.output.includes(file));
   assert.match(result.output, /permission denied/);
   assert.match(result.output, /run codex-bridge update/);
 });
 
-test('missing installed guidance never falls back to a readable clone seed', (t) => {
+test('missing installed guidance never falls back to a readable clone seed', async (t) => {
   const { home, env } = homeFixture(t);
   const root = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
   const cloneFile = path.join(root, 'src', 'home', 'guidance', 'order.md');
@@ -105,7 +118,7 @@ test('missing installed guidance never falls back to a readable clone seed', (t)
     if (target === cloneFile) return 'Clone seed must never be printed';
     return readFileSync(target, ...args);
   });
-  const result = guidance(['order'], { env });
+  const result = await guidance(['order'], { env });
   assert.equal(result.exitCode, 1);
   assert.deepEqual(reads, [path.join(home, 'guidance', 'order.md')]);
   assert.doesNotMatch(result.output, /Clone seed/);
@@ -128,4 +141,69 @@ test('guidance is public and reachable through main, with usage errors on io.err
   assert.equal(logs.length, 1);
   assert.equal(errors.length, 2);
   for (const output of errors) assertTopics(output);
+});
+
+test('main awaits installed rendering and preserves existing output routing', async (t) => {
+  const { home, env } = homeFixture(t);
+  fs.mkdirSync(path.join(home, 'guidance'));
+  fs.mkdirSync(path.join(home, 'lib'));
+  fs.writeFileSync(path.join(home, 'lib', 'shell-unsafe.mjs'),
+    'export const SHELL_UNSAFE_SEQUENCES = ["installed-only"];');
+  fs.writeFileSync(path.join(home, 'guidance', 'order.md'), 'Forbidden: {{shell-unsafe-sequences}}');
+  const previous = process.env.CODEX_BRIDGE_HOME;
+  process.env.CODEX_BRIDGE_HOME = env.CODEX_BRIDGE_HOME;
+  t.after(() => {
+    if (previous === undefined) delete process.env.CODEX_BRIDGE_HOME;
+    else process.env.CODEX_BRIDGE_HOME = previous;
+  });
+  const logs = [];
+  const errors = [];
+  const io = { log: (text) => logs.push(text), error: (text) => errors.push(text) };
+  assert.equal(await main(['guidance', 'order'], io), 0);
+  assert.deepEqual(logs, ['Forbidden: `installed-only`']);
+  fs.writeFileSync(path.join(home, 'guidance', 'records.md'), '{{unknown-field}}');
+  assert.equal(await main(['guidance', 'records'], io), 1);
+  assert.equal(logs.length, 2);
+  assert.deepEqual(errors, []);
+  assert.match(logs[1], /topic "records"/);
+  assert.ok(logs[1].includes('{{unknown-field}}'));
+  assert.ok(logs[1].endsWith('run codex-bridge update'));
+});
+
+test('unknown installed placeholders return exit 1 naming the topic and placeholder', async (t) => {
+  const { home, env } = homeFixture(t);
+  fs.mkdirSync(path.join(home, 'guidance'));
+  fs.writeFileSync(path.join(home, 'guidance', 'order.md'), '{{unknown-field}}');
+  const result = await guidance(['order'], { env });
+  assert.equal(result.exitCode, 1);
+  assert.match(result.output, /topic "order"/);
+  assert.ok(result.output.includes('{{unknown-field}}'));
+  assert.ok(result.output.endsWith('run codex-bridge update'));
+});
+
+test('unresolved installed templates return exit 1 with the update remedy', async (t) => {
+  const { home, env } = homeFixture(t);
+  fs.mkdirSync(path.join(home, 'guidance'));
+  fs.writeFileSync(path.join(home, 'guidance', 'records.md'), 'Fields: {{unfinished');
+  const result = await guidance(['records'], { env });
+  assert.equal(result.exitCode, 1);
+  assert.match(result.output, /topic "records"/);
+  assert.ok(result.output.includes('{{unfinished'));
+  assert.ok(result.output.endsWith('run codex-bridge update'));
+});
+
+test('missing installed value modules return exit 1 for either placeholder', async (t) => {
+  const { home, env } = homeFixture(t);
+  fs.mkdirSync(path.join(home, 'guidance'));
+  for (const [topic, placeholder] of [
+    ['order', '{{shell-unsafe-sequences}}'], ['records', '{{review-required-fields}}'],
+  ]) {
+    fs.writeFileSync(path.join(home, 'guidance', `${topic}.md`), placeholder);
+    const result = await guidance([topic], { env });
+    assert.equal(result.exitCode, 1);
+    assert.ok(result.output.includes(`topic "${topic}"`));
+    assert.ok(result.output.includes(placeholder));
+    assert.match(result.output, /Cannot find module/);
+    assert.ok(result.output.endsWith('run codex-bridge update'));
+  }
 });

@@ -16,10 +16,12 @@ A started run records its lifecycle and output in its run folder:
 
 - `meta.json`: agent, phase and final status; use it to identify an advisor advise pass before citing it in `advice:`.
 - `status.json`: lifecycle state (`running`, `finished`, `failed` or `abandoned`) and runner PID.
+- `task.md`: the task the runner assembled for the executor, not a byte copy of the orchestrator's task file.
 - `result.json`: structured scout, build or advisor result; build includes `summary`, `changes`, `verify_command`, `verify_passed`, `leftovers` and `report_markdown`.
-- `review.json`: the review agent's structured result instead of `result.json`.
+- `review.json`: the review agent's structured result instead of `result.json`. {{review-required-fields}}.
 - `report.md`: the full report; the runner expands a build result's `report_markdown` into this file.
 - `events.jsonl` and `stderr.log`: transport evidence for progress, deadline or startup failures.
+- `raw.log`: transport evidence when present; retention may remove it.
 
 A failed or interrupted run may have no complete result. Read the recorded status and available evidence rather than treating a missing report as an empty successful run.
 
