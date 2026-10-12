@@ -1,16 +1,18 @@
 /**
  * Plan_79 D4 places each rule where the orchestrator writes what it governs:
- * the call line or task file → call.mjs; a header label → header.mjs;
+ * the call line or task file → call.mjs; a grant label (continue, retry,
+ * advice) → header-grants.mjs; any other header label → header.mjs;
  * a body section → task-document.mjs (all under order-rules/).
  * A file outgrowing the gate splits by the next level of the same place
  * (header → label families), never by number.
  */
 import { RULES as HEADER_RULES } from './order-rules/header.mjs';
+import { RULES as HEADER_GRANT_RULES } from './order-rules/header-grants.mjs';
 import { RULES as TASK_DOCUMENT_RULES } from './order-rules/task-document.mjs';
 import { RULES as CALL_RULES } from './order-rules/call.mjs';
 import { recordOrderText, checkOrderTextParameters } from './order-text-record.mjs';
 
-const places = [HEADER_RULES, TASK_DOCUMENT_RULES, CALL_RULES];
+const places = [HEADER_RULES, HEADER_GRANT_RULES, TASK_DOCUMENT_RULES, CALL_RULES];
 const keys = new Set();
 for (const rules of places) {
   for (const key of Object.keys(rules)) {

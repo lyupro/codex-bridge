@@ -6,7 +6,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { makeTempTree } from './temp-tree.mjs';
 import { ORDER_RULES, orderRuleMessage } from '../src/home/lib/order-rules.mjs';
-import { RULES as HEADER_RULES } from '../src/home/lib/order-rules/header.mjs';
+import { RULES as GRANT_RULES } from '../src/home/lib/order-rules/header-grants.mjs';
 import { ORDER_DIAGNOSTICS, orderDiagnosticMessage } from '../src/home/lib/order-diagnostics.mjs';
 import { continuationRefusal, retryRefusal, readyGrantLines } from '../src/home/lib/runner/continuation.mjs';
 import { advisorTaskArtifact, advisorTaskOrRefuse, adviseSection } from '../src/home/lib/runner/advise-carry.mjs';
@@ -114,10 +114,10 @@ for (const [key, values, category, expected] of diagnosticMessages) {
   });
 }
 
-test('grant rules are frozen header rules with explicit data and author guidance', () => {
+test('grant rules are frozen header grant rules with explicit data and author guidance', () => {
   for (const key of ['continuation-grant-usable', 'retry-grant-usable', 'ready-grant-line', 'grant-last-run-hint']) {
     const entry = ORDER_RULES[key];
-    assert.equal(entry, HEADER_RULES[key]);
+    assert.equal(entry, GRANT_RULES[key]);
     assert.equal(entry.topic, 'order');
     assert.ok(entry.rule.trim());
     assert.ok(Object.isFrozen(entry));

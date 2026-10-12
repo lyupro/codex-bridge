@@ -15,7 +15,7 @@ const lib = fileURLToPath(new URL('../src/home/lib/', import.meta.url));
 // Plan_79 D4: the places a rule can live. The registry grows every slice, so the tests read its
 // keys from the registry itself; a new place file (for example a header split by label family)
 // is a plan decision and is added here, never a numbered chunk.
-const PLACE_FILES = ['call.mjs', 'header.mjs', 'task-document.mjs'];
+const PLACE_FILES = ['call.mjs', 'header.mjs', 'header-grants.mjs', 'task-document.mjs'];
 const ruleKeys = Object.keys(ORDER_RULES);
 
 function moduleFiles(directory) {
