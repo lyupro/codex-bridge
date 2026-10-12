@@ -1,0 +1,4 @@
+// Plan_79 B3g / D3: reassignment cannot hide literal rule text behind a name.
+let reason = orderRuleMessage('known-rule');
+reason = `new rule text: ${orderRuleMessage('known-rule')}`;
+die(reason);

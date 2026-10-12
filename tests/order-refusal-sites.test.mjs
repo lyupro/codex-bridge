@@ -1,6 +1,6 @@
 /**
- * Plan_79 B2d / D3: admission refusals must not acquire text outside the registries.
- * This is a text guard, not a JavaScript parser or identifier/data-flow resolver:
+ * Plan_79 B3g / D3: admission refusals must not acquire text outside the registries.
+ * This is a text guard, not a JavaScript parser or data-flow resolver:
  * - Strip line/block comments lexically, retaining original offsets and physical lines.
  *   Quoted strings, regexes and template text are opaque; template expressions are scanned.
  *   Regexes start at expression-start tokens or after control-statement parentheses.
@@ -10,6 +10,10 @@
  * - A value beginning with a quoted string or ANY template is a violation, including a
  *   template wrapping a registry builder. Identifiers and orderRuleMessage/orderDiagnosticMessage
  *   calls are allowed; builder key/parameter literals are not themselves refusal messages.
+ * - Same-file literal binding rule: message identifiers are checked against const/let/var
+ *   initializers and plain assignments of that name, regardless of declaration/use order.
+ *   Quoted/template literals (including wrapped builders) fail at their opening line.
+ *   Calls, parameters, destructuring and other identifiers are not resolved or followed.
  * - Only a trailing line comment on the literal's opening line can exempt it:
  *   // order-guard: not-a-refusal — <reason of at least three words>
  *   Every accepted exemption is printed for review. Missing/short reasons exempt nothing.
@@ -196,7 +200,18 @@ function lex(source) {
 function checkRefusalSites(source, file) {
   const { tokens, optOuts } = lex(source);
   const violations = [];
+  const messageNames = new Set();
   const at = (index) => tokens[index]?.value;
+  const groups = [];
+  const stack = [];
+  for (let index = 0; index < tokens.length; index += 1) {
+    if (['(', '{', '['].includes(at(index))) stack.push(index);
+    else if ([')', '}', ']'].includes(at(index)) && stack.length) groups.push([stack.pop(), index]);
+  }
+  const defaults = groups.filter(([start, end]) => at(start) === '('
+    ? (at(end + 1) === '=' && at(end + 2) === '>')
+      || (at(end + 1) === '{' && !['if', 'while', 'for', 'switch', 'with'].includes(at(start - 1)))
+    : at(end + 1) === '=' || ['const', 'let', 'var'].includes(at(start - 1)));
   for (let index = 0; index < tokens.length; index += 1) {
     const word = at(index);
     let construct;
@@ -219,10 +234,28 @@ function checkRefusalSites(source, file) {
       construct = 'return';
       valueIndex = index + 1;
     } else continue;
+    let grouping = 0;
+    while (at(valueIndex) === '(') { valueIndex += 1; grouping += 1; }
+    if (!tokens[valueIndex]?.literal) {
+      let following = valueIndex + 1;
+      while (grouping > 0 && at(following) === ')') { following += 1; grouping -= 1; }
+      if (/^[A-Za-z_$][\w$]*$/.test(at(valueIndex) ?? '')
+          && !['(', '.', '['].includes(at(following))) messageNames.add(at(valueIndex));
+      continue;
+    }
+    const line = lineAt(source, tokens[valueIndex].start);
+    if (!optOuts.has(line)) violations.push(`${file}:${line}: ${construct} carries a literal message`);
+  }
+  for (let index = 0; index < tokens.length; index += 1) {
+    const name = at(index);
+    if (!messageNames.has(name) || at(index - 1) === '.' || at(index + 1) !== '='
+        || ['=', '>'].includes(at(index + 2))
+        || defaults.some(([start, end]) => start < index && index < end)) continue;
+    let valueIndex = index + 2;
     while (at(valueIndex) === '(') valueIndex += 1;
     if (!tokens[valueIndex]?.literal) continue;
     const line = lineAt(source, tokens[valueIndex].start);
-    if (!optOuts.has(line)) violations.push(`${file}:${line}: ${construct} carries a literal message`);
+    if (!optOuts.has(line)) violations.push(`${file}:${line}: ${name} is a literal message`);
   }
   return { violations, optOuts: [...optOuts].map(([line, comment]) => `${file}:${line}: ${comment}`) };
 }
@@ -267,6 +300,42 @@ for (const [name, construct] of negativeFixtures) {
 test('positive fixture permits registry builders and message identifiers', (t) => {
   const file = 'tests/fixtures/order-refusal-sites/positive.mjs.txt';
   assertGuard(t, read(file), file);
+});
+
+for (const [name, line, identifier] of [['const-message', 2, 'message'], ['reassigned-reason', 3, 'reason']]) {
+  test(`same-file literal binding rejects fixture: ${name}`, () => {
+    const file = `tests/fixtures/order-refusal-sites/${name}.mjs.txt`;
+    const result = checkRefusalSites(read(file), file);
+    assert.deepEqual(result.violations, [`${file}:${line}: ${identifier} is a literal message`]);
+    assert.deepEqual(result.optOuts, []);
+  });
+}
+
+test('same-file literal bindings cover every refusal construct, declaration and assignment', () => {
+  for (const [name] of negativeFixtures.slice(0, 8)) {
+    const refusal = read(`tests/fixtures/order-refusal-sites/${name}.mjs.txt`).replace(/(['"])literal message\1/, '((message))');
+    for (const binding of ['const message =', 'let message =', 'var message =', 'message =']) {
+      for (const literal of ['"literal"', "'literal'", '`literal`', '`prefix ${orderRuleMessage("key")} suffix`', '`prefix ${orderDiagnosticMessage("key")} suffix`']) {
+        const source = `${refusal}\n${binding} /* gap */ (\n${literal});`;
+        for (const text of [source, source.replace(/\n/g, '\r\n')]) {
+          assert.deepEqual(checkRefusalSites(text, name).violations,
+            [`${name}:${lineAt(text, text.indexOf(literal))}: message is a literal message`]);
+        }
+      }
+    }
+  }
+});
+
+test('literal bindings use literal-line opt-outs and do not follow calls or other names', (t) => {
+  assert.deepEqual(checkRefusalSites('const message = "first";\nmessage = `second`;\ndie(message).then(); deny(message);', 'multiple').violations, ['multiple:1: message is a literal message', 'multiple:2: message is a literal message']);
+  assertGuard(t, 'const message = "status"; // order-guard: not-a-refusal — informational status only\ndie(message);', 'binding-opt-out');
+  assert.equal(checkRefusalSites('const message = "literal";\ndie(message); // order-guard: not-a-refusal — informational status only', 'wrong-line').violations.length, 1);
+  assertGuard(t, 'const other = "text"; const message = other; die(message);', 'no-data-flow');
+  assertGuard(t, 'const { message } = input; function refuse(reason) { die(reason); } die(message);', 'unresolved-values');
+  assertGuard(t, 'const { message = "default" } = input; function refuse(reason = "default") { die(reason); } die(message);', 'defaults');
+  assertGuard(t, 'const [message = "default"] = input; const refuse = (reason = "default") => die(reason); die(message);', 'arrow-defaults');
+  assertGuard(t, 'const builder = "text"; die((builder)("key"));', 'grouped-call');
+  assertGuard(t, 'object.message = "text"; message === "text"; const message = builder("key"); die(message);', 'non-bindings');
 });
 
 test('comments, strings, regexes, templates and division do not invent refusal sites', (t) => {

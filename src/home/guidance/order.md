@@ -36,6 +36,7 @@ Keep header values short. Forbidden shell sequences are {{shell-unsafe-sequences
 
 `scope new`: Comma-separated globs for new files this build may create, relative to the repository root.
 `scope` must declare at least one existing path pattern; `scope new` does not replace it.
+Paths listed in `scope new` are already inside the run's boundary, so they are not repeated in `scope`.
 <!-- service-folders:begin -->
 Never name service folders in scope: `.git/`, `.claude/`, `.codex/`, `.omx/`, `.omc/`, `node_modules/`.
 <!-- service-folders:end -->

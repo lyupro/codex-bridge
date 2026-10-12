@@ -1,4 +1,5 @@
 // Plan_79 D3: registry keys and builder parameters are not refusal message literals.
+const message = orderRuleMessage('known-rule', { violation: 'known-violation' });
 die(orderRuleMessage('known-rule', { violation: 'known-violation' }));
 die(message);
 throw new Error(orderDiagnosticMessage('known-diagnostic'));

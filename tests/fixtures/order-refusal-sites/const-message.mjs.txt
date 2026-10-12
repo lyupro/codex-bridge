@@ -1,0 +1,3 @@
+// Plan_79 B3g / D3: a named literal must not bypass the refusal registry.
+const message = 'new rule text';
+throw new Error(message);
