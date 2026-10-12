@@ -4,25 +4,26 @@ import path from 'node:path';
 import { readJsonFileSync } from '../json-file.mjs';
 import { parseAdvisorTask } from '../meta/advisor-task.mjs';
 import { die } from './args.mjs';
+import { orderDiagnosticMessage } from '../order-diagnostics.mjs';
 
 export function advisorTaskArtifact({ taskText, phase, runsRoot, grantRun }) {
   const task = parseAdvisorTask(taskText);
   if (phase !== 'advise') return task;
   if (typeof runsRoot !== 'string' || !runsRoot || typeof grantRun !== 'string' || !grantRun) {
-    throw new Error('Cannot carry advise scope result: runsRoot and grantRun are required.');
+    throw new Error(orderDiagnosticMessage('advise-scope-input-required'));
   }
   const scopeFile = path.join(runsRoot, grantRun, 'result.json');
   let result;
   try {
     result = readJsonFileSync(scopeFile);
   } catch (error) {
-    throw new Error(`Cannot read advise scope result at ${scopeFile}: ${error.message}`);
+    throw new Error(orderDiagnosticMessage('advise-scope-result-readable', { scopeFile, message: error.message }));
   }
   if (!result || typeof result !== 'object' || Array.isArray(result) ||
       !Array.isArray(result.predicted_risks) || !Array.isArray(result.missing_paths) ||
       result.predicted_risks.some((risk) => !risk || typeof risk.id !== 'string' || typeof risk.risk !== 'string') ||
       result.missing_paths.some((entry) => typeof entry !== 'string')) {
-    throw new Error(`Malformed advise scope result at ${scopeFile}: expected predicted_risks and missing_paths arrays.`);
+    throw new Error(orderDiagnosticMessage('advise-scope-result-shape', { scopeFile }));
   }
   return { ...task, scope: { run: grantRun, predicted_risks: result.predicted_risks, missing_paths: result.missing_paths } };
 }
@@ -33,13 +34,13 @@ export function advisorTaskOrRefuse(input) {
   try {
     return advisorTaskArtifact(input);
   } catch (error) {
-    return die(`${error.message} The run folder was not created; quota was not spent.`, EXIT.FAIL);
+    return die([error.message, orderDiagnosticMessage('run-not-created')].join(' '), EXIT.FAIL);
   }
 }
 
 export function adviseSection(artifact) {
-  if (!artifact?.scope) return '';
-  return [
+  if (!artifact?.scope) return String();
+  const lines = [
     '## Scope phase results',
     '',
     'Predicted risks:',
@@ -47,5 +48,6 @@ export function adviseSection(artifact) {
     '',
     'Paths you may additionally read and cite:',
     ...artifact.scope.missing_paths.map((entry) => `- ${entry}`),
-  ].join('\n');
+  ];
+  return lines.join('\n');
 }

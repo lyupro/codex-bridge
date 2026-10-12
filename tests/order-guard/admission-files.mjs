@@ -31,8 +31,6 @@ export const ADMISSION_FILES = [
 export const PENDING_MIGRATION = new Set([
   'src/home/lib/runner/launcher.mjs',
   'src/home/lib/runner/pass-gate.mjs',
-  'src/home/lib/runner/continuation.mjs',
-  'src/home/lib/runner/advise-carry.mjs',
   'src/home/lib/runner/preflight.mjs',
   'src/home/lib/runner/order-claim.mjs',
   'src/home/lib/runner/order-owner.mjs',

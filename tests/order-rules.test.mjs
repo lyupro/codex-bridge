@@ -30,6 +30,7 @@ test('registry maps and entries are frozen and have exactly their contracted fie
     'agent-accepted-labels', 'order-value-placeholder', 'header-shell-safety',
     'build-existing-scope-required', 'required-order-labels',
     'scope-pattern-shape', 'scope-pattern-match',
+    'continuation-grant-usable', 'retry-grant-usable', 'ready-grant-line', 'grant-last-run-hint',
   ].sort());
   for (const entry of Object.values(ORDER_RULES)) {
     assert.ok(Object.isFrozen(entry));
@@ -46,7 +47,9 @@ test('registry maps and entries are frozen and have exactly their contracted fie
     'boolean-flag-value', 'missing-flag-value', 'flag-shell-safety', 'agent-required', 'agent-known',
     'task-file-readable',
     'run-not-created',
+    'advise-scope-result-readable', 'advise-scope-result-shape',
     'dispatcher-agent-known', 'order-input-name-known',
+    'advise-scope-input-required',
   ]);
   assert.equal(ORDER_DIAGNOSTICS['no-wait-grant-conflict'].category, 'cli-flags');
 });

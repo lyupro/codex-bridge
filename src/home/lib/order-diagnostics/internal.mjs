@@ -10,4 +10,9 @@ export const DIAGNOSTICS = Object.freeze({
     category: 'internal',
     message: ({ label }) => `Unknown order input label "${label}"`,
   }),
+  'advise-scope-input-required': Object.freeze({
+    data: Object.freeze([]),
+    category: 'internal',
+    message: () => 'Cannot carry advise scope result: runsRoot and grantRun are required.',
+  }),
 });

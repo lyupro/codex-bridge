@@ -128,6 +128,13 @@ const expectedData = {
   'order-input-name-known': ['label'],
   'scope-pattern-shape': ['violation', 'part', 'pattern'],
   'scope-pattern-match': ['violation', 'part', 'repoRoot', 'labelName', 'message'],
+  'continuation-grant-usable': ['violation', 'labelName', 'run', 'runsRoot', 'lastRun', 'orderId', 'spent', 'previous', 'example'],
+  'retry-grant-usable': ['violation', 'run', 'runsRoot', 'previousOrder', 'orderId', 'labelName'],
+  'ready-grant-line': ['variant', 'run', 'reason', 'orderId'],
+  'grant-last-run-hint': ['variant', 'run', 'status', 'reason'],
+  'advise-scope-input-required': [],
+  'advise-scope-result-readable': ['scopeFile', 'message'],
+  'advise-scope-result-shape': ['scopeFile'],
 };
 
 test('each entry freezes the caller-classified data allowlist and excludes forwarded prose', () => {
