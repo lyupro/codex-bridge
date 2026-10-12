@@ -21,7 +21,9 @@ const PASS_GATE = read('pass-gate.mjs');
 
 /**
  * `marker` is a fragment of the refusal itself, not of the call: the call sites are
- * indistinguishable from one another, while the message says which refusal it is.
+ * indistinguishable from one another, while the message says which refusal it is. A refusal
+ * whose text lives in the Plan_79 registry is marked by its rule key: the key names the refusal
+ * at the call site, and copying the text back into a comment would be a second copy of the rule.
  */
 const REFUSALS = [
   {
@@ -72,7 +74,7 @@ const REFUSALS = [
     side: 'before',
     file: 'pass-gate.mjs',
     // Plan_63 D7: markers avoid input spellings, which come from orderInputName and change at the switch.
-    marker: 'a scope pass is never continued',
+    marker: "'advisor-scope-continuation'",
     why: 'OW-040: failed scope repeats only with retry, preserving the advise continuation',
   },
   {
@@ -86,7 +88,7 @@ const REFUSALS = [
     name: 'a retry that changes the failed run agent or phase',
     side: 'before',
     file: 'pass-gate.mjs',
-    marker: "a retry repeats the named run's own agent and phase:",
+    marker: "'retry-pass-identity'",
     why: 'Plan_75 D4: a retry repeats the named pass rather than starting another one',
   },
   {
@@ -100,7 +102,7 @@ const REFUSALS = [
     name: 'a repeat that needs a continuation grant',
     side: 'before',
     file: 'pass-gate.mjs',
-    marker: 'this task already ran in this repository under the name',
+    marker: "'repeat-task-grant-required'",
     why: 'Plan_23: a folder here sent the next identical order to the continuation gate',
   },
   {

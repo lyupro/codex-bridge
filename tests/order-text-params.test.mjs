@@ -135,6 +135,16 @@ const expectedData = {
   'advise-scope-input-required': [],
   'advise-scope-result-readable': ['scopeFile', 'message'],
   'advise-scope-result-shape': ['scopeFile'],
+  'advisor-scope-continuation': ['phaseLabel', 'continueLabel'],
+  'retry-pass-identity': ['agent', 'phase'],
+  'repeat-task-grant-required': ['violation', 'continueLabel', 'slugLabel', 'slug', 'count', 'latest'],
+  'advisor-advise-continuation': ['phaseLabel', 'continueLabel'],
+  'build-advice-required': [],
+  'advise-scope-run-required': ['violation'],
+  'run-phase-required': ['violation', 'phaseLabel', 'phase', 'agent', 'names'],
+  'writing-run-exclusive': ['run', 'activePath', 'identity'],
+  'codex-readiness-unconfirmed': ['detail'],
+  'codex-unavailable': ['detail'],
 };
 
 test('each entry freezes the caller-classified data allowlist and excludes forwarded prose', () => {

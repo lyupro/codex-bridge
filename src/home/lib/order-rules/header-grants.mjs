@@ -102,4 +102,65 @@ export const RULES = Object.freeze({
       throw new Error(`unknown grant-last-run-hint variant: ${variant}`);
     },
   }),
+  'advisor-scope-continuation': Object.freeze({
+    data: Object.freeze(['phaseLabel', 'continueLabel']),
+    topic: 'order',
+    rule: 'Never continue an advisor scope pass; repeat failed scope with retry, or use a new order id without continue.',
+    message: ({ phaseLabel, continueLabel }) =>
+      `codex-advisor ${phaseLabel} scope refuses ${continueLabel}: a scope pass is never continued, and continuing one ` +
+      "spends the order's single continuation that its advise phase needs. Action: repeat the scope under a new order id " +
+      `without ${continueLabel} and without a continue: grant, then run advise as that order's continuation; a ` +
+      'scope run that failed is repeated with a `retry:` grant instead.',
+  }),
+  'retry-pass-identity': Object.freeze({
+    data: Object.freeze(['agent', 'phase']),
+    topic: 'order',
+    rule: 'Retry the named run with its own agent and phase.',
+    message: ({ agent, phase }) => `a retry repeats the named run's own agent and phase: ${agent}/${phase}.`,
+  }),
+  'repeat-task-grant-required': Object.freeze({
+    data: Object.freeze(['violation', 'continueLabel', 'slugLabel', 'slug', 'count', 'latest']),
+    topic: 'order',
+    rule: 'Ask the orchestrator for a continue grant before repeating an existing task, even under a different slug.',
+    message: ({ violation, continueLabel, slugLabel, slug, count, latest, hints }) => {
+      let previous;
+      if (violation === 'renamed') previous = `this task already ran in this repository under the name “${slug}”`;
+      else if (violation === 'existing') previous = `runs for task “${slug}” already exist in this repository`;
+      else throw new Error(`unknown repeat-task-grant-required violation: ${violation}`);
+      return `${continueLabel} is required: ${previous} (${count}), latest: ${latest}. ` +
+        'A repeat run is allowed, but the orchestrator decides, not the runner: it read the ' +
+        `previous response and knows whether work remains. Add ${continueLabel} if you are finishing ` +
+        `the same task; changing ${slugLabel} with the same task text does not stop it being a repeat. ${hints}`;
+    },
+  }),
+  'advisor-advise-continuation': Object.freeze({
+    data: Object.freeze(['phaseLabel', 'continueLabel']),
+    topic: 'order',
+    rule: 'Grant advise as the continuation of the scope run of the same order so it can settle the predicted risks.',
+    message: ({ phaseLabel, continueLabel }) =>
+      `codex-advisor ${phaseLabel} advise requires a ${continueLabel} grant naming the scope run: phase 2 continues the scope run of the same order ` +
+      'so it can settle the risks phase 1 predicted.',
+  }),
+  'build-advice-required': Object.freeze({
+    data: Object.freeze([]),
+    topic: 'order',
+    rule: 'Start a build order with advice naming an OK advisor advise run, or mechanical, revert, docs-only or test-only work without design choices.',
+    message: () => 'codex-build requires the task file to start with the header line `advice: <value>`, where the ' +
+      'value is mechanical | revert | docs-only | test-only ' +
+      'or an absolute path to an existing advisor run directory whose meta.json says agent codex-advisor, ' +
+      'phase advise, status OK. ' +
+      'An order that invents a construction needs a second opinion first; only work with no design choice may skip it.',
+  }),
+  'advise-scope-run-required': Object.freeze({
+    data: Object.freeze(['violation']),
+    topic: 'order',
+    rule: 'Name an OK codex-advisor scope run in the continue grant for advise.',
+    message: ({ violation, failed }) => {
+      if (violation === 'agent') return "agent must be 'codex-advisor'";
+      if (violation === 'phase') return "phase must be 'scope'";
+      if (violation === 'status') return "status must be 'OK'";
+      if (violation === 'meta') return `continued run meta.json failed ${failed}.`;
+      throw new Error(`unknown advise-scope-run-required violation: ${violation}`);
+    },
+  }),
 });

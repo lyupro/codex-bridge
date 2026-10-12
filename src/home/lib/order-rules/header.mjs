@@ -165,4 +165,16 @@ export const RULES = Object.freeze({
       throw new Error(`unknown scope-pattern-match violation: ${violation}`);
     },
   }),
+  'run-phase-required': Object.freeze({
+    data: Object.freeze(['violation', 'phaseLabel', 'phase', 'agent', 'names']),
+    topic: 'order',
+    rule: 'Declare an allowed phase for the assigned agent; phase may be omitted only when default is its sole phase.',
+    message: ({ violation, phaseLabel, phase, agent, names }) => {
+      let reason;
+      if (violation === 'missing') reason = `${phaseLabel} is required`;
+      else if (violation === 'undeclared') reason = `undeclared ${phaseLabel} ${JSON.stringify(phase)}`;
+      else throw new Error(`unknown run-phase-required violation: ${violation}`);
+      return `${reason} for ${agent}. Action: pass ${phaseLabel} <name>; allowed phases: ${names.join(', ')}.`;
+    },
+  }),
 });

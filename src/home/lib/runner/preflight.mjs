@@ -13,29 +13,27 @@ import { agentRole } from '../agents.mjs';
 import { die } from './args.mjs';
 import { orderInputName } from '../order-schema.mjs';
 import { retiredPathRefusal, runsRootResolution } from './runs-root.mjs';
+import { orderRuleMessage } from '../order-rules.mjs';
+import { orderDiagnosticMessage } from '../order-diagnostics.mjs';
 
 /** Plan_60 D2: only conclusive evidence says UNAVAILABLE; a PATH miss is inconclusive (Plan_78 D5). */
 export async function codexAvailabilityRefusal({ probe = probeCodexAvailability } = {}) {
   const result = await probe();
   if (result.state === 'available') return null;
   const unavailable = result.state === 'logged-out';
-  const rows = unavailable ? unavailableRows(result.detail) : result.pathMiss === true ? [
-    `Codex CLI readiness unconfirmed: ${result.detail}`,
-    'Do not skip this bridge: check codex --version for up to about 2 minutes; when it answers, repeat the same order exactly once; if it does not answer, hand the order to the next executor and name that in the summary.',
-  ] : [
-    `Codex CLI unavailable: ${result.detail}`,
-    'Operator check: codex --version (and codex login if authorization is rejected)',
-  ];
+  const rows = unavailable ? unavailableRows(result.detail) : [orderDiagnosticMessage(
+    result.pathMiss === true ? 'codex-readiness-unconfirmed' : 'codex-unavailable', { detail: result.detail },
+  )];
   return {
     unavailable,
-    text: [...rows, 'The run folder was not created; quota was not spent.'].join('\n'),
+    text: [...rows, orderDiagnosticMessage('run-not-created')].join('\n'),
   };
 }
 
 /** Plan_59 D5/D6: settle design authority before any probe can spend quota. */
 export function taskPreflight({ agent, taskText, header, resolution = runsRootResolution() }) {
   const freeRefusal = (reason) => ({
-    refusal: `${reason}\nThe run folder was not created; quota was not spent.`,
+    refusal: [reason, orderDiagnosticMessage('run-not-created')].join('\n'),
   });
   if (agent === 'codex-advisor') {
     const reason = advisorTaskRefusal(taskText);
@@ -64,11 +62,7 @@ export function taskPreflight({ agent, taskText, header, resolution = runsRootRe
       }
     }
   }
-  return freeRefusal('codex-build requires the task file to start with the header line `advice: <value>`, where the ' +
-    'value is mechanical | revert | docs-only | test-only ' +
-    'or an absolute path to an existing advisor run directory whose meta.json says agent codex-advisor, ' +
-    'phase advise, status OK. ' +
-    'An order that invents a construction needs a second opinion first; only work with no design choice may skip it.');
+  return freeRefusal(orderRuleMessage('build-advice-required'));
 }
 
 /** Plan_59 D14: an advice pass may continue only a completed, successful advisor scope run. */
@@ -81,44 +75,40 @@ export function scopeRunRefusal({ agent, phase, runsRoot, grantRun }) {
     meta = null;
   }
   const failed = [
-    meta?.agent === 'codex-advisor' ? null : "agent must be 'codex-advisor'",
-    meta?.phase === 'scope' ? null : "phase must be 'scope'",
-    meta?.status === 'OK' ? null : "status must be 'OK'",
+    meta?.agent === 'codex-advisor' ? null : orderRuleMessage('advise-scope-run-required', { violation: 'agent' }),
+    meta?.phase === 'scope' ? null : orderRuleMessage('advise-scope-run-required', { violation: 'phase' }),
+    meta?.status === 'OK' ? null : orderRuleMessage('advise-scope-run-required', { violation: 'status' }),
   ].filter(Boolean);
   if (!failed.length) return null;
-  return `continued run meta.json failed ${failed.join(', ')}. The run folder was not created; quota was not spent.`;
+  return [orderRuleMessage('advise-scope-run-required', {
+    violation: 'meta', failed: failed.join(', '),
+  }), orderDiagnosticMessage('run-not-created')].join(' ');
 }
 
 /** D2: phase mistakes must refuse before even the sandbox probe can spend quota. */
 export function resolveRunPhase({ agent, phase, continue: isContinue }, budgets) {
   // Plan_59 D7: phase 2 must retain the scope run's predictions before quota is spent.
   if (agent === 'codex-advisor' && phase === 'advise' && !isContinue) {
-    die(`codex-advisor ${orderInputName('phase')} advise requires a ${orderInputName('continue')} grant naming the scope run: phase 2 continues the scope run of the same order ` +
-      'so it can settle the risks phase 1 predicted. The run folder was not created; quota was not spent.');
+    die([orderRuleMessage('advisor-advise-continuation', {
+      phaseLabel: orderInputName('phase'), continueLabel: orderInputName('continue'),
+    }), orderDiagnosticMessage('run-not-created')].join(' '));
   }
   const phases = budgets[agentRole(agent)];
   const names = Object.keys(phases);
-  if (phase === undefined && names.length === 1 && names[0] === 'default') return 'default';
+  if (phase === undefined && names.length === 1 && names[0] === 'default') return names[0];
   if (phase !== undefined && Object.hasOwn(phases, phase)) return phase;
-  die(`${phase === undefined ? `${orderInputName('phase')} is required` : `undeclared ${orderInputName('phase')} ${JSON.stringify(phase)}`} ` +
-    `for ${agent}. Action: pass ${orderInputName('phase')} <name>; allowed phases: ${names.join(', ')}. ` +
-    'The run folder was not created; quota was not spent.');
+  die([orderRuleMessage('run-phase-required', {
+    violation: phase === undefined ? 'missing' : 'undeclared', phaseLabel: orderInputName('phase'), phase, agent, names,
+  }), orderDiagnosticMessage('run-not-created')].join(' '));
 }
 
 export function preflightRefusal({ agent, projectRunsRoot, repoRoot }) {
   // Two writing runs share one tree: the second snapshot would include the first one's edits.
   const busy = agent === 'codex-build' ? activeRunDetails(projectRunsRoot, repoRoot) : null;
   if (busy) {
-    const identityNote = busy.identity === 'unverified'
-      ? '; process identity could not be confirmed'
-      : '';
-    return [
-      `run ${busy.run} is already active for this repository; two writing runs in one tree are prohibited${identityNote}`,
-      `Active run: ${path.join(projectRunsRoot, busy.run)}`,
-      // One sentence, the same one every other pre-flight refusal ends with. The older wording
-      // said the identical thing twice, which is how two copies of a rule start to drift.
-      'The run folder was not created; quota was not spent.',
-    ].join('\n');
+    return [orderRuleMessage('writing-run-exclusive', {
+      run: busy.run, activePath: path.join(projectRunsRoot, busy.run), identity: busy.identity,
+    }), orderDiagnosticMessage('run-not-created')].join('\n');
   }
 
   return null;

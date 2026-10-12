@@ -31,6 +31,9 @@ test('registry maps and entries are frozen and have exactly their contracted fie
     'build-existing-scope-required', 'required-order-labels',
     'scope-pattern-shape', 'scope-pattern-match',
     'continuation-grant-usable', 'retry-grant-usable', 'ready-grant-line', 'grant-last-run-hint',
+    'advisor-scope-continuation', 'retry-pass-identity', 'repeat-task-grant-required',
+    'advisor-advise-continuation', 'build-advice-required', 'advise-scope-run-required',
+    'run-phase-required', 'writing-run-exclusive',
   ].sort());
   for (const entry of Object.values(ORDER_RULES)) {
     assert.ok(Object.isFrozen(entry));
@@ -46,6 +49,7 @@ test('registry maps and entries are frozen and have exactly their contracted fie
     'no-wait-grant-conflict', 'task-channel-conflict', 'unexpected-argument', 'unknown-flag',
     'boolean-flag-value', 'missing-flag-value', 'flag-shell-safety', 'agent-required', 'agent-known',
     'task-file-readable',
+    'codex-readiness-unconfirmed', 'codex-unavailable',
     'run-not-created',
     'advise-scope-result-readable', 'advise-scope-result-shape',
     'dispatcher-agent-known', 'order-input-name-known',

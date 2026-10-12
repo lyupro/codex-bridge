@@ -16,4 +16,16 @@ export const RULES = Object.freeze({
       throw new Error(`unknown task-body-required channel: ${channel}`);
     },
   }),
+  'writing-run-exclusive': Object.freeze({
+    data: Object.freeze(['run', 'activePath', 'identity']),
+    topic: 'order',
+    rule: 'Wait for the active writing run to finish before starting another writing run in the same working tree.',
+    message: ({ run, activePath, identity }) => {
+      const identityNote = identity === 'unverified' ? '; process identity could not be confirmed' : '';
+      return [
+        `run ${run} is already active for this repository; two writing runs in one tree are prohibited${identityNote}`,
+        `Active run: ${activePath}`,
+      ].join('\n');
+    },
+  }),
 });

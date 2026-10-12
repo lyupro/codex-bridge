@@ -15,6 +15,8 @@ import { continuationRefusal, retryRefusal, readyGrantLines } from './continuati
 import { advisorTaskOrRefuse } from './advise-carry.mjs';
 import { scopeRunRefusal } from './preflight.mjs';
 import { orderInputName } from '../order-schema.mjs';
+import { orderRuleMessage } from '../order-rules.mjs';
+import { orderDiagnosticMessage } from '../order-diagnostics.mjs';
 
 export async function passGate({ opts, taskText, header, projectRunsRoot, repoRoot, beforeWait }) {
   // A second pass at the same task is a real need — after a timeout or a LIMIT the work has
@@ -30,10 +32,9 @@ export async function passGate({ opts, taskText, header, projectRunsRoot, repoRo
   const grant = header.grant;
   // OW-040, 2026-09-30: only a retry repeats failed scope without spending advise's continuation.
   if (opts.agent === 'codex-advisor' && opts.phase === 'scope' && opts.continue && grant?.kind !== 'retry') {
-    die(`codex-advisor ${orderInputName('phase')} scope refuses ${orderInputName('continue')}: a scope pass is never continued, and continuing one ` +
-      "spends the order's single continuation that its advise phase needs. Action: repeat the scope under a new order id " +
-      `without ${orderInputName('continue')} and without a continue: grant, then run advise as that order's continuation; a ` +
-      'scope run that failed is repeated with a `retry:` grant instead. The run folder was not created; quota was not spent.');
+    die([orderRuleMessage('advisor-scope-continuation', {
+      phaseLabel: orderInputName('phase'), continueLabel: orderInputName('continue'),
+    }), orderDiagnosticMessage('run-not-created')].join(' '));
   }
   let continuationGrant = grant?.kind === 'continue' ? grant : null;
   const retryOf = grant?.kind === 'retry' ? grant.run : null;
@@ -60,8 +61,9 @@ export async function passGate({ opts, taskText, header, projectRunsRoot, repoRo
     // A run written before phases existed has none; for every agent but the advisor that is 'default'.
     const phaseOf = (value) => String(value ?? '').trim() || 'default';
     if (namedStatus.agent !== opts.agent || phaseOf(namedStatus.phase) !== phaseOf(opts.phase)) {
-      die(`a retry repeats the named run's own agent and phase: ${namedStatus.agent}/${namedStatus.phase}. ` +
-        'The run folder was not created; quota was not spent.');
+      die([orderRuleMessage('retry-pass-identity', {
+        agent: namedStatus.agent, phase: namedStatus.phase,
+      }), orderDiagnosticMessage('run-not-created')].join(' '));
     }
     // Plan_75 D4, TradeForge capacity incident: retry advise against its original successful scope.
     continuationGrant = String(namedStatus.continued_from ?? '').trim()
@@ -93,18 +95,12 @@ export async function passGate({ opts, taskText, header, projectRunsRoot, repoRo
     const last = startedChain[startedChain.length - 1];
     const lastSlug = String(readJson(path.join(projectRunsRoot, last, 'status.json'))?.slug || '');
     const renamed = lastSlug && lastSlug.toLowerCase() !== String(opts.slug).toLowerCase();
-    die(
-      `${orderInputName('continue')} is required: ${
-        renamed
-          ? `this task already ran in this repository under the name “${lastSlug}”`
-          : `runs for task “${opts.slug}” already exist in this repository`
-      } (${startedChain.length}), latest: ${path.join(projectRunsRoot, last)}. ` +
-        'A repeat run is allowed, but the orchestrator decides, not the runner: it read the ' +
-        `previous response and knows whether work remains. Add ${orderInputName('continue')} if you are finishing ` +
-        `the same task; changing ${orderInputName('slug')} with the same task text does not stop it being a repeat. ` +
-        `${readyGrantLines(projectRunsRoot, startedChain)} ` +
-        'The run folder was not created; quota was not spent.',
-    );
+    die([orderRuleMessage('repeat-task-grant-required', {
+      violation: renamed ? 'renamed' : 'existing',
+      continueLabel: orderInputName('continue'), slugLabel: orderInputName('slug'),
+      slug: renamed ? lastSlug : opts.slug, count: startedChain.length, latest: path.join(projectRunsRoot, last),
+      hints: readyGrantLines(projectRunsRoot, startedChain),
+    }), orderDiagnosticMessage('run-not-created')].join(' '));
   }
 
   return { taskHash, chain, startedChain, continuationGrant, advisorTask, retryOf };

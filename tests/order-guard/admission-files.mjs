@@ -30,8 +30,6 @@ export const ADMISSION_FILES = [
 // Later Plan_79 slices move these files onto the registry and remove their entries; delete this list when empty.
 export const PENDING_MIGRATION = new Set([
   'src/home/lib/runner/launcher.mjs',
-  'src/home/lib/runner/pass-gate.mjs',
-  'src/home/lib/runner/preflight.mjs',
   'src/home/lib/runner/order-claim.mjs',
   'src/home/lib/runner/order-owner.mjs',
   'src/home/lib/runner/codex-availability.mjs',
@@ -45,4 +43,3 @@ export const PENDING_MIGRATION = new Set([
   'src/home/lib/dispatcher-pin.mjs',
   'src/home/lib/dispatcher-model.mjs',
 ]);
-
