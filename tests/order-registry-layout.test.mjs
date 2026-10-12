@@ -37,7 +37,7 @@ function copyRegistry(t, name) {
 
 test('entry points preserve their exports and fixed registry order', () => {
   assert.deepEqual(Object.keys(ruleRegistry), [
-    'ORDER_RULES', 'orderRefusalAt', 'orderRuleMessage', 'validateOrderRules',
+    'ORDER_RULES', 'orderProblemLine', 'orderRefusalAt', 'orderRuleMessage', 'validateOrderRules',
   ]);
   assert.deepEqual(Object.keys(diagnosticRegistry), [
     'DIAGNOSTIC_CATEGORIES', 'ORDER_DIAGNOSTICS', 'orderDiagnosticMessage', 'validateOrderDiagnostics',

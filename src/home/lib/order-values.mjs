@@ -7,8 +7,8 @@ import path from 'node:path';
 const PLACEHOLDER_VALUES = new Set(['todo', 'tbd', 'label', 'none', 'order id', 'scope', 'xxx']);
 
 function cleanValue(value) {
-  if (typeof value !== 'string') return '';
-  return value.trim().replace(/^([`'\"])(.*)\1$/, '$2').trim();
+  const text = typeof value === 'string' ? value : '';
+  return text.trim().replace(/^([`'\"])(.*)\1$/, '$2').trim();
 }
 
 export function isAbsoluteTaskFilePath(value) {

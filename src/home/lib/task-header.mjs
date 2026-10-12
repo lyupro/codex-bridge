@@ -11,7 +11,8 @@
 import path from 'node:path';
 import { splitGrantValue } from './order-values.mjs';
 import { ALL_ORDER_LABELS } from './order-schema.mjs';
-import { recordOrderText } from './order-text-record.mjs';
+import { orderRuleMessage, orderRefusalAt, orderProblemLine } from './order-rules.mjs';
+import { orderDiagnosticMessage } from './order-diagnostics.mjs';
 
 const BARE_RUN = /^(?!\.{1,2}$)[A-Za-z0-9._-]+$/;
 const MISPLACED_GRANT = /^[A-Za-z0-9._-]+(?:$| — | - |:)/;
@@ -20,7 +21,7 @@ function validateGrant(value) {
   const grant = splitGrantValue(value);
   return grant && BARE_RUN.test(grant.run)
     ? null
-    : 'grant must name a bare run folder (not . or ..) and a non-placeholder reason';
+    : orderRuleMessage('grant-value-shape');
 }
 
 function descriptor(label, validate, misplaced) {
@@ -38,8 +39,6 @@ function descriptor(label, validate, misplaced) {
       `^[ \\t]*(?:[-*][ \\t]*)??(?:${spellings.join('|')})[ \\t]*(.*?)[ \\t]*$`,
       'i',
     ),
-    repairHint: `move it into the header at the top of the file, spelled ${label}: <value>; `
-      + 'if it is an example, quote it with > or reword it inside a sentence',
   });
 }
 
@@ -47,7 +46,7 @@ function descriptor(label, validate, misplaced) {
 const LABELS = Object.freeze([
   // Plan_75 D5: empty advice closes the strict header but must still explain the missing value.
   descriptor('advice', (value) => value.trim() && !/[\r\n]/.test(value)
-    ? null : 'advice value must be non-empty and single line',
+    ? null : orderRuleMessage('advice-value-shape'),
   (value) => !value || /^\S+$/.test(value)
     || path.posix.isAbsolute(value) || path.win32.isAbsolute(value)),
   descriptor('continue', validateGrant, (value) => MISPLACED_GRANT.test(value)),
@@ -84,10 +83,11 @@ export function parseTaskHeader(text) {
       const rawLabel = line.slice(0, line.indexOf(':')).trim();
       let reason = null;
       if (ORDER_ONLY_LABELS.includes(label)) {
-        reason = line.trimEnd() === `${label}:` ? `header label "${label}" has an empty value`
-          : `write the header label exactly as "${label}:"`;
+        reason = orderRuleMessage('order-header-label-shape', {
+          label, violation: line.trimEnd() === `${label}:` ? 'empty' : 'spelling',
+        });
       } else if (!GUARDED_LABELS.includes(label) && entries.length && /^[a-z][a-z _-]*:[ \t]*\S/.test(line)) {
-        reason = `unknown header label "${rawLabel}"; known labels: ${HEADER_LABELS.join(', ')}`;
+        reason = orderRuleMessage('unknown-header-label', { label: rawLabel, knownLabels: HEADER_LABELS });
       }
       if (reason) problems.push({ lineNo: headerEnd + 1, line, reason });
       break;
@@ -95,7 +95,7 @@ export function parseTaskHeader(text) {
     const [, label, value] = match;
     const entry = { label, value, lineNo: headerEnd + 1, line };
     if (Object.hasOwn(fields, label)) {
-      problems.push({ lineNo: entry.lineNo, line, reason: `duplicate ${label} label` });
+      problems.push({ lineNo: entry.lineNo, line, reason: orderRuleMessage('duplicate-order-label', { label }) });
     } else {
       fields[label] = value;
     }
@@ -109,7 +109,7 @@ export function parseTaskHeader(text) {
     problems.push({
       lineNo: conflict.lineNo,
       line: conflict.line,
-      reason: 'continue and retry cannot both be present; keep exactly one grant label',
+      reason: orderRuleMessage('grant-label-exclusive'),
     });
   }
 
@@ -120,7 +120,7 @@ export function parseTaskHeader(text) {
     if (!definition) continue;
     const reason = definition.validate(entry.value);
     if (reason) {
-      problems.push({ lineNo: entry.lineNo, line: entry.line, reason: `${entry.label}: ${reason}` });
+      problems.push({ lineNo: entry.lineNo, line: entry.line, reason: orderRefusalAt(entry.label, reason) });
     } else if (entry.value !== fields[entry.label]) {
       continue;
     } else if (entry.label === 'advice') {
@@ -135,12 +135,12 @@ export function parseTaskHeader(text) {
     for (const definition of LABELS) {
       const match = lines[index].match(definition.shape);
       if (!match || !definition.misplaced(match[1])) continue;
-      const reason = match[1] ? `misplaced ${definition.label} metadata`
-        : `${definition.label} value must be non-empty and single line`;
       problems.push({
         lineNo: index + 1,
         line: lines[index],
-        reason: `${reason}; ${definition.repairHint}`,
+        reason: orderRuleMessage('header-metadata-placement', {
+          label: definition.label, violation: match[1] ? 'misplaced' : 'empty',
+        }),
       });
     }
   }
@@ -154,7 +154,6 @@ export function parseTaskHeader(text) {
 
 export function taskHeaderRefusal(parsed) {
   if (!parsed.problems.length) return null;
-  // Plan_79 D5: pending producer, recorded until its file migrates
-  return recordOrderText(parsed.problems.map(({ lineNo, line, reason }) => `line ${lineNo}: ${reason}: ${line}`)
-    .concat('The run folder was not created; quota was not spent.').join('\n'));
+  return parsed.problems.map(orderProblemLine)
+    .concat(orderDiagnosticMessage('run-not-created')).join('\n');
 }

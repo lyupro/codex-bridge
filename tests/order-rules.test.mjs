@@ -25,6 +25,8 @@ test('registry maps and entries are frozen and have exactly their contracted fie
   assert.deepEqual(Object.keys(ORDER_RULES).sort(), [
     'effort-value', 'question-context-marker', 'repository-path', 'run-slug', 'scout-questions', 'verify-line',
     'task-body-required', 'task-file-path',
+    'order-header-label-shape', 'unknown-header-label', 'duplicate-order-label', 'grant-label-exclusive',
+    'advice-value-shape', 'grant-value-shape', 'header-metadata-placement',
   ].sort());
   for (const entry of Object.values(ORDER_RULES)) {
     assert.ok(Object.isFrozen(entry));
@@ -40,6 +42,7 @@ test('registry maps and entries are frozen and have exactly their contracted fie
     'no-wait-grant-conflict', 'task-channel-conflict', 'unexpected-argument', 'unknown-flag',
     'boolean-flag-value', 'missing-flag-value', 'flag-shell-safety', 'agent-required', 'agent-known',
     'task-file-readable',
+    'run-not-created',
   ]);
   assert.equal(ORDER_DIAGNOSTICS['no-wait-grant-conflict'].category, 'cli-flags');
 });

@@ -32,6 +32,12 @@ export function orderRefusalAt(location, message) {
   return recordOrderText(`${location}: ${message}`);
 }
 
+// Plan_79 B3c1: adds a source location to text built by the registry and owns no rule.
+export function orderProblemLine({ lineNo, reason, line }) {
+  checkOrderTextParameters('orderProblemLine', null, { lineNo, reason, line }, ['lineNo', 'line']);
+  return recordOrderText(`line ${lineNo}: ${reason}: ${line}`);
+}
+
 // Plan_79 D3: callers supply the topic catalogue so installed rules do not depend on the CLI tree.
 export function validateOrderRules(rules, topics, diagnostics) {
   for (const [key, entry] of Object.entries(rules)) {

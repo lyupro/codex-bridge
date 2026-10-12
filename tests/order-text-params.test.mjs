@@ -111,6 +111,14 @@ const expectedData = {
   'unexpected-argument': ['value'], 'unknown-flag': ['name'], 'boolean-flag-value': ['name', 'value'],
   'missing-flag-value': ['key'], 'flag-shell-safety': ['name', 'sequence'], 'agent-required': [],
   'agent-known': ['agent'], 'task-file-readable': ['message'],
+  'order-header-label-shape': ['label', 'violation'],
+  'unknown-header-label': ['label', 'knownLabels'],
+  'duplicate-order-label': ['label'],
+  'grant-label-exclusive': [],
+  'advice-value-shape': [],
+  'grant-value-shape': [],
+  'header-metadata-placement': ['label', 'violation'],
+  'run-not-created': [],
 };
 
 test('each entry freezes the caller-classified data allowlist and excludes forwarded prose', () => {

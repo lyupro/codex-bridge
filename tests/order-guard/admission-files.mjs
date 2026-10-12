@@ -30,8 +30,6 @@ export const ADMISSION_FILES = [
 // Later Plan_79 slices move these files onto the registry and remove their entries; delete this list when empty.
 export const PENDING_MIGRATION = new Set([
   'src/home/lib/order-schema.mjs',
-  'src/home/lib/order-values.mjs',
-  'src/home/lib/task-header.mjs',
   'src/home/lib/runner/launcher.mjs',
   'src/home/lib/runner/scope-check.mjs',
   'src/home/lib/runner/pass-gate.mjs',
