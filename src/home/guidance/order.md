@@ -4,7 +4,6 @@ Write a task file that gives each dispatcher the complete order and the build's 
 ## Call and header
 
 The call is exactly one line: `task file: <task-file path from the orchestrator>`.
-The path must be absolute and name a file the orchestrator wrote with its file tool.
 The dispatcher never creates, reads or rewrites it. The whole order lives in that file's header.
 The runner checks the header, never the dispatcher. Free text belongs in the task file.
 

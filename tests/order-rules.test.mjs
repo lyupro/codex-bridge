@@ -1,9 +1,12 @@
 /** Guards the Plan_79 D3 registry contract before any refusal site is migrated. */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { GUIDANCE_TOPICS } from '../cli/guidance-topics.mjs';
+import { renderGuidance } from '../cli/guidance-render.mjs';
 import {
-  ORDER_RULES, orderRuleMessage, validateOrderRules,
+  ORDER_RULES, orderRuleMessage, orderRefusalAt, validateOrderRules,
 } from '../src/home/lib/order-rules.mjs';
 import {
   DIAGNOSTIC_CATEGORIES, ORDER_DIAGNOSTICS, orderDiagnosticMessage, validateOrderDiagnostics,
@@ -12,13 +15,16 @@ import { parseTaskDocument } from '../src/home/lib/runner/task-file.mjs';
 import { questionKindRefusal, questionsFromTexts } from '../src/home/lib/runner/question-kind.mjs';
 import { repositoryRefusal } from '../src/home/lib/runner/task-input.mjs';
 import { orderOptions } from '../src/home/lib/runner/order-options.mjs';
+import { ADMISSION_FILES, PENDING_MIGRATION } from './order-guard/admission-files.mjs';
+import { checkRefusalSites } from './order-guard/refusal-checker.mjs';
 
 test('registry maps and entries are frozen and have exactly their contracted fields', () => {
   assert.ok(Object.isFrozen(ORDER_RULES));
   assert.ok(Object.isFrozen(ORDER_DIAGNOSTICS));
   assert.deepEqual(Object.keys(ORDER_RULES).sort(), [
     'effort-value', 'question-context-marker', 'repository-path', 'run-slug', 'scout-questions', 'verify-line',
-  ]);
+    'task-body-required', 'task-file-path',
+  ].sort());
   for (const entry of Object.values(ORDER_RULES)) {
     assert.ok(Object.isFrozen(entry));
     assert.deepEqual(Object.keys(entry).sort(), ['message', 'rule', 'topic']);
@@ -29,7 +35,11 @@ test('registry maps and entries are frozen and have exactly their contracted fie
     assert.deepEqual(Object.keys(entry).sort(), ['category', 'message']);
     assert.equal(typeof entry.message, 'function');
   }
-  assert.deepEqual(Object.keys(ORDER_DIAGNOSTICS), ['no-wait-grant-conflict']);
+  assert.deepEqual(Object.keys(ORDER_DIAGNOSTICS), [
+    'no-wait-grant-conflict', 'task-channel-conflict', 'unexpected-argument', 'unknown-flag',
+    'boolean-flag-value', 'missing-flag-value', 'flag-shell-safety', 'agent-required', 'agent-known',
+    'task-file-readable',
+  ]);
   assert.equal(ORDER_DIAGNOSTICS['no-wait-grant-conflict'].category, 'cli-flags');
 });
 
@@ -273,5 +283,100 @@ test('grouped message functions reject unknown violations instead of choosing a 
     assert.throws(() => orderRuleMessage(key), {
       message: `unknown ${key} violation: undefined`,
     });
+  }
+});
+
+// Plan_79 B3b: these expectations copy args.mjs text, independent of the migrated builders.
+const callRefusals = [
+  ['task-file-path', { value: 'task.md' }, '--task-file must be an absolute path; got "task.md"'],
+  ['task-file-path', { value: 'task "quoted"\n.md' },
+    '--task-file must be an absolute path; got "task \\"quoted\\"\\n.md"'],
+  ['task-body-required', { channel: 'task-file', taskFile: 'C:/task file.md' },
+    'task file from --task-file is empty: C:/task file.md'],
+  ['task-body-required', { channel: 'stdin' }, 'task text on stdin is empty'],
+];
+for (const [key, values, expected] of callRefusals) {
+  test(key + ' preserves the call/task-file refusal: ' + expected, () => {
+    assert.equal(orderRuleMessage(key, values), expected);
+    assert.equal(ORDER_RULES[key].message(values), expected);
+    assert.equal(ORDER_RULES[key].topic, 'order');
+  });
+}
+
+const cliRefusals = [
+  ['task-channel-conflict', {},
+    'task text was supplied through both stdin and --task-file; choose exactly one channel'],
+  ['unexpected-argument', { value: 'task text' }, 'unexpected argument: task text'],
+  ['unknown-flag', { name: 'bogus' },
+    'unknown flag --bogus: codex-bridge run takes only --agent, --task-file and --no-wait; ' +
+      'the order belongs in the task-file header'],
+  ['unknown-flag', { name: 'bogus', help: '' },
+    'unknown flag --bogus: codex-bridge run takes only --agent, --task-file and --no-wait; ' +
+      'the order belongs in the task-file header'],
+  ['unknown-flag', { name: 'bogus', help: 'Header help\nSecond line' },
+    'unknown flag --bogus: codex-bridge run takes only --agent, --task-file and --no-wait; ' +
+      'the order belongs in the task-file header\nHeader help\nSecond line'],
+  ['boolean-flag-value', { name: 'no-wait', value: '<only if the orchestrator provided continue>' },
+    '--no-wait takes no value, or one of 1/true/yes/0/false/no; got "<only if the orchestrator provided continue>". ' +
+      'A placeholder left in from the prompt template is not consent.'],
+  ['boolean-flag-value', { name: 'no-wait', value: '"yes"\n' },
+    '--no-wait takes no value, or one of 1/true/yes/0/false/no; got "\\"yes\\"\\n". ' +
+      'A placeholder left in from the prompt template is not consent.'],
+  ['missing-flag-value', { key: '--agent' }, 'missing value for --agent'],
+  ['flag-shell-safety', { name: 'agent', sequence: ';' },
+    '--agent contains forbidden shell sequence ";"; put free text in the task file and pass only a short command-line value.'],
+  ['flag-shell-safety', { name: 'task-file', sequence: '`' },
+    '--task-file contains forbidden shell sequence "`"; put free text in the task file and pass only a short command-line value.'],
+  ['agent-required', {}, '--agent is required'],
+  ['agent-known', { agent: 'unknown' }, 'unknown --agent unknown'],
+];
+for (const [key, values, expected] of cliRefusals) {
+  test(key + ' preserves the CLI diagnostic: ' + expected, () => {
+    assert.equal(orderDiagnosticMessage(key, values), expected);
+    assert.equal(ORDER_DIAGNOSTICS[key].message(values), expected);
+    assert.equal(ORDER_DIAGNOSTICS[key].category, 'cli-flags');
+  });
+}
+
+test('filesystem diagnostic preserves the caught read error verbatim', () => {
+  const values = { message: 'ENOENT: no such file or directory, open \'C:/task file.md\'\nDetails' };
+  const expected = 'task file from --task-file could not be read: ' +
+    'ENOENT: no such file or directory, open \'C:/task file.md\'\nDetails';
+  assert.equal(orderDiagnosticMessage('task-file-readable', values), expected);
+  assert.equal(ORDER_DIAGNOSTICS['task-file-readable'].message(values), expected);
+  assert.equal(ORDER_DIAGNOSTICS['task-file-readable'].category, 'filesystem');
+});
+
+test('location composition preserves forwarded header and section text without owning a rule', () => {
+  assert.equal(orderRefusalAt('C:/task file.md', 'line 1: duplicate scope label: scope: src/**\nNo quota.'),
+    'C:/task file.md: line 1: duplicate scope label: scope: src/**\nNo quota.');
+  assert.equal(orderRefusalAt('C:/task file.md', orderRuleMessage('verify-line', { violation: 'empty' })),
+    'C:/task file.md: Verify section is empty');
+});
+
+test('task-body-required rejects absent and unknown channels instead of selecting one silently', () => {
+  for (const channel of [undefined, 'unknown']) {
+    assert.throws(() => orderRuleMessage('task-body-required', { channel }), {
+      message: 'unknown task-body-required channel: ' + channel,
+    });
+  }
+});
+
+test('args.mjs is guarded after migration with no literal refusals or opt-outs', () => {
+  const file = 'src/home/lib/runner/args.mjs';
+  assert.ok(ADMISSION_FILES.includes(file));
+  assert.ok(!PENDING_MIGRATION.has(file));
+  const source = fs.readFileSync(new URL('../' + file, import.meta.url), 'utf8');
+  assert.deepEqual(checkRefusalSites(source, file), { violations: [], optOuts: [] });
+});
+
+test('call rules render once and replace the handwritten absolute task-file instruction', async () => {
+  const source = fs.readFileSync(new URL('../src/home/guidance/order.md', import.meta.url), 'utf8');
+  assert.ok(!source.includes('The path must be absolute and name a file the orchestrator wrote with its file tool.'));
+  const text = await renderGuidance(source, {
+    root: fileURLToPath(new URL('../src/home/', import.meta.url)), topic: 'order',
+  });
+  for (const key of ['task-file-path', 'task-body-required']) {
+    assert.equal(text.split(ORDER_RULES[key].rule).length - 1, 1);
   }
 });

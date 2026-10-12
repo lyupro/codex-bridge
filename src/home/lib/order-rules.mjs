@@ -3,12 +3,13 @@
  * the call line or task file → call.mjs; a header label → header.mjs;
  * a body section → task-document.mjs (all under order-rules/).
  * A file outgrowing the gate splits by the next level of the same place
- * (header → label families), never by number; create call.mjs with its first rule.
+ * (header → label families), never by number.
  */
 import { RULES as HEADER_RULES } from './order-rules/header.mjs';
 import { RULES as TASK_DOCUMENT_RULES } from './order-rules/task-document.mjs';
+import { RULES as CALL_RULES } from './order-rules/call.mjs';
 
-const places = [HEADER_RULES, TASK_DOCUMENT_RULES];
+const places = [HEADER_RULES, TASK_DOCUMENT_RULES, CALL_RULES];
 const keys = new Set();
 for (const rules of places) {
   for (const key of Object.keys(rules)) {
@@ -21,6 +22,11 @@ export const ORDER_RULES = Object.freeze(Object.assign({}, ...places));
 export function orderRuleMessage(key, values = {}) {
   if (!Object.hasOwn(ORDER_RULES, key)) throw new Error(`unknown order rule: ${key}`);
   return ORDER_RULES[key].message(values);
+}
+
+// Plan_79 B3b: adds a location to text built by the registry and owns no rule.
+export function orderRefusalAt(location, message) {
+  return `${location}: ${message}`;
 }
 
 // Plan_79 D3: callers supply the topic catalogue so installed rules do not depend on the CLI tree.

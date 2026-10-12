@@ -1,11 +1,12 @@
 /** Plan_79 D4: each diagnostic category owns its own file named after it under order-diagnostics/. */
 import { DIAGNOSTICS as CLI_FLAGS_DIAGNOSTICS } from './order-diagnostics/cli-flags.mjs';
+import { DIAGNOSTICS as FILESYSTEM_ACCESS_DIAGNOSTICS } from './order-diagnostics/filesystem.mjs';
 
 export const DIAGNOSTIC_CATEGORIES = Object.freeze([
   'cli-flags', 'filesystem', 'host-state', 'run-state', 'internal',
 ]);
 
-const categories = [CLI_FLAGS_DIAGNOSTICS];
+const categories = [CLI_FLAGS_DIAGNOSTICS, FILESYSTEM_ACCESS_DIAGNOSTICS];
 const keys = new Set();
 for (const diagnostics of categories) {
   for (const key of Object.keys(diagnostics)) {

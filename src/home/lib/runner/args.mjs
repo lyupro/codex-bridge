@@ -13,6 +13,8 @@ import { firstShellUnsafeSequence } from '../shell-unsafe.mjs';
 import { parseTaskDocument } from './task-file.mjs';
 import { parseTaskHeader, taskHeaderRefusal } from '../task-header.mjs';
 import { renderOrderHeaderHelp } from '../order-schema.mjs';
+import { orderRuleMessage, orderRefusalAt } from '../order-rules.mjs';
+import { orderDiagnosticMessage } from '../order-diagnostics.mjs';
 
 export class RunnerUsageError extends Error {
   // 2 says the order itself is wrong and has to be rewritten. A refusal about the state of the
@@ -34,39 +36,39 @@ export function readTaskDocument(opts) {
   const stdinText = process.stdin.isTTY ? '' : fs.readFileSync(0, 'utf8');
   if (opts['task-file'] !== undefined) {
     if (stdinText.trim()) {
-      refuse('task text was supplied through both stdin and --task-file; choose exactly one channel');
+      refuse(orderDiagnosticMessage('task-channel-conflict'));
     }
     const taskFile = opts['task-file'];
     // The 2026-08-15 incident resolved a relative order against the repository cwd and ran an
     // unrelated task.md. Refuse the supplied value instead of silently selecting another file.
     if (!isAbsoluteTaskFilePath(taskFile)) {
-      refuse(`--task-file must be an absolute path; got ${JSON.stringify(taskFile)}`);
+      refuse(orderRuleMessage('task-file-path', { value: taskFile }));
     }
     let fileText;
     try {
       fileText = fs.readFileSync(taskFile, 'utf8');
     } catch (err) {
-      refuse(`task file from --task-file could not be read: ${err.message}`);
+      refuse(orderDiagnosticMessage('task-file-readable', { message: err.message }));
     }
-    if (!fileText.trim()) refuse(`task file from --task-file is empty: ${taskFile}`);
+    if (!fileText.trim()) refuse(orderRuleMessage('task-body-required', { channel: 'task-file', taskFile }));
     // Plan_75 D5, 2026-10-03 20:42: validate raw metadata before sections can hide a grant.
     const parsed = parseTaskHeader(fileText);
     const refusal = taskHeaderRefusal(parsed);
-    if (refusal) refuse(`${taskFile}: ${refusal}`);
-    if (!parsed.body.trim()) refuse(`task file from --task-file is empty: ${taskFile}`);
+    if (refusal) refuse(orderRefusalAt(taskFile, refusal));
+    if (!parsed.body.trim()) refuse(orderRuleMessage('task-body-required', { channel: 'task-file', taskFile }));
     let document;
     try {
       document = parseTaskDocument(parsed.body);
     } catch (err) {
-      refuse(`${taskFile}: ${err.message}`);
+      refuse(orderRefusalAt(taskFile, err.message));
     }
     return { ...document, header: parsed };
   }
-  if (!stdinText.trim()) refuse('task text on stdin is empty');
+  if (!stdinText.trim()) refuse(orderRuleMessage('task-body-required', { channel: 'stdin' }));
   const parsed = parseTaskHeader(stdinText);
   const refusal = taskHeaderRefusal(parsed);
   if (refusal) refuse(refusal);
-  if (!parsed.body.trim()) refuse('task text on stdin is empty');
+  if (!parsed.body.trim()) refuse(orderRuleMessage('task-body-required', { channel: 'stdin' }));
   try {
     return { ...parseTaskDocument(parsed.body), header: parsed };
   } catch (err) {
@@ -94,22 +96,18 @@ export function parseArgs(argv) {
   const opts = {};
   for (let i = 0; i < argv.length; i += 1) {
     const key = argv[i];
-    if (!key.startsWith('--')) die(`unexpected argument: ${key}`);
+    if (!key.startsWith('--')) die(orderDiagnosticMessage('unexpected-argument', { value: key }));
     const name = key.slice(2);
     if (!['agent', 'task-file', 'no-wait'].includes(name)) {
       const agent = opts.agent ?? argv[argv.indexOf('--agent') + 1];
       const help = Object.hasOwn(AGENTS, agent) ? renderOrderHeaderHelp(agent) : '';
-      die(`unknown flag --${name}: codex-bridge run takes only --agent, --task-file and --no-wait; ` +
-        'the order belongs in the task-file header' + (help ? `\n${help}` : ''));
+      die(orderDiagnosticMessage('unknown-flag', { name, help }));
     }
     const value = argv[i + 1];
     if (BOOLEAN_FLAGS.has(name)) {
       if (value !== undefined && !value.startsWith('--')) {
         if (!BOOLEAN_YES.test(value) && !BOOLEAN_NO.test(value)) {
-          die(
-            `--${name} takes no value, or one of 1/true/yes/0/false/no; got ${JSON.stringify(value)}. ` +
-              'A placeholder left in from the prompt template is not consent.',
-          );
+          die(orderDiagnosticMessage('boolean-flag-value', { name, value }));
         }
         opts[name] = BOOLEAN_YES.test(value);
         i += 1;
@@ -119,7 +117,7 @@ export function parseArgs(argv) {
       continue;
     }
     // A flag name where a value belongs means the value was left out.
-    if (value === undefined || value.startsWith('--')) die(`missing value for ${key}`);
+    if (value === undefined || value.startsWith('--')) die(orderDiagnosticMessage('missing-flag-value', { key }));
     opts[name] = value;
     i += 1;
   }
@@ -127,14 +125,11 @@ export function parseArgs(argv) {
     if (opts[name] === undefined) continue;
     const sequence = firstShellUnsafeSequence(opts[name]);
     if (sequence !== null) {
-      die(
-        `--${name} contains forbidden shell sequence ${JSON.stringify(sequence)}; ` +
-          'put free text in the task file and pass only a short command-line value.',
-      );
+      die(orderDiagnosticMessage('flag-shell-safety', { name, sequence }));
     }
   }
-  if (!opts.agent) die('--agent is required');
-  if (!AGENTS[opts.agent]) die(`unknown --agent ${opts.agent}`);
+  if (!opts.agent) die(orderDiagnosticMessage('agent-required'));
+  if (!AGENTS[opts.agent]) die(orderDiagnosticMessage('agent-known', { agent: opts.agent }));
   opts.noWait = Boolean(opts['no-wait']);
   return opts;
 }
