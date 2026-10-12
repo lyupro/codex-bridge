@@ -37,6 +37,15 @@ folder never feeds two hosts:
 - `task-header.mjs` reads the orchestrator's metadata header of a task (`advice:`, `continue:`, `retry:`) for the
   runner and the producer hook alike (Plan_75 D5); it sits beside `order-schema.mjs` and `order-values.mjs` rather than under `runner/`
   because the hook needs the same answer before a runner exists.
+- `order-rules.mjs` and `order-diagnostics.mjs` own every refusal text of the order path (Plan_79 D3):
+  a rule the orchestrator controls is defined once, with the sentence `codex-bridge guidance order`
+  prints and the message the refusal site builds; a refusal outside order authoring is a diagnostic in
+  a closed category. Definitions live by the place the orchestrator writes them (`order-rules/call.mjs`,
+  `header.mjs`, `task-document.mjs`) and diagnostics by category (`order-diagnostics/<category>.mjs`);
+  the two entry points are the only importers (D4). `order-text-record.mjs` is test-only provenance
+  (D5): under `CODEX_BRIDGE_TEST_TMP` the builders record what they hand out and `die` journals a message
+  not made of that output; `scripts/run-tests.mjs` fails the suite on such a line unless the transport's
+  direct caller is still in the guard's `PENDING_MIGRATION`.
 - `runner/` is one concern per module: `run-context` holds the run in progress, `run-env` reads
   `run-config.json`, `args` refuses the command line, `pass-gate` decides before registration whether a
   call attaches, continues or is a refused repeat (Plan_75), `schemas`/`prompts` are what each agent is

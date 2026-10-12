@@ -30,6 +30,7 @@ function copyRegistry(t, name) {
   fs.mkdirSync(installedLib, { recursive: true });
   const entryPoint = path.join(installedLib, `${name}.mjs`);
   fs.copyFileSync(path.join(lib, `${name}.mjs`), entryPoint);
+  fs.copyFileSync(path.join(lib, 'order-text-record.mjs'), path.join(installedLib, 'order-text-record.mjs'));
   fs.cpSync(path.join(lib, name), path.join(installedLib, name), { recursive: true });
   return { home, installedLib, entryPoint };
 }

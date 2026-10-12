@@ -5,6 +5,7 @@
  */
 import { isInputPlaceholder } from './order-values.mjs';
 import { firstShellUnsafeSequence } from './shell-unsafe.mjs';
+import { recordOrderText } from './order-text-record.mjs';
 
 const freezeEntries = (entries) => Object.freeze(entries.map((entry) => Object.freeze(entry)));
 
@@ -136,7 +137,8 @@ const inputNames = new Set(ALL_ORDER_LABELS);
 // Plan_63 D7: switching the order input channel changes only this function.
 export function orderInputName(label) {
   if (!inputNames.has(label)) throw new Error(`Unknown order input label "${label}"`);
-  return `\`${label}:\``;
+  // Plan_79 D5: pending producer, recorded until its file migrates
+  return recordOrderText(`\`${label}:\``);
 }
 
 export function orderFromHeader(agentType, parsed) {
@@ -190,15 +192,17 @@ export function orderFromHeader(agentType, parsed) {
 }
 
 export function renderOrderProblems(agentType, problems) {
-  return [...problems.map(({ lineNo, line, reason }) => lineNo === null
-    ? reason : `line ${lineNo}: ${reason}: ${line}`), renderOrderHeaderHelp(agentType)].join('\n');
+  // Plan_79 D5: pending producer, recorded until its file migrates
+  return recordOrderText([...problems.map(({ lineNo, line, reason }) => lineNo === null
+    ? reason : `line ${lineNo}: ${reason}: ${line}`), renderOrderHeaderHelp(agentType)].join('\n'));
 }
 
 export function renderOrderHeaderHelp(agentType) {
   const labels = orderLabelsFor(agentType);
-  return [
+  // Plan_79 D5: pending producer, recorded until its file migrates
+  return recordOrderText([
     ...labels.filter(({ required }) => required),
     ...labels.filter(({ conditional }) => conditional),
     ...labels.filter(({ optional }) => optional),
-  ].map(({ label, example }) => `${label}: ${example}`).join('\n');
+  ].map(({ label, example }) => `${label}: ${example}`).join('\n'));
 }

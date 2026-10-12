@@ -8,6 +8,7 @@
 import { RULES as HEADER_RULES } from './order-rules/header.mjs';
 import { RULES as TASK_DOCUMENT_RULES } from './order-rules/task-document.mjs';
 import { RULES as CALL_RULES } from './order-rules/call.mjs';
+import { recordOrderText } from './order-text-record.mjs';
 
 const places = [HEADER_RULES, TASK_DOCUMENT_RULES, CALL_RULES];
 const keys = new Set();
@@ -21,12 +22,12 @@ export const ORDER_RULES = Object.freeze(Object.assign({}, ...places));
 
 export function orderRuleMessage(key, values = {}) {
   if (!Object.hasOwn(ORDER_RULES, key)) throw new Error(`unknown order rule: ${key}`);
-  return ORDER_RULES[key].message(values);
+  return recordOrderText(ORDER_RULES[key].message(values));
 }
 
 // Plan_79 B3b: adds a location to text built by the registry and owns no rule.
 export function orderRefusalAt(location, message) {
-  return `${location}: ${message}`;
+  return recordOrderText(`${location}: ${message}`);
 }
 
 // Plan_79 D3: callers supply the topic catalogue so installed rules do not depend on the CLI tree.

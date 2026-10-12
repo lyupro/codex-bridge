@@ -15,6 +15,7 @@ import { parseTaskHeader, taskHeaderRefusal } from '../task-header.mjs';
 import { renderOrderHeaderHelp } from '../order-schema.mjs';
 import { orderRuleMessage, orderRefusalAt } from '../order-rules.mjs';
 import { orderDiagnosticMessage } from '../order-diagnostics.mjs';
+import { checkOutgoingRefusal } from '../order-text-record.mjs';
 
 export class RunnerUsageError extends Error {
   // 2 says the order itself is wrong and has to be rewritten. A refusal about the state of the
@@ -27,6 +28,7 @@ export class RunnerUsageError extends Error {
 }
 
 export function die(message, exitCode = EXIT.USAGE) {
+  checkOutgoingRefusal(message, 'die');
   console.error(`run-codex: ${message}`);
   throw new RunnerUsageError(message, exitCode);
 }

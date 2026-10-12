@@ -46,6 +46,8 @@ export const HOME_WRITE_INVENTORY = Object.freeze([
   outside('src/home/lib/host-version.mjs', 'open', 1, 'Read-only open of a run transcript tail with the r flag.'),
   outside('src/home/lib/load-witness.mjs', 'openSync', 1, 'Read-only open with the r flag, reading at most the shared core byte ceiling plus one sentinel byte (Plan_64 D15 / review B8); all witness state writes use the registered load-witness artifact.'),
   outside('src/home/lib/meta/run-state.mjs', 'writeFileSync', 3, 'Writes status.json and meta.json inside run folders under the runs root.'),
+  outside('src/home/lib/order-text-record.mjs', 'mkdirSync', 1, 'Plan_79 D5 creates the refusal-text journal directory only under the CODEX_BRIDGE_TEST_TMP throwaway test root.'),
+  outside('src/home/lib/order-text-record.mjs', 'appendFileSync', 1, 'Plan_79 D5 appends unregistered refusal text only under the CODEX_BRIDGE_TEST_TMP throwaway test root.'),
   outside('src/home/lib/run-codex.mjs', 'appendFileSync', 1, 'Appends a crash diagnostic to stderr.log inside a run folder.'),
   outside('src/home/lib/retention.mjs', 'fs-binding-escape', 1, 'The injected filesystem falls back to fs while cleaning run folders under the runs root, which is operator data outside the home writer even when it is runs/ of the home (Plan_77).'),
   outside('src/home/lib/retention.mjs', 'unlinkSync', 1, 'Removes transport files inside run folders under the runs root, which is operator data outside the home writer even when it is runs/ of the home (Plan_77).'),

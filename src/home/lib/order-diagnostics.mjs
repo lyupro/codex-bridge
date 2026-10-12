@@ -1,6 +1,7 @@
 /** Plan_79 D4: each diagnostic category owns its own file named after it under order-diagnostics/. */
 import { DIAGNOSTICS as CLI_FLAGS_DIAGNOSTICS } from './order-diagnostics/cli-flags.mjs';
 import { DIAGNOSTICS as FILESYSTEM_ACCESS_DIAGNOSTICS } from './order-diagnostics/filesystem.mjs';
+import { recordOrderText } from './order-text-record.mjs';
 
 export const DIAGNOSTIC_CATEGORIES = Object.freeze([
   'cli-flags', 'filesystem', 'host-state', 'run-state', 'internal',
@@ -18,7 +19,7 @@ export const ORDER_DIAGNOSTICS = Object.freeze(Object.assign({}, ...categories))
 
 export function orderDiagnosticMessage(key, values = {}) {
   if (!Object.hasOwn(ORDER_DIAGNOSTICS, key)) throw new Error(`unknown order diagnostic: ${key}`);
-  return ORDER_DIAGNOSTICS[key].message(values);
+  return recordOrderText(ORDER_DIAGNOSTICS[key].message(values));
 }
 
 export function validateOrderDiagnostics(diagnostics) {

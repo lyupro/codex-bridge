@@ -31,6 +31,44 @@ import { auditWrites } from './home-write-audit.mjs';
 import { HOME_WRITE_INVENTORY } from './home-write-inventory.mjs';
 import { readmeText, suiteCountMismatch } from './suite-count.mjs';
 import { snapshotRoot, addedEntries } from './root-guard/root-entries.mjs';
+import { PENDING_MIGRATION } from '../tests/order-guard/admission-files.mjs';
+import { parseJsonText } from '../src/home/lib/json-file.mjs';
+
+// Plan_79 B3j D5: share the static guard's migration boundary, not a second pending list.
+export function inspectOutgoingRefusals(directory, pendingMigration, report) {
+  let tolerated = 0;
+  let fatal = 0;
+  if (fs.existsSync(directory)) {
+    for (const file of fs.readdirSync(directory)) {
+      const lines = fs.readFileSync(path.join(directory, file), 'utf8').split(/\r?\n/).filter(Boolean);
+      for (const line of lines) {
+        let caller;
+        try {
+          const entry = parseJsonText(path.join(directory, file), line);
+          if (typeof entry.caller === 'string') caller = entry.caller;
+        } catch {}
+        // Plan_79 B3j D5 acceptance: a pending launcher must not excuse a migrated caller.
+        const location = caller?.replaceAll('\\', '/').trim()
+          .match(/^at (?:.+ \()?(.+):\d+:\d+\)?$/)?.[1];
+        // Plan_79 B3jd D5: installed homes keep only the path below src/home; require a segment boundary.
+        if (location && [...pendingMigration].some((pending) => {
+          const relative = pending.startsWith('src/home/') ? pending.slice('src/home/'.length) : pending;
+          return location.endsWith(`/${relative}`);
+        })) {
+          tolerated++;
+        } else {
+          report(`run-tests: refusal text outside the registry: ${line}\n`);
+          fatal++;
+        }
+      }
+    }
+  }
+  if (tolerated) report(`run-tests: ${tolerated} refusals from pending files tolerated until their migration\n`);
+  return fatal;
+}
+
+// Importing the journal checker in isolated tests must not launch another suite.
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
 
 // One pattern only: on 2026-09-25 three files passed as three arguments ran just the first, and a
 // verification reported green for two files it never touched. Refuse before any root is created.
@@ -76,6 +114,11 @@ try {
   });
   const additions = addedEntries(before, snapshotRoot(repositoryRoot));
   process.exitCode = result.status ?? 1;
+  // Plan_79 D5: inspect before cleanup, even when every expected refusal test passed.
+  const refusalJournal = path.join(testTmpRoot, 'order-text-violations');
+  const fatalRefusals = inspectOutgoingRefusals(refusalJournal, PENDING_MIGRATION,
+    (line) => process.stderr.write(line));
+  if (fatalRefusals && process.exitCode === 0) process.exitCode = 1;
   for (const name of additions) {
     process.stderr.write(`run-tests: the suite left ${name} in the repository root (or something else created it while the suite ran)\n`);
   }
@@ -97,4 +140,5 @@ try {
   for (const [, directory] of created) fs.rmSync(directory, { recursive: true, force: true });
   fs.rmSync(testTmpRoot, { recursive: true, force: true });
   if (tapFile) fs.rmSync(path.dirname(tapFile), { recursive: true, force: true });
+}
 }

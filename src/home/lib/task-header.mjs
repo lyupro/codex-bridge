@@ -11,6 +11,7 @@
 import path from 'node:path';
 import { splitGrantValue } from './order-values.mjs';
 import { ALL_ORDER_LABELS } from './order-schema.mjs';
+import { recordOrderText } from './order-text-record.mjs';
 
 const BARE_RUN = /^(?!\.{1,2}$)[A-Za-z0-9._-]+$/;
 const MISPLACED_GRANT = /^[A-Za-z0-9._-]+(?:$| — | - |:)/;
@@ -153,6 +154,7 @@ export function parseTaskHeader(text) {
 
 export function taskHeaderRefusal(parsed) {
   if (!parsed.problems.length) return null;
-  return parsed.problems.map(({ lineNo, line, reason }) => `line ${lineNo}: ${reason}: ${line}`)
-    .concat('The run folder was not created; quota was not spent.').join('\n');
+  // Plan_79 D5: pending producer, recorded until its file migrates
+  return recordOrderText(parsed.problems.map(({ lineNo, line, reason }) => `line ${lineNo}: ${reason}: ${line}`)
+    .concat('The run folder was not created; quota was not spent.').join('\n'));
 }
