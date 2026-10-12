@@ -29,6 +29,7 @@ test('registry maps and entries are frozen and have exactly their contracted fie
     'advice-value-shape', 'grant-value-shape', 'header-metadata-placement',
     'agent-accepted-labels', 'order-value-placeholder', 'header-shell-safety',
     'build-existing-scope-required', 'required-order-labels',
+    'scope-pattern-shape', 'scope-pattern-match',
   ].sort());
   for (const entry of Object.values(ORDER_RULES)) {
     assert.ok(Object.isFrozen(entry));

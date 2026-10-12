@@ -128,4 +128,60 @@ export const RULES = Object.freeze({
     message: ({ label, example }) =>
       `missing required header label "${label}:"; example: ${label}: ${example}`,
   }),
+  'scope-pattern-shape': Object.freeze({
+    data: Object.freeze(['violation', 'part', 'pattern']),
+    topic: 'order',
+    rule: 'Write scope and scope new as repository-relative file patterns with forward slashes, ' +
+      'no line breaks, parent-directory segments or service directories; name a file or use a glob for a directory.',
+    message: ({ violation, part, pattern }) => {
+      if (part !== 'reason' && part !== 'action') throw new Error(`unknown scope-pattern-shape part: ${part}`);
+      if (violation === 'line-break') return part === 'reason'
+        ? 'contains a newline or carriage return'
+        : 'use a glob instead of a literal path containing a line break';
+      if (violation === 'absolute') return part === 'reason'
+        ? 'is an absolute or drive-qualified path'
+        : 'use a path relative to the repository root with forward slashes';
+      if (violation === 'backslash') return part === 'reason'
+        ? 'uses backslash separators'
+        : 'replace backslashes with forward slashes';
+      if (violation === 'parent-directory') return part === 'reason'
+        ? 'contains a parent-directory (..) segment'
+        : 'remove the .. segment and keep the path relative to the repository root';
+      if (violation === 'service-directory') return part === 'reason'
+        ? 'lies inside a service directory that no scope can authorise'
+        : 'name the file outside the service directory, or make that edit yourself';
+      if (violation === 'directory' || violation === 'new-directory') {
+        if (part === 'reason') return 'names a directory rather than a file';
+        if (violation === 'directory') {
+          return `write ${pattern.replace(/\/$/, '')}/** for everything inside it, or name the file itself`;
+        }
+        return `write ${pattern}/** if it is a directory, or declare the new file by its own name with an extension; a new extensionless file is declared through its directory`;
+      }
+      throw new Error(`unknown scope-pattern-shape violation: ${violation}`);
+    },
+  }),
+  'scope-pattern-match': Object.freeze({
+    data: Object.freeze(['violation', 'part', 'repoRoot', 'labelName', 'message']),
+    topic: 'order',
+    rule: 'Each ordinary scope pattern must parse and match an existing repository path; ' +
+      'start from the git repository root, use UTF-8 file names, and declare intentionally new paths with scope new.',
+    message: ({ violation, part, repoRoot, labelName, message }) => {
+      if (part !== 'reason' && part !== 'action') throw new Error(`unknown scope-pattern-match part: ${part}`);
+      if (violation === 'missing') return part === 'reason'
+        ? 'does not match any existing path in the repository'
+        : `correct the pattern or declare an intentionally new path with ${labelName}`;
+      if (violation === 'not-repository') return part === 'reason'
+        ? `does not match any existing path under ${repoRoot}; ` +
+          'git could not list that folder as a repository, so it was walked instead'
+        : `start the run from the repository root (cd into it, or pass ${labelName} <repository root>); ` +
+          'if this folder is the intended one, correct the pattern';
+      if (violation === 'invalid-glob') return part === 'reason'
+        ? `could not parse the pattern: ${message}`
+        : 'correct the pattern and retry';
+      if (violation === 'non-utf8') return part === 'reason'
+        ? message
+        : 'rename the non-UTF-8 file using a UTF-8 file name and retry';
+      throw new Error(`unknown scope-pattern-match violation: ${violation}`);
+    },
+  }),
 });

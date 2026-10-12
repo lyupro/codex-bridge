@@ -126,6 +126,8 @@ const expectedData = {
   'required-order-labels': ['label', 'example'],
   'dispatcher-agent-known': ['agent'],
   'order-input-name-known': ['label'],
+  'scope-pattern-shape': ['violation', 'part', 'pattern'],
+  'scope-pattern-match': ['violation', 'part', 'repoRoot', 'labelName', 'message'],
 };
 
 test('each entry freezes the caller-classified data allowlist and excludes forwarded prose', () => {

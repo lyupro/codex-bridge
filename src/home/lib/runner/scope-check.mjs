@@ -9,6 +9,7 @@ import path from 'node:path';
 import { listRepositoryPaths } from './git-paths.mjs';
 import { globToRegExp, normalizePath, SERVICE_RE } from '../meta/paths.mjs';
 import { orderInputName } from '../order-schema.mjs';
+import { orderRuleMessage } from '../order-rules.mjs';
 
 // Directories a self-walk must never descend into. Only reached when the repository has no git:
 // with git present the file list comes from the repository itself, which already knows what is
@@ -29,41 +30,41 @@ function structuralRefusal(repoRoot, pattern) {
   // Plan_73 D7: scope lists store one pattern per line; literal line breaks cannot round-trip.
   if (/[\n\r]/.test(pattern)) {
     return {
-      reason: 'contains a newline or carriage return',
-      action: 'use a glob instead of a literal path containing a line break',
+      reason: orderRuleMessage('scope-pattern-shape', { violation: 'line-break', part: 'reason' }),
+      action: orderRuleMessage('scope-pattern-shape', { violation: 'line-break', part: 'action' }),
     };
   }
   if (absolutePattern(pattern)) {
     return {
-      reason: 'is an absolute or drive-qualified path',
-      action: 'use a path relative to the repository root with forward slashes',
+      reason: orderRuleMessage('scope-pattern-shape', { violation: 'absolute', part: 'reason' }),
+      action: orderRuleMessage('scope-pattern-shape', { violation: 'absolute', part: 'action' }),
     };
   }
   if (pattern.includes('\\')) {
     return {
-      reason: 'uses backslash separators',
-      action: 'replace backslashes with forward slashes',
+      reason: orderRuleMessage('scope-pattern-shape', { violation: 'backslash', part: 'reason' }),
+      action: orderRuleMessage('scope-pattern-shape', { violation: 'backslash', part: 'action' }),
     };
   }
   if (pattern.split('/').some((segment) => segment === '..')) {
     return {
-      reason: 'contains a parent-directory (..) segment',
-      action: 'remove the .. segment and keep the path relative to the repository root',
+      reason: orderRuleMessage('scope-pattern-shape', { violation: 'parent-directory', part: 'reason' }),
+      action: orderRuleMessage('scope-pattern-shape', { violation: 'parent-directory', part: 'action' }),
     };
   }
   // Plan_59 S1: 2026-09-22_235724_plan59-d1-advisor-docs-surface spent 22 minutes on a
   // service-directory scope the verdict could never authorise. Refuse it before a run exists.
   if (SERVICE_RE.test(normalizePath(pattern))) {
     return {
-      reason: 'lies inside a service directory that no scope can authorise',
-      action: 'name the file outside the service directory, or make that edit yourself',
+      reason: orderRuleMessage('scope-pattern-shape', { violation: 'service-directory', part: 'reason' }),
+      action: orderRuleMessage('scope-pattern-shape', { violation: 'service-directory', part: 'action' }),
     };
   }
   // Plan_58 D7: 2026-09-19_191402_ports-infra spent a run on a bare scope-new directory,
   // which the verdict could only match as a file. Refuse that intent before spending a run.
   if (!pattern || /[*?]/.test(pattern)) return null;
-  const reason = 'names a directory rather than a file';
-  const action = `write ${pattern.replace(/\/$/, '')}/** for everything inside it, or name the file itself`;
+  const reason = orderRuleMessage('scope-pattern-shape', { violation: 'directory', part: 'reason' });
+  const action = orderRuleMessage('scope-pattern-shape', { violation: 'directory', part: 'action', pattern });
   if (pattern.endsWith('/')) return { reason, action };
 
   let entry;
@@ -76,7 +77,7 @@ function structuralRefusal(repoRoot, pattern) {
   if (!entry && !pattern.split('/').at(-1).includes('.')) {
     return {
       reason,
-      action: `write ${pattern}/** if it is a directory, or declare the new file by its own name with an extension; a new extensionless file is declared through its directory`,
+      action: orderRuleMessage('scope-pattern-shape', { violation: 'new-directory', part: 'action', pattern }),
     };
   }
   return null;
@@ -88,16 +89,18 @@ function noMatchRefusal(pattern, repoRoot, gitListed) {
   if (gitListed === false) {
     return {
       pattern,
-      reason: `does not match any existing path under ${repoRoot}; ` +
-        'git could not list that folder as a repository, so it was walked instead',
-      action: `start the run from the repository root (cd into it, or pass ${orderInputName('repository')} <repository root>); ` +
-        'if this folder is the intended one, correct the pattern',
+      reason: orderRuleMessage('scope-pattern-match', { violation: 'not-repository', part: 'reason', repoRoot }),
+      action: orderRuleMessage('scope-pattern-match', {
+        violation: 'not-repository', part: 'action', labelName: orderInputName('repository'),
+      }),
     };
   }
   return {
     pattern,
-    reason: 'does not match any existing path in the repository',
-    action: `correct the pattern or declare an intentionally new path with ${orderInputName('scope new')}`,
+    reason: orderRuleMessage('scope-pattern-match', { violation: 'missing', part: 'reason' }),
+    action: orderRuleMessage('scope-pattern-match', {
+      violation: 'missing', part: 'action', labelName: orderInputName('scope new'),
+    }),
   };
 }
 
@@ -193,8 +196,10 @@ export function validateScope(repoRoot, patterns, scopeNewPatterns = []) {
     return {
       pattern: required[0],
       label: 'scope',
-      reason: `could not parse the pattern: ${error.message}`,
-      action: 'correct the pattern and retry',
+      reason: orderRuleMessage('scope-pattern-match', {
+        violation: 'invalid-glob', part: 'reason', message: error.message,
+      }),
+      action: orderRuleMessage('scope-pattern-match', { violation: 'invalid-glob', part: 'action' }),
     };
   }
 
@@ -206,8 +211,10 @@ export function validateScope(repoRoot, patterns, scopeNewPatterns = []) {
     return {
       pattern: required[0],
       label: 'scope',
-      reason: error.message,
-      action: 'rename the non-UTF-8 file using a UTF-8 file name and retry',
+      reason: orderRuleMessage('scope-pattern-match', {
+        violation: 'non-utf8', part: 'reason', message: error.message,
+      }),
+      action: orderRuleMessage('scope-pattern-match', { violation: 'non-utf8', part: 'action' }),
     };
   }
   const missing = matchers.find((matcher) => !matches.matched.has(matcher.pattern));
