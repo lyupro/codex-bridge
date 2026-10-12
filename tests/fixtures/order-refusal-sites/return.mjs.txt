@@ -1,0 +1,2 @@
+// Plan_79 D3: returning literal text can bypass registry-backed refusals.
+function refuse() { return "literal message"; }

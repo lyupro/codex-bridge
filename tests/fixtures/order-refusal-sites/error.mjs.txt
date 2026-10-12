@@ -1,0 +1,2 @@
+// Plan_79 D3: an Error message cannot introduce an unregistered refusal.
+throw new Error("literal message");

@@ -1,0 +1,2 @@
+// Plan_79 D3: accumulating a problem is also a refusal site.
+problems.push('literal message');

@@ -1,0 +1,2 @@
+// Plan_79 D3: a literal first argument bypasses the registry.
+die('literal message');

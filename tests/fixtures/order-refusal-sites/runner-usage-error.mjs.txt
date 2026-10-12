@@ -1,0 +1,2 @@
+// Plan_79 D3: a usage refusal must read its message from the registry.
+throw new RunnerUsageError('literal message');

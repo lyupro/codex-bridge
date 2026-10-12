@@ -1,0 +1,2 @@
+// Plan_79 D3: an exemption without reviewable reasoning must fail closed.
+deny('literal message'); // order-guard: not-a-refusal —

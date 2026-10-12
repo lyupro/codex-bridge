@@ -1,0 +1,2 @@
+// Plan_79 D3: a refusal reason property cannot hold unregistered text.
+const result = { reason: 'literal message' };

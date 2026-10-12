@@ -1,0 +1,2 @@
+// Plan_79 D3: surrounding a builder with template text sneaks in a new rule.
+die(`Extra rule text: ${orderRuleMessage('known-rule')} more text`);

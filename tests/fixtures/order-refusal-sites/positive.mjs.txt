@@ -1,0 +1,16 @@
+// Plan_79 D3: registry keys and builder parameters are not refusal message literals.
+die(orderRuleMessage('known-rule', { violation: 'known-violation' }));
+die(message);
+throw new Error(orderDiagnosticMessage('known-diagnostic'));
+throw new Error(message);
+throw new RunnerUsageError(orderRuleMessage('known-rule'));
+throw new RunnerUsageError(message);
+deny(orderDiagnosticMessage('known-diagnostic'));
+deny(message);
+const ruleResult = { reason: orderRuleMessage('known-rule'), refusal: message };
+const diagnosticResult = { reason: message, refusal: orderDiagnosticMessage('known-diagnostic') };
+problems.push(orderRuleMessage('known-rule'));
+problems.push(message);
+function ruleRefusal() { return orderRuleMessage('known-rule'); }
+function diagnosticRefusal() { return orderDiagnosticMessage('known-diagnostic'); }
+function identifierRefusal() { return message; }
