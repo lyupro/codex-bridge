@@ -12,7 +12,7 @@ import { readRunsMoveRecord, retiredRootRefusal } from '../src/home/lib/runner/r
 import { ORDER_RULES, orderRuleMessage } from '../src/home/lib/order-rules.mjs';
 import { ORDER_DIAGNOSTICS, orderDiagnosticMessage } from '../src/home/lib/order-diagnostics.mjs';
 import { checkOutgoingRefusal } from '../src/home/lib/order-text-record.mjs';
-import { ADMISSION_FILES, PENDING_MIGRATION } from './order-guard/admission-files.mjs';
+import { ADMISSION_FILES } from './order-guard/admission-files.mjs';
 import { checkRefusalSites } from './order-guard/refusal-checker.mjs';
 import { makeTempTree } from './temp-tree.mjs';
 
@@ -175,7 +175,6 @@ for (const file of producers) {
   test(`${file} is admitted without recording, pending marks or opt-outs`, () => {
     const source = fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
     assert.equal(ADMISSION_FILES.filter((entry) => entry === file).length, 1);
-    assert.equal(PENDING_MIGRATION.has(file), false);
     assert.equal(ADMISSION_FILES.includes('src/home/lib/meta/reply.mjs'), false);
     assert.doesNotMatch(source, /recordOrderText|pending producer|pending-producer|pending[- ]migration/i);
     const result = checkRefusalSites(source, file);

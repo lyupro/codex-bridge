@@ -12,7 +12,7 @@ import {
   renderOrderProblems, renderOrderHeaderHelp,
 } from '../src/home/lib/order-schema.mjs';
 import { parseTaskHeader } from '../src/home/lib/task-header.mjs';
-import { ADMISSION_FILES, PENDING_MIGRATION } from './order-guard/admission-files.mjs';
+import { ADMISSION_FILES } from './order-guard/admission-files.mjs';
 import { checkRefusalSites } from './order-guard/refusal-checker.mjs';
 
 // Plan_79 B3c2: literal expectations copy the original schema sites, not the registry messages.
@@ -156,7 +156,6 @@ test('problem composition omits absent locations and appends help with the origi
 test('order-schema passes the static guard without pending migration or opt-outs', () => {
   const file = 'src/home/lib/order-schema.mjs';
   assert.ok(ADMISSION_FILES.includes(file));
-  assert.ok(!PENDING_MIGRATION.has(file));
   const source = fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
   assert.deepEqual(checkRefusalSites(source, file), { violations: [], optOuts: [] });
   assert.doesNotMatch(source, /recordOrderText|pending producer/);

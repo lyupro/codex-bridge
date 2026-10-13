@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { lineAt } from './order-guard/lexer.mjs';
 import { checkRefusalSites } from './order-guard/refusal-checker.mjs';
-import { ADMISSION_FILES, PENDING_MIGRATION } from './order-guard/admission-files.mjs';
+import { ADMISSION_FILES } from './order-guard/admission-files.mjs';
 
 const read = (file) => fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
 
@@ -24,16 +24,10 @@ test('Plan_79 S1a-S1c and B4g/B4h/B5a/B5b1/B5b2a list 36 unique existing admissi
   assert.equal(ADMISSION_FILES.length, 36);
   assert.equal(new Set(ADMISSION_FILES).size, 36);
   for (const file of ADMISSION_FILES) assert.ok(fs.statSync(new URL(`../${file}`, import.meta.url)).isFile(), file);
-  for (const file of PENDING_MIGRATION) assert.ok(ADMISSION_FILES.includes(file), file);
-  for (const name of ['task-file', 'question-kind', 'task-input', 'order-options', 'sandbox-probe', 'sandbox-diagnosis']) {
-    assert.ok(!PENDING_MIGRATION.has(`src/home/lib/runner/${name}.mjs`));
-  }
 });
 
 for (const file of ADMISSION_FILES) {
-  test(`admission refusal guard: ${file}`, {
-    skip: PENDING_MIGRATION.has(file) ? 'pending Plan_79 registry migration' : false,
-  }, (t) => assertGuard(t, read(file), file));
+  test(`admission refusal guard: ${file}`, (t) => assertGuard(t, read(file), file));
 }
 
 const negativeFixtures = [

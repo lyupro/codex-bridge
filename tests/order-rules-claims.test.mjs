@@ -15,7 +15,7 @@ import {
 } from '../src/home/lib/runner/order-claim.mjs';
 import { orderOwnerConflictText } from '../src/home/lib/runner/order-owner.mjs';
 import { probeCodexAvailability } from '../src/home/lib/runner/codex-availability.mjs';
-import { ADMISSION_FILES, PENDING_MIGRATION } from './order-guard/admission-files.mjs';
+import { ADMISSION_FILES } from './order-guard/admission-files.mjs';
 import { checkRefusalSites } from './order-guard/refusal-checker.mjs';
 
 // Plan_79 B4e: literal expectations copy the original sites, independently of the registry builders.
@@ -120,7 +120,6 @@ for (const name of ['order-claim', 'order-owner', 'codex-availability', 'worker-
   test(`${name} passes the static guard without pending migration or opt-outs`, () => {
     const file = `src/home/lib/runner/${name}.mjs`;
     assert.ok(ADMISSION_FILES.includes(file));
-    assert.ok(!PENDING_MIGRATION.has(file));
     const source = fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
     assert.deepEqual(checkRefusalSites(source, file), { violations: [], optOuts: [] });
     assert.doesNotMatch(source, /recordOrderText|pending producer|order-guard: not-a-refusal/);

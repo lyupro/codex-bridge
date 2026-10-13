@@ -10,7 +10,7 @@ import { parseTaskDocument } from '../src/home/lib/runner/task-file.mjs';
 import { questionKindRefusal, questionsFromTexts } from '../src/home/lib/runner/question-kind.mjs';
 import { repositoryRefusal } from '../src/home/lib/runner/task-input.mjs';
 import { orderOptions } from '../src/home/lib/runner/order-options.mjs';
-import { ADMISSION_FILES, PENDING_MIGRATION } from './order-guard/admission-files.mjs';
+import { ADMISSION_FILES } from './order-guard/admission-files.mjs';
 import { checkRefusalSites } from './order-guard/refusal-checker.mjs';
 import { recordOrderText } from '../src/home/lib/order-text-record.mjs';
 
@@ -242,7 +242,6 @@ test('task-body-required rejects absent and unknown channels instead of selectin
 test('args.mjs is guarded after migration with no literal refusals or opt-outs', () => {
   const file = 'src/home/lib/runner/args.mjs';
   assert.ok(ADMISSION_FILES.includes(file));
-  assert.ok(!PENDING_MIGRATION.has(file));
   const source = fs.readFileSync(new URL('../' + file, import.meta.url), 'utf8');
   assert.deepEqual(checkRefusalSites(source, file), { violations: [], optOuts: [] });
 });

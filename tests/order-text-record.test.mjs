@@ -164,7 +164,7 @@ if (fixture) {
     assert.equal(entries[0].caller, entries[0].stack.split('\n')[2].trim());
   });
 
-  function journalCase(files, pendingMigration, { ancestor = '', omitCaller = false, caller, omitKind = false } = {}) {
+  function journalCase(files, { ancestor = '', omitCaller = false, caller, omitKind = false } = {}) {
     const directory = makeTempTree('order-text-journal-');
     const entry = (file) => JSON.stringify({
       ...(!omitKind && { kind: 'outgoing' }),
@@ -174,70 +174,69 @@ if (fixture) {
         '    at die (file:///C:/fixture/src/home/lib/runner/args.mjs:31:1)\n' +
         `    at refusalCaller (${file}:111:1)` + ancestor,
     });
-    // Plan_79 B3j D5: injected lists and disposable journals never mutate the live migration list.
+    // Plan_79 B5b2b D5: disposable journals keep deliberate violations outside the suite journal.
     for (const [index, file] of files.entries()) {
       fs.writeFileSync(path.join(directory, `${index}.jsonl`), entry(file) + '\n');
     }
     const output = [];
-    const fatal = inspectOutgoingRefusals(directory, pendingMigration, (line) => output.push(line));
-    return { fatal, output, directory };
+    const fatal = inspectOutgoingRefusals(directory, (line) => output.push(line));
+    const expected = files.map((file) => `run-tests: refusal text outside the registry: ${entry(file)}\n`);
+    return { fatal, output, directory, expected };
   }
 
-  test('pending-file refusals are counted across journals and reported in one summary', () => {
+  test('formerly pending-file refusals are counted across journals and each reported as fatal', () => {
     const pending = 'src/home/lib/runner/launcher.mjs';
-    const { fatal, output } = journalCase([
+    const { fatal, output, expected } = journalCase([
       `file:///C:/fixture/${pending}`, `C:\\fixture\\${pending.replaceAll('/', '\\')}`,
-    ], new Set([pending]));
-    assert.equal(fatal, 0);
-    assert.deepEqual(output, ['run-tests: 2 refusals from pending files tolerated until their migration\n']);
+    ]);
+    assert.equal(fatal, expected.length);
+    assert.deepEqual(output, expected);
   });
 
   // Plan_79 B3jd D5: copied homes retain home-relative paths, not the src/home prefix.
-  test('a copied home image tolerates a pending caller', () => {
-    const pending = 'src/home/lib/runner/preflight.mjs';
-    const { fatal, output } = journalCase([
+  test('a copied home image reports a formerly pending caller as fatal', () => {
+    const { fatal, output, expected } = journalCase([
       'file:///C:/fixture/home-image-oSACGX/lib/runner/preflight.mjs',
       'C:\\fixture\\installed-home\\lib\\runner\\preflight.mjs',
-    ], new Set([pending]));
-    assert.equal(fatal, 0);
-    assert.deepEqual(output, ['run-tests: 2 refusals from pending files tolerated until their migration\n']);
+    ]);
+    assert.equal(fatal, expected.length);
+    assert.deepEqual(output, expected);
   });
 
   test('a copied home image still rejects a migrated caller', () => {
     const { fatal, output } = journalCase([
       'file:///C:/fixture/home-image-oSACGX/lib/runner/task-input.mjs',
-    ], new Set(['src/home/lib/runner/preflight.mjs']));
+    ]);
     assert.equal(fatal, 1);
     assert.equal(output.length, 1);
     assert.match(output[0], /^run-tests: refusal text outside the registry: /);
   });
 
-  test('a copied home path must match a pending caller on a path-segment boundary', () => {
+  test('a copied home path with a different path segment remains fatal', () => {
     const { fatal, output } = journalCase([
       'file:///C:/fixture/home-image-oSACGX/xlib/runner/preflight.mjs',
-    ], new Set(['src/home/lib/runner/preflight.mjs']));
+    ]);
     assert.equal(fatal, 1);
     assert.equal(output.length, 1);
     assert.match(output[0], /^run-tests: refusal text outside the registry: /);
   });
 
-  test('pending entries outside src/home still require their repository path', () => {
+  test('formerly pending entries outside src/home are fatal at both repository and copied paths', () => {
     const pending = 'scripts/preflight.mjs';
-    const { fatal, output } = journalCase([
+    const { fatal, output, expected } = journalCase([
       `file:///C:/fixture/${pending}`, 'file:///C:/fixture/home-image-oSACGX/preflight.mjs',
-    ], new Set([pending]));
-    assert.equal(fatal, 1);
+    ]);
+    assert.equal(fatal, 2);
     assert.equal(output.length, 2);
     assert.match(output[0], /^run-tests: refusal text outside the registry: /);
-    assert.equal(output[1], 'run-tests: 1 refusals from pending files tolerated until their migration\n');
+    assert.deepEqual(output, expected);
   });
 
   test('an unreadable journal line remains fatal', () => {
-    const pending = 'src/home/lib/runner/preflight.mjs';
-    const { directory } = journalCase([], new Set([pending]));
+    const { directory } = journalCase([]);
     fs.writeFileSync(path.join(directory, 'unreadable.jsonl'), '{"caller":\n');
     const output = [];
-    assert.equal(inspectOutgoingRefusals(directory, new Set([pending]), (line) => output.push(line)), 1);
+    assert.equal(inspectOutgoingRefusals(directory, (line) => output.push(line)), 1);
     assert.deepEqual(output, ['run-tests: refusal text outside the registry: {"caller":\n']);
   });
 
@@ -246,7 +245,7 @@ if (fixture) {
     const pending = 'src/home/lib/runner/preflight.mjs';
     const { fatal, output } = journalCase([
       `file:///C:/fixture/${pending}`,
-    ], new Set([pending]), { omitKind: true });
+    ], { omitKind: true });
     assert.equal(fatal, 1);
     assert.equal(output.length, 1);
     assert.match(output[0], /^run-tests: refusal text outside the registry: /);
@@ -255,33 +254,33 @@ if (fixture) {
     assert.equal(entry.message, 'handwritten refusal');
   });
 
-  test('the same refusal from a migrated file remains fatal alongside pending refusals', () => {
+  test('the same refusal from a migrated file and a formerly pending file are both fatal', () => {
     const pending = 'src/home/lib/runner/launcher.mjs';
     const migrated = 'src/home/lib/runner/task-input.mjs';
-    const { fatal, output } = journalCase([
+    const { fatal, output, expected } = journalCase([
       `file:///C:/fixture/${pending}`, `file:///C:/fixture/${migrated}`,
-    ], new Set([pending]));
-    assert.equal(fatal, 1);
+    ]);
+    assert.equal(fatal, 2);
     assert.equal(output.length, 2);
     assert.match(output[0], /^run-tests: refusal text outside the registry: /);
-    const entry = JSON.parse(output[0].slice('run-tests: refusal text outside the registry: '.length));
+    const entry = JSON.parse(output[1].slice('run-tests: refusal text outside the registry: '.length));
     assert.equal(entry.message, 'handwritten refusal');
     assert.match(entry.stack, /task-input\.mjs:111:1/);
-    assert.equal(output[1], 'run-tests: 1 refusals from pending files tolerated until their migration\n');
+    assert.deepEqual(output, expected);
   });
 
-  test('a pending caller is tolerated even with migrated files elsewhere in its stack', () => {
+  test('a formerly pending caller is fatal even with migrated files elsewhere in its stack', () => {
     const pending = 'src/home/lib/runner/launcher.mjs';
-    const { fatal, output } = journalCase([`file:///C:/fixture/${pending}`], new Set([pending]), {
+    const { fatal, output, expected } = journalCase([`file:///C:/fixture/${pending}`], {
       ancestor: '\n    at migratedCaller (file:///C:/fixture/src/home/lib/runner/task-input.mjs:96:1)',
     });
-    assert.equal(fatal, 0);
-    assert.deepEqual(output, ['run-tests: 1 refusals from pending files tolerated until their migration\n']);
+    assert.equal(fatal, expected.length);
+    assert.deepEqual(output, expected);
   });
 
   test('a migrated caller is fatal even with a pending launcher further up its stack', () => {
     const pending = 'src/home/lib/runner/launcher.mjs';
-    const { fatal, output } = journalCase(['file:///C:/fixture/src/home/lib/runner/task-input.mjs'], new Set([pending]), {
+    const { fatal, output } = journalCase(['file:///C:/fixture/src/home/lib/runner/task-input.mjs'], {
       ancestor: `\n    at launcher (file:///C:/fixture/${pending}:96:1)`,
     });
     assert.equal(fatal, 1);
@@ -291,7 +290,7 @@ if (fixture) {
 
   test('a journal without caller is fatal even when its stack names a pending file', () => {
     const pending = 'src/home/lib/runner/launcher.mjs';
-    const { fatal, output } = journalCase([`file:///C:/fixture/${pending}`], new Set([pending]), { omitCaller: true });
+    const { fatal, output } = journalCase([`file:///C:/fixture/${pending}`], { omitCaller: true });
     assert.equal(fatal, 1);
     assert.equal(output.length, 1);
     assert.match(output[0], /^run-tests: refusal text outside the registry: /);
@@ -300,29 +299,27 @@ if (fixture) {
   for (const caller of ['', 'unreadable', 'file:///C:/fixture/src/home/lib/runner/launcher.mjs']) {
     test(`an unreadable caller ${JSON.stringify(caller)} is fatal despite a pending stack frame`, () => {
       const pending = 'src/home/lib/runner/launcher.mjs';
-      const { fatal, output } = journalCase([`file:///C:/fixture/${pending}`], new Set([pending]), { caller });
+      const { fatal, output } = journalCase([`file:///C:/fixture/${pending}`], { caller });
       assert.equal(fatal, 1);
       assert.equal(output.length, 1);
       assert.match(output[0], /^run-tests: refusal text outside the registry: /);
     });
   }
 
-  test('removing a file from an injected pending list makes the unchanged journal fatal', () => {
+  test('the unchanged formerly pending journal remains fatal on repeated inspection', () => {
     const pending = 'src/home/lib/runner/launcher.mjs';
-    const pendingMigration = new Set([pending]);
-    const { directory, fatal } = journalCase([`file:///C:/fixture/${pending}`], pendingMigration);
-    assert.equal(fatal, 0);
-    pendingMigration.delete(pending);
+    const { directory, fatal, output: firstOutput } = journalCase([`file:///C:/fixture/${pending}`]);
+    assert.equal(fatal, 1);
     const output = [];
-    assert.equal(inspectOutgoingRefusals(directory, pendingMigration, (line) => output.push(line)), 1);
+    assert.equal(inspectOutgoingRefusals(directory, (line) => output.push(line)), 1);
     assert.equal(output.length, 1);
     assert.match(output[0], /^run-tests: refusal text outside the registry: /);
-    assert.doesNotMatch(output[0], /tolerated until their migration/);
+    assert.deepEqual(output, firstOutput);
   });
 
   test('a longer file name cannot be mistaken for a pending file', () => {
     const pending = 'src/home/lib/runner/launcher.mjs';
-    const { fatal, output } = journalCase([`file:///C:/fixture/${pending}.extra`], new Set([pending]));
+    const { fatal, output } = journalCase([`file:///C:/fixture/${pending}.extra`]);
     assert.equal(fatal, 1);
     assert.equal(output.length, 1);
     assert.match(output[0], /^run-tests: refusal text outside the registry: /);

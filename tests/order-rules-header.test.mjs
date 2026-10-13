@@ -8,7 +8,7 @@ import { makeTempTree } from './temp-tree.mjs';
 import { ORDER_RULES, orderRuleMessage, orderRefusalAt, orderProblemLine } from '../src/home/lib/order-rules.mjs';
 import { ORDER_DIAGNOSTICS, orderDiagnosticMessage } from '../src/home/lib/order-diagnostics.mjs';
 import { parseTaskHeader, taskHeaderRefusal } from '../src/home/lib/task-header.mjs';
-import { ADMISSION_FILES, PENDING_MIGRATION } from './order-guard/admission-files.mjs';
+import { ADMISSION_FILES } from './order-guard/admission-files.mjs';
 import { checkRefusalSites } from './order-guard/refusal-checker.mjs';
 
 const messages = [
@@ -129,7 +129,6 @@ test('parseTaskHeader retains exact problems, their order and the complete refus
 test('both header readers pass the static guard without migration exemptions or opt-outs', () => {
   for (const file of ['src/home/lib/task-header.mjs', 'src/home/lib/order-values.mjs']) {
     assert.ok(ADMISSION_FILES.includes(file), file);
-    assert.ok(!PENDING_MIGRATION.has(file), file);
     const source = fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
     assert.deepEqual(checkRefusalSites(source, file), { violations: [], optOuts: [] });
   }

@@ -15,7 +15,7 @@ import { passGate } from '../src/home/lib/runner/pass-gate.mjs';
 import {
   codexAvailabilityRefusal, taskPreflight, scopeRunRefusal, resolveRunPhase, preflightRefusal,
 } from '../src/home/lib/runner/preflight.mjs';
-import { ADMISSION_FILES, PENDING_MIGRATION } from './order-guard/admission-files.mjs';
+import { ADMISSION_FILES } from './order-guard/admission-files.mjs';
 import { checkRefusalSites } from './order-guard/refusal-checker.mjs';
 
 const suffix = 'The run folder was not created; quota was not spent.';
@@ -127,7 +127,6 @@ for (const name of ['pass-gate', 'preflight']) {
   test(`${name} passes admission without pending migration or opt-outs`, () => {
     const file = `src/home/lib/runner/${name}.mjs`;
     assert.ok(ADMISSION_FILES.includes(file));
-    assert.ok(!PENDING_MIGRATION.has(file));
     const source = fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
     assert.deepEqual(checkRefusalSites(source, file), { violations: [], optOuts: [] });
     assert.doesNotMatch(source, /recordOrderText|pending producer|order-guard: not-a-refusal/);

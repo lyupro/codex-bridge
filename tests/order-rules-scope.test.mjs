@@ -8,7 +8,7 @@ import { makeTempTree } from './temp-tree.mjs';
 import { ORDER_RULES, orderRuleMessage } from '../src/home/lib/order-rules.mjs';
 import { RULES as HEADER_RULES } from '../src/home/lib/order-rules/header.mjs';
 import { validateScope } from '../src/home/lib/runner/scope-check.mjs';
-import { ADMISSION_FILES, PENDING_MIGRATION } from './order-guard/admission-files.mjs';
+import { ADMISSION_FILES } from './order-guard/admission-files.mjs';
 import { checkRefusalSites } from './order-guard/refusal-checker.mjs';
 
 // Plan_79 B4b: these literal pairs copy the scope-check sites, not the new registry implementation.
@@ -101,7 +101,6 @@ test('scope selectors refuse absent and unknown violations or parts without a de
 test('scope-check passes the static admission guard without pending migration or opt-outs', () => {
   const file = 'src/home/lib/runner/scope-check.mjs';
   assert.ok(ADMISSION_FILES.includes(file));
-  assert.ok(!PENDING_MIGRATION.has(file));
   const source = fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
   assert.deepEqual(checkRefusalSites(source, file), { violations: [], optOuts: [] });
   assert.doesNotMatch(source, /recordOrderText|pending producer/);

@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { ORDER_DIAGNOSTICS, orderDiagnosticMessage } from '../../src/home/lib/order-diagnostics.mjs';
-import { ADMISSION_FILES, PENDING_MIGRATION } from '../order-guard/admission-files.mjs';
+import { ADMISSION_FILES } from '../order-guard/admission-files.mjs';
 import { checkRefusalSites } from '../order-guard/refusal-checker.mjs';
 import { withTempTree } from '../temp-tree.mjs';
 import { probeSandbox, sandboxRefusal } from '../../src/home/lib/runner/sandbox-probe.mjs';
@@ -246,7 +246,6 @@ test('both sandbox modules are admitted without pending migration or guard opt-o
   for (const name of ['sandbox-probe', 'sandbox-diagnosis']) {
     const file = `src/home/lib/runner/${name}.mjs`;
     assert.ok(ADMISSION_FILES.includes(file));
-    assert.ok(!PENDING_MIGRATION.has(file));
     const source = fs.readFileSync(new URL(`../../${file}`, import.meta.url), 'utf8');
     assert.deepEqual(checkRefusalSites(source, file), { violations: [], optOuts: [] });
   }

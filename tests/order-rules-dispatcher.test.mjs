@@ -20,7 +20,7 @@ import { readDispatcherPin } from '../src/home/lib/dispatcher-pin.mjs';
 import { modelObservation, observeDispatcherModelStop } from '../src/home/lib/dispatcher-model.mjs';
 import { dispatcherStatePath, readDispatcherState, updateDispatcherState } from '../src/home/lib/dispatcher-state.mjs';
 import { checkOutgoingRefusal } from '../src/home/lib/order-text-record.mjs';
-import { ADMISSION_FILES, PENDING_MIGRATION } from './order-guard/admission-files.mjs';
+import { ADMISSION_FILES } from './order-guard/admission-files.mjs';
 import { checkRefusalSites } from './order-guard/refusal-checker.mjs';
 import { makeTempTree } from './temp-tree.mjs';
 import { runGate, payload } from './hooks/order-gate-fixtures.mjs';
@@ -172,7 +172,6 @@ test('all four producers are admitted without pending migration or unreviewed op
   for (const file of ['src/home/hooks/order-gate.mjs', 'src/home/lib/dispatcher-call.mjs',
     'src/home/lib/dispatcher-command.mjs', 'src/home/lib/subagent-model-env.mjs']) {
     assert.ok(ADMISSION_FILES.includes(file));
-    assert.equal(PENDING_MIGRATION.has(file), false);
     const source = fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
     assert.deepEqual(checkRefusalSites(source, file), { violations: [], optOuts: EXPECTED_OPT_OUTS[file] ?? [] });
     assert.doesNotMatch(source, /recordOrderText\(/);
@@ -248,7 +247,6 @@ for (const [name, category, keys] of [
   test(`${name} is admitted, not pending, and owns no diagnostic text outside the registry`, () => {
     const file = `src/home/lib/${name}.mjs`;
     assert.ok(ADMISSION_FILES.includes(file));
-    assert.equal(PENDING_MIGRATION.has(file), false);
     const source = fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
     assert.deepEqual(checkRefusalSites(source, file), { violations: [], optOuts: [] });
     assert.doesNotMatch(source, /recordOrderText\(|new TypeError\(['"`]/);

@@ -10,7 +10,7 @@ import { RULES as GRANT_RULES } from '../src/home/lib/order-rules/header-grants.
 import { ORDER_DIAGNOSTICS, orderDiagnosticMessage } from '../src/home/lib/order-diagnostics.mjs';
 import { continuationRefusal, retryRefusal, readyGrantLines } from '../src/home/lib/runner/continuation.mjs';
 import { advisorTaskArtifact, advisorTaskOrRefuse, adviseSection } from '../src/home/lib/runner/advise-carry.mjs';
-import { ADMISSION_FILES, PENDING_MIGRATION } from './order-guard/admission-files.mjs';
+import { ADMISSION_FILES } from './order-guard/admission-files.mjs';
 import { checkRefusalSites } from './order-guard/refusal-checker.mjs';
 
 // Plan_79 B4c: literal expectations copy the pre-migration sites, independently of the builders.
@@ -144,7 +144,6 @@ for (const name of ['continuation', 'advise-carry']) {
   test(`${name} passes the static guard without pending migration or opt-outs`, () => {
     const file = `src/home/lib/runner/${name}.mjs`;
     assert.ok(ADMISSION_FILES.includes(file));
-    assert.ok(!PENDING_MIGRATION.has(file));
     const source = fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
     assert.deepEqual(checkRefusalSites(source, file), { violations: [], optOuts: [] });
     assert.doesNotMatch(source, /recordOrderText|pending producer|order-guard: not-a-refusal/);

@@ -14,7 +14,7 @@ import { validateScope } from '../src/home/lib/runner/scope-check.mjs';
 import { makeRunDir, runDirPath } from '../src/home/lib/runner/launcher.mjs';
 import { staleOverrideRefusal } from '../src/home/lib/runner/runs-root.mjs';
 import { checkOutgoingRefusal } from '../src/home/lib/order-text-record.mjs';
-import { ADMISSION_FILES, PENDING_MIGRATION } from './order-guard/admission-files.mjs';
+import { ADMISSION_FILES } from './order-guard/admission-files.mjs';
 import { checkRefusalSites } from './order-guard/refusal-checker.mjs';
 import { makeTempTree } from './temp-tree.mjs';
 
@@ -145,7 +145,6 @@ test('launcher is admitted without pending migration, recording or guard opt-out
   const file = 'src/home/lib/runner/launcher.mjs';
   const source = fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
   assert.ok(ADMISSION_FILES.includes(file));
-  assert.equal(PENDING_MIGRATION.has(file), false);
   assert.deepEqual(checkRefusalSites(source, file), { violations: [], optOuts: [] });
   assert.doesNotMatch(source, /recordOrderText|pending producer/);
   assert.ok(source.trimEnd().split(/\r?\n/).length <= 400);

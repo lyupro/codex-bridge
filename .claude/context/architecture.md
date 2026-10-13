@@ -43,12 +43,12 @@ folder never feeds two hosts:
   a closed category. Definitions live by the place the orchestrator writes them (`order-rules/call.mjs`,
   `header.mjs`, `task-document.mjs`) and diagnostics by category (`order-diagnostics/<category>.mjs`);
   the two entry points are the only importers (D4). `order-text-record.mjs` is test-only provenance
-  (D5): under `CODEX_BRIDGE_TEST_TMP` the builders record what they hand out and `die` journals a message
-  not made of that output; `scripts/run-tests.mjs` fails the suite on such a line unless the transport's
-  direct caller is still in the guard's `PENDING_MIGRATION`. Each registry entry lists its `data`
+  (D5): under `CODEX_BRIDGE_TEST_TMP` the builders record what they hand out and every transport (`die`,
+  the hooks' `deny`, the dispatcher handback, `{ refusal }`) journals a message not made of that output;
+  `scripts/run-tests.mjs` fails the suite on any journal line. Each registry entry lists its `data`
   parameters (D6); any other parameter must itself be recorded output, checked before the builder
-  records its result, and a `kind: "parameter"` line is fatal even for a pending caller. Outside the
-  builders only lines marked `pending producer` may call `recordOrderText`.
+  records its result. Only the registry modules and the dispatcher protocol catalog
+  (`dispatcher-protocol.mjs`, D8, one `checkedOrderText` call) may record text.
 - `runner/` is one concern per module: `run-context` holds the run in progress, `run-env` reads
   `run-config.json`, `args` refuses the command line, `pass-gate` decides before registration whether a
   call attaches, continues or is a refused repeat (Plan_75), `schemas`/`prompts` are what each agent is

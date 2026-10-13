@@ -36,6 +36,3 @@ export const ADMISSION_FILES = [
   'src/home/lib/dispatcher-protocol.mjs',
   'src/home/lib/install-owner-roots.mjs',
 ];
-
-// Plan_79 B5b2a: migration is complete; removing this export belongs to the next slice.
-export const PENDING_MIGRATION = new Set();

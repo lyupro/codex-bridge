@@ -217,23 +217,25 @@ test('an unwritable journal never throws or changes the builder result', () => {
   assert.deepEqual(entries, []);
 });
 
-test('parameter violations from a pending caller are fatal while its outgoing violations are tolerated', () => {
+test('parameter and outgoing violations from a formerly pending caller are both fatal', () => {
   runCase(`
     const { inspectOutgoingRefusals } = await import(${JSON.stringify(inspector)});
-    const PENDING_MIGRATION = new Set(['tests/fixtures/pending-caller.mjs']);
     const { die, RunnerUsageError } = await import(${JSON.stringify(new URL('runner/args.mjs', lib).href)});
     const vm = await import('node:vm');
-    const pending = [...PENDING_MIGRATION][0];
+    const pending = 'tests/fixtures/pending-caller.mjs';
     const directory = path.join(process.env.D6_ROOT, 'order-text-violations');
     const pendingCaller = vm.runInThisContext(
       '(build, die) => { build("location", "unrecorded parameter"); die("unrecorded outgoing"); }',
       { filename: 'file:///C:/fixture/' + pending });
     assert.throws(() => pendingCaller(orderRefusalAt, die), RunnerUsageError);
     const output = [];
-    assert.equal(inspectOutgoingRefusals(directory, PENDING_MIGRATION, (line) => output.push(line)), 1);
+    assert.equal(inspectOutgoingRefusals(directory, (line) => output.push(line)), 2);
     assert.equal(output.length, 2);
     assert.match(output[0], /"kind":"parameter"/);
-    assert.equal(output[1], ${JSON.stringify('run-tests: 1 refusals from pending files tolerated until their migration\n')});
+    assert.match(output[1], /"kind":"outgoing"/);
+    const lines = fs.readdirSync(directory).flatMap((file) =>
+      fs.readFileSync(path.join(directory, file), 'utf8').split(/\\r?\\n/).filter(Boolean));
+    assert.deepEqual(output, lines.map((line) => 'run-tests: refusal text outside the registry: ' + line + '\\n'));
   `);
 });
 
@@ -254,7 +256,7 @@ function unmarkedRecords(source, file) {
   });
 }
 
-test('home producers record only in registry builders and the single catalog-backed protocol call', () => {
+test('no recordOrderText call outside the registry modules in src/home', () => {
   const home = fileURLToPath(new URL('../src/home/', import.meta.url));
   const violations = [];
   for (const file of fs.readdirSync(home, { recursive: true }).filter((file) => file.endsWith('.mjs'))) {
@@ -267,7 +269,7 @@ test('home producers record only in registry builders and the single catalog-bac
   assert.deepEqual(violations, []);
 });
 
-test('the producer guard rejects direct, pending and inline-render fixtures', () => {
+test('the producer guard rejects direct and inline-render fixtures even beneath a pending producer marker', () => {
   const producerComment = '// Plan_79 D5: pending producer, recorded until its file migrates';
   assert.deepEqual(unmarkedRecords("return recordOrderText('handwritten');"), [1]);
   assert.deepEqual(unmarkedRecords(producerComment + "\nreturn recordOrderText('pending');"), [2]);

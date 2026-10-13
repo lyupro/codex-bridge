@@ -31,42 +31,19 @@ import { auditWrites } from './home-write-audit.mjs';
 import { HOME_WRITE_INVENTORY } from './home-write-inventory.mjs';
 import { readmeText, suiteCountMismatch } from './suite-count.mjs';
 import { snapshotRoot, addedEntries } from './root-guard/root-entries.mjs';
-import { PENDING_MIGRATION } from '../tests/order-guard/admission-files.mjs';
-import { parseJsonText } from '../src/home/lib/json-file.mjs';
 
-// Plan_79 B3j D5: share the static guard's migration boundary, not a second pending list.
-export function inspectOutgoingRefusals(directory, pendingMigration, report) {
-  let tolerated = 0;
+// Plan_79 B5b2b D5/D6: migration is complete, so every journal line is fatal.
+export function inspectOutgoingRefusals(directory, report) {
   let fatal = 0;
   if (fs.existsSync(directory)) {
     for (const file of fs.readdirSync(directory)) {
       const lines = fs.readFileSync(path.join(directory, file), 'utf8').split(/\r?\n/).filter(Boolean);
       for (const line of lines) {
-        let caller;
-        let kind;
-        try {
-          const entry = parseJsonText(path.join(directory, file), line);
-          if (typeof entry.caller === 'string') caller = entry.caller;
-          kind = entry.kind;
-        } catch {}
-        // Plan_79 B3j D5 acceptance: a pending launcher must not excuse a migrated caller.
-        const location = caller?.replaceAll('\\', '/').trim()
-          .match(/^at (?:.+ \()?(.+):\d+:\d+\)?$/)?.[1];
-        // Plan_79 B3jd D5: installed homes keep only the path below src/home; require a segment boundary.
-        // Plan_79 D6: pending transport migration never excuses laundering through a builder.
-        if (kind === 'outgoing' && location && [...pendingMigration].some((pending) => {
-          const relative = pending.startsWith('src/home/') ? pending.slice('src/home/'.length) : pending;
-          return location.endsWith(`/${relative}`);
-        })) {
-          tolerated++;
-        } else {
-          report(`run-tests: refusal text outside the registry: ${line}\n`);
-          fatal++;
-        }
+        report(`run-tests: refusal text outside the registry: ${line}\n`);
+        fatal++;
       }
     }
   }
-  if (tolerated) report(`run-tests: ${tolerated} refusals from pending files tolerated until their migration\n`);
   return fatal;
 }
 
@@ -119,7 +96,7 @@ try {
   process.exitCode = result.status ?? 1;
   // Plan_79 D5: inspect before cleanup, even when every expected refusal test passed.
   const refusalJournal = path.join(testTmpRoot, 'order-text-violations');
-  const fatalRefusals = inspectOutgoingRefusals(refusalJournal, PENDING_MIGRATION,
+  const fatalRefusals = inspectOutgoingRefusals(refusalJournal,
     (line) => process.stderr.write(line));
   if (fatalRefusals && process.exitCode === 0) process.exitCode = 1;
   for (const name of additions) {
