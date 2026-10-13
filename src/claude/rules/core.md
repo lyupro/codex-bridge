@@ -9,10 +9,11 @@ code: a `scope` phase, then `advise`).
 
 - The call is one line, `task file: <absolute path>`. Labels go in the task-file header, free text in its body. A
   refused call costs nothing: read the refusal, fix the task file, call again.
-- Before writing a task file, run `codex-bridge guidance <topic>` and follow it: `order` (header labels, scope),
-  `advisor` (two phases, the `continue:` grant), `budget` (run deadline, slicing), `records` (finding and reading
-  runs), `concurrency` (parallel and writing runs). `codex-bridge guidance` lists the topics. If it fails, stop and
-  show its output to the operator — never guess the contract.
+- Before every task file, run `codex-bridge guidance order` and follow it: it lists the enforced rules.
+  Other topics, via `codex-bridge guidance <topic>`: `advisor` (two phases, the `continue:` grant),
+  `budget` (run deadline, slicing), `records` (finding and reading runs), `concurrency` (parallel and writing
+  runs); `codex-bridge guidance` lists them. If it fails, stop and show its output to the operator — never guess
+  the contract.
 - Every `codex-build` task file carries exactly one `advice:` line.
 - A writing run has a hard deadline: slice the task before the launch, not after a failure. After a deadline `FAIL`,
   look at `git status` before deciding anything.

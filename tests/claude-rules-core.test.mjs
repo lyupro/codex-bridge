@@ -20,6 +20,10 @@ const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const corePath = path.join(root, 'src', 'claude', 'rules', 'core.md');
 const core = fs.readFileSync(corePath, 'utf8');
 
+test('the rules core requires guidance order before every task file', () => {
+  assert.match(core, /Before every task file, run `codex-bridge guidance order`/);
+});
+
 test('the rules core stays under its token ceiling', () => {
   assert.ok(core.length <= CORE_CHARACTER_CEILING,
     `core.md has ${core.length} characters; the ceiling is ${CORE_CHARACTER_CEILING} (~600 tokens)`);
