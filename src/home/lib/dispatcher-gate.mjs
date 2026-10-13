@@ -2,6 +2,8 @@
 import { canonicalRunCommand, sameCommand } from './dispatcher-command.mjs';
 import { ownTranscriptPath, transcriptPrompt } from './dispatcher-order.mjs';
 import { HANDBACK_TOOL } from './hook-definitions.mjs';
+import { dispatcherDenial, dispatcherProtocolMessage } from './dispatcher-protocol.mjs';
+import { orderDiagnosticMessage } from './order-diagnostics.mjs';
 
 export { HANDBACK_TOOL };
 
@@ -10,7 +12,9 @@ export function gateOrder(payload) {
   const prompt = transcriptPath ? transcriptPrompt(transcriptPath) : null;
   if (!transcriptPath || !prompt) {
     return {
-      refusal: `the order could not be read from the agent transcript ${transcriptPath || '(none)'}`,
+      refusal: orderDiagnosticMessage('dispatcher-order-transcript-readable', {
+        transcriptPath: transcriptPath || '(none)',
+      }),
     };
   }
   return canonicalRunCommand(payload.agent_type, prompt);
@@ -36,9 +40,7 @@ export function isFinalOutput(output) {
 }
 
 function denial(message, order) {
-  const prefix = `codex-bridge dispatcher gate: ${message}`;
-  if (typeof order?.command !== 'string' || order.command.length === 0) return prefix;
-  return `${prefix}\n${order.command}\nRun it exactly, in the foreground; repeating it attaches to the same run.`;
+  return dispatcherDenial(message, order?.command);
 }
 
 function deny(message, order, stateUpdate) {
@@ -57,43 +59,45 @@ export function decidePreToolUse({ payload, order, state }) {
   // after the handback and wrote into a tree the caller believed settled; a substituted FAIL followed by a
   // late run would repeat exactly that, so nothing — not even the canonical command — runs past delivery.
   if (state?.handback === 'delivered') {
-    return deny('the handback was already delivered; this dispatcher is finished and may not act further.');
+    return deny(dispatcherProtocolMessage('handback-delivered'));
   }
   if (toolName === 'Bash') {
     if (order?.refusal) {
-      return deny('the order could not be read; nothing may run, so hand back now.', order);
+      return deny(dispatcherProtocolMessage('order-unreadable'), order);
     }
     if (order?.command && sameCommand(payload.tool_input?.command, order.command)
       && payload.tool_input?.run_in_background !== true) return { kind: 'pass' };
-    return deny('only the canonical runner command may run in the foreground.', order);
+    return deny(dispatcherProtocolMessage('canonical-foreground'), order);
   }
 
   if (toolName === HANDBACK_TOOL) {
-    if (order?.refusal) return allow(`FAIL — dispatcher gate: ${order.refusal}`);
+    if (order?.refusal) return allow(orderDiagnosticMessage('dispatcher-order-refusal', { refusal: order.refusal }));
     if (typeof state?.runReceiptConflict === 'string' && state.runReceiptConflict.length > 0) {
-      return allow('FAIL — dispatcher gate: the runner reported two different run folders for one dispatcher: ' +
-        `${state.runReceipt} and ${state.runReceiptConflict}; the answer is not delivered.`);
+      return allow(orderDiagnosticMessage('dispatcher-receipt-conflict', {
+        runReceipt: state.runReceipt, runReceiptConflict: state.runReceiptConflict,
+      }));
     }
     if (typeof state?.runnerOutput === 'string' && state.runnerOutput.length > 0) {
-      if (state.runnerFinal) return allow(state.runnerOutput);
-      return deny('the run has started without a verdict; repeat the exact command to attach and wait.', order);
+      if (state.runnerFinal) return allow(orderDiagnosticMessage('dispatcher-runner-output',
+        { output: state.runnerOutput }));
+      return deny(dispatcherProtocolMessage('verdict-pending'), order);
     }
 
     const attempts = Number.isInteger(state?.handbackAttempts) ? state.handbackAttempts : 0;
     const handbackAttempts = attempts + 1;
     if (handbackAttempts === 1) {
-      return deny('the dispatcher handed back without a runner verdict; run the command first.', order,
+      return deny(dispatcherProtocolMessage('runner-verdict-required'), order,
         { handbackAttempts });
     }
     return {
       kind: 'allow',
-      message: 'FAIL — dispatcher did not delegate: it handed back without running `' + order.command + '`',
+      message: orderDiagnosticMessage('dispatcher-did-not-delegate', { command: order.command }),
       stateUpdate: { handbackAttempts, handback: 'delivered' },
     };
   }
 
   if (order?.refusal) {
-    return deny('the order could not be read; nothing may run, so hand back now.', order);
+    return deny(dispatcherProtocolMessage('order-unreadable'), order);
   }
-  return deny('only the canonical runner command may run before handback.', order);
+  return deny(dispatcherProtocolMessage('canonical-before-handback'), order);
 }

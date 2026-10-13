@@ -5,10 +5,63 @@
  */
 import { renderRunCommandTemplate } from './dispatcher-command.mjs';
 import { TASK_FILE_INPUT } from './dispatcher-call.mjs';
+import { orderDiagnosticMessage } from './order-diagnostics.mjs';
+import { checkedOrderText } from './order-text-record.mjs';
+
+// Plan_79 D8: prompt and gate quote the same obligations, including corrective deny sentences.
+export const DISPATCHER_PROTOCOL = Object.freeze({
+  'handback-delivered': Object.freeze({
+    data: Object.freeze([]),
+    message: () => 'the handback was already delivered; this dispatcher is finished and may not act further.',
+  }),
+  'order-unreadable': Object.freeze({
+    data: Object.freeze([]),
+    message: () => 'the order could not be read; nothing may run, so hand back now.',
+  }),
+  'canonical-foreground': Object.freeze({
+    data: Object.freeze([]),
+    message: () => 'only the canonical runner command may run in the foreground.',
+  }),
+  'verdict-pending': Object.freeze({
+    data: Object.freeze([]),
+    message: () => 'the run has started without a verdict; repeat the exact command to attach and wait.',
+  }),
+  'runner-verdict-required': Object.freeze({
+    data: Object.freeze([]),
+    message: () => 'the dispatcher handed back without a runner verdict; run the command first.',
+  }),
+  'canonical-before-handback': Object.freeze({
+    data: Object.freeze([]),
+    message: () => 'only the canonical runner command may run before handback.',
+  }),
+  'command-repeat': Object.freeze({
+    data: Object.freeze([]),
+    message: () => 'Run it exactly, in the foreground; repeating it attaches to the same run.',
+  }),
+  'denial': Object.freeze({
+    data: Object.freeze(['command']),
+    message: ({ reason, command }) => `codex-bridge dispatcher gate: ${reason}` +
+      (typeof command === 'string' && command.length > 0
+        ? `\n${command}\n${dispatcherProtocolMessage('command-repeat')}` : ''),
+  }),
+});
+
+export function dispatcherProtocolMessage(key, values = {}) {
+  if (!Object.hasOwn(DISPATCHER_PROTOCOL, key)) {
+    throw new Error(orderDiagnosticMessage('dispatcher-protocol-key-known', { key }));
+  }
+  const entry = DISPATCHER_PROTOCOL[key];
+  return checkedOrderText('dispatcherProtocolMessage', key, values, entry.data, entry.message);
+}
+
+// D8: command is data; the reason and command-repeat correction must already be checked text.
+export function dispatcherDenial(reason, command) {
+  return dispatcherProtocolMessage('denial', { reason, command });
+}
 
 export function renderDispatcherProtocol(agentType) {
   const command = renderRunCommandTemplate(agentType);
-  return `## Required dispatcher input
+  return String(`## Required dispatcher input
 
 The call is exactly one line: \`${TASK_FILE_INPUT.label}: <task-file path from the orchestrator>\`.
 The path must be absolute and name a file the orchestrator wrote with its file tool.
@@ -49,6 +102,16 @@ ${command}
 \`\`\`
 
 Replace the placeholder with the path from the call, nothing else.
+The gate requires these instructions:
+
+- ${dispatcherProtocolMessage('canonical-before-handback')}
+- ${dispatcherProtocolMessage('canonical-foreground')}
+- ${dispatcherProtocolMessage('command-repeat')}
+
+If the order cannot be read, the gate's correction is:
+
+- ${dispatcherProtocolMessage('order-unreadable')}
+
 The first call starts the run and returns at once with \`RUN=<path> order-id=<id>\` and a
 \`STARTED\` line. To get the verdict, run the identical command again. That call does not start
 a second run or cost quota: it attaches to the run already in flight, prints
@@ -58,8 +121,14 @@ which is normal, not a hang. If the ceiling kills it, run the identical command 
 it attaches to the same run and keeps waiting.
 
 Background execution (\`run_in_background\`, \`&\`, \`nohup\`) is prohibited, and so is inventing
-a report from memory. Never add a flag: the host allows exactly the one canonical command
-and refuses every other.
+a report from memory. Never add a flag.
+If you try to return before the runner's verdict, the gate's correction is:
+
+- ${dispatcherProtocolMessage('runner-verdict-required')}
+
+If the first call has only started the run, the gate's correction is:
+
+- ${dispatcherProtocolMessage('verdict-pending')}
 
 A runner refusal — an order id collision, a header problem or a grant problem — is the whole
 answer: return it as \`FAIL\` with the runner's text. Never retry with a changed command or another
@@ -87,5 +156,8 @@ by checking \`status.json\` manually.
 Inventing any outcome the runner did not print is equally prohibited. On 2026-08-13 a dispatcher said
 \`FAIL — could not get the Codex run result because of an architectural environment limitation\` while
 that run's \`status.json\` already said \`state=finished\`, \`status=OK\`.
-`;
+After delivering the handback, the gate refuses every further action:
+
+- ${dispatcherProtocolMessage('handback-delivered')}
+`);
 }

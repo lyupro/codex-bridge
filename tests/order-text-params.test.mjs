@@ -187,6 +187,13 @@ const expectedData = {
   'dispatcher-agent-input-known': ['agentType'],
   'dispatcher-prompt-text-required': [],
   'dispatcher-refusal': [],
+  'dispatcher-order-transcript-readable': ['transcriptPath'],
+  'dispatcher-order-refusal': [],
+  'dispatcher-receipt-conflict': ['runReceipt', 'runReceiptConflict'],
+  'dispatcher-did-not-delegate': ['command'],
+  'dispatcher-gate-internal-error': ['message'],
+  'dispatcher-protocol-key-known': ['key'],
+  'dispatcher-runner-output': ['output'],
 };
 
 test('each entry freezes the caller-classified data allowlist and excludes forwarded prose', () => {
@@ -324,29 +331,47 @@ test('parameter violations from a pending caller are fatal while its outgoing vi
   `);
 });
 
-const producerComment = '// Plan_79 D5: pending producer, recorded until its file migrates';
 const exempt = new Set(['lib/order-text-record.mjs', 'lib/order-rules.mjs', 'lib/order-diagnostics.mjs']);
 
-function unmarkedRecords(source) {
-  const lines = source.split(/\r?\n/);
-  return lines.flatMap((line, index) => line.includes('recordOrderText(') &&
-    lines[index - 1]?.trim() !== producerComment ? [index + 1] : []);
+// D6/B5b1: an opaque inline render launders literals even in an admitted producer.
+function unmarkedRecords(source, file) {
+  const builder = source.match(/^export function dispatcherProtocolMessage\(key, values = \{\}\) \{[\s\S]*?^\}/m);
+  const call = "checkedOrderText('dispatcherProtocolMessage', key, values, entry.data, entry.message)";
+  let accepted = false;
+  return [...source.matchAll(/\b(?:recordOrderText|checkedOrderText)\(/g)].flatMap(({ index }) => {
+    if (file === 'lib/dispatcher-protocol.mjs' && builder && !accepted &&
+        index > builder.index && index < builder.index + builder[0].length && source.startsWith(call, index)) {
+      accepted = true;
+      return [];
+    }
+    return [source.slice(0, index).split(/\r?\n/).length];
+  });
 }
 
-test('home producers record only directly beneath the explicit pending-migration comment', () => {
+test('home producers record only in registry builders and the single catalog-backed protocol call', () => {
   const home = fileURLToPath(new URL('../src/home/', import.meta.url));
   const violations = [];
   for (const file of fs.readdirSync(home, { recursive: true }).filter((file) => file.endsWith('.mjs'))) {
-    if (exempt.has(file.replaceAll('\\', '/'))) continue;
-    for (const line of unmarkedRecords(fs.readFileSync(path.join(home, file), 'utf8'))) {
+    const relative = file.replaceAll('\\', '/');
+    if (exempt.has(relative)) continue;
+    for (const line of unmarkedRecords(fs.readFileSync(path.join(home, file), 'utf8'), relative)) {
       violations.push(`${file}:${line}`);
     }
   }
   assert.deepEqual(violations, []);
 });
 
-test('the producer guard rejects an unmarked fixture and a non-adjacent marker', () => {
+test('the producer guard rejects direct, pending and inline-render fixtures', () => {
+  const producerComment = '// Plan_79 D5: pending producer, recorded until its file migrates';
   assert.deepEqual(unmarkedRecords("return recordOrderText('handwritten');"), [1]);
-  assert.deepEqual(unmarkedRecords(producerComment + "\nreturn recordOrderText('pending');"), []);
+  assert.deepEqual(unmarkedRecords(producerComment + "\nreturn recordOrderText('pending');"), [2]);
   assert.deepEqual(unmarkedRecords(producerComment + "\n\nreturn recordOrderText('handwritten');"), [3]);
+  const source = fs.readFileSync(new URL('dispatcher-protocol.mjs', lib), 'utf8');
+  const inline = "\ncheckedOrderText('inline', null, {}, [], () => 'handwritten frame');";
+  assert.equal([...source.matchAll(/\bcheckedOrderText\(/g)].length, 1);
+  assert.deepEqual(unmarkedRecords(source, 'lib/dispatcher-protocol.mjs'), []);
+  assert.deepEqual(unmarkedRecords(source + inline, 'lib/dispatcher-protocol.mjs'), [source.split('\n').length + 1]);
+  assert.deepEqual(unmarkedRecords(inline, 'lib/dispatcher-gate.mjs'), [2]);
+  assert.equal(unmarkedRecords(source, 'lib/dispatcher-gate.mjs').length, 1);
+  assert.equal(unmarkedRecords(source.replace('entry.message)', "() => 'handwritten')"), 'lib/dispatcher-protocol.mjs').length, 1);
 });

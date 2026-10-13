@@ -32,11 +32,12 @@ export const ADMISSION_FILES = [
   'src/home/lib/runner/sandbox-probe.mjs',
   'src/home/lib/runner/sandbox-diagnosis.mjs',
   'src/home/lib/subagent-model-env.mjs',
+  'src/home/hooks/dispatcher-gate.mjs',
+  'src/home/lib/dispatcher-protocol.mjs',
 ];
 
 // Later Plan_79 slices move these files onto the registry and remove their entries; delete this list when empty.
 export const PENDING_MIGRATION = new Set([
-  'src/home/lib/dispatcher-gate.mjs',
   'src/home/lib/dispatcher-order.mjs',
   'src/home/lib/dispatcher-state.mjs',
   'src/home/lib/dispatcher-pin.mjs',

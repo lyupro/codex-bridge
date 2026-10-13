@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { canonicalRunCommand } from '../src/home/lib/dispatcher-command.mjs';
+import { orderDiagnosticMessage } from '../src/home/lib/order-diagnostics.mjs';
 import {
   DISPATCHER_TOOLS,
   DISPATCHER_TOOL_MATCHER,
@@ -125,7 +126,7 @@ test('decidePreToolUse denies other tools and refuses all work when no order is 
   assert.equal(other.kind, 'deny');
   assert.ok(other.reason.endsWith(`\n${command}\nRun it exactly, in the foreground; repeating it attaches to the same run.`));
 
-  const refusal = { refusal: 'the order could not be read from the agent transcript (none)' };
+  const refusal = { refusal: orderDiagnosticMessage('dispatcher-order-transcript-readable', { transcriptPath: '(none)' }) };
   const bash = decidePreToolUse({ payload: { tool_name: 'Bash' }, order: refusal, state: {} });
   assert.equal(bash.kind, 'deny');
   assert.match(bash.reason, /nothing may run, so hand back now/);
@@ -170,9 +171,10 @@ test('decidePreToolUse reports receipt conflicts before any runner output at han
     });
   }
   const refusal = decidePreToolUse({
-    payload: { tool_name: HANDBACK_TOOL }, order: { refusal: 'unreadable order' }, state: receipts,
+    payload: { tool_name: HANDBACK_TOOL },
+    order: { refusal: orderDiagnosticMessage('dispatcher-prompt-text-required') }, state: receipts,
   });
-  assert.equal(refusal.message, 'FAIL — dispatcher gate: unreadable order');
+  assert.equal(refusal.message, 'FAIL — dispatcher gate: prompt text is missing or is not text');
 });
 
 test('decidePreToolUse ignores empty or non-string receipt conflicts', () => {

@@ -49,4 +49,14 @@ export const DIAGNOSTICS = Object.freeze({
     category: 'internal',
     message: ({ reason }) => `Refused: ${reason}.`,
   }),
+  'dispatcher-gate-internal-error': Object.freeze({
+    data: Object.freeze(['message']),
+    category: 'internal',
+    message: ({ message }) => `codex-bridge dispatcher gate: internal error: ${message}`,
+  }),
+  'dispatcher-protocol-key-known': Object.freeze({
+    data: Object.freeze(['key']),
+    category: 'internal',
+    message: ({ key }) => `unknown dispatcher protocol key: ${key}`,
+  }),
 });

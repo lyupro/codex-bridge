@@ -70,6 +70,9 @@ test('registry maps and entries are frozen and have exactly their contracted fie
     'sandbox-probe-repository-required',
     'cmd-argument-transport', 'run-worker-start-failure', 'repository-detached-after-abandoned-run', 'codex-not-started',
     'subagent-model-env-pin', 'dispatcher-agent-input-known', 'dispatcher-prompt-text-required', 'dispatcher-refusal',
+    'dispatcher-order-transcript-readable', 'dispatcher-order-refusal', 'dispatcher-receipt-conflict',
+    'dispatcher-did-not-delegate', 'dispatcher-gate-internal-error', 'dispatcher-protocol-key-known',
+    'dispatcher-runner-output',
   ].sort());
   assert.equal(ORDER_DIAGNOSTICS['no-wait-grant-conflict'].category, 'cli-flags');
 });

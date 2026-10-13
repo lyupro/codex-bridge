@@ -20,14 +20,20 @@ import {
 } from '../lib/dispatcher-state.mjs';
 import { recordInterceptedAttempt, witnessHostVersion } from '../lib/handback-witness.mjs';
 import { observeSessionHost } from '../lib/host-observations.mjs';
+import { orderDiagnosticMessage } from '../lib/order-diagnostics.mjs';
+import { checkOutgoingRefusal } from '../lib/order-text-record.mjs';
 
 function emit(decision, toolInput) {
   const hookSpecificOutput = {
     hookEventName: 'PreToolUse',
     permissionDecision: decision.kind,
   };
-  if (decision.kind === 'deny') hookSpecificOutput.permissionDecisionReason = decision.reason;
+  if (decision.kind === 'deny') {
+    checkOutgoingRefusal(decision.reason, 'deny');
+    hookSpecificOutput.permissionDecisionReason = decision.reason;
+  }
   if (decision.kind === 'allow') {
+    checkOutgoingRefusal(decision.message, 'handback');
     hookSpecificOutput.updatedInput = { ...toolInput, message: decision.message };
   }
   process.stdout.write(`${JSON.stringify({ hookSpecificOutput })}\n`);
@@ -93,7 +99,7 @@ async function main() {
     } catch (error) {
       decision = {
         kind: 'deny',
-        reason: `codex-bridge dispatcher gate: internal error: ${errorMessage(error)}`,
+        reason: orderDiagnosticMessage('dispatcher-gate-internal-error', { message: errorMessage(error) }),
       };
     }
 

@@ -28,4 +28,31 @@ export const DIAGNOSTICS = Object.freeze({
     category: 'run-state',
     message: () => 'Codex was not started; quota was not spent',
   }),
+  'dispatcher-order-transcript-readable': Object.freeze({
+    data: Object.freeze(['transcriptPath']),
+    category: 'run-state',
+    message: ({ transcriptPath }) => `the order could not be read from the agent transcript ${transcriptPath}`,
+  }),
+  'dispatcher-order-refusal': Object.freeze({
+    data: Object.freeze([]),
+    category: 'run-state',
+    message: ({ refusal }) => `FAIL — dispatcher gate: ${refusal}`,
+  }),
+  'dispatcher-receipt-conflict': Object.freeze({
+    data: Object.freeze(['runReceipt', 'runReceiptConflict']),
+    category: 'run-state',
+    message: ({ runReceipt, runReceiptConflict }) =>
+      'FAIL — dispatcher gate: the runner reported two different run folders for one dispatcher: ' +
+      `${runReceipt} and ${runReceiptConflict}; the answer is not delivered.`,
+  }),
+  'dispatcher-did-not-delegate': Object.freeze({
+    data: Object.freeze(['command']),
+    category: 'run-state',
+    message: ({ command }) => 'FAIL — dispatcher did not delegate: it handed back without running `' + command + '`',
+  }),
+  'dispatcher-runner-output': Object.freeze({
+    data: Object.freeze(['output']),
+    category: 'run-state',
+    message: ({ output }) => output,
+  }),
 });

@@ -11,6 +11,13 @@ export function recordOrderText(text) {
   return text;
 }
 
+// Plan_79 D6/D8: only catalog builders may pass their entry.message; the producer guard
+// rejects caller-supplied renders after the B5b1 handwritten deny-frame acceptance probe.
+export function checkedOrderText(builder, key, values, data, render) {
+  checkOrderTextParameters(builder, key, values, data);
+  return recordOrderText(render(values));
+}
+
 function recordedComposition(message) {
   let remainder = message;
   for (const text of [...recorded].sort((left, right) => right.length - left.length)) {
