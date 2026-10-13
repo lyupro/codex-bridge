@@ -163,4 +163,13 @@ export const RULES = Object.freeze({
       throw new Error(`unknown advise-scope-run-required violation: ${violation}`);
     },
   }),
+  'advice-retired-root': Object.freeze({
+    data: Object.freeze(['candidate', 'retiredRoot', 'destination', 'equivalent']),
+    topic: 'order',
+    rule: 'When advice points under a retired runs root, update advice to the equivalent path ' +
+      'under the current destination or pass that path explicitly; retired paths are never silently remapped.',
+    message: ({ retiredRoot, destination, equivalent }) =>
+      `Run records moved from ${retiredRoot} to ${destination}. Equivalent path: ${equivalent}. ` +
+      'Update advice: or pass this new path explicitly. No path was remapped.',
+  }),
 });

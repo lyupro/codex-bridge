@@ -6,7 +6,7 @@
 import path from 'node:path';
 import fs from 'node:fs';
 import { advisorTaskRefusal } from '../meta/advisor-task.mjs';
-import { unavailableRows } from '../meta/reply.mjs';
+import { unavailableRows } from '../meta/unavailable-rows.mjs';
 import { activeRunDetails, readJson } from '../write-meta.mjs';
 import { probeCodexAvailability } from './codex-availability.mjs';
 import { agentRole } from '../agents.mjs';

@@ -28,4 +28,38 @@ export const DIAGNOSTICS = Object.freeze({
       throw new Error(`unknown codex-availability-detail variant: ${variant}`);
     },
   }),
+  'codex-unavailable-handoff': Object.freeze({
+    data: Object.freeze(['variant', 'signal']),
+    category: 'host-state',
+    message: ({ variant, signal }) => {
+      if (variant === 'handoff') {
+        return 'UNAVAILABLE — Codex is not available (signed out); ' +
+          'hand the task to the next executor, do not retry';
+      }
+      if (variant === 'signal') return `Signal: ${signal}`;
+      if (variant === 'operator-check') {
+        return 'Operator check: codex --version; codex login status (sign in with codex login)';
+      }
+      throw new Error(`unknown codex-unavailable-handoff variant: ${variant}`);
+    },
+  }),
+  'stale-runs-root-override': Object.freeze({
+    data: Object.freeze([]),
+    category: 'host-state',
+    message: () => 'CODEX_RUNS_ROOT points under a retired runs root; remove it or set it to the new location.',
+  }),
+  'runs-move-record-invalid': Object.freeze({
+    data: Object.freeze(['file', 'violation', 'detail', 'index']),
+    category: 'host-state',
+    message: ({ file, violation, detail, index }) => {
+      let defect;
+      if (violation === 'parse') defect = detail;
+      else if (violation === 'version') defect = 'version must be 1';
+      else if (violation === 'retired-array') defect = 'retired must be a non-empty array';
+      else if (violation === 'retired-root') defect = `retired[${index}].root must be an absolute path`;
+      else if (violation === 'retired-time') defect = `retired[${index}].movedAt must be a parseable ISO time`;
+      else throw new Error(`unknown runs-move-record-invalid violation: ${violation}`);
+      return `Invalid runs move record ${file}: ${defect}`;
+    },
+  }),
 });

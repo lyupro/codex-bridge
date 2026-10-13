@@ -15,9 +15,10 @@ function assertGuard(t, source, file) {
   assert.deepEqual(result.violations, [], result.violations.join('\n'));
 }
 
-test('Plan_79 S1a-S1c lists 26 unique existing admission files', () => {
-  assert.equal(ADMISSION_FILES.length, 26);
-  assert.equal(new Set(ADMISSION_FILES).size, 26);
+// 26 files from the S1a-S1c inventory plus the four producers B4g found forwarded by preflight.mjs.
+test('Plan_79 S1a-S1c and B4g list 30 unique existing admission files', () => {
+  assert.equal(ADMISSION_FILES.length, 30);
+  assert.equal(new Set(ADMISSION_FILES).size, 30);
   for (const file of ADMISSION_FILES) assert.ok(fs.statSync(new URL(`../${file}`, import.meta.url)).isFile(), file);
   for (const file of PENDING_MIGRATION) assert.ok(ADMISSION_FILES.includes(file), file);
   for (const name of ['task-file', 'question-kind', 'task-input', 'order-options']) {

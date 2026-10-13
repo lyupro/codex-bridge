@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { exitCodeFor } from '../../src/home/lib/write-meta.mjs';
-import { limitReply, unavailableReply, unavailableRows } from '../../src/home/lib/meta/reply.mjs';
+import { limitReply, unavailableReply } from '../../src/home/lib/meta/reply.mjs';
+import { unavailableRows } from '../../src/home/lib/meta/unavailable-rows.mjs';
 import { parseReply } from '../../src/home/hooks/reply-parser.mjs';
 
 test('Plan_60 D2: status exit codes distinguish executor handoff from quota limits', () => {

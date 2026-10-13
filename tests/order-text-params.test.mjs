@@ -150,6 +150,14 @@ const expectedData = {
   'order-claim-input-valid': ['violation'],
   'project-runs-folder-required': ['projectRunsRoot'],
   'codex-availability-detail': ['variant', 'command', 'status', 'message'],
+  'advisor-task-options': ['violation', 'lineNo', 'line', 'preference', 'optionId'],
+  'advisor-task-paths': ['violation', 'lineNo', 'line'],
+  'advice-retired-root': ['candidate', 'retiredRoot', 'destination', 'equivalent'],
+  'advisor-task-text-required': [],
+  'runs-move-record-readable': ['file', 'message'],
+  'codex-unavailable-handoff': ['variant', 'signal'],
+  'stale-runs-root-override': [],
+  'runs-move-record-invalid': ['file', 'violation', 'detail', 'index'],
 };
 
 test('each entry freezes the caller-classified data allowlist and excludes forwarded prose', () => {

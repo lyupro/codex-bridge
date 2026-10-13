@@ -24,4 +24,9 @@ export const DIAGNOSTICS = Object.freeze({
       throw new Error(`unknown order-claim-input-valid violation: ${violation}`);
     },
   }),
+  'advisor-task-text-required': Object.freeze({
+    data: Object.freeze([]),
+    category: 'internal',
+    message: () => 'Advisor task text must be a string.',
+  }),
 });

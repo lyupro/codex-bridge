@@ -1,9 +1,12 @@
 /** Parses blind advisor task choices so Plan_59 D5 rejects biased or ambiguous inputs before review. */
+import { orderRuleMessage } from '../order-rules.mjs';
+import { orderDiagnosticMessage } from '../order-diagnostics.mjs';
+
 const OPTION = /^\s*-\s+([a-z0-9][a-z0-9-]*):\s*(.*)$/;
 const PREFERENCE = /recommend|prefer|рекоменд|предпочт|\(✓\)|★/iu;
 
 function sections(text) {
-  if (typeof text !== 'string') throw new TypeError('Advisor task text must be a string.');
+  if (typeof text !== 'string') throw new TypeError(orderDiagnosticMessage('advisor-task-text-required'));
   const found = { options: { header: null, lines: [] }, paths: { header: null, lines: [] } };
   let current = null;
   for (const [index, value] of text.split(/\r\n|\n|\r/).entries()) {
@@ -39,31 +42,37 @@ export function parseAdvisorTask(text) {
   return { options: optionsFrom(options.lines), paths: pathsFrom(paths.lines) };
 }
 
-function at(line) {
-  return `line ${line.number} ${JSON.stringify(line.value)}`;
-}
-
 export function advisorTaskRefusal(text) {
   const { options, paths } = sections(text);
-  if (!options.header) return 'Options: add a "## Options" section with at least two options.';
+  if (!options.header) return orderRuleMessage('advisor-task-options', { violation: 'missing' });
   const ids = new Set();
   for (const line of options.lines) {
     const preference = line.value.match(PREFERENCE);
     if (preference) {
-      return `Options ${at(line)}: remove preference marker ${JSON.stringify(preference[0])} (D5).`;
+      return orderRuleMessage('advisor-task-options', {
+        violation: 'preference', lineNo: line.number, line: line.value, preference: preference[0],
+      });
     }
     if (!/^\s*[-*+](?:\s|$)/.test(line.value)) continue;
     const match = line.value.match(OPTION);
     if (!match) {
-      return `Options ${at(line)}: use "- option-id: description" with id matching [a-z0-9][a-z0-9-]*.`;
+      return orderRuleMessage('advisor-task-options', {
+        violation: 'option-shape', lineNo: line.number, line: line.value,
+      });
     }
-    if (ids.has(match[1])) return `Options ${at(line)}: replace duplicate option id "${match[1]}".`;
+    if (ids.has(match[1])) return orderRuleMessage('advisor-task-options', {
+      violation: 'duplicate', lineNo: line.number, line: line.value, optionId: match[1],
+    });
     ids.add(match[1]);
   }
-  if (ids.size < 2) return `Options ${at(options.header)}: provide at least two distinct options.`;
-  if (!paths.header) return 'Paths: add a "## Paths" section with repository-relative paths.';
+  if (ids.size < 2) return orderRuleMessage('advisor-task-options', {
+    violation: 'too-few', lineNo: options.header.number, line: options.header.value,
+  });
+  if (!paths.header) return orderRuleMessage('advisor-task-paths', { violation: 'missing' });
   if (!pathsFrom(paths.lines).length) {
-    return `Paths ${at(paths.header)}: add at least one repository-relative path as a list item.`;
+    return orderRuleMessage('advisor-task-paths', {
+      violation: 'empty', lineNo: paths.header.number, line: paths.header.value,
+    });
   }
   return null;
 }

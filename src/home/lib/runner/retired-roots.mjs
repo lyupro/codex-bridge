@@ -11,6 +11,8 @@ import { writeHomeJsonAtomic } from '../atomic-json.mjs';
 import { stateDirWriter } from '../home-write.mjs';
 import { parseJsonText } from '../json-file.mjs';
 import { normalizeRepoPath } from './project-dir.mjs';
+import { orderRuleMessage } from '../order-rules.mjs';
+import { orderDiagnosticMessage } from '../order-diagnostics.mjs';
 
 export const RUNS_MOVE_RECORD = 'runs-root.json';
 
@@ -21,25 +23,31 @@ export function readRunsMoveRecord(stateDir) {
     text = fs.readFileSync(file, 'utf8');
   } catch (error) {
     if (error.code === 'ENOENT') return null;
-    throw new Error(`Cannot read runs move record ${file}: ${error.message}`, { cause: error });
+    throw new Error(orderDiagnosticMessage('runs-move-record-readable', {
+      file, message: error.message,
+    }), { cause: error });
   }
   let record;
   try {
     record = parseJsonText(file, text);
   } catch (error) {
-    throw new Error(`Invalid runs move record ${file}: ${error.message}`, { cause: error });
+    throw new Error(orderDiagnosticMessage('runs-move-record-invalid', {
+      file, violation: 'parse', detail: error.message,
+    }), { cause: error });
   }
-  const invalid = (defect) => { throw new Error(`Invalid runs move record ${file}: ${defect}`); };
-  if (record?.version !== 1) invalid('version must be 1');
+  const invalid = (violation, index) => {
+    throw new Error(orderDiagnosticMessage('runs-move-record-invalid', { file, violation, index }));
+  };
+  if (record?.version !== 1) invalid('version');
   if (!Array.isArray(record.retired) || record.retired.length === 0) {
-    invalid('retired must be a non-empty array');
+    invalid('retired-array');
   }
   for (const [index, entry] of record.retired.entries()) {
     if (typeof entry?.root !== 'string' || !path.isAbsolute(entry.root)) {
-      invalid(`retired[${index}].root must be an absolute path`);
+      invalid('retired-root', index);
     }
     if (typeof entry.movedAt !== 'string' || !Number.isFinite(Date.parse(entry.movedAt))) {
-      invalid(`retired[${index}].movedAt must be a parseable ISO time`);
+      invalid('retired-time', index);
     }
   }
   return record;
@@ -63,8 +71,9 @@ export function retiredRootOf(candidate, retiredRoots) {
 
 export function retiredRootRefusal({ candidate, retired, destination }) {
   const equivalent = retired.suffix ? path.join(destination, retired.suffix) : destination;
-  return `Run records moved from ${retired.root} to ${destination}. Equivalent path: ${equivalent}. ` +
-    'Update advice: or pass this new path explicitly. No path was remapped.';
+  return orderRuleMessage('advice-retired-root', {
+    candidate, retiredRoot: retired.root, destination, equivalent,
+  });
 }
 
 /**

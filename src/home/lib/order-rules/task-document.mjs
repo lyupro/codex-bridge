@@ -45,4 +45,36 @@ export const RULES = Object.freeze({
       throw new Error(`unknown verify-line violation: ${violation}`);
     },
   }),
+  'advisor-task-options': Object.freeze({
+    data: Object.freeze(['violation', 'lineNo', 'line', 'preference', 'optionId']),
+    topic: 'order',
+    rule: 'For an advisor task, write a ## Options section with at least two distinct options ' +
+      'as - option-id: description, using ids matching [a-z0-9][a-z0-9-]*; ' +
+      'remove preference markers from every line in that section (Plan_59 D5).',
+    message: ({ violation, lineNo, line, preference, optionId }) => {
+      if (violation === 'missing') return 'Options: add a "## Options" section with at least two options.';
+      const location = `Options line ${lineNo} ${JSON.stringify(line)}`;
+      if (violation === 'preference') {
+        return `${location}: remove preference marker ${JSON.stringify(preference)} (D5).`;
+      }
+      if (violation === 'option-shape') {
+        return `${location}: use "- option-id: description" with id matching [a-z0-9][a-z0-9-]*.`;
+      }
+      if (violation === 'duplicate') return `${location}: replace duplicate option id "${optionId}".`;
+      if (violation === 'too-few') return `${location}: provide at least two distinct options.`;
+      throw new Error(`unknown advisor-task-options violation: ${violation}`);
+    },
+  }),
+  'advisor-task-paths': Object.freeze({
+    data: Object.freeze(['violation', 'lineNo', 'line']),
+    topic: 'order',
+    rule: 'For an advisor task, write a ## Paths section with at least one repository-relative path as a list item.',
+    message: ({ violation, lineNo, line }) => {
+      if (violation === 'missing') return 'Paths: add a "## Paths" section with repository-relative paths.';
+      if (violation === 'empty') {
+        return `Paths line ${lineNo} ${JSON.stringify(line)}: add at least one repository-relative path as a list item.`;
+      }
+      throw new Error(`unknown advisor-task-paths violation: ${violation}`);
+    },
+  }),
 });

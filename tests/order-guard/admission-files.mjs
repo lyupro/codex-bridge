@@ -25,6 +25,10 @@ export const ADMISSION_FILES = [
   'src/home/lib/dispatcher-state.mjs',
   'src/home/lib/dispatcher-pin.mjs',
   'src/home/lib/dispatcher-model.mjs',
+  'src/home/lib/meta/advisor-task.mjs',
+  'src/home/lib/meta/unavailable-rows.mjs',
+  'src/home/lib/runner/runs-root.mjs',
+  'src/home/lib/runner/retired-roots.mjs',
 ];
 
 // Later Plan_79 slices move these files onto the registry and remove their entries; delete this list when empty.

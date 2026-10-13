@@ -13,6 +13,7 @@ import path from 'node:path';
 import { resolveBrandHome } from '../brand-home.mjs';
 import { RUN_RECORDS_DIR } from '../home-registry.mjs';
 import { readRunsMoveRecord, retiredRootOf, retiredRootRefusal } from './retired-roots.mjs';
+import { orderDiagnosticMessage } from '../order-diagnostics.mjs';
 
 export function runsRootResolution({ env = process.env, homedir = os.homedir() } = {}) {
   const brandHome = resolveBrandHome({ env, homedir });
@@ -50,7 +51,6 @@ export function retiredPathRefusal(candidate, resolution = runsRootResolution())
 
 export function staleOverrideRefusal(resolution = runsRootResolution()) {
   if (!resolution.staleOverride) return null;
-  return retiredRootRefusal({ candidate: resolution.root, retired: resolution.staleOverride,
-    destination: resolution.homeRoot }) + '\n' +
-    'CODEX_RUNS_ROOT points under a retired runs root; remove it or set it to the new location.';
+  return [retiredRootRefusal({ candidate: resolution.root, retired: resolution.staleOverride,
+    destination: resolution.homeRoot }), orderDiagnosticMessage('stale-runs-root-override')].join('\n');
 }

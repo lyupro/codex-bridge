@@ -24,6 +24,7 @@ test('registry maps and entries are frozen and have exactly their contracted fie
     'advisor-scope-continuation', 'retry-pass-identity', 'repeat-task-grant-required',
     'advisor-advise-continuation', 'build-advice-required', 'advise-scope-run-required',
     'run-phase-required', 'writing-run-exclusive', 'order-launch-exclusive', 'order-id-owner',
+    'advisor-task-options', 'advisor-task-paths', 'advice-retired-root',
   ].sort());
   for (const entry of Object.values(ORDER_RULES)) {
     assert.ok(Object.isFrozen(entry));
@@ -40,13 +41,16 @@ test('registry maps and entries are frozen and have exactly their contracted fie
     'boolean-flag-value', 'missing-flag-value', 'flag-shell-safety', 'agent-required', 'agent-known',
     'task-file-readable',
     'project-runs-folder-required',
+    'runs-move-record-readable',
     'codex-readiness-unconfirmed', 'codex-unavailable',
     'codex-availability-detail',
+    'codex-unavailable-handoff', 'stale-runs-root-override', 'runs-move-record-invalid',
     'run-not-created',
     'advise-scope-result-readable', 'advise-scope-result-shape',
     'dispatcher-agent-known', 'order-input-name-known',
     'advise-scope-input-required',
     'order-claim-input-valid',
+    'advisor-task-text-required',
   ]);
   assert.equal(ORDER_DIAGNOSTICS['no-wait-grant-conflict'].category, 'cli-flags');
 });

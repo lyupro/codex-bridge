@@ -10,4 +10,9 @@ export const DIAGNOSTICS = Object.freeze({
     category: 'filesystem',
     message: ({ projectRunsRoot }) => `project runs folder does not exist: ${projectRunsRoot}`,
   }),
+  'runs-move-record-readable': Object.freeze({
+    data: Object.freeze(['file', 'message']),
+    category: 'filesystem',
+    message: ({ file, message }) => `Cannot read runs move record ${file}: ${message}`,
+  }),
 });

@@ -16,6 +16,7 @@ import { changedPaths, line, readText } from './paths.mjs';
 import { splitRunChanges } from './environment.mjs';
 import { scoutCoverage } from './verdict.mjs';
 import { orderInputName } from '../order-schema.mjs';
+import { unavailableRows } from './unavailable-rows.mjs';
 
 /** What the run itself changed, and what the tooling around it changed while it worked. */
 const runChanges = (runDir) =>
@@ -233,16 +234,6 @@ export function limitReply(ctx, meta) {
   }
   rows.push(`Log: ${readCommand(ctx.runDir)}`);
   return rows;
-}
-
-/** Plan_60 D2: pre-start and post-start refusals share the same handoff contract. */
-export function unavailableRows(signal) {
-  return [
-    'UNAVAILABLE — Codex is not available (signed out); ' +
-      'hand the task to the next executor, do not retry',
-    `Signal: ${line(signal, 170)}`,
-    'Operator check: codex --version; codex login status (sign in with codex login)',
-  ];
 }
 
 export function unavailableReply(ctx, meta) {
