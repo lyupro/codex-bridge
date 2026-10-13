@@ -16,12 +16,13 @@ function assertGuard(t, source, file) {
 }
 
 // 26 files from the S1a-S1c inventory plus the four producers B4g found forwarded by preflight.mjs.
-test('Plan_79 S1a-S1c and B4g list 30 unique existing admission files', () => {
-  assert.equal(ADMISSION_FILES.length, 30);
-  assert.equal(new Set(ADMISSION_FILES).size, 30);
+// Plan_79 B4h also admits sandbox-probe.mjs and sandbox-diagnosis.mjs.
+test('Plan_79 S1a-S1c and B4g/B4h list 32 unique existing admission files', () => {
+  assert.equal(ADMISSION_FILES.length, 32);
+  assert.equal(new Set(ADMISSION_FILES).size, 32);
   for (const file of ADMISSION_FILES) assert.ok(fs.statSync(new URL(`../${file}`, import.meta.url)).isFile(), file);
   for (const file of PENDING_MIGRATION) assert.ok(ADMISSION_FILES.includes(file), file);
-  for (const name of ['task-file', 'question-kind', 'task-input', 'order-options']) {
+  for (const name of ['task-file', 'question-kind', 'task-input', 'order-options', 'sandbox-probe', 'sandbox-diagnosis']) {
     assert.ok(!PENDING_MIGRATION.has(`src/home/lib/runner/${name}.mjs`));
   }
 });

@@ -1,5 +1,6 @@
 /** Checks whether this host's Codex sandbox can start a process before a run spends quota. */
 import { performance } from 'node:perf_hooks';
+import { orderDiagnosticMessage } from '../order-diagnostics.mjs';
 import { sandboxModeFor } from './codex-args.mjs';
 import { codexSpawnSpec, spawnCaptured } from './codex-cmd.mjs';
 import { platformSandboxArgs } from './sandbox-flags.mjs';
@@ -12,15 +13,6 @@ export const SANDBOX_PROBE_MARKER = 'codex-bridge-sandbox-ok';
 // on the same host after the AppArmor repair. macOS has never been observed.
 export const PROBED_PLATFORMS = new Set(['win32', 'linux']);
 
-// Ubuntu 23.10+ forbids unprivileged user namespaces unless an AppArmor profile allows bwrap; that
-// is the ordinary state of a fresh server, not an accident like the corrupted Windows state file.
-const LINUX_REPAIR = [
-  'On Ubuntu 23.10 and later this usually means AppArmor does not let bubblewrap create a user namespace.',
-  'Official repair: https://learn.chatgpt.com/docs/sandboxing — the bwrap-userns-restrict AppArmor profile',
-  '(Ubuntu 24.04) or the bubblewrap package (25.04 and later). Do not set',
-  'kernel.apparmor_restrict_unprivileged_userns=0: it lifts the restriction for every program on the host.',
-].join(' ');
-
 const echoArgs = (platform) => platform === 'win32'
   ? ['cmd', '/d', '/c', 'echo', SANDBOX_PROBE_MARKER]
   : ['echo', SANDBOX_PROBE_MARKER];
@@ -28,12 +20,12 @@ const echoArgs = (platform) => platform === 'win32'
 function inconclusiveReason(result, form) {
   if (result.error) {
     return result.error.code === 'ETIMEDOUT'
-      ? `The ${form} sandbox probe timed out.`
-      : `The ${form} sandbox probe could not start or complete.`;
+      ? orderDiagnosticMessage('sandbox-probe-reason', { variant: 'timeout', form })
+      : orderDiagnosticMessage('sandbox-probe-reason', { variant: 'incomplete', form });
   }
-  if (result.signal) return `The ${form} sandbox probe was terminated by ${result.signal}.`;
-  if (result.status === 2) return `Codex rejected the ${form} sandbox probe arguments.`;
-  if (result.status == null) return `The ${form} sandbox probe returned no exit status.`;
+  if (result.signal) return orderDiagnosticMessage('sandbox-probe-reason', { variant: 'signal', form, signal: result.signal });
+  if (result.status === 2) return orderDiagnosticMessage('sandbox-probe-reason', { variant: 'arguments', form });
+  if (result.status == null) return orderDiagnosticMessage('sandbox-probe-reason', { variant: 'no-status', form });
   return null;
 }
 
@@ -43,7 +35,7 @@ export async function probeSandbox({
 }) {
   if (!PROBED_PLATFORMS.has(platform)) return { outcome: 'skipped' };
   const sandbox = sandboxModeFor(agent);
-  if (typeof repo !== 'string' || !repo) throw new Error('sandbox probe requires a repository path');
+  if (typeof repo !== 'string' || !repo) throw new Error(orderDiagnosticMessage('sandbox-probe-repository-required'));
   const echo = echoArgs(platform);
   const attempts = [];
   // The 2026-10-10 TradeForge refusals showed only "setup refresh had errors"; capture the
@@ -95,43 +87,42 @@ export async function probeSandbox({
   const flaggedReason = inconclusiveReason(flagged, 'flagged');
   if (flaggedReason) return finish('inconclusive', flaggedReason);
   if (flagged.status === 0 && flagged.marker) {
-    return finish('alive', 'The Codex sandbox started a process.');
+    return finish('alive', orderDiagnosticMessage('sandbox-probe-reason', { variant: 'alive' }));
   }
   // D16: the marker proves a process started, so a nonzero exit cannot prove a dead sandbox.
   if (flagged.marker) {
-    return finish('inconclusive', `The flagged sandbox probe printed the marker but exited ${flagged.status}.`);
+    return finish('inconclusive', orderDiagnosticMessage('sandbox-probe-reason', { variant: 'marker-exit', status: flagged.status }));
   }
 
   const control = await attempt('control', ['sandbox', '--', ...echo]);
   const controlReason = inconclusiveReason(control, 'control');
   if (controlReason) return finish('inconclusive', controlReason);
   if (control.marker) {
-    return finish('inconclusive', 'This version of Codex no longer accepts the package sandbox flags.');
+    return finish('inconclusive', orderDiagnosticMessage('sandbox-probe-reason', { variant: 'flags' }));
   }
 
   const version = await attempt('version', ['--version']);
   if (version.error || version.signal || version.status !== 0) {
     // codexAvailabilityRefusal() owns the refusal for an unavailable CLI, earlier in the same pre-flight pass.
-    return finish('inconclusive', 'Codex CLI is unavailable.');
+    return finish('inconclusive', orderDiagnosticMessage('sandbox-probe-reason', { variant: 'unavailable' }));
   }
-  return finish('dead', 'The Codex sandbox on this host cannot start a process.');
+  return finish('dead', orderDiagnosticMessage('sandbox-probe-reason', { variant: 'dead' }));
 }
 
 export function sandboxRefusal(result, platform = process.platform) {
-  const control = ['codex', 'sandbox', '--', ...echoArgs(platform)].join(' ');
+  const controlCommand = ['codex', 'sandbox', '--', ...echoArgs(platform)].join(' ');
   const stderr = result.attempts
     .filter(({ form }) => form === 'flagged' || form === 'control')
-    .map(({ form, stderrTail }) =>
-      `${form} stderr:\n> ${(stderrTail || '(empty)').replace(/\r\n?/g, '\n').replace(/\n/g, '\n> ')}`);
+    .map(({ form, stderrTail }) => orderDiagnosticMessage('sandbox-stderr-evidence', { form, stderrTail }));
   // Only a dead result is refused, and its reason already is the headline; printing both said it twice.
   return [
     result.reason,
-    'Repair the host sandbox; do not rewrite or retry the order.',
-    ...(platform === 'linux' ? [LINUX_REPAIR] : []),
-    `Operator check (run from the repository directory): ${control}`,
+    orderDiagnosticMessage('sandbox-refusal-repair'),
+    ...(platform === 'linux' ? [orderDiagnosticMessage('sandbox-linux-repair')] : []),
+    orderDiagnosticMessage('sandbox-operator-check', { command: controlCommand }),
     ...stderr,
     ...(result.diagnosis && typeof result.diagnosis === 'object'
       ? [formatSandboxDiagnosis(result.diagnosis).join('\n')] : []),
-    'The run folder was not created; quota was not spent.',
+    orderDiagnosticMessage('run-not-created'),
   ].join('\n\n');
 }

@@ -1,13 +1,13 @@
 /** Owns read-only sandbox log evidence and repair formatting after 2026-10-10 TradeForge orders exposed only "setup refresh had errors". */
 import fs from 'node:fs';
 import path from 'node:path';
+import { orderDiagnosticMessage } from '../order-diagnostics.mjs';
 
 const LOG_LIMIT = 64 * 1024;
 const SETUP_LIMIT = 8 * 1024;
 const ERROR_LINE = /setup error|setup refresh completed with errors|failed|error/i;
 // A successful refresh logs `errors=[]`; on the 2026-10-10 log five of them pushed the real error out.
 const CLEAN_REFRESH = /errors=\[\]/;
-const NO_REPAIR = 'No verified repair signature; inspect this log.';
 
 // Plan_78 A1: a repair needs all incident fragments on one fresh line, not a generic error word.
 const SIGNATURES = Object.freeze([
@@ -16,16 +16,18 @@ const SIGNATURES = Object.freeze([
     observed: Object.freeze({ date: '2026-10-10', codexCli: '0.162.1' }),
     predicate: (line) => ['runtime read/execute validation failed',
       'open ACL target for root-only update', 'os error 32'].every((fragment) => line.includes(fragment)),
-    summary: 'A file under the Codex runtimes folder is held open by another process, so sandbox setup cannot update its access rights (openai/codex #51634).',
-    repair: () => 'Find and close the process holding the file named in the line (on 2026-10-10, the Codex desktop app\'s computer-use helper), then rerun codex-bridge doctor; on Codex CLI 0.162.x the proven workaround is npm install -g @openai/codex@0.160.1.',
+    summary: orderDiagnosticMessage('sandbox-known-failure-runtime-file-locked', { part: 'summary' }),
+    repair: () => orderDiagnosticMessage('sandbox-known-failure-runtime-file-locked', { part: 'repair' }),
   }),
   Object.freeze({
     id: 'deny-read-state-corrupt',
     observed: Object.freeze({ date: '2026-09-16' }),
     predicate: (line) => ['deny_read_acl_state.json', 'expected value at line 1 column 1']
       .every((fragment) => line.includes(fragment)),
-    summary: 'The sandbox state file is empty or corrupt.',
-    repair: (codexHome) => `Back up and rename ${path.join(codexHome, '.sandbox', 'deny_read_acl_state.json')}, then rerun codex-bridge doctor; the helper recreates it.`,
+    summary: orderDiagnosticMessage('sandbox-known-failure-deny-read-state-corrupt', { part: 'summary' }),
+    repair: (codexHome) => orderDiagnosticMessage('sandbox-known-failure-deny-read-state-corrupt', {
+      part: 'repair', file: path.join(codexHome, '.sandbox', 'deny_read_acl_state.json'),
+    }),
   }),
 ]);
 
@@ -94,7 +96,7 @@ function readSetupError(file, folderState) {
   return {
     state: result.state,
     text: result.state === 'read' ? result.text : result.state === 'missing' ? null
-      : `Unknown: unable to read ${file}.`,
+      : orderDiagnosticMessage('sandbox-evidence-unknown', { variant: 'unreadable', file }),
   };
 }
 
@@ -127,7 +129,7 @@ export function diagnoseSandbox({ codexHome, before, now = new Date() }) {
     if (result.state === 'missing') continue;
     sources.push(file);
     if (result.state === 'unknown') {
-      unknown.push(`Unknown: unable to read ${file}.`);
+      unknown.push(orderDiagnosticMessage('sandbox-evidence-unknown', { variant: 'unreadable', file }));
       continue;
     }
     if (baseline !== null && result.bytes > 0) {
@@ -135,7 +137,7 @@ export function diagnoseSandbox({ codexHome, before, now = new Date() }) {
       appended.push(result.text);
     }
     recent.push({ file, mtime: result.mtime });
-    if (baseline === null) unknown.push(`Unknown: pre-probe size unavailable for ${file}.`);
+    if (baseline === null) unknown.push(orderDiagnosticMessage('sandbox-evidence-unknown', { variant: 'baseline', file }));
   }
 
   let text = appended.join('\n');
@@ -143,7 +145,7 @@ export function diagnoseSandbox({ codexHome, before, now = new Date() }) {
     const newest = recent.sort((a, b) => b.mtime - a.mtime || b.file.localeCompare(a.file))[0];
     const fallback = readRange(newest.file, 0, LOG_LIMIT, true, folderState);
     if (fallback.state === 'read') text = fallback.text;
-    else unknown.push(`Unknown: unable to read ${newest.file}.`);
+    else unknown.push(orderDiagnosticMessage('sandbox-evidence-unknown', { variant: 'unreadable', file: newest.file }));
   }
   const errors = text.split(/\r?\n/)
     .filter((line) => ERROR_LINE.test(line) && !CLEAN_REFRESH.test(line)).slice(-5);
@@ -166,15 +168,13 @@ export function diagnoseSandbox({ codexHome, before, now = new Date() }) {
 
 export function formatSandboxDiagnosis(diagnosis) {
   return [
-    ...diagnosis.sources.map((source) => `Sandbox diagnosis source: ${source}`),
-    diagnosis.attributed ? 'Sandbox log lines attributed to this probe:'
-      : 'Recent sandbox log lines only; not attributed to this probe:',
-    ...diagnosis.lines.map((line) => `> ${line}`),
+    ...diagnosis.sources.map((source) => orderDiagnosticMessage('sandbox-diagnosis-source', { source })),
+    orderDiagnosticMessage('sandbox-diagnosis-attribution', { attributed: diagnosis.attributed }),
+    ...diagnosis.lines.map((line) => orderDiagnosticMessage('sandbox-evidence-line', { line })),
     ...(diagnosis.setupError.text === null ? [] : [
-      `setup_error.json changed since snapshot: ${diagnosis.setupError.changed === null
-        ? 'unknown' : diagnosis.setupError.changed ? 'yes' : 'no'}`,
-      ...diagnosis.setupError.text.split(/\r?\n/).map((line) => `> ${line}`),
+      orderDiagnosticMessage('sandbox-setup-change', { changed: diagnosis.setupError.changed }),
+      ...diagnosis.setupError.text.split(/\r?\n/).map((line) => orderDiagnosticMessage('sandbox-evidence-line', { line })),
     ]),
-    ...(diagnosis.signature ? [diagnosis.signature.summary, diagnosis.signature.repair] : [NO_REPAIR]),
+    ...(diagnosis.signature ? [diagnosis.signature.summary, diagnosis.signature.repair] : [orderDiagnosticMessage('sandbox-no-repair')]),
   ];
 }

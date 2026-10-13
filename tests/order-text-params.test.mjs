@@ -158,6 +158,20 @@ const expectedData = {
   'codex-unavailable-handoff': ['variant', 'signal'],
   'stale-runs-root-override': [],
   'runs-move-record-invalid': ['file', 'violation', 'detail', 'index'],
+  'sandbox-probe-reason': ['variant', 'form', 'status', 'signal'],
+  'sandbox-refusal-repair': [],
+  'sandbox-linux-repair': [],
+  'sandbox-operator-check': ['command'],
+  'sandbox-stderr-evidence': ['form', 'stderrTail'],
+  'sandbox-diagnosis-source': ['source'],
+  'sandbox-diagnosis-attribution': ['attributed'],
+  'sandbox-setup-change': ['changed'],
+  'sandbox-evidence-line': ['line'],
+  'sandbox-evidence-unknown': ['variant', 'file'],
+  'sandbox-no-repair': [],
+  'sandbox-probe-repository-required': [],
+  'sandbox-known-failure-runtime-file-locked': ['part'],
+  'sandbox-known-failure-deny-read-state-corrupt': ['part', 'file'],
 };
 
 test('each entry freezes the caller-classified data allowlist and excludes forwarded prose', () => {

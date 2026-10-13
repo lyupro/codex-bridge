@@ -62,4 +62,109 @@ export const DIAGNOSTICS = Object.freeze({
       return `Invalid runs move record ${file}: ${defect}`;
     },
   }),
+  'sandbox-probe-reason': Object.freeze({
+    data: Object.freeze(['variant', 'form', 'status', 'signal']),
+    category: 'host-state',
+    message: ({ variant, form, status, signal }) => {
+      if (variant === 'timeout') return `The ${form} sandbox probe timed out.`;
+      if (variant === 'incomplete') return `The ${form} sandbox probe could not start or complete.`;
+      if (variant === 'signal') return `The ${form} sandbox probe was terminated by ${signal}.`;
+      if (variant === 'arguments') return `Codex rejected the ${form} sandbox probe arguments.`;
+      if (variant === 'no-status') return `The ${form} sandbox probe returned no exit status.`;
+      if (variant === 'alive') return 'The Codex sandbox started a process.';
+      if (variant === 'marker-exit') return `The flagged sandbox probe printed the marker but exited ${status}.`;
+      if (variant === 'flags') return 'This version of Codex no longer accepts the package sandbox flags.';
+      if (variant === 'unavailable') return 'Codex CLI is unavailable.';
+      if (variant === 'dead') return 'The Codex sandbox on this host cannot start a process.';
+      throw new Error(`unknown sandbox-probe-reason variant: ${variant}`);
+    },
+  }),
+  'sandbox-refusal-repair': Object.freeze({
+    data: Object.freeze([]),
+    category: 'host-state',
+    message: () => 'Repair the host sandbox; do not rewrite or retry the order.',
+  }),
+  // Ubuntu 23.10+ forbids unprivileged user namespaces unless an AppArmor profile allows bwrap; that
+  // is the ordinary state of a fresh server, not an accident like the corrupted Windows state file.
+  'sandbox-linux-repair': Object.freeze({
+    data: Object.freeze([]),
+    category: 'host-state',
+    message: () => [
+      'On Ubuntu 23.10 and later this usually means AppArmor does not let bubblewrap create a user namespace.',
+      'Official repair: https://learn.chatgpt.com/docs/sandboxing — the bwrap-userns-restrict AppArmor profile',
+      '(Ubuntu 24.04) or the bubblewrap package (25.04 and later). Do not set',
+      'kernel.apparmor_restrict_unprivileged_userns=0: it lifts the restriction for every program on the host.',
+    ].join(' '),
+  }),
+  'sandbox-operator-check': Object.freeze({
+    data: Object.freeze(['command']),
+    category: 'host-state',
+    message: ({ command }) => `Operator check (run from the repository directory): ${command}`,
+  }),
+  'sandbox-stderr-evidence': Object.freeze({
+    data: Object.freeze(['form', 'stderrTail']),
+    category: 'host-state',
+    message: ({ form, stderrTail }) =>
+      `${form} stderr:\n> ${(stderrTail || '(empty)').replace(/\r\n?/g, '\n').replace(/\n/g, '\n> ')}`,
+  }),
+  'sandbox-diagnosis-source': Object.freeze({
+    data: Object.freeze(['source']),
+    category: 'host-state',
+    message: ({ source }) => `Sandbox diagnosis source: ${source}`,
+  }),
+  'sandbox-diagnosis-attribution': Object.freeze({
+    data: Object.freeze(['attributed']),
+    category: 'host-state',
+    message: ({ attributed }) => attributed ? 'Sandbox log lines attributed to this probe:'
+      : 'Recent sandbox log lines only; not attributed to this probe:',
+  }),
+  'sandbox-setup-change': Object.freeze({
+    data: Object.freeze(['changed']),
+    category: 'host-state',
+    message: ({ changed }) =>
+      `setup_error.json changed since snapshot: ${changed === null ? 'unknown' : changed ? 'yes' : 'no'}`,
+  }),
+  'sandbox-evidence-line': Object.freeze({
+    data: Object.freeze(['line']),
+    category: 'host-state',
+    message: ({ line }) => `> ${line}`,
+  }),
+  'sandbox-evidence-unknown': Object.freeze({
+    data: Object.freeze(['variant', 'file']),
+    category: 'host-state',
+    message: ({ variant, file }) => {
+      if (variant === 'unreadable') return `Unknown: unable to read ${file}.`;
+      if (variant === 'baseline') return `Unknown: pre-probe size unavailable for ${file}.`;
+      throw new Error(`unknown sandbox-evidence-unknown variant: ${variant}`);
+    },
+  }),
+  'sandbox-no-repair': Object.freeze({
+    data: Object.freeze([]),
+    category: 'host-state',
+    message: () => 'No verified repair signature; inspect this log.',
+  }),
+  'sandbox-known-failure-runtime-file-locked': Object.freeze({
+    data: Object.freeze(['part']),
+    category: 'host-state',
+    message: ({ part }) => {
+      if (part === 'summary') {
+        return 'A file under the Codex runtimes folder is held open by another process, so sandbox setup cannot update its access rights (openai/codex #51634).';
+      }
+      if (part === 'repair') {
+        return 'Find and close the process holding the file named in the line (on 2026-10-10, the Codex desktop app\'s computer-use helper), then rerun codex-bridge doctor; on Codex CLI 0.162.x the proven workaround is npm install -g @openai/codex@0.160.1.';
+      }
+      throw new Error(`unknown sandbox-known-failure-runtime-file-locked part: ${part}`);
+    },
+  }),
+  'sandbox-known-failure-deny-read-state-corrupt': Object.freeze({
+    data: Object.freeze(['part', 'file']),
+    category: 'host-state',
+    message: ({ part, file }) => {
+      if (part === 'summary') return 'The sandbox state file is empty or corrupt.';
+      if (part === 'repair') {
+        return `Back up and rename ${file}, then rerun codex-bridge doctor; the helper recreates it.`;
+      }
+      throw new Error(`unknown sandbox-known-failure-deny-read-state-corrupt part: ${part}`);
+    },
+  }),
 });

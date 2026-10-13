@@ -29,4 +29,9 @@ export const DIAGNOSTICS = Object.freeze({
     category: 'internal',
     message: () => 'Advisor task text must be a string.',
   }),
+  'sandbox-probe-repository-required': Object.freeze({
+    data: Object.freeze([]),
+    category: 'internal',
+    message: () => 'sandbox probe requires a repository path',
+  }),
 });

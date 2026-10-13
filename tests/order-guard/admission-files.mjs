@@ -29,6 +29,8 @@ export const ADMISSION_FILES = [
   'src/home/lib/meta/unavailable-rows.mjs',
   'src/home/lib/runner/runs-root.mjs',
   'src/home/lib/runner/retired-roots.mjs',
+  'src/home/lib/runner/sandbox-probe.mjs',
+  'src/home/lib/runner/sandbox-diagnosis.mjs',
 ];
 
 // Later Plan_79 slices move these files onto the registry and remove their entries; delete this list when empty.
