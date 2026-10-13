@@ -252,4 +252,12 @@ export const DIAGNOSTICS = Object.freeze({
       throw new Error(INTERNAL_DIAGNOSTICS['install-record-owners-problem-known'].message({ problem }));
     },
   }),
+  'dispatcher-model-latch': Object.freeze({
+    data: Object.freeze(['agentType', 'models', 'pinFamily', 'hostVersion', 'at']),
+    category: 'host-state',
+    message: ({ agentType, models, pinFamily, hostVersion, at }) =>
+      `codex-bridge: the last ${agentType} ran on ${models} `
+      + `while the installed contract pins ${pinFamily} (${hostVersion ?? 'unknown'}, ${at}); `
+      + 'the cause is outside this call — another hook or the host; run codex-bridge doctor.',
+  }),
 });

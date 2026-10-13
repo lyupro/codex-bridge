@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { modelObservation, recordDispatcherModel } from '../../src/home/lib/dispatcher-model.mjs';
 import { readDispatcherPin } from '../../src/home/lib/dispatcher-pin.mjs';
 import { createStoredRun, fixture, payload, runGate, validPrompt, writeTaskFile } from './order-gate-fixtures.mjs';
@@ -130,6 +131,64 @@ test('a later match on another host releases only the matching dispatcher type',
   const denied = output(root, call('bad prompt'));
   assert.equal(denied.systemMessage, undefined);
   assert.equal(denied.hookSpecificOutput.permissionDecision, 'deny');
+});
+
+test('latch warning preserves dispatcher data and the unknown host version fallback', async (t) => {
+  const root = await fixture(t);
+  await observe(root, ['opus', 'sonnet'], null, 'codex-review');
+  const result = output(root, JSON.parse(payload('codex-review', undefined)));
+  assert.equal(result.systemMessage,
+    'codex-bridge: the last codex-review ran on opus, sonnet while the installed contract pins haiku '
+    + `(unknown, ${VIOLATION_TIME}); the cause is outside this call — another hook or the host; `
+    + 'run codex-bridge doctor.');
+  assert.equal(result.hookSpecificOutput, undefined);
+});
+
+// Plan_79 B5b2c/D5: exercise both real output functions in one isolated child journal.
+test('handwritten systemMessage journals its outgoing transport on pass and deny', async (t) => {
+  const root = await fixture(t);
+  const marker = path.join(root, 'marker');
+  const gate = new URL('../../src/home/hooks/order-gate.mjs', import.meta.url).href;
+  const lib = new URL('../../src/home/lib/', import.meta.url);
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', `
+    import assert from 'node:assert/strict';
+    import fs from 'node:fs';
+    import vm from 'node:vm';
+    import { checkOutgoingRefusal } from ${JSON.stringify(new URL('order-text-record.mjs', lib).href)};
+    import { orderDiagnosticMessage } from ${JSON.stringify(new URL('order-diagnostics.mjs', lib).href)};
+    const source = fs.readFileSync(new URL(${JSON.stringify(gate)}), 'utf8');
+    const definition = source.slice(source.indexOf('const pass ='), source.indexOf('let input;'));
+    const reason = orderDiagnosticMessage('run-not-created');
+    for (const transport of ['pass', 'deny']) {
+      let written;
+      let status;
+      const emit = vm.runInNewContext(definition + transport + ';', {
+        systemMessage: 'handwritten system message', checkOutgoingRefusal,
+        process: { stdout: { write: (text) => { written = text; } }, exit: (code) => { status = code; } },
+      }, { filename: ${JSON.stringify(gate)} });
+      emit(reason);
+      assert.equal(status, 0);
+      assert.equal(written, JSON.stringify({
+        systemMessage: 'handwritten system message',
+        ...(transport === 'deny' ? { hookSpecificOutput: {
+          hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason,
+        } } : {}),
+      }));
+    }
+  `], { env: { ...process.env, CODEX_BRIDGE_TEST_TMP: marker }, encoding: 'utf8', windowsHide: true, timeout: 10_000 });
+  assert.ifError(result.error);
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const directory = path.join(marker, 'order-text-violations');
+  const entries = (await Promise.all((await fs.readdir(directory)).map(async (file) =>
+    (await fs.readFile(path.join(directory, file), 'utf8')).split(/\r?\n/).filter(Boolean).map(JSON.parse)))).flat();
+  assert.equal(entries.length, 2);
+  for (const entry of entries) {
+    assert.equal(entry.kind, 'outgoing');
+    assert.equal(entry.transport, 'system-message');
+    assert.equal(entry.message, 'handwritten system message');
+    assert.notEqual(entry.pid, process.pid);
+    assert.match(entry.stack, /checkOutgoingRefusal/);
+  }
 });
 
 test('missing and corrupt ledgers do not produce warnings or block passes', async (t) => {

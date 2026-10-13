@@ -102,4 +102,5 @@ export const expectedData = {
   'dispatcher-state-record-required': [],
   'install-record-owners-readable': ['file', 'problem', 'cli'],
   'install-record-owners-problem-known': ['problem'],
+  'dispatcher-model-latch': ['agentType', 'models', 'pinFamily', 'hostVersion', 'at'],
 };

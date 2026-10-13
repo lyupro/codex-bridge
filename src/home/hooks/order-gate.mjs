@@ -44,11 +44,15 @@ const SUBAGENT_TOOL_NAMES = new Set(SUBAGENT_TOOLS);
 
 let systemMessage;
 const pass = () => {
-  if (systemMessage) process.stdout.write(JSON.stringify({ systemMessage }));
+  if (systemMessage) {
+    checkOutgoingRefusal(systemMessage, 'system-message');
+    process.stdout.write(JSON.stringify({ systemMessage }));
+  }
   process.exit(0);
 };
 const deny = (reason) => {
   checkOutgoingRefusal(reason, 'deny');
+  if (systemMessage) checkOutgoingRefusal(systemMessage, 'system-message');
   process.stdout.write(JSON.stringify({
     ...(systemMessage ? { systemMessage } : {}),
     hookSpecificOutput: {
@@ -94,9 +98,9 @@ try {
   const latch = modelLatch({ ledger: readDispatcherModel({ stateDir: BRAND_STATE_DIR }), agentType });
   if (latch.active) {
     const { data, at } = latch.violation;
-    systemMessage = `codex-bridge: the last ${agentType} ran on ${data.parsed.join(', ')} `
-      + `while the installed contract pins ${data.pinFamily} (${data.hostVersion ?? 'unknown'}, ${at}); `
-      + 'the cause is outside this call — another hook or the host; run codex-bridge doctor.';
+    systemMessage = orderDiagnosticMessage('dispatcher-model-latch', {
+      agentType, models: data.parsed.join(', '), pinFamily: data.pinFamily, hostVersion: data.hostVersion, at,
+    });
   }
 } catch {
   // D4 (a): a corrupt ledger must not turn a diagnostic warning into a refusal.
