@@ -177,6 +177,16 @@ const expectedData = {
   'run-worker-start-failure': ['message'],
   'repository-detached-after-abandoned-run': ['run', 'branch'],
   'codex-not-started': [],
+  'agent-call-model': ['agentType'],
+  'agent-call-teammate': ['field', 'agentType'],
+  'dispatcher-call-shape': ['violation', 'label', 'first', 'line', 'sequence'],
+  'dispatcher-task-file-help': [],
+  'dispatcher-call-refusal': ['part', 'line', 'text', 'label', 'example'],
+  'dispatcher-call-summary': ['variant', 'required', 'conditional', 'optional'],
+  'subagent-model-env-pin': ['model', 'pinFamily', 'hostVersion'],
+  'dispatcher-agent-input-known': ['agentType'],
+  'dispatcher-prompt-text-required': [],
+  'dispatcher-refusal': [],
 };
 
 test('each entry freezes the caller-classified data allowlist and excludes forwarded prose', () => {

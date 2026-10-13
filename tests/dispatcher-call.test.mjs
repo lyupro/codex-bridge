@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { replacePlaceholders } from '../cli/manifest.mjs';
+import { recordOrderText } from '../src/home/lib/order-text-record.mjs';
 import {
   TASK_FILE_INPUT, callInputsFor, parseDispatcherCall, renderCallRefusal,
   renderRequiredInputSummary,
@@ -245,7 +246,8 @@ test('refusal lists refused lines then the call rule and the agent header templa
   for (const agent of ORDER_AGENTS) {
     const problems = [
       { line: 3, text: 'continue: none', reason: movedReason('continue') },
-      { line: null, text: '', reason: 'synthetic missing value' },
+      // Plan_79 D6: a forwarded reason must be registry output; the fixture records its stand-in.
+      { line: null, text: '', reason: recordOrderText('synthetic missing value') },
     ];
     assert.equal(renderCallRefusal(agent, problems), [
       'Order gate denied the Agent call: the call text must be only `label: value` lines.',

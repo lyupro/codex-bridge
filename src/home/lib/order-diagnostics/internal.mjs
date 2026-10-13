@@ -34,4 +34,19 @@ export const DIAGNOSTICS = Object.freeze({
     category: 'internal',
     message: () => 'sandbox probe requires a repository path',
   }),
+  'dispatcher-agent-input-known': Object.freeze({
+    data: Object.freeze(['agentType']),
+    category: 'internal',
+    message: ({ agentType }) => `unknown dispatcher agent ${JSON.stringify(agentType)}`,
+  }),
+  'dispatcher-prompt-text-required': Object.freeze({
+    data: Object.freeze([]),
+    category: 'internal',
+    message: () => 'prompt text is missing or is not text',
+  }),
+  'dispatcher-refusal': Object.freeze({
+    data: Object.freeze([]),
+    category: 'internal',
+    message: ({ reason }) => `Refused: ${reason}.`,
+  }),
 });

@@ -46,4 +46,85 @@ export const RULES = Object.freeze({
       throw new Error(`unknown order-launch-exclusive variant: ${variant}`);
     },
   }),
+  'agent-call-model': Object.freeze({
+    data: Object.freeze(['agentType']),
+    topic: 'order',
+    rule: 'Call a dispatcher without model; its installed agent file owns the model.',
+    message: ({ agentType }) =>
+      "Order gate denied the Agent call because it passes `model`: a dispatcher's model is set in one place, "
+      + `its installed agent file. Call ${agentType} without model.`,
+  }),
+  'agent-call-teammate': Object.freeze({
+    data: Object.freeze(['field', 'agentType']),
+    topic: 'order',
+    rule: 'Call a dispatcher with subagent_type only, without teammate fields.',
+    message: ({ field, agentType }) =>
+      `Order gate denied the Agent call because it passes \`${field}\`: a dispatcher launched as a `
+      + 'teammate escapes the dispatcher gate, whose agent_type becomes the teammate name. Call '
+      + `${agentType} with subagent_type only, without name or team_name.`,
+  }),
+  'dispatcher-call-shape': Object.freeze({
+    data: Object.freeze(['violation', 'label', 'first', 'line', 'sequence']),
+    topic: 'order',
+    rule: 'The call contains one exact task file label with a non-empty absolute path safe inside shell double quotes.',
+    message: ({ violation, label, first, line, sequence }) => {
+      if (violation === 'free-text') return 'not a `label: value` line; free text belongs in the task file';
+      if (violation === 'empty') return `label \`${label}\` has an empty value`;
+      if (violation === 'duplicate') return `label \`${label}\` is given twice (line ${first} and line ${line})`;
+      if (violation === 'spelling') return `write the label exactly as \`${label}:\``;
+      if (violation === 'header') {
+        return `label \`${label}\` moved to the task-file header; the call is only \`task file: <absolute path>\``;
+      }
+      if (violation === 'missing') return `missing required label \`${label}\``;
+      if (violation === 'placeholder') return `label \`${label}\` is still a placeholder`;
+      if (violation === 'absolute') return 'label `task file` must be an absolute path';
+      if (violation === 'unsafe') {
+        return `label \`${label}\` contains ${JSON.stringify(sequence)}; put free text in the task file`;
+      }
+      if (violation === 'rewritten') {
+        return `label \`${label}\` contains ${JSON.stringify(sequence)}, which the shell rewrites inside double quotes; `
+          + 'write the path with forward slashes and without `$`';
+      }
+      throw new Error(`unknown dispatcher-call-shape violation: ${violation}`);
+    },
+  }),
+  'dispatcher-task-file-help': Object.freeze({
+    data: Object.freeze([]),
+    topic: 'order',
+    rule: 'The orchestrator writes the task file verbatim with its file tool and supplies its absolute path.',
+    message: () => 'Absolute path to a file holding the task statement verbatim, written by the orchestrator with its file tool. The dispatcher passes the path to the runner and never creates, reads or rewrites the file: writing it from the shell reintroduces the permission prompt this file channel exists to remove. Given no path, return the refusal.',
+  }),
+  'dispatcher-call-refusal': Object.freeze({
+    data: Object.freeze(['part', 'line', 'text', 'label', 'example']),
+    topic: 'order',
+    rule: 'The Agent call text is only `task file: <absolute path>`; every order label goes in the task-file header ' +
+      'and free text in the task file body.',
+    message: ({ part, line, text, label, example, reason, detail, explanation, reasons }) => {
+      if (part === 'intro') return 'Order gate denied the Agent call: the call text must be only `label: value` lines.';
+      if (part === 'detail') return ` — ${explanation} Example: \`${label}: ${example}\`.`;
+      if (part === 'problem') return `- ${reason}${detail}`;
+      if (part === 'line') return `- line ${line}: \`${text}\` — ${reason}`;
+      if (part === 'call') return 'The call is only `task file: <absolute path>`.';
+      if (part === 'header') return 'The order goes in the header at the top of that file:';
+      if (part === 'free-text') return 'Free text belongs in the task file.';
+      if (part === 'command-line') return `line ${line}: ${reason}`;
+      if (part === 'command') return `the call text must be only label: value lines: ${reasons}`;
+      throw new Error(`unknown dispatcher-call-refusal part: ${part}`);
+    },
+  }),
+  'dispatcher-call-summary': Object.freeze({
+    data: Object.freeze(['variant', 'required', 'conditional', 'optional']),
+    topic: 'order',
+    rule: 'Each dispatcher description names the header labels its task file requires, the conditional ones ' +
+      'with their condition, and the optional ones.',
+    message: ({ variant, required, conditional, optional }) => {
+      if (variant === 'unknown-agent') return '';
+      if (variant === 'labels') {
+        return `The call is only \`task file\` (an absolute path). The task-file header requires ${required.join(', ')}; `
+          + `conditional labels: ${conditional.join(', ')}; optional labels: ${optional.join(', ')}. `
+          + 'Free text belongs in the task file.';
+      }
+      throw new Error(`unknown dispatcher-call-summary variant: ${variant}`);
+    },
+  }),
 });

@@ -177,4 +177,12 @@ export const DIAGNOSTICS = Object.freeze({
     category: 'host-state',
     message: ({ message }) => `run worker process failed to start: ${message}`,
   }),
+  'subagent-model-env-pin': Object.freeze({
+    data: Object.freeze(['model', 'pinFamily', 'hostVersion']),
+    category: 'host-state',
+    message: ({ model, pinFamily, hostVersion }) =>
+      `Order gate denied the Agent call because CLAUDE_CODE_SUBAGENT_MODEL=${JSON.stringify(model)} `
+      + `overrides the installed dispatcher pin ${pinFamily} on host ${hostVersion}. `
+      + `Unset CLAUDE_CODE_SUBAGENT_MODEL or set it to the pinned family ${pinFamily}.`,
+  }),
 });

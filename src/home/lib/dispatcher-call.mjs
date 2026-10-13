@@ -15,10 +15,12 @@ import {
   isInputPlaceholder,
 } from './order-values.mjs';
 import { firstShellUnsafeSequence } from './shell-unsafe.mjs';
+import { orderRuleMessage } from './order-rules.mjs';
+import { orderDiagnosticMessage } from './order-diagnostics.mjs';
 
 export const TASK_FILE_INPUT = Object.freeze({
   label: 'task file',
-  explanation: 'Absolute path to a file holding the task statement verbatim, written by the orchestrator with its file tool. The dispatcher passes the path to the runner and never creates, reads or rewrites the file: writing it from the shell reintroduces the permission prompt this file channel exists to remove. Given no path, return the refusal.',
+  explanation: orderRuleMessage('dispatcher-task-file-help'),
   example: 'C:/Users/me/AppData/Local/Temp/claude/<session>/scratchpad/task-plan-13.md',
 });
 
@@ -28,7 +30,7 @@ export function callInputsFor(agentType) {
 
 const knownLabels = new Set(ALL_ORDER_LABELS);
 
-const freeTextReason = 'not a `label: value` line; free text belongs in the task file';
+const freeTextReason = orderRuleMessage('dispatcher-call-shape', { violation: 'free-text' });
 
 function normaliseLabel(label) {
   return label.toLowerCase().replace(/^[-*] /, '').replace(/[*`]/g, '')
@@ -51,8 +53,7 @@ function shellRewrittenSequence(value) {
 }
 
 function shellRewrittenReason(label, sequence) {
-  return `label \`${label}\` contains ${JSON.stringify(sequence)}, which the shell rewrites inside double quotes; `
-    + 'write the path with forward slashes and without `$`';
+  return orderRuleMessage('dispatcher-call-shape', { violation: 'rewritten', label, sequence });
 }
 
 /** Returns the accepted label values and every refusal; one reader for the gate, the command and the transcript. */
@@ -64,7 +65,7 @@ export function parseDispatcherCall(agentType, promptText) {
   const acceptedLines = new Map();
 
   if (!ORDER_AGENTS.includes(agentType)) {
-    problems.push({ line: null, text: '', reason: `unknown dispatcher agent ${JSON.stringify(agentType)}` });
+    problems.push({ line: null, text: '', reason: orderDiagnosticMessage('dispatcher-agent-input-known', { agentType }) });
     return { inputs, problems };
   }
 
@@ -78,13 +79,13 @@ export function parseDispatcherCall(agentType, promptText) {
     const value = tail.trim();
 
     if (labels.has(label) && !value) {
-      problems.push({ line, text, reason: `label \`${label}\` has an empty value` });
+      problems.push({ line, text, reason: orderRuleMessage('dispatcher-call-shape', { violation: 'empty', label }) });
       return;
     }
     if (labels.has(label) && /^[ \t]+/.test(tail)) {
       if (inputs.has(label)) {
         const first = acceptedLines.get(label).line;
-        problems.push({ line, text, reason: `label \`${label}\` is given twice (line ${first} and line ${line})` });
+        problems.push({ line, text, reason: orderRuleMessage('dispatcher-call-shape', { violation: 'duplicate', label, first, line }) });
         return;
       }
       inputs.set(label, value);
@@ -95,29 +96,30 @@ export function parseDispatcherCall(agentType, promptText) {
     const normalised = label === null ? null : normaliseLabel(label);
     let reason = freeTextReason;
     if (labels.has(normalised)) {
-      reason = `write the label exactly as \`${normalised}:\``;
+      reason = orderRuleMessage('dispatcher-call-shape', { violation: 'spelling', label: normalised });
     } else if (knownLabels.has(normalised)) {
-      reason = `label \`${normalised}\` moved to the task-file header; the call is only \`task file: <absolute path>\``;
+      reason = orderRuleMessage('dispatcher-call-shape', { violation: 'header', label: normalised });
     }
     problems.push({ line, text, reason });
   });
 
   for (const entry of entries) {
     if (!entry.conditional && !entry.optional && !inputs.has(entry.label)) {
-      problems.push({ line: null, text: '', label: entry.label, reason: `missing required label \`${entry.label}\`` });
+      problems.push({ line: null, text: '', label: entry.label,
+        reason: orderRuleMessage('dispatcher-call-shape', { violation: 'missing', label: entry.label }) });
     }
   }
   for (const [label, value] of inputs) {
     const location = acceptedLines.get(label);
     if (isInputPlaceholder(value, label)) {
-      problems.push({ ...location, reason: `label \`${label}\` is still a placeholder` });
+      problems.push({ ...location, reason: orderRuleMessage('dispatcher-call-shape', { violation: 'placeholder', label }) });
     }
     if (label === 'task file' && !isAbsoluteTaskFilePath(value)) {
-      problems.push({ ...location, reason: 'label `task file` must be an absolute path' });
+      problems.push({ ...location, reason: orderRuleMessage('dispatcher-call-shape', { violation: 'absolute' }) });
     }
     const sequence = unsafeSequence(value);
     if (sequence !== null) {
-      const reason = `label \`${label}\` contains ${JSON.stringify(sequence)}; put free text in the task file`;
+      const reason = orderRuleMessage('dispatcher-call-shape', { violation: 'unsafe', label, sequence });
       problems.push({ ...location, reason });
     } else {
       const expanding = shellRewrittenSequence(value);
@@ -129,17 +131,20 @@ export function parseDispatcherCall(agentType, promptText) {
 
 /** Names each refused line and the agent's header template, so one free refusal carries its own repair. */
 export function renderCallRefusal(agentType, problems) {
-  const lines = ['Order gate denied the Agent call: the call text must be only `label: value` lines.'];
+  const lines = [orderRuleMessage('dispatcher-call-refusal', { part: 'intro' })];
   const entries = callInputsFor(agentType);
   for (const { line, text, reason, label } of problems) {
-    const entry = line === null && reason === `missing required label \`${label}\``
+    const entry = line === null && reason === orderRuleMessage('dispatcher-call-shape', { violation: 'missing', label })
       ? entries.find((entry) => entry.label === label) : undefined;
-    const detail = entry ? ` — ${entry.explanation} Example: \`${entry.label}: ${entry.example}\`.` : '';
-    lines.push(line === null ? `- ${reason}${detail}` : `- line ${line}: \`${text}\` — ${reason}`);
+    const detail = entry ? orderRuleMessage('dispatcher-call-refusal', {
+      part: 'detail', explanation: entry.explanation, label: entry.label, example: entry.example,
+    }) : '';
+    lines.push(line === null ? orderRuleMessage('dispatcher-call-refusal', { part: 'problem', reason, detail })
+      : orderRuleMessage('dispatcher-call-refusal', { part: 'line', line, text, reason }));
   }
-  lines.push('The call is only `task file: <absolute path>`.',
-    'The order goes in the header at the top of that file:',
-    ...renderOrderHeaderHelp(agentType).split('\n'), 'Free text belongs in the task file.');
+  lines.push(orderRuleMessage('dispatcher-call-refusal', { part: 'call' }),
+    orderRuleMessage('dispatcher-call-refusal', { part: 'header' }),
+    ...renderOrderHeaderHelp(agentType).split('\n'), orderRuleMessage('dispatcher-call-refusal', { part: 'free-text' }));
   return lines.join('\n');
 }
 
@@ -159,13 +164,11 @@ function conditionFor(entry) {
 
 /** Keeps the caller's short prompt aligned with the header registry, including grant conditions. */
 export function renderRequiredInputSummary(agentType) {
-  if (!ORDER_AGENTS.includes(agentType)) return '';
+  if (!ORDER_AGENTS.includes(agentType)) return orderRuleMessage('dispatcher-call-summary', { variant: 'unknown-agent' });
   const entries = headerInputsFor(agentType);
   const required = entries.filter(({ required }) => required).map(({ label }) => `\`${label}\``);
   const conditional = entries.filter(({ conditional }) => conditional)
     .map((entry) => `\`${entry.label}\` (${conditionFor(entry)})`);
   const optional = entries.filter(({ optional }) => optional).map(({ label }) => `\`${label}\``);
-  return `The call is only \`task file\` (an absolute path). The task-file header requires ${required.join(', ')}; `
-    + `conditional labels: ${conditional.join(', ')}; optional labels: ${optional.join(', ')}. `
-    + 'Free text belongs in the task file.';
+  return orderRuleMessage('dispatcher-call-summary', { variant: 'labels', required, conditional, optional });
 }

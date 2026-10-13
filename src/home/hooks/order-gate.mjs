@@ -30,6 +30,9 @@ import { runsRoot } from '../lib/runner/runs-root.mjs';
 import { parseTaskDocument } from '../lib/runner/task-file.mjs';
 import { parseTaskHeader, taskHeaderRefusal } from '../lib/task-header.mjs';
 import { envModelProblem } from '../lib/subagent-model-env.mjs';
+import { orderRuleMessage } from '../lib/order-rules.mjs';
+import { orderDiagnosticMessage } from '../lib/order-diagnostics.mjs';
+import { checkOutgoingRefusal } from '../lib/order-text-record.mjs';
 
 const GUARDED = new Set(Object.keys(AGENTS));
 /**
@@ -45,6 +48,7 @@ const pass = () => {
   process.exit(0);
 };
 const deny = (reason) => {
+  checkOutgoingRefusal(reason, 'deny');
   process.stdout.write(JSON.stringify({
     ...(systemMessage ? { systemMessage } : {}),
     hookSpecificOutput: {
@@ -75,11 +79,8 @@ if (!GUARDED.has(toolInput.subagent_type)) pass();
 // Plan_67 D6: one installed model contract; refuse even matching aliases before prompt exits.
 const agentType = toolInput.subagent_type;
 if (Object.hasOwn(toolInput, 'model')) {
-  deny(
-    "Order gate denied the Agent call because it passes `model`: a dispatcher's model is set in one place, "
-      + `its installed agent file. Call ${agentType} without model. `
-      + 'The run folder was not created; quota was not spent.',
-  );
+  deny([orderRuleMessage('agent-call-model', { agentType }),
+    orderDiagnosticMessage('run-not-created')].join(' '));
 }
 try {
   const hostVersion = await transcriptHostVersion(input.transcript_path).catch(() => null);
@@ -111,11 +112,7 @@ if (typeof toolInput.prompt !== 'string') pass();
 const teammateField = ['name', 'team_name']
   .find((key) => typeof toolInput[key] === 'string' && toolInput[key].trim());
 if (teammateField) {
-  deny(
-    `Order gate denied the Agent call because it passes \`${teammateField}\`: a dispatcher launched as a ` +
-      'teammate escapes the dispatcher gate, whose agent_type becomes the teammate name. Call ' +
-      `${toolInput.subagent_type} with subagent_type only, without name or team_name.`,
-  );
+  deny(orderRuleMessage('agent-call-teammate', { field: teammateField, agentType: toolInput.subagent_type }));
 }
 
 // Plan_76 D1: exact registry labels prevent the scope-new and repository-prose incident of 2026-10-04.
@@ -144,7 +141,7 @@ const headerRefusal = taskHeaderRefusal(parsed);
 if (headerRefusal) deny(headerRefusal);
 const { order, problems } = orderFromHeader(toolInput.subagent_type, parsed);
 if (problems.length) {
-  deny(`${renderOrderProblems(toolInput.subagent_type, problems)}\nThe run folder was not created; quota was not spent.`);
+  deny([renderOrderProblems(toolInput.subagent_type, problems), orderDiagnosticMessage('run-not-created')].join('\n'));
 }
 const orderId = order.get('order id');
 // Plan_63 D9 / OW-054: only a validated header grant reaches the runner's grant rules.

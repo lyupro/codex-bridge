@@ -4,10 +4,11 @@
  * Unknown host versions are not evidence for a pre-start refusal.
  */
 import { modelFamily } from './model-family.mjs';
+import { orderDiagnosticMessage } from './order-diagnostics.mjs';
 
 // Host contract facts, not package versions or volatile model identifiers (Plan_67 D6 (b)).
-export const FRONTMATTER_PRECEDENCE_VERSION = '2.1.251';
-export const SUBAGENT_MODEL_FORCE_VERSION = '2.1.257';
+export const FRONTMATTER_PRECEDENCE_VERSION = '2.1.251'; // order-guard: not-a-refusal — host version boundary compared as data
+export const SUBAGENT_MODEL_FORCE_VERSION = '2.1.257'; // order-guard: not-a-refusal — host version boundary compared as data
 
 function versionParts(value) {
   if (typeof value !== 'string' || !/^\d+\.\d+\.\d+(?:\.\d+)*$/.test(value)) return null;
@@ -37,8 +38,6 @@ export function envModelProblem({ env, hostVersion, pinFamily }) {
   const model = env.CLAUDE_CODE_SUBAGENT_MODEL;
   const family = modelFamily(model);
   if (family === null || pinFamily === null || family === pinFamily) return null;
-  return `Order gate denied the Agent call because CLAUDE_CODE_SUBAGENT_MODEL=${JSON.stringify(model)} `
-    + `overrides the installed dispatcher pin ${pinFamily} on host ${hostVersion}. `
-    + `Unset CLAUDE_CODE_SUBAGENT_MODEL or set it to the pinned family ${pinFamily}. `
-    + 'The run folder was not created; quota was not spent.';
+  return [orderDiagnosticMessage('subagent-model-env-pin', { model, pinFamily, hostVersion }),
+    orderDiagnosticMessage('run-not-created')].join(' ');
 }

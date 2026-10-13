@@ -2,9 +2,14 @@
 import { CLI_NAMES } from './cli-names.mjs';
 import { parseDispatcherCall } from './dispatcher-call.mjs';
 import { ORDER_AGENTS } from './order-schema.mjs';
+import { orderRuleMessage } from './order-rules.mjs';
+import { orderDiagnosticMessage } from './order-diagnostics.mjs';
+import { checkOutgoingRefusal } from './order-text-record.mjs';
 
 function refusal(reason) {
-  return { refusal: `Refused: ${reason}.` };
+  const text = orderDiagnosticMessage('dispatcher-refusal', { reason });
+  checkOutgoingRefusal(text, 'refusal');
+  return { refusal: text };
 }
 
 function assembleRunCommand(agentType, taskFile) {
@@ -15,7 +20,7 @@ function assembleRunCommand(agentType, taskFile) {
 /** Plan_63 D11: prompt templates and the gate must use the same command assembler. */
 export function renderRunCommandTemplate(agentType) {
   if (typeof agentType !== 'string' || !ORDER_AGENTS.includes(agentType)) {
-    throw new Error(`unknown dispatcher agent ${JSON.stringify(agentType)}`);
+    throw new Error(orderDiagnosticMessage('dispatcher-agent-input-known', { agentType }));
   }
   return assembleRunCommand(agentType, '<task-file path from the orchestrator>');
 }
@@ -23,15 +28,16 @@ export function renderRunCommandTemplate(agentType) {
 /** Builds the only permitted run command directly from the immutable order transcript. */
 export function canonicalRunCommand(agentType, promptText) {
   if (typeof agentType !== 'string' || !ORDER_AGENTS.includes(agentType)) {
-    return refusal(`unknown dispatcher agent ${JSON.stringify(agentType)}`);
+    return refusal(orderDiagnosticMessage('dispatcher-agent-input-known', { agentType }));
   }
-  if (typeof promptText !== 'string') return refusal('prompt text is missing or is not text');
+  if (typeof promptText !== 'string') return refusal(orderDiagnosticMessage('dispatcher-prompt-text-required'));
 
   // Plan_63 D9, OW-054: the call cannot switch continuation or bypass order ownership.
   const { inputs, problems } = parseDispatcherCall(agentType, promptText);
   if (problems.length) {
-    const reasons = problems.map(({ line, reason }) => line === null ? reason : `line ${line}: ${reason}`);
-    return refusal(`the call text must be only label: value lines: ${reasons.join('; ')}`);
+    const reasons = problems.map(({ line, reason }) => line === null ? reason
+      : orderRuleMessage('dispatcher-call-refusal', { part: 'command-line', line, reason }));
+    return refusal(orderRuleMessage('dispatcher-call-refusal', { part: 'command', reasons: reasons.join('; ') }));
   }
 
   return { command: assembleRunCommand(agentType, inputs.get('task file')) };
