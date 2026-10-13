@@ -1,4 +1,6 @@
 /** Plan_79 D4: owns diagnostics for the host's Codex CLI readiness and availability. */
+import { DIAGNOSTICS as INTERNAL_DIAGNOSTICS } from './internal.mjs';
+
 export const DIAGNOSTICS = Object.freeze({
   'codex-readiness-unconfirmed': Object.freeze({
     data: Object.freeze(['detail']),
@@ -184,5 +186,70 @@ export const DIAGNOSTICS = Object.freeze({
       `Order gate denied the Agent call because CLAUDE_CODE_SUBAGENT_MODEL=${JSON.stringify(model)} `
       + `overrides the installed dispatcher pin ${pinFamily} on host ${hostVersion}. `
       + `Unset CLAUDE_CODE_SUBAGENT_MODEL or set it to the pinned family ${pinFamily}.`,
+  }),
+  'dispatcher-pin-file-readable': Object.freeze({
+    data: Object.freeze(['file', 'problem', 'cli', 'root']),
+    category: 'host-state',
+    message: ({ file, problem, cli, root }) => {
+      if (problem === 'missing') return `Dispatcher file "${file}" is missing; repair with ${cli} install --host "${root}".`;
+      if (problem === 'unreadable') return `Dispatcher file "${file}" cannot be read; repair with ${cli} install --host "${root}".`;
+      throw new Error(`unknown dispatcher-pin-file-readable problem: ${problem}`);
+    },
+  }),
+  'dispatcher-pin-frontmatter-readable': Object.freeze({
+    data: Object.freeze(['file']),
+    category: 'host-state',
+    message: ({ file }) => `The frontmatter in "${file}" is unreadable.`,
+  }),
+  'dispatcher-pin-agent-name': Object.freeze({
+    data: Object.freeze(['file', 'agentType']),
+    category: 'host-state',
+    message: ({ file, agentType }) => `Dispatcher file "${file}" does not declare the required frontmatter name "${agentType}".`,
+  }),
+  'dispatcher-pin-model-family': Object.freeze({
+    data: Object.freeze(['file']),
+    category: 'host-state',
+    message: ({ file }) => `Dispatcher file "${file}" has no parseable model family in its frontmatter model.`,
+  }),
+  'dispatcher-pin-owner-agreement': Object.freeze({
+    data: Object.freeze(['disagreement']),
+    category: 'host-state',
+    message: ({ disagreement }) => `Installed dispatcher model families disagree across owners: ${disagreement}.`,
+  }),
+  'dispatcher-model-observation': Object.freeze({
+    data: Object.freeze(['verdict', 'agentType', 'models', 'pinFamily', 'incompleteMatch']),
+    category: 'host-state',
+    message: ({ verdict, agentType, models, pinFamily, incompleteMatch }) => {
+      if (verdict === 'violation') return `${agentType} ran on ${models} while the installed contract pins ${pinFamily}`;
+      if (verdict === 'match') return `${agentType} ran on ${models} matching the installed contract pin ${pinFamily}`;
+      if (verdict !== 'undetermined') throw new Error(`unknown dispatcher-model-observation verdict: ${verdict}`);
+      return incompleteMatch
+        ? `${agentType} model comparison is undetermined: the transcript has unreadable records`
+        : `${agentType} model comparison against the installed contract is undetermined`;
+    },
+  }),
+  'dispatcher-model-stop-warning': Object.freeze({
+    data: Object.freeze(['agentType', 'models', 'pinFamily']),
+    category: 'host-state',
+    message: ({ agentType, models, pinFamily }) =>
+      `codex-bridge: dispatcher ${agentType} ran on ${models} while the installed contract pins ${pinFamily} — Claude quota was spent on it; run codex-bridge doctor.`,
+  }),
+  'install-record-owners-readable': Object.freeze({
+    data: Object.freeze(['file', 'problem', 'cli']),
+    category: 'host-state',
+    message: ({ file, problem, cli }) => {
+      if (problem === 'missing') return `Installation record at ${file} is missing.`;
+      if (problem === 'unreadable') return `Installation record at ${file} cannot be read.`;
+      if (problem === 'invalid-json') return `Installation record at ${file} contains invalid JSON.`;
+      if (problem === 'not-format-2') return `Installation record at ${file} is not format 2.`;
+      if (problem === 'no-owners') return `Installation record at ${file} has no owners.`;
+      if (problem === 'inventory-incomplete') {
+        // Plan_67 D11: match cli/inventory-confirm.mjs INVENTORY_CONFIRM_COMMAND; hooks cannot import cli/.
+        return `Installation record at ${file} has an incomplete inventory; if the recorded hosts are all the hosts using this home, run ${cli} inventory confirm.`;
+      }
+      if (problem === 'legacy-partition') return `Installation record at ${file} contains a legacy partition.`;
+      if (problem === 'malformed-owner') return `Installation record at ${file} has an owner without a non-empty root.`;
+      throw new Error(INTERNAL_DIAGNOSTICS['install-record-owners-problem-known'].message({ problem }));
+    },
   }),
 });

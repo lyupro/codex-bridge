@@ -1,0 +1,2 @@
+// Plan_79 D8: a handback message property cannot introduce unregistered text.
+const result = { message: 'literal message' };

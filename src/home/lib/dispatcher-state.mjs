@@ -6,6 +6,7 @@ import { writeHomeJsonAtomic } from './atomic-json.mjs';
 import { parseJsonText } from './json-file.mjs';
 import { withHomeFileLock } from './file-lock.mjs';
 import { stateDirWriter } from './home-write.mjs';
+import { orderDiagnosticMessage } from './order-diagnostics.mjs';
 
 // Plan_65 B5: every write goes through the registry id so purge accounts for records, locks and
 // temporaries alike.
@@ -14,7 +15,7 @@ const ARTIFACT = 'dispatcher-state';
 function assertIdentity(sessionId, agentId) {
   if (typeof sessionId !== 'string' || sessionId.length === 0
     || typeof agentId !== 'string' || agentId.length === 0) {
-    throw new TypeError('sessionId and agentId must be non-empty strings');
+    throw new TypeError(orderDiagnosticMessage('dispatcher-state-identity-required'));
   }
 }
 
@@ -57,7 +58,7 @@ function clockValue(ids) {
 
 
 export async function updateDispatcherState(ids, mutate) {
-  if (typeof mutate !== 'function') throw new TypeError('mutate must be a function');
+  if (typeof mutate !== 'function') throw new TypeError(orderDiagnosticMessage('dispatcher-state-mutator-required'));
   const file = dispatcherStatePath(ids);
   const { sessionId, agentId } = ids;
   const writer = stateDirWriter(ids.stateDir);
@@ -69,7 +70,7 @@ export async function updateDispatcherState(ids, mutate) {
     const result = await mutate(current);
     const candidate = result === undefined ? current : result;
     if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
-      throw new TypeError('mutate must produce a JSON record object');
+      throw new TypeError(orderDiagnosticMessage('dispatcher-state-record-required'));
     }
     const record = {
       ...candidate,

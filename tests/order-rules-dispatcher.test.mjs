@@ -12,6 +12,13 @@ import { DIAGNOSTICS as INTERNAL_DIAGNOSTICS } from '../src/home/lib/order-diagn
 import { parseDispatcherCall, renderCallRefusal, renderRequiredInputSummary, TASK_FILE_INPUT } from '../src/home/lib/dispatcher-call.mjs';
 import { canonicalRunCommand, renderRunCommandTemplate } from '../src/home/lib/dispatcher-command.mjs';
 import { envModelProblem } from '../src/home/lib/subagent-model-env.mjs';
+import { claudePaths } from '../src/home/lib/claude-layout.mjs';
+import { CLI_NAMES } from '../src/home/lib/cli-names.mjs';
+import { homeArtifact } from '../src/home/lib/home-registry.mjs';
+import { readOwnerRoots } from '../src/home/lib/install-owner-roots.mjs';
+import { readDispatcherPin } from '../src/home/lib/dispatcher-pin.mjs';
+import { modelObservation, observeDispatcherModelStop } from '../src/home/lib/dispatcher-model.mjs';
+import { dispatcherStatePath, readDispatcherState, updateDispatcherState } from '../src/home/lib/dispatcher-state.mjs';
 import { checkOutgoingRefusal } from '../src/home/lib/order-text-record.mjs';
 import { ADMISSION_FILES, PENDING_MIGRATION } from './order-guard/admission-files.mjs';
 import { checkRefusalSites } from './order-guard/refusal-checker.mjs';
@@ -226,4 +233,154 @@ test('handwritten text sent through the hook deny journals its outgoing transpor
   assert.equal(entries[0].message, 'handwritten outgoing');
   assert.notEqual(entries[0].pid, process.pid);
   assert.match(entries[0].stack, /checkOutgoingRefusal/);
+});
+
+// Plan_79 B5b2a / D8 / B4g: migrate the owner-record producer with its pin forwarder; order produces no text.
+for (const [name, category, keys] of [
+  ['dispatcher-order', null, []],
+  ['dispatcher-pin', 'host-state', ['dispatcher-pin-file-readable', 'dispatcher-pin-frontmatter-readable',
+    'dispatcher-pin-agent-name', 'dispatcher-pin-model-family', 'dispatcher-pin-owner-agreement']],
+  ['dispatcher-model', 'host-state', ['dispatcher-model-observation', 'dispatcher-model-stop-warning']],
+  ['dispatcher-state', 'internal', ['dispatcher-state-identity-required', 'dispatcher-state-mutator-required',
+    'dispatcher-state-record-required']],
+  ['install-owner-roots', 'host-state', ['install-record-owners-readable']],
+]) {
+  test(`${name} is admitted, not pending, and owns no diagnostic text outside the registry`, () => {
+    const file = `src/home/lib/${name}.mjs`;
+    assert.ok(ADMISSION_FILES.includes(file));
+    assert.equal(PENDING_MIGRATION.has(file), false);
+    const source = fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
+    assert.deepEqual(checkRefusalSites(source, file), { violations: [], optOuts: [] });
+    assert.doesNotMatch(source, /recordOrderText\(|new TypeError\(['"`]/);
+    assert.deepEqual([...source.matchAll(/orderDiagnosticMessage\('([^']+)'/g)].map(match => match[1]).sort(), keys.toSorted());
+    for (const key of keys) {
+      assert.equal(ORDER_DIAGNOSTICS[key].category, category);
+      assert.equal(ORDER_DIAGNOSTICS[key], (category === 'host-state' ? HOST_DIAGNOSTICS : INTERNAL_DIAGNOSTICS)[key]);
+      assert.ok(Object.isFrozen(ORDER_DIAGNOSTICS[key].data));
+    }
+  });
+}
+
+function pinFixture(contents) {
+  const tree = makeTempTree('order-rules-dispatcher-pin-');
+  const brandRoot = path.join(tree, 'brand');
+  fs.mkdirSync(brandRoot);
+  const owners = {};
+  const files = contents.map((content, index) => {
+    const root = path.join(tree, `host ${index}`, '.claude');
+    owners[index] = { root };
+    const file = path.join(claudePaths(root).agentsDir, 'codex-build.md');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    if (content === false) fs.mkdirSync(file);
+    else if (content !== null) fs.writeFileSync(file, content);
+    return { root, file };
+  });
+  fs.writeFileSync(path.join(brandRoot, homeArtifact('install-record').primary[0]),
+    JSON.stringify({ format: 2, inventory: 'complete', owners }));
+  return { tree, brandRoot, files };
+}
+
+test('pin diagnostics preserve every repair sentence byte for byte and register each reason', () => {
+  const agentType = 'codex-build';
+  for (const [content, expected] of [
+    [null, (file, root) => `Dispatcher file "${file}" is missing; repair with ${CLI_NAMES[0]} install --host "${root}".`],
+    [false, (file, root) => `Dispatcher file "${file}" cannot be read; repair with ${CLI_NAMES[0]} install --host "${root}".`],
+    ['No frontmatter.', file => `The frontmatter in "${file}" is unreadable.`],
+    ['---\nname: other\nmodel: haiku\n---\n', file => `Dispatcher file "${file}" does not declare the required frontmatter name "${agentType}".`],
+    [`---\nname: ${agentType}\nmodel: inherit\n---\n`, file => `Dispatcher file "${file}" has no parseable model family in its frontmatter model.`],
+  ]) {
+    const { brandRoot, files: [{ file, root }] } = pinFixture([content]);
+    const reason = expected(file, root);
+    assert.deepEqual(readDispatcherPin({ brandRoot, agentType }), { family: null, reasons: [reason] });
+    assert.equal(checkOutgoingRefusal(reason, 'case'), reason);
+  }
+  const { brandRoot, files } = pinFixture(['haiku', 'sonnet'].map(model => `---\nname: ${agentType}\nmodel: ${model}\n---\n`));
+  const disagreement = files.map(({ root }, index) => `"${root}" -> ${['haiku', 'sonnet'][index]}`).join(', ');
+  const reason = `Installed dispatcher model families disagree across owners: ${disagreement}.`;
+  assert.deepEqual(readDispatcherPin({ brandRoot, agentType }), { family: null, reasons: [reason] });
+  assert.equal(checkOutgoingRefusal(reason, 'case'), reason);
+});
+
+test('pin owner-record reasons preserve the read-only producer bytes without laundering prose', () => {
+  const owners = { owner: { root: 'C:/fixture/host/.claude' } };
+  for (const [record, suffix, problem] of [
+    [undefined, 'is missing.', 'missing'], [false, 'cannot be read.', 'unreadable'], ['{invalid', 'contains invalid JSON.', 'unreadable'],
+    [{ format: 1 }, 'is not format 2.', 'not-format-2'], [{ format: 2, owners: {} }, 'has no owners.', 'no-owners'],
+    [{ format: 2, inventory: 'incomplete', owners },
+      `has an incomplete inventory; if the recorded hosts are all the hosts using this home, run ${CLI_NAMES[0]} inventory confirm.`, 'inventory-incomplete'],
+    [{ format: 2, inventory: 'complete', owners, legacy: {} }, 'contains a legacy partition.', 'legacy-partition'],
+    [{ format: 2, inventory: 'complete', owners: { owner: { root: '' } } }, 'has an owner without a non-empty root.', 'malformed-owner'],
+  ]) {
+    const brandRoot = makeTempTree('order-rules-dispatcher-owner-record-');
+    const file = path.join(brandRoot, homeArtifact('install-record').primary[0]);
+    if (record === false) fs.mkdirSync(file);
+    else if (record !== undefined) fs.writeFileSync(file, typeof record === 'string' ? record : JSON.stringify(record));
+    const expected = `Installation record at ${file} ${suffix}`;
+    const resultOwners = readOwnerRoots({ brandRoot });
+    assert.deepEqual(resultOwners, { problem, detail: expected });
+    assert.equal(checkOutgoingRefusal(resultOwners.detail, 'case'), expected);
+    const result = readDispatcherPin({ brandRoot, agentType: 'codex-build' });
+    assert.deepEqual(result, { family: null, reasons: [expected] });
+    assert.equal(checkOutgoingRefusal(result.reasons[0], 'case'), expected);
+  }
+});
+
+test('model diagnostic variants preserve detail bytes and all non-text observation fields', async () => {
+  for (const [models, complete, verdict, detail] of [
+    [['sonnet', 'opus'], true, 'violation', 'codex-build ran on sonnet, opus while the installed contract pins haiku'],
+    [['haiku'], true, 'match', 'codex-build ran on haiku matching the installed contract pin haiku'],
+    [['haiku'], false, 'undetermined', 'codex-build model comparison is undetermined: the transcript has unreadable records'],
+    [[], true, 'undetermined', 'codex-build model comparison against the installed contract is undetermined'],
+  ]) {
+    const observation = modelObservation({ agentType: 'codex-build', hostVersion: 'host-a', pin: { family: 'haiku' }, models, complete });
+    assert.deepEqual(observation, { key: 'host-a|codex-build', verdict, detail, data: {
+      hostVersion: 'host-a', agentType: 'codex-build', pinFamily: 'haiku', parsed: models, unparsed: 0,
+      comparison: 'installed-contract', ...(!complete ? { complete: false } : {}),
+    } });
+    assert.equal(checkOutgoingRefusal(detail, 'case'), detail);
+  }
+  const { tree, brandRoot } = pinFixture(['---\nname: codex-build\nmodel: haiku\n---\n']);
+  const transcript = path.join(tree, 'agent.jsonl');
+  const input = { agent_type: 'codex-build', agent_transcript_path: transcript };
+  for (const model of ['sonnet', 'haiku']) {
+    fs.writeFileSync(transcript, JSON.stringify({ type: 'assistant', message: { model } }));
+    const warning = await observeDispatcherModelStop({ brandRoot, stateDir: path.join(brandRoot, 'state'), input, hostVersion: 'host-a' });
+    assert.equal(warning, model === 'sonnet'
+      ? 'codex-bridge: dispatcher codex-build ran on sonnet while the installed contract pins haiku — Claude quota was spent on it; run codex-bridge doctor.'
+      : null);
+    if (warning) assert.equal(checkOutgoingRefusal(warning, 'case'), warning);
+  }
+});
+
+test('state diagnostics preserve TypeError messages and leave system errors untouched', async () => {
+  const ids = { stateDir: path.join(makeTempTree('order-rules-dispatcher-state-'), 'state'), sessionId: 'session', agentId: 'agent' };
+  for (const invalid of [{ sessionId: '' }, { agentId: null }]) {
+    assert.throws(() => dispatcherStatePath({ ...ids, ...invalid }), { name: 'TypeError', message: 'sessionId and agentId must be non-empty strings' });
+  }
+  await assert.rejects(updateDispatcherState(ids, null), { name: 'TypeError', message: 'mutate must be a function' });
+  for (const record of [null, [], 'text']) {
+    await assert.rejects(updateDispatcherState(ids, () => record), { name: 'TypeError', message: 'mutate must produce a JSON record object' });
+  }
+  for (const key of ['dispatcher-state-identity-required', 'dispatcher-state-mutator-required', 'dispatcher-state-record-required']) {
+    const text = orderDiagnosticMessage(key);
+    assert.equal(checkOutgoingRefusal(text, 'case'), text);
+  }
+  const file = dispatcherStatePath(ids);
+  fs.mkdirSync(file);
+  let systemError;
+  try { fs.readFileSync(file, 'utf8'); } catch (error) { systemError = error; }
+  assert.ok(systemError);
+  assert.throws(() => readDispatcherState(ids), { code: systemError.code, message: systemError.message });
+});
+
+test('unknown pin and model diagnostic selectors fail loud', () => {
+  assert.throws(() => orderDiagnosticMessage('dispatcher-pin-file-readable', { problem: 'unknown' }),
+    { message: 'unknown dispatcher-pin-file-readable problem: unknown' });
+  assert.throws(() => orderDiagnosticMessage('dispatcher-model-observation', { verdict: 'unknown' }),
+    { message: 'unknown dispatcher-model-observation verdict: unknown' });
+  assert.throws(() => orderDiagnosticMessage('install-record-owners-readable', { problem: 'unknown' }),
+    { message: 'unknown dispatcher-pin-owner-record problem: unknown' });
+  assert.equal(ORDER_DIAGNOSTICS['install-record-owners-problem-known'],
+    INTERNAL_DIAGNOSTICS['install-record-owners-problem-known']);
+  assert.equal(ORDER_DIAGNOSTICS['install-record-owners-problem-known'].category, 'internal');
 });

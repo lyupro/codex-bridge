@@ -10,6 +10,7 @@ import { CLI_NAMES } from './cli-names.mjs';
 import { parseFrontmatter } from './frontmatter.mjs';
 import { readOwnerRoots } from './install-owner-roots.mjs';
 import { modelFamily } from './model-family.mjs';
+import { orderDiagnosticMessage } from './order-diagnostics.mjs';
 
 export function readDispatcherPin({ brandRoot, agentType }) {
   const owners = readOwnerRoots({ brandRoot });
@@ -23,8 +24,8 @@ export function readDispatcherPin({ brandRoot, agentType }) {
     try {
       content = fs.readFileSync(file, 'utf8');
     } catch (error) {
-      const problem = error.code === 'ENOENT' ? 'is missing' : 'cannot be read';
-      reasons.push(`Dispatcher file "${file}" ${problem}; repair with ${CLI_NAMES[0]} install --host "${root}".`);
+      const problem = error.code === 'ENOENT' ? 'missing' : 'unreadable';
+      reasons.push(orderDiagnosticMessage('dispatcher-pin-file-readable', { file, problem, cli: CLI_NAMES[0], root }));
       continue;
     }
 
@@ -35,16 +36,16 @@ export function readDispatcherPin({ brandRoot, agentType }) {
       frontmatter = null;
     }
     if (frontmatter === null) {
-      reasons.push(`The frontmatter in "${file}" is unreadable.`);
+      reasons.push(orderDiagnosticMessage('dispatcher-pin-frontmatter-readable', { file }));
       continue;
     }
     if (frontmatter.name !== agentType) {
-      reasons.push(`Dispatcher file "${file}" does not declare the required frontmatter name "${agentType}".`);
+      reasons.push(orderDiagnosticMessage('dispatcher-pin-agent-name', { file, agentType }));
       continue;
     }
     const family = modelFamily(frontmatter.model);
     if (family === null) {
-      reasons.push(`Dispatcher file "${file}" has no parseable model family in its frontmatter model.`);
+      reasons.push(orderDiagnosticMessage('dispatcher-pin-model-family', { file }));
       continue;
     }
     pins.push({ root, family });
@@ -52,7 +53,7 @@ export function readDispatcherPin({ brandRoot, agentType }) {
 
   if (new Set(pins.map(({ family }) => family)).size > 1) {
     const disagreement = pins.map(({ root, family }) => `"${root}" -> ${family}`).join(', ');
-    reasons.push(`Installed dispatcher model families disagree across owners: ${disagreement}.`);
+    reasons.push(orderDiagnosticMessage('dispatcher-pin-owner-agreement', { disagreement }));
   }
   return reasons.length
     ? { family: null, reasons }

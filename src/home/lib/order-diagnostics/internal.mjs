@@ -59,4 +59,24 @@ export const DIAGNOSTICS = Object.freeze({
     category: 'internal',
     message: ({ key }) => `unknown dispatcher protocol key: ${key}`,
   }),
+  'dispatcher-state-identity-required': Object.freeze({
+    data: Object.freeze([]),
+    category: 'internal',
+    message: () => 'sessionId and agentId must be non-empty strings',
+  }),
+  'dispatcher-state-mutator-required': Object.freeze({
+    data: Object.freeze([]),
+    category: 'internal',
+    message: () => 'mutate must be a function',
+  }),
+  'dispatcher-state-record-required': Object.freeze({
+    data: Object.freeze([]),
+    category: 'internal',
+    message: () => 'mutate must produce a JSON record object',
+  }),
+  'install-record-owners-problem-known': Object.freeze({
+    data: Object.freeze(['problem']),
+    category: 'internal',
+    message: ({ problem }) => `unknown dispatcher-pin-owner-record problem: ${problem}`,
+  }),
 });

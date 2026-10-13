@@ -19,9 +19,10 @@ function assertGuard(t, source, file) {
 // Plan_79 B4h also admits sandbox-probe.mjs and sandbox-diagnosis.mjs.
 // Plan_79 B5a admits subagent-model-env.mjs before the hook forwards its refusal.
 // Plan_79 B5b1 admits the dispatcher hook and shared protocol catalog and migrates the gate.
-test('Plan_79 S1a-S1c and B4g/B4h/B5a/B5b1 list 35 unique existing admission files', () => {
-  assert.equal(ADMISSION_FILES.length, 35);
-  assert.equal(new Set(ADMISSION_FILES).size, 35);
+// Plan_79 B5b2a / B4g: admit the installation-record producer before its pin forwarder.
+test('Plan_79 S1a-S1c and B4g/B4h/B5a/B5b1/B5b2a list 36 unique existing admission files', () => {
+  assert.equal(ADMISSION_FILES.length, 36);
+  assert.equal(new Set(ADMISSION_FILES).size, 36);
   for (const file of ADMISSION_FILES) assert.ok(fs.statSync(new URL(`../${file}`, import.meta.url)).isFile(), file);
   for (const file of PENDING_MIGRATION) assert.ok(ADMISSION_FILES.includes(file), file);
   for (const name of ['task-file', 'question-kind', 'task-input', 'order-options', 'sandbox-probe', 'sandbox-diagnosis']) {
@@ -39,6 +40,7 @@ const negativeFixtures = [
   ['die', 'die('], ['error', 'new Error('], ['runner-usage-error', 'new RunnerUsageError('],
   ['deny', 'deny('], ['reason', 'reason:'], ['refusal', 'refusal:'],
   ['problems-push', 'problems.push('], ['return', 'return'],
+  ['message-property', 'message:'],
   ['template-builder', 'die('], ['opt-out-without-reason', 'deny('],
   ['concatenation-name', 'die('], ['concatenation-grouped', 'die('], ['array-joined', 'die('],
 ];
@@ -53,6 +55,34 @@ for (const [name, construct] of negativeFixtures) {
 
 test('positive fixture permits registry builders and message identifiers', (t) => {
   const file = 'tests/fixtures/order-refusal-sites/positive.mjs.txt';
+  assertGuard(t, read(file), file);
+});
+
+test('message properties reject direct literals in every accepted quoting form', () => {
+  for (const property of ['message', "'message'", '"message"']) {
+    for (const literal of ['"literal"', "'literal'", '`literal ${orderRuleMessage("key")}`']) {
+      for (const prefix of ['const result = { ', 'const result = { other: value, ']) {
+        const source = `${prefix}${property}: /* gap */ (\n${literal}) };`;
+        for (const text of [source, source.replace(/\n/g, '\r\n')]) {
+          assert.deepEqual(checkRefusalSites(text, 'message-property').violations,
+            ['message-property:2: message: carries a literal message']);
+        }
+      }
+    }
+    assert.deepEqual(checkRefusalSites(`const message = "literal"; const result = { ${property}: message };`, 'message-binding').violations,
+      ['message-binding:1: message is a literal message']);
+  }
+});
+
+test('message properties permit forwarded values, builders and catalog functions', (t) => {
+  for (const property of ['message', "'message'", '"message"']) {
+    for (const value of ['err.message', 'orderDiagnosticMessage("key")', '() => "catalog text"',
+      '({ reason }) => `catalog ${reason}` + " suffix"', 'value => `catalog ${value}`',
+      'async () => "catalog text"']) {
+      assertGuard(t, `const result = { ${property}: ${value} };`, 'message-values');
+    }
+  }
+  const file = 'src/home/lib/dispatcher-protocol.mjs';
   assertGuard(t, read(file), file);
 });
 

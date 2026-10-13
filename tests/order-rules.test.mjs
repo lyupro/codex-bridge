@@ -73,6 +73,12 @@ test('registry maps and entries are frozen and have exactly their contracted fie
     'dispatcher-order-transcript-readable', 'dispatcher-order-refusal', 'dispatcher-receipt-conflict',
     'dispatcher-did-not-delegate', 'dispatcher-gate-internal-error', 'dispatcher-protocol-key-known',
     'dispatcher-runner-output',
+    'dispatcher-pin-file-readable', 'dispatcher-pin-frontmatter-readable', 'dispatcher-pin-agent-name',
+    'dispatcher-pin-model-family', 'dispatcher-pin-owner-agreement',
+    'dispatcher-model-observation', 'dispatcher-model-stop-warning',
+    'dispatcher-state-identity-required', 'dispatcher-state-mutator-required', 'dispatcher-state-record-required',
+    'install-record-owners-readable',
+    'install-record-owners-problem-known',
   ].sort());
   assert.equal(ORDER_DIAGNOSTICS['no-wait-grant-conflict'].category, 'cli-flags');
 });

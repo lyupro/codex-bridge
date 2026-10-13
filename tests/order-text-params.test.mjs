@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { makeTempTree } from './temp-tree.mjs';
+import { expectedData } from './order-guard/expected-data.mjs';
 import { ORDER_RULES, validateOrderRules } from '../src/home/lib/order-rules.mjs';
 import { ORDER_DIAGNOSTICS, validateOrderDiagnostics } from '../src/home/lib/order-diagnostics.mjs';
 
@@ -14,7 +15,6 @@ const recorder = new URL('order-text-record.mjs', lib).href;
 const rules = new URL('order-rules.mjs', lib).href;
 const diagnostics = new URL('order-diagnostics.mjs', lib).href;
 const inspector = new URL('../scripts/run-tests.mjs', import.meta.url).href;
-const admission = new URL('./order-guard/admission-files.mjs', import.meta.url).href;
 
 // Plan_79 D6: deliberate violations must never contaminate npm test's own journal.
 function runCase(body, { marker = true, blocked = false } = {}) {
@@ -101,100 +101,6 @@ test('empty, undefined and separator-only text parameters pass', () => {
   `);
   assert.deepEqual(entries, []);
 });
-
-const expectedData = {
-  'task-file-path': ['value'], 'task-body-required': ['channel', 'taskFile'],
-  'effort-value': ['value'], 'run-slug': ['value'],
-  'repository-path': ['violation', 'value', 'segment', 'context', 'label'],
-  'scout-questions': ['violation', 'line'], 'question-context-marker': ['index', 'text', 'context'],
-  'verify-line': ['violation'], 'no-wait-grant-conflict': ['grant'], 'task-channel-conflict': [],
-  'unexpected-argument': ['value'], 'unknown-flag': ['name'], 'boolean-flag-value': ['name', 'value'],
-  'missing-flag-value': ['key'], 'flag-shell-safety': ['name', 'sequence'], 'agent-required': [],
-  'agent-known': ['agent'], 'task-file-readable': ['message'],
-  'order-header-label-shape': ['label', 'violation'],
-  'unknown-header-label': ['label', 'knownLabels'],
-  'duplicate-order-label': ['label'],
-  'grant-label-exclusive': [],
-  'advice-value-shape': [],
-  'grant-value-shape': [],
-  'header-metadata-placement': ['label', 'violation'],
-  'run-not-created': [],
-  'agent-accepted-labels': ['label', 'agent'],
-  'order-value-placeholder': ['label'],
-  'header-shell-safety': ['labelName', 'sequence'],
-  'build-existing-scope-required': ['labelName', 'newLabelName'],
-  'required-order-labels': ['label', 'example'],
-  'dispatcher-agent-known': ['agent'],
-  'order-input-name-known': ['label'],
-  'scope-pattern-shape': ['violation', 'part', 'pattern'],
-  'scope-pattern-match': ['violation', 'part', 'repoRoot', 'labelName', 'message'],
-  'continuation-grant-usable': ['violation', 'labelName', 'run', 'runsRoot', 'lastRun', 'orderId', 'spent', 'previous', 'example'],
-  'retry-grant-usable': ['violation', 'run', 'runsRoot', 'previousOrder', 'orderId', 'labelName'],
-  'ready-grant-line': ['variant', 'run', 'reason', 'orderId'],
-  'grant-last-run-hint': ['variant', 'run', 'status', 'reason'],
-  'advise-scope-input-required': [],
-  'advise-scope-result-readable': ['scopeFile', 'message'],
-  'advise-scope-result-shape': ['scopeFile'],
-  'advisor-scope-continuation': ['phaseLabel', 'continueLabel'],
-  'retry-pass-identity': ['agent', 'phase'],
-  'repeat-task-grant-required': ['violation', 'continueLabel', 'slugLabel', 'slug', 'count', 'latest'],
-  'advisor-advise-continuation': ['phaseLabel', 'continueLabel'],
-  'build-advice-required': [],
-  'advise-scope-run-required': ['violation'],
-  'run-phase-required': ['violation', 'phaseLabel', 'phase', 'agent', 'names'],
-  'writing-run-exclusive': ['run', 'activePath', 'identity'],
-  'codex-readiness-unconfirmed': ['detail'],
-  'codex-unavailable': ['detail'],
-  'order-launch-exclusive': ['variant', 'orderId', 'role', 'pid', 'acquiredAt', 'run'],
-  'order-id-owner': ['violation', 'orderId', 'ownerDir', 'slug', 'startedAt', 'hashScheme', 'labelName'],
-  'order-claim-input-valid': ['violation'],
-  'project-runs-folder-required': ['projectRunsRoot'],
-  'codex-availability-detail': ['variant', 'command', 'status', 'message'],
-  'advisor-task-options': ['violation', 'lineNo', 'line', 'preference', 'optionId'],
-  'advisor-task-paths': ['violation', 'lineNo', 'line'],
-  'advice-retired-root': ['candidate', 'retiredRoot', 'destination', 'equivalent'],
-  'advisor-task-text-required': [],
-  'runs-move-record-readable': ['file', 'message'],
-  'codex-unavailable-handoff': ['variant', 'signal'],
-  'stale-runs-root-override': [],
-  'runs-move-record-invalid': ['file', 'violation', 'detail', 'index'],
-  'sandbox-probe-reason': ['variant', 'form', 'status', 'signal'],
-  'sandbox-refusal-repair': [],
-  'sandbox-linux-repair': [],
-  'sandbox-operator-check': ['command'],
-  'sandbox-stderr-evidence': ['form', 'stderrTail'],
-  'sandbox-diagnosis-source': ['source'],
-  'sandbox-diagnosis-attribution': ['attributed'],
-  'sandbox-setup-change': ['changed'],
-  'sandbox-evidence-line': ['line'],
-  'sandbox-evidence-unknown': ['variant', 'file'],
-  'sandbox-no-repair': [],
-  'sandbox-probe-repository-required': [],
-  'sandbox-known-failure-runtime-file-locked': ['part'],
-  'sandbox-known-failure-deny-read-state-corrupt': ['part', 'file'],
-  'scope-pattern-refusal': ['pattern'],
-  'cmd-argument-transport': ['argument'],
-  'run-worker-start-failure': ['message'],
-  'repository-detached-after-abandoned-run': ['run', 'branch'],
-  'codex-not-started': [],
-  'agent-call-model': ['agentType'],
-  'agent-call-teammate': ['field', 'agentType'],
-  'dispatcher-call-shape': ['violation', 'label', 'first', 'line', 'sequence'],
-  'dispatcher-task-file-help': [],
-  'dispatcher-call-refusal': ['part', 'line', 'text', 'label', 'example'],
-  'dispatcher-call-summary': ['variant', 'required', 'conditional', 'optional'],
-  'subagent-model-env-pin': ['model', 'pinFamily', 'hostVersion'],
-  'dispatcher-agent-input-known': ['agentType'],
-  'dispatcher-prompt-text-required': [],
-  'dispatcher-refusal': [],
-  'dispatcher-order-transcript-readable': ['transcriptPath'],
-  'dispatcher-order-refusal': [],
-  'dispatcher-receipt-conflict': ['runReceipt', 'runReceiptConflict'],
-  'dispatcher-did-not-delegate': ['command'],
-  'dispatcher-gate-internal-error': ['message'],
-  'dispatcher-protocol-key-known': ['key'],
-  'dispatcher-runner-output': ['output'],
-};
 
 test('each entry freezes the caller-classified data allowlist and excludes forwarded prose', () => {
   for (const [key, entry] of Object.entries({ ...ORDER_RULES, ...ORDER_DIAGNOSTICS })) {
@@ -314,7 +220,7 @@ test('an unwritable journal never throws or changes the builder result', () => {
 test('parameter violations from a pending caller are fatal while its outgoing violations are tolerated', () => {
   runCase(`
     const { inspectOutgoingRefusals } = await import(${JSON.stringify(inspector)});
-    const { PENDING_MIGRATION } = await import(${JSON.stringify(admission)});
+    const PENDING_MIGRATION = new Set(['tests/fixtures/pending-caller.mjs']);
     const { die, RunnerUsageError } = await import(${JSON.stringify(new URL('runner/args.mjs', lib).href)});
     const vm = await import('node:vm');
     const pending = [...PENDING_MIGRATION][0];

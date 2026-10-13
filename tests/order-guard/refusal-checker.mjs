@@ -5,7 +5,7 @@
  *   Quoted strings, regexes and template text are opaque; template expressions are scanned.
  *   Regexes start at expression-start tokens or after control-statement parentheses.
  * - Check the first argument of die/deny/new Error/new RunnerUsageError/problems.push,
- *   object properties reason/refusal, and return values. Whitespace, comments and grouping
+ *   object properties reason/refusal/message, and return values. Whitespace, comments and grouping
  *   parentheses may intervene. A newline after return ends that return (JavaScript ASI).
  * - A value beginning with a quoted string or ANY template is a violation, including a
  *   template wrapping a registry builder. Identifiers and orderRuleMessage/orderDiagnosticMessage
@@ -155,10 +155,16 @@ export function checkRefusalSites(source, file) {
     } else if (word === 'problems' && at(index + 1) === '.' && at(index + 2) === 'push' && at(index + 3) === '(') {
       construct = 'problems.push(';
       valueIndex = index + 4;
-    } else if (['reason', 'refusal', "'reason'", '"reason"', "'refusal'", '"refusal"'].includes(word)
+    } else if (['reason', 'refusal', 'message', "'reason'", '"reason"', "'refusal'", '"refusal"', "'message'", '"message"'].includes(word)
         && ['{', ','].includes(at(index - 1)) && at(index + 1) === ':') {
       construct = `${word.replace(/['"]/g, '')}:`;
       valueIndex = index + 2;
+      // Plan_79 D8: catalog functions own their text; only their direct message values are sites.
+      if (construct === 'message:') {
+        const parameter = valueIndex + Number(at(valueIndex) === 'async');
+        const arrow = (closes.get(parameter) ?? parameter) + 1;
+        if (at(parameter) === 'function' || (at(arrow) === '=' && at(arrow + 1) === '>')) return [];
+      }
     } else if (word === 'return') {
       if (/[\r\n]/.test(source.slice(tokens[index].end, tokens[index + 1]?.start))) return [];
       construct = 'return';

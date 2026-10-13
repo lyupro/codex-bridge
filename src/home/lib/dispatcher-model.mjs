@@ -7,6 +7,7 @@ import { readDispatcherPin } from './dispatcher-pin.mjs';
 import { parseJsonText } from './json-file.mjs';
 import { compareModelFamilies } from './model-family.mjs';
 import { normalizeLedger, readLedgerFile, recordObservation } from './observation-ledger.mjs';
+import { orderDiagnosticMessage } from './order-diagnostics.mjs';
 
 export const DISPATCHER_MODEL_FILE = 'dispatcher-model.json';
 
@@ -46,13 +47,9 @@ export function modelObservation({ agentType, hostVersion, pin, models, complete
     ...(pin.family === null ? { pinReasons: pin.reasons } : {}),
     ...(incompleteMatch ? { complete: false } : {}),
   };
-  const detail = verdict === 'violation'
-    ? `${agentType} ran on ${parsed.join(', ')} while the installed contract pins ${pin.family}`
-    : verdict === 'match'
-      ? `${agentType} ran on ${parsed.join(', ')} matching the installed contract pin ${pin.family}`
-      : incompleteMatch
-        ? `${agentType} model comparison is undetermined: the transcript has unreadable records`
-        : `${agentType} model comparison against the installed contract is undetermined`;
+  const detail = orderDiagnosticMessage('dispatcher-model-observation', {
+    verdict, agentType, models: parsed.join(', '), pinFamily: pin.family, incompleteMatch,
+  });
   return { key: `${hostVersion || 'unknown'}|${agentType}`, verdict, detail, data };
 }
 
@@ -107,6 +104,8 @@ export async function observeDispatcherModelStop({ brandRoot, stateDir, input, h
     // D4: a diagnostic write failure must not block the stop or hide an observed quota violation.
   }
   return observation.verdict === 'violation'
-    ? `codex-bridge: dispatcher ${input.agent_type} ran on ${observation.data.parsed.join(', ')} while the installed contract pins ${observation.data.pinFamily} — Claude quota was spent on it; run codex-bridge doctor.`
+    ? orderDiagnosticMessage('dispatcher-model-stop-warning', {
+      agentType: input.agent_type, models: observation.data.parsed.join(', '), pinFamily: observation.data.pinFamily,
+    })
     : null;
 }
