@@ -17,6 +17,8 @@ import {
 } from '../write-meta.mjs';
 import { TASK_HASH_SCHEME } from '../meta/chain.mjs';
 import { orderInputName } from '../order-schema.mjs';
+import { orderLabelReason, orderRuleMessage } from '../order-rules.mjs';
+import { orderDiagnosticMessage } from '../order-diagnostics.mjs';
 import { EXIT } from './exit-codes.mjs';
 import { passGate } from './pass-gate.mjs';
 import { setRun } from './run-context.mjs';
@@ -53,7 +55,10 @@ const RUNNER_ENTRY = fileURLToPath(new URL('../run-codex.mjs', import.meta.url))
 const stamp = () => {
   const d = new Date();
   const p = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+  return [
+    [d.getFullYear(), p(d.getMonth() + 1), p(d.getDate())].join('-'),
+    [p(d.getHours()), p(d.getMinutes()), p(d.getSeconds())].join(''),
+  ].join('_');
 };
 
 /**
@@ -69,7 +74,7 @@ export function makeRunDir(base) {
       return dir;
     } catch (err) {
       if (err.code !== 'EEXIST') throw err;
-      dir = `${base}-${n}`;
+      dir = [base, n].join('-');
     }
   }
 }
@@ -108,16 +113,14 @@ export async function launcher(argv = process.argv.slice(2)) {
   // lists are empty and the check passes. Only paths named in `scope new:` may be absent.
   const scopeRefusal = validateScope(repoRoot, opts.scopePatterns, opts.scopeNewPatterns);
   if (scopeRefusal) {
-    die(
-      `${orderInputName(scopeRefusal.label)} pattern ${JSON.stringify(scopeRefusal.pattern)} refused: ` +
-        `${scopeRefusal.reason}. ` +
-        `Action: ${scopeRefusal.action}. The run folder was not created; quota was not spent.`,
-    );
+    die([orderLabelReason(orderInputName(scopeRefusal.label), orderRuleMessage('scope-pattern-refusal', {
+      pattern: scopeRefusal.pattern, reason: scopeRefusal.reason, action: scopeRefusal.action,
+    })), orderDiagnosticMessage('run-not-created')].join(' '));
   }
   // Plan_77 D6: project-dir.mjs:84 recursively recreated a retired CODEX_RUNS_ROOT.
   // Refuse before that mkdir, using the same resolution that checked the advice header.
   const stale = staleOverrideRefusal(resolution);
-  if (stale) die(`${stale}\nThe run folder was not created; quota was not spent.`, EXIT.FAIL);
+  if (stale) die([stale, orderDiagnosticMessage('run-not-created')].join('\n'), EXIT.FAIL);
   const projectRunsRoot = resolveProjectRunsDir(resolution.root, repoRoot).dir;
   // Plan_60 D4c, 2026-09-24: two launchers of one order both billed. The claim comes before markAbandoned, or a
   // contender could close a run whose worker is admitting itself and start a second paid one.
@@ -134,10 +137,9 @@ export async function launcher(argv = process.argv.slice(2)) {
     if (isGitRepo) {
       const drift = abandonedBranchDrift(projectRunsRoot, repoRoot, branchName(repoRoot));
       if (drift) {
-        die(
-          `repository is detached after abandoned run ${drift.run}, which recorded branch ${drift.branch}. ` +
-            `Return with: git checkout ${drift.branch}. No run folder was created and no quota was spent.`,
-        );
+        die(orderDiagnosticMessage('repository-detached-after-abandoned-run', {
+          run: drift.run, branch: drift.branch,
+        }));
       }
     }
 
@@ -302,8 +304,8 @@ export async function launcher(argv = process.argv.slice(2)) {
       const { reply } = writeFailure(
         runDir,
         opts.agent,
-        `argument cannot be passed through cmd.exe (contains % or "): ${unsafe}`,
-        ['Codex was not started; quota was not spent'],
+        orderDiagnosticMessage('cmd-argument-transport', { argument: unsafe }),
+        [orderDiagnosticMessage('codex-not-started')],
         true,
       );
       console.log(reply);
@@ -335,9 +337,9 @@ export async function launcher(argv = process.argv.slice(2)) {
     const started = await new Promise((resolve) => {
       worker.once('spawn', () => resolve(true));
       worker.once('error', (err) => {
-        const { reply } = writeFailure(runDir, opts.agent, `run worker process failed to start: ${err.message}`, [
-          'Codex was not started; quota was not spent',
-        ], true);
+        const { reply } = writeFailure(runDir, opts.agent,
+          orderDiagnosticMessage('run-worker-start-failure', { message: err.message }),
+          [orderDiagnosticMessage('codex-not-started')], true);
         console.log(reply);
         resolve(false);
       });

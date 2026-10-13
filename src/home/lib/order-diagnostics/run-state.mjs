@@ -16,4 +16,16 @@ export const DIAGNOSTICS = Object.freeze({
     message: ({ scopeFile }) =>
       `Malformed advise scope result at ${scopeFile}: expected predicted_risks and missing_paths arrays.`,
   }),
+  'repository-detached-after-abandoned-run': Object.freeze({
+    data: Object.freeze(['run', 'branch']),
+    category: 'run-state',
+    message: ({ run, branch }) =>
+      `repository is detached after abandoned run ${run}, which recorded branch ${branch}. ` +
+      `Return with: git checkout ${branch}. No run folder was created and no quota was spent.`,
+  }),
+  'codex-not-started': Object.freeze({
+    data: Object.freeze([]),
+    category: 'run-state',
+    message: () => 'Codex was not started; quota was not spent',
+  }),
 });

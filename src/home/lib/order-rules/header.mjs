@@ -196,4 +196,11 @@ export const RULES = Object.freeze({
       throw new Error(`unknown order-id-owner violation: ${violation}`);
     },
   }),
+  'scope-pattern-refusal': Object.freeze({
+    data: Object.freeze(['pattern']),
+    topic: 'order',
+    rule: 'Correct the refused scope pattern using its scope-check reason and action before starting a run.',
+    message: ({ pattern, reason, action }) =>
+      `pattern ${JSON.stringify(pattern)} refused: ${reason}. Action: ${action}.`,
+  }),
 });

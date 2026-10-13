@@ -47,19 +47,19 @@ const REFUSALS = [
   {
     name: 'an impossible scope header pattern',
     side: 'before',
-    marker: 'pattern ${JSON.stringify(scopeRefusal.pattern)} refused: ',
+    marker: "'scope-pattern-refusal'",
     why: 'Plan_27: nothing has been touched and the order has to be rewritten',
   },
   {
     name: 'a CODEX_RUNS_ROOT that points under a retired runs root',
     side: 'before',
-    marker: 'if (stale) die(`${stale}',
+    marker: 'if (stale) die([stale,',
     why: 'Plan_77 D6: resolveProjectRunsDir would recreate the retired store with a recursive mkdir',
   },
   {
     name: 'a detached tree left by an abandoned run',
     side: 'before',
-    marker: 'repository is detached after abandoned run',
+    marker: "'repository-detached-after-abandoned-run'",
     why: 'the repository has to be returned to its branch first, by the operator',
   },
   {
@@ -126,13 +126,13 @@ const REFUSALS = [
   {
     name: 'an argument cmd.exe cannot carry',
     side: 'after',
-    marker: 'argument cannot be passed through cmd.exe',
+    marker: "'cmd-argument-transport'",
     why: 'the tree snapshot is already inside the folder, so the folder explains itself',
   },
   {
     name: 'a worker that failed to spawn',
     side: 'after',
-    marker: 'run worker process failed to start',
+    marker: "'run-worker-start-failure'",
     why: 'the worker order is already written; a half-started run must be readable later',
   },
 ];

@@ -25,6 +25,7 @@ test('registry maps and entries are frozen and have exactly their contracted fie
     'advisor-advise-continuation', 'build-advice-required', 'advise-scope-run-required',
     'run-phase-required', 'writing-run-exclusive', 'order-launch-exclusive', 'order-id-owner',
     'advisor-task-options', 'advisor-task-paths', 'advice-retired-root',
+    'scope-pattern-refusal',
   ].sort());
   for (const entry of Object.values(ORDER_RULES)) {
     assert.ok(Object.isFrozen(entry));
@@ -36,7 +37,7 @@ test('registry maps and entries are frozen and have exactly their contracted fie
     assert.deepEqual(Object.keys(entry).sort(), ['category', 'data', 'message']);
     assert.equal(typeof entry.message, 'function');
   }
-  assert.deepEqual(Object.keys(ORDER_DIAGNOSTICS), [
+  assert.deepEqual(Object.keys(ORDER_DIAGNOSTICS).sort(), [
     'no-wait-grant-conflict', 'task-channel-conflict', 'unexpected-argument', 'unknown-flag',
     'boolean-flag-value', 'missing-flag-value', 'flag-shell-safety', 'agent-required', 'agent-known',
     'task-file-readable',
@@ -65,7 +66,8 @@ test('registry maps and entries are frozen and have exactly their contracted fie
     'order-claim-input-valid',
     'advisor-task-text-required',
     'sandbox-probe-repository-required',
-  ]);
+    'cmd-argument-transport', 'run-worker-start-failure', 'repository-detached-after-abandoned-run', 'codex-not-started',
+  ].sort());
   assert.equal(ORDER_DIAGNOSTICS['no-wait-grant-conflict'].category, 'cli-flags');
 });
 

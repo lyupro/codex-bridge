@@ -167,4 +167,14 @@ export const DIAGNOSTICS = Object.freeze({
       throw new Error(`unknown sandbox-known-failure-deny-read-state-corrupt part: ${part}`);
     },
   }),
+  'cmd-argument-transport': Object.freeze({
+    data: Object.freeze(['argument']),
+    category: 'host-state',
+    message: ({ argument }) => `argument cannot be passed through cmd.exe (contains % or "): ${argument}`,
+  }),
+  'run-worker-start-failure': Object.freeze({
+    data: Object.freeze(['message']),
+    category: 'host-state',
+    message: ({ message }) => `run worker process failed to start: ${message}`,
+  }),
 });

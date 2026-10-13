@@ -172,6 +172,11 @@ const expectedData = {
   'sandbox-probe-repository-required': [],
   'sandbox-known-failure-runtime-file-locked': ['part'],
   'sandbox-known-failure-deny-read-state-corrupt': ['part', 'file'],
+  'scope-pattern-refusal': ['pattern'],
+  'cmd-argument-transport': ['argument'],
+  'run-worker-start-failure': ['message'],
+  'repository-detached-after-abandoned-run': ['run', 'branch'],
+  'codex-not-started': [],
 };
 
 test('each entry freezes the caller-classified data allowlist and excludes forwarded prose', () => {
