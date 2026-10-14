@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.16] - 2026-10-14
+
+### Changed
+
+- `codex-bridge guidance order` now prints every rule the runner, the order gate and the dispatcher enforce on a
+  task file, under "Rules the runner enforces", straight from the registry that also builds each refusal. A rule
+  could previously be enforced without being described anywhere, and an orchestrator learned it only from a
+  refusal. The topic's own text keeps the examples and the meaning of the grants, not copies of these rules.
+- The rules core installed into the Claude Code host now says to run `codex-bridge guidance order` before every
+  task file. Run `codex-bridge update` to refresh the installed core.
+- The `records` topic describes `task.md` (the assembled input Codex receives), `raw.log` (optional transport
+  evidence) and the required fields of `review.json`. The list of shell-unsafe sequences in `order` is printed
+  from the code that refuses them, not copied by hand.
+- The dispatcher prompts and the dispatcher gate take their instructions from one catalog, so the reason a call is
+  denied is a phrase the dispatcher prompt already contains. Installed prompts change wording after
+  `codex-bridge update`; the gate's refusal texts are unchanged.
+
+### Fixed
+
+- The test-time check that every refusal text comes from the registry can no longer lose a violation when its
+  journal cannot be written: the process stops with exit code 70 and leaves a marker the test runner fails on.
+  This affects only the package's own test suite.
+
 ## [0.6.15] - 2026-10-12
 
 ### Fixed
