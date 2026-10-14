@@ -31,6 +31,7 @@ import { auditWrites } from './home-write-audit.mjs';
 import { HOME_WRITE_INVENTORY } from './home-write-inventory.mjs';
 import { readmeText, suiteCountMismatch } from './suite-count.mjs';
 import { snapshotRoot, addedEntries } from './root-guard/root-entries.mjs';
+import { orderTextFaultDirectory } from '../src/home/lib/order-text-record.mjs';
 
 // Plan_79 B5b2b D5/D6: migration is complete, so every journal line is fatal.
 export function inspectOutgoingRefusals(directory, report) {
@@ -40,6 +41,22 @@ export function inspectOutgoingRefusals(directory, report) {
       const lines = fs.readFileSync(path.join(directory, file), 'utf8').split(/\r?\n/).filter(Boolean);
       for (const line of lines) {
         report(`run-tests: refusal text outside the registry: ${line}\n`);
+        fatal++;
+      }
+    }
+  }
+  return fatal;
+}
+
+// Plan_79 D9: a child whose fault exit is expected must still leave runner-visible evidence.
+export function inspectOrderTextFaults(directory, report) {
+  let fatal = 0;
+  if (fs.existsSync(directory)) {
+    for (const file of fs.readdirSync(directory)) {
+      const lines = fs.readFileSync(path.join(directory, file), 'utf8').split(/\r?\n/).filter(Boolean);
+      if (!lines.length) lines.push(`empty fault marker: ${file}`);
+      for (const line of lines) {
+        report(`run-tests: refusal check could not journal: ${line}\n`);
         fatal++;
       }
     }
@@ -98,7 +115,9 @@ try {
   const refusalJournal = path.join(testTmpRoot, 'order-text-violations');
   const fatalRefusals = inspectOutgoingRefusals(refusalJournal,
     (line) => process.stderr.write(line));
-  if (fatalRefusals && process.exitCode === 0) process.exitCode = 1;
+  const fatalFaults = inspectOrderTextFaults(orderTextFaultDirectory(testTmpRoot),
+    (line) => process.stderr.write(line));
+  if ((fatalRefusals || fatalFaults) && process.exitCode === 0) process.exitCode = 1;
   for (const name of additions) {
     process.stderr.write(`run-tests: the suite left ${name} in the repository root (or something else created it while the suite ran)\n`);
   }
@@ -119,6 +138,7 @@ try {
 } finally {
   for (const [, directory] of created) fs.rmSync(directory, { recursive: true, force: true });
   fs.rmSync(testTmpRoot, { recursive: true, force: true });
+  fs.rmSync(orderTextFaultDirectory(testTmpRoot), { recursive: true, force: true });
   if (tapFile) fs.rmSync(path.dirname(tapFile), { recursive: true, force: true });
 }
 }

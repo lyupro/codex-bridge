@@ -45,7 +45,11 @@ folder never feeds two hosts:
   the two entry points are the only importers (D4). `order-text-record.mjs` is test-only provenance
   (D5): under `CODEX_BRIDGE_TEST_TMP` the builders record what they hand out and every transport (`die`,
   the hooks' `deny`, the dispatcher handback, `{ refusal }`) journals a message not made of that output;
-  `scripts/run-tests.mjs` fails the suite on any journal line. Each registry entry lists its `data`
+  `scripts/run-tests.mjs` fails the suite on any journal line. The journal is written only on a
+  violation, so a failed write ends the process (D9): the module's one `catch` hands it to
+  `journalFault`, which prints to fd 2, drops a marker in the root's sibling `<root>-faults` and exits
+  `ORDER_TEXT_FAULT_EXIT` (70) in `finally` — no hook catch or `exit(0)` can hide it, and the runner
+  fails on any marker. Each registry entry lists its `data`
   parameters (D6); any other parameter must itself be recorded output, checked before the builder
   records its result. Only the registry modules and the dispatcher protocol catalog
   (`dispatcher-protocol.mjs`, D8, one `checkedOrderText` call) may record text.

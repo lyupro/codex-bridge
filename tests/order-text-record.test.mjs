@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { makeTempTree } from './temp-tree.mjs';
 import { inspectOutgoingRefusals } from '../scripts/run-tests.mjs';
+import { ORDER_TEXT_FAULT_EXIT, orderTextFaultDirectory } from '../src/home/lib/order-text-record.mjs';
 
 const recorder = new URL('../src/home/lib/order-text-record.mjs', import.meta.url).href;
 const args = new URL('../src/home/lib/runner/args.mjs', import.meta.url).href;
@@ -27,7 +28,7 @@ function runCase(body, { marker = true, blocked = false } = {}) {
     ${body}
   `], { env, encoding: 'utf8', windowsHide: true, timeout: 10_000 });
   assert.ifError(result.error);
-  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.equal(result.status, blocked ? ORDER_TEXT_FAULT_EXIT : 0, result.stderr || result.stdout);
   const directory = path.join(root, 'order-text-violations');
   const lines = fs.existsSync(directory) ? fs.readdirSync(directory).flatMap((file) =>
     fs.readFileSync(path.join(directory, file), 'utf8').trim().split('\n').filter(Boolean)) : [];
@@ -104,11 +105,20 @@ if (fixture) {
     assert.equal(entries[0].transport, 'enabled later');
   });
 
-  test('checking a refusal never throws or changes it when the journal cannot be written', () => {
-    const { entries } = runCase(`
-      assert.doesNotThrow(() => assert.equal(checkOutgoingRefusal('handwritten', 'blocked'), 'handwritten'));
+  test('checking a refusal stops with a fault marker when the journal cannot be written', () => {
+    const { entries, root, result } = runCase(`
+      checkOutgoingRefusal('handwritten', 'blocked');
     `, { blocked: true });
     assert.deepEqual(entries, []);
+    assert.equal(result.stdout, '');
+    const marker = fs.readFileSync(path.join(orderTextFaultDirectory(root), `${result.pid}.jsonl`), 'utf8');
+    assert.equal(result.stderr, `order-text-record: journal write failed: ${marker}`);
+    const entry = JSON.parse(marker);
+    assert.equal(entry.kind, 'outgoing');
+    assert.equal(entry.transport, 'blocked');
+    assert.equal(entry.message, 'handwritten');
+    assert.match(entry.error, /EEXIST|ENOTDIR/);
+    assert.equal(fs.existsSync(orderTextFaultDirectory(process.env.CODEX_BRIDGE_TEST_TMP)), false);
   });
 
   test('registry helpers record their unchanged output', () => {

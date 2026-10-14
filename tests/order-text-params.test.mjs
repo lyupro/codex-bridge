@@ -9,6 +9,7 @@ import { makeTempTree } from './temp-tree.mjs';
 import { expectedData } from './order-guard/expected-data.mjs';
 import { ORDER_RULES, validateOrderRules } from '../src/home/lib/order-rules.mjs';
 import { ORDER_DIAGNOSTICS, validateOrderDiagnostics } from '../src/home/lib/order-diagnostics.mjs';
+import { ORDER_TEXT_FAULT_EXIT, orderTextFaultDirectory } from '../src/home/lib/order-text-record.mjs';
 
 const lib = new URL('../src/home/lib/', import.meta.url);
 const recorder = new URL('order-text-record.mjs', lib).href;
@@ -35,11 +36,11 @@ function runCase(body, { marker = true, blocked = false } = {}) {
     ${body}
   `], { env, encoding: 'utf8', windowsHide: true, timeout: 10_000 });
   assert.ifError(result.error);
-  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.equal(result.status, blocked ? ORDER_TEXT_FAULT_EXIT : 0, result.stderr || result.stdout);
   const directory = path.join(root, 'order-text-violations');
   const entries = fs.existsSync(directory) ? fs.readdirSync(directory).flatMap((file) =>
     fs.readFileSync(path.join(directory, file), 'utf8').split(/\r?\n/).filter(Boolean).map(JSON.parse)) : [];
-  return { entries, result };
+  return { entries, result, root };
 }
 
 const laundering = [
@@ -210,11 +211,21 @@ test('without test mode builders preserve text and neither check nor record or w
   assert.equal(entries[0].kind, 'parameter');
 });
 
-test('an unwritable journal never throws or changes the builder result', () => {
-  const { entries } = runCase(`
-    assert.doesNotThrow(() => assert.equal(orderRefusalAt('location', 'unrecorded'), 'location: unrecorded'));
+test('an unwritable journal stops the builder with a fault marker', () => {
+  const { entries, root, result } = runCase(`
+    orderRefusalAt('location', 'unrecorded');
   `, { blocked: true });
   assert.deepEqual(entries, []);
+  assert.equal(result.stdout, '');
+  const marker = fs.readFileSync(path.join(orderTextFaultDirectory(root), `${result.pid}.jsonl`), 'utf8');
+  assert.equal(result.stderr, `order-text-record: journal write failed: ${marker}`);
+  const entry = JSON.parse(marker);
+  assert.equal(entry.kind, 'parameter');
+  assert.equal(entry.builder, 'orderRefusalAt');
+  assert.equal(entry.parameter, 'message');
+  assert.equal(entry.message, 'unrecorded');
+  assert.match(entry.error, /EEXIST|ENOTDIR/);
+  assert.equal(fs.existsSync(orderTextFaultDirectory(process.env.CODEX_BRIDGE_TEST_TMP)), false);
 });
 
 test('parameter and outgoing violations from a formerly pending caller are both fatal', () => {
