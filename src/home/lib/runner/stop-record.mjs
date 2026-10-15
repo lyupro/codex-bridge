@@ -6,6 +6,8 @@
 import path from 'node:path';
 import { readJsonFileSync } from '../json-file.mjs';
 import { AGENTS } from '../write-meta.mjs';
+import { readEvents } from '../meta/events.mjs';
+import { readSessionActivity } from '../codex-session-log.mjs';
 
 /** Keep the first observed cause separate from the eventual exit and pipe drain. */
 export function createStopObservation() {
@@ -54,5 +56,10 @@ export function buildStopRecord(run, runDir, agent) {
         : { state: 'unreadable', error: error.message };
   }
   if (!resultFile) resultFile = { state: Boolean(result) && cfg.filled(result) ? 'filled' : 'unfilled' };
-  return { version: 1, ...run.stop, receipts: run.receipts, result_file: resultFile };
+  const threadId = readEvents(runDir).session_id;
+  const session = readSessionActivity({
+    threadId,
+    startedAt: threadId ? readJsonFileSync(path.join(runDir, 'status.json')).started_at : undefined,
+  });
+  return { version: 1, ...run.stop, receipts: run.receipts, result_file: resultFile, session };
 }

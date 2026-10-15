@@ -27,7 +27,14 @@ function resultTree() {
 test('missing result is observed without adding a file write', () => {
   const { dir } = resultTree();
   const record = buildStopRecord(run, dir, 'codex-review');
-  assert.deepEqual(record, { version: 1, ...run.stop, receipts, result_file: { state: 'missing' } });
+  const { sampled_at: sampledAt, ...session } = record.session;
+  assert.match(sampledAt, /Z$/);
+  assert.deepEqual({ ...record, session }, {
+    version: 1, ...run.stop, receipts, result_file: { state: 'missing' },
+    // No events.jsonl, so no thread id: the session log was not looked for.
+    session: { state: 'not-observed', reason: null, file: null, last_record_at: null,
+      last_record_kind: null, records: 0, unknown_kinds: [] },
+  });
   assert.deepEqual(fs.readdirSync(dir), []);
 });
 
@@ -60,8 +67,8 @@ test('filled uses the selected agent registry and observes the result exactly on
   const read = t.mock.method(fs, 'readFileSync');
   const record = buildStopRecord(run, dir, 'codex-review');
   assert.deepEqual(record.result_file, { state: 'filled' });
-  assert.equal(read.mock.callCount(), 1);
-  assert.equal(read.mock.calls[0].arguments[0], file);
+  // The stop record also reads events.jsonl for the thread id; the result itself is read once.
+  assert.equal(read.mock.calls.filter((call) => call.arguments[0] === file).length, 1);
   assert.equal(record.receipts, receipts);
   read.mock.restore();
   fs.writeFileSync(file, '{}');
@@ -239,4 +246,14 @@ test('a settlement with no observed trigger names the trigger fields as null', (
     stdio_drained: true,
     elapsed_ms: 5,
   });
+});
+
+test('a thread without a recorded start time still builds the stop record (no throw in the worker)', () => {
+  const { dir } = resultTree();
+  fs.writeFileSync(path.join(dir, 'events.jsonl'),
+    `${JSON.stringify({ type: 'thread.started', thread_id: '00000000-0000-0000-0000-000000000000' })}\n`);
+  fs.writeFileSync(path.join(dir, 'status.json'), '{}\n');
+  const record = buildStopRecord(run, dir, 'codex-review');
+  assert.equal(record.session.state, 'not-observed');
+  assert.equal(record.session.reason, 'run start time unknown');
 });

@@ -470,6 +470,7 @@ independent facts. The runner writes `status.json#stop`, because Codex can write
 | `elapsed_ms` | The resolved `runCodex` elapsed time, also recorded separately in status. |
 | `receipts` | The stdout receipt summary: `lines`, `last_received_at`, `incomplete`, `truncated`, `write_error`. |
 | `result_file` | One observation of the selected agent's result file, with `state` as below. |
+| `session` | Read-only observation of this thread's Codex session-log activity, with fields and states below. |
 
 `exit` means the child's `exit` event came first. `deadline` means the budget timer fired
 while the child was alive. `stream-error` means a log stream failed and the runner stopped
@@ -483,6 +484,37 @@ file was read but was not JSON; `unfilled` means parsed JSON failed the agent re
 `filled` check; `filled` means that check passed. The runner reads the result exactly once
 for this record and adds no new file write. Later changes to artifacts cannot rewrite the
 record through `collect()`.
+
+`session` is read once using `events.jsonl`'s `thread.started` id and
+`status.json#started_at`. The independent reader uses `resolveCodexHome()` and looks only in
+`sessions/YYYY/MM/DD/` for the local start day, the day before, and the day after; it never
+recursively scans the session store. Plan_80 S1/S2 calibrated silence on session-log record
+times because stdout goes silent earlier. This observation does not change the verdict.
+
+| Session field | Meaning |
+| --- | --- |
+| `state` | `not-observed`, `missing`, `unreadable`, `empty`, `unrecognized`, `incomplete`, or `observed`, as below. |
+| `reason` | Read error message for `unreadable`; violated format rule and line number for `unrecognized`, without log content; otherwise `null`. |
+| `file` | Rollout file name only, never its path; `null` if no file was found. |
+| `last_record_at` | Timestamp of the last valid record of any kind. Available for `observed` and `incomplete`; otherwise `null`. This is the activity clock. |
+| `last_record_kind` | That record's `type`, or `type/payload.type` for `event_msg` and `response_item` when the sub-kind is present; otherwise `null` with the timestamp. |
+| `records` | Number of valid records read before the end or a format violation, including `token_count` events. |
+| `unknown_kinds` | Distinct top-level `type` values outside the known list; these do not invalidate an otherwise valid envelope. |
+| `sampled_at` | Time the reader ran. Never an activity clock; neither file mtime nor heartbeat is activity either. |
+
+`not-observed` means no thread id was available, or no valid run start time to pick the day
+folder (`reason: "run start time unknown"`; the reader never throws for it and never guesses
+today's folder). `missing` means none of the three day
+folders contained the thread's rollout. `unreadable` means discovery or reading failed.
+`empty` means zero records in an empty file. `unrecognized` means a non-final line is not
+JSON, an envelope is invalid (string timestamp/type, numeric ordinal, object payload are
+required), the timestamp does not use `YYYY-MM-DDTHH:mm:ss.sssZ`, or the first
+`session_meta.payload.id` differs from the thread id. BOM and CRLF are outside the format.
+The rule and line number are reported without echoing values from the log.
+`incomplete` means the last line lacks LF or cannot parse and every earlier line is valid;
+activity from valid records is retained, including a valid final record without LF.
+`observed` means all records are valid and LF-terminated. Structural timestamps and kinds
+are the only log fields exposed; payload text, metadata and identities are never returned.
 
 ## File relationships
 
