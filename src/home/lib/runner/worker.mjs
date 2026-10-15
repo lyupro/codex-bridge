@@ -18,6 +18,7 @@ import { writeStatus } from '../meta/run-state.mjs';
 import { setRun, emitReply } from './run-context.mjs';
 import { writeBuildAfter } from './build-evidence.mjs';
 import { runCodex } from './codex-cmd.mjs';
+import { buildStopRecord } from './stop-record.mjs';
 import { admitWorker } from './worker-admission.mjs';
 import { orderClaimHolderText } from './order-claim.mjs';
 import { EXIT } from './exit-codes.mjs';
@@ -61,6 +62,7 @@ export async function worker(runDir) {
     stopped_on_deadline: run.stoppedOnDeadline,
     elapsed_ms: run.elapsedMs,
     stdio_drained: run.stdioDrained,
+    stop: buildStopRecord(run, runDir, cfg.agent),
   });
 
   if (cfg.agent === 'codex-build') writeBuildAfter({ runDir, repoRoot, isGitRepo: cfg.is_git_repo });

@@ -120,6 +120,8 @@ export function collect(runDir, agent, exitCode) {
     exit,
     status,
     reason,
+    // Plan_80 A4: preserve the runner's observation; an older run was never observed.
+    stop: launched.stop ?? null,
     // An OK earned by an earlier pass of the same task reads differently from an OK earned
     // here, and accounting must not blur the two: always present, so its absence in a reply
     // is never mistaken for "false".

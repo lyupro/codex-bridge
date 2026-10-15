@@ -13,6 +13,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { createHeartbeat, HEARTBEAT_INTERVAL_MS } from '../heartbeat.mjs';
 import { MAX_LOG } from './git-state.mjs';
 import { createStdoutReceipts } from './stdout-receipts.mjs';
+import { createStopObservation } from './stop-record.mjs';
 
 // Thirty seconds, not a fraction of one: after `exit` the pipe still holds whatever Codex wrote
 // last, and that tail carries `item.completed` — the result the verdict is read from. A quarter
@@ -250,6 +251,7 @@ export function runCodex(args, taskText, eventsPath, budgetMinutes, graceMs = ST
 
   return new Promise((resolve) => {
     let failed = false;
+    const stop = createStopObservation();
     let deadlineTimer;
     let heartbeatTimer;
     let stdioGraceTimer;
@@ -271,6 +273,7 @@ export function runCodex(args, taskText, eventsPath, budgetMinutes, graceMs = ST
     // extra step. The run dies, but it dies with its child: killing first, recording second.
     const onStreamError = (which) => (err) => {
       failed = true;
+      stop.observe('stream-error', err);
       const note = `\nrun-codex: cannot write ${which}: ${err.message}\n`;
       if (which !== 'stderr.log' && stderrLog.writable) stderrLog.write(note);
       stopCodex(child, onWindows);
@@ -279,6 +282,7 @@ export function runCodex(args, taskText, eventsPath, budgetMinutes, graceMs = ST
     eventsLog.on('error', onStreamError('events.jsonl'));
     child.on('error', (err) => {
       failed = true;
+      stop.observe('spawn-error', err);
       appendStderr(`\nrun-codex: ${err.message}\n`);
     });
     // Codex that dies before reading the order leaves an EPIPE here; the exit code and the
@@ -293,6 +297,7 @@ export function runCodex(args, taskText, eventsPath, budgetMinutes, graceMs = ST
         // the budget exists to end — but only a process that was still alive was killed by
         // the deadline, and only that run may say so.
         if (!exited) {
+          stop.observe('deadline');
           stoppedOnDeadline = true;
           elapsedMs = elapsed;
           stderrLog.write(
@@ -334,10 +339,12 @@ export function runCodex(args, taskText, eventsPath, budgetMinutes, graceMs = ST
       await receipts.close();
       await close(stderrLog);
       await close(eventsLog);
-      resolve({ exit, stoppedOnDeadline, elapsedMs, stdioDrained, receipts: receipts.summary });
+      resolve({ exit, stoppedOnDeadline, elapsedMs, stdioDrained, receipts: receipts.summary,
+        stop: stop.snapshot(stdioDrained, elapsedMs) });
     };
 
-    child.on('exit', (code) => {
+    child.on('exit', (code, signal) => {
+      stop.exit(code, signal);
       exited = true;
       exitCode = code;
       if (deadlineTimer) clearTimeout(deadlineTimer);

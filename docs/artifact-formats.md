@@ -36,6 +36,7 @@ before the final update to `status.json`.
 | `stopped_on_deadline` | Whether the runner killed the run at its time limit. Written by the worker immediately after Codex returns, before the verdict; `false` means “the runner monitored the run and did not kill it.” An absent field means a run from the previous contract. This fact used to live in a log line, where Codex itself also writes. |
 | `elapsed_ms` | How long the run lived before Codex returned. This is actual elapsed time, not the allocated budget: the budget is in `worker.json#budget_minutes`. |
 | `stdio_drained` | Whether the worker managed to wait for stdout/stderr to close normally. `true` means a normal `close`; `false` means closure after a limited grace period because a stream held the process open. The field is written before the verdict and does not replace `stopped_on_deadline`. |
+| `stop` | Runner-owned versioned observation of the first stop trigger, stdout receipts and result-file availability; see “Stop record” below. Written after `runCodex`, before the verdict. Absent on older runs. |
 | `status` | Final `OK`, `FAIL`, or `LIMIT`; appears when closing with a verdict. |
 | `finished_at` | Time of the final verdict in ISO 8601. |
 | `tree_after` | For `abandoned`, written as `false`: the post-run tree snapshot is unknown. |
@@ -73,6 +74,10 @@ a possibly hung process, but does not allow `unlock` to close the record: a conf
 `codex-bridge stop <run>`, which kills the process first.
 
 ## `meta.json`
+
+`stop` copies `status.json#stop` verbatim. It is `null` when that field is absent on an older
+run: the stop was not observed, rather than observed as false. `collect()` never recomputes
+this record or reads additional evidence for it, so collecting again preserves the same `stop`.
 
 ### Fields of a normal `collect()`
 
@@ -446,6 +451,38 @@ fragment or truncation receipt, initially `null`), `incomplete`, `truncated`, an
 Receipts are transport files removed by retention and gentle pruning, like `events.jsonl`.
 They are diagnostics only, never the silence signal: stdout carries no timestamps and goes
 silent earlier than the Codex session log.
+
+## Stop record
+
+Plan_80 A2/A4 (`dual-evidence`) records stop cause, activity and evidence availability as
+independent facts. The runner writes `status.json#stop`, because Codex can write `events.jsonl`.
+`meta.json#stop` preserves that observation; neither the verdict nor any reply uses it.
+
+| Field | Meaning |
+| --- | --- |
+| `version` | `1`. |
+| `trigger` | First observed stop trigger: `exit`, `deadline`, `stream-error`, or `spawn-error`; `null` (with `stopped_at` and `process_error`) when the run settled with no trigger observed first. |
+| `stopped_at` | ISO wall-clock time when that first trigger was observed, never the later settlement time after draining. |
+| `exit_code` | Code from the child's `exit` event; `null` if that event never fired (or exited by signal). |
+| `signal` | Signal from the child's `exit` event; `null` if absent or that event never fired. |
+| `process_error` | Error message for a first stream/spawn error trigger; otherwise `null`. |
+| `stdio_drained` | The resolved `runCodex` drain observation, also recorded separately in status. |
+| `elapsed_ms` | The resolved `runCodex` elapsed time, also recorded separately in status. |
+| `receipts` | The stdout receipt summary: `lines`, `last_received_at`, `incomplete`, `truncated`, `write_error`. |
+| `result_file` | One observation of the selected agent's result file, with `state` as below. |
+
+`exit` means the child's `exit` event came first. `deadline` means the budget timer fired
+while the child was alive. `stream-error` means a log stream failed and the runner stopped
+Codex; `spawn-error` means the child emitted `error`. A later exit supplies its code/signal
+without replacing the first trigger or its timestamp. Receipt write failures remain receipt
+diagnostics and do not stop Codex.
+
+`result_file.state` distinguishes presence from usability: `missing` means no file;
+`unreadable` means reading failed and includes an `error` message; `malformed` means the
+file was read but was not JSON; `unfilled` means parsed JSON failed the agent registry's
+`filled` check; `filled` means that check passed. The runner reads the result exactly once
+for this record and adds no new file write. Later changes to artifacts cannot rewrite the
+record through `collect()`.
 
 ## File relationships
 
