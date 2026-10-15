@@ -85,6 +85,7 @@ this record or reads additional evidence for it, so collecting again preserves t
 | --- | --- |
 | `agent` | Agent name. |
 | `phase` | Resolved phase copied from `worker.json` (or `status.json` if needed); `null` for runs made before phases existed. |
+| `silence_policy` | Policy frozen in `worker.json#silence_policy`, copied verbatim without consulting today's registry. A `null` object means an older run without this record; a `null` threshold inside an object means not calibrated. Diagnostic only in this release; no verdict or reply uses it. See below. |
 | `sufficient` | Advisor only: the boolean from the advisor result, or `null` when the result did not say. An insufficient scope can still be a valid `OK` result. |
 | `missing_paths` | Advisor only: paths the result identified as needed, or `null` when the result did not say. |
 | `advice` | Build only: copied from `status.json#advice`, or `null` when absent. |
@@ -108,6 +109,44 @@ this record or reads additional evidence for it, so collecting again preserves t
 | `sandbox` | The `--sandbox` argument the run was started with, or `null`. |
 | `env` | Contents of `env.json`; may be `null` for an old or early run. |
 | `session_id` | Value of the `session id:` line from the log, or `null`. |
+
+### Silence policy
+
+Plan_80 S2/E12 puts `silenceThresholdMs` beside each agent's `budget` in the package-owned
+registry, delivered by package updates. It is not a seeded `config.json` key: seeded files are
+written once and never overwritten, so a new seeded key would not reach installed hosts.
+There is no host override in this release. The launcher resolves the policy once, before spawning
+the worker; `collect()` copies that saved object, including its evidence, without recomputing it.
+
+| Field | Value |
+| --- | --- |
+| `version` | Policy format version, currently `1`. |
+| `role` | Registry role, such as `advisor`. |
+| `phase` | Budget-declared phase; `default` for scalar budgets. |
+| `threshold_ms` | Positive integer milliseconds, or explicit `null` for a role/phase that is not calibrated. Never zero or inherited from another role/phase. |
+| `calibration` | The evidence record below, or `null` when the threshold is not calibrated. |
+
+Only `advisor.advise` is calibrated: `threshold_ms: 996000`. Scout, build and review
+(`default`), and advisor `scope`, each record `threshold_ms: null, calibration: null`.
+The entire `silence_policy` object is `null` for an older run with no saved policy.
+
+The frozen calibration catalog in `silence-policy.mjs`, keyed by `<role>.<phase>`, carries
+the evidence rather than only a reference to a measurement that might later be moved or pruned:
+
+| Calibration field | `advisor.advise` value |
+| --- | --- |
+| `id` | `plan80-s2-2026-10-13` |
+| `measured_on` | `2026-10-13` |
+| `codex_version` | `0.160.1` |
+| `sample_runs` | `308` |
+| `max_healthy_pause_ms` | `855163` |
+| `min_stalled_silence_ms` | `1136878` |
+| `rule` | `midpoint of the healthy maximum and the stalled minimum` |
+
+The selected threshold is the midpoint rounded to seconds: `996000` ms, strictly between
+the measured healthy maximum and stalled minimum. The bounds test keeps the number tied to
+this evidence so it cannot drift outside the measured interval in a later round-number edit.
+This release only records the policy; it makes no silence-based classification or reply change.
 
 ### Early `writeFailure()`
 

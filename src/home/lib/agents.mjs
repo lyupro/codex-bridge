@@ -8,11 +8,11 @@
  * and hooks can read one registry without importing reply formatting or creating a cycle.
  */
 export const AGENTS = {
-  'codex-scout': { role: 'scout', budget: 15, writes: false, result: 'result.json' },
-  'codex-build': { role: 'build', budget: 25, writes: true, result: 'result.json' },
-  'codex-review': { role: 'review', budget: 20, writes: false, result: 'review.json' },
+  'codex-scout': { role: 'scout', budget: 15, silenceThresholdMs: null, writes: false, result: 'result.json' },
+  'codex-build': { role: 'build', budget: 25, silenceThresholdMs: null, writes: true, result: 'result.json' },
+  'codex-review': { role: 'review', budget: 20, silenceThresholdMs: null, writes: false, result: 'review.json' },
   // Plan_59: design advice needs a bounded scope pass before the continued decision pass.
-  'codex-advisor': { role: 'advisor', budget: { scope: 10, advise: 25 }, writes: false, result: 'result.json' },
+  'codex-advisor': { role: 'advisor', budget: { scope: 10, advise: 25 }, silenceThresholdMs: { scope: null, advise: 996000 }, writes: false, result: 'result.json' },
 };
 
 export const agentRole = (agent) => AGENTS[agent]?.role;

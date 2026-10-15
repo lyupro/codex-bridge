@@ -32,6 +32,7 @@ import { INSTRUCTIONS } from './prompts.mjs';
 import { git, branchName, worktreeSnapshot, reviewScope } from './git-state.mjs';
 import { writeBuildBefore } from './build-evidence.mjs';
 import { agentRole } from '../agents.mjs';
+import { resolveSilencePolicy } from '../silence-policy.mjs';
 import { codexArgs, runProfile } from './codex-args.mjs';
 import { writeWorkerOrder } from './worker-order.mjs';
 import { unsafeForCmd } from './codex-cmd.mjs';
@@ -320,6 +321,7 @@ export async function launcher(argv = process.argv.slice(2)) {
       launcherPid: process.pid,
       phase: opts.phase,
       budgetMinutes: RUN_ENV.budgets[agentRole(opts.agent)][opts.phase],
+      silencePolicy: resolveSilencePolicy(opts.agent, opts.phase),
       scopeNew: opts.scopeNewPatterns,
       profile: runProfile({ ...opts, repo: repoRoot }),
       args: codexArgv,

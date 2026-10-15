@@ -103,6 +103,8 @@ export function collect(runDir, agent, exitCode) {
     agent,
     // D2: old runs have no phase fact; do not invent one from today's registry.
     phase: worker?.phase ?? launched.phase ?? null,
+    // Plan_80 S2/E12: retain the ordered policy, never today's registry; older runs have none.
+    silence_policy: worker?.silence_policy ?? null,
     // Plan_59 D4: the scope outcome is a field the orchestrator branches on, not a sentence in
     // the reply. Null when the result never said, so a missing answer is not read as "sufficient".
     ...(agent === 'codex-advisor'

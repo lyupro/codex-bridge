@@ -4,7 +4,7 @@
  * After the launcher/worker split this file is the only connection between the two halves, and the
  * worker never re-reads the CLI or the configuration — a run that consulted config.json twice could
  * end up honouring two different limits. It carries `agent`, `slug`, `order_id`, `repo`,
- * `is_git_repo`, `launcher_pid`, `phase`, `budget_minutes`, `scope_new`, `profile` and `args`; worker.mjs
+ * `is_git_repo`, `launcher_pid`, `phase`, `budget_minutes`, `silence_policy`, `scope_new`, `profile` and `args`; worker.mjs
  * reads `repo`, `agent`, `args`, `is_git_repo` and `budget_minutes`. The rest is deliberate: those
  * fields are what a run folder read back months later needs in order to explain itself — which
  * order it belonged to, which new paths it declared included, and which worker was actually
@@ -26,6 +26,7 @@ export function workerOrder({
   launcherPid,
   phase,
   budgetMinutes,
+  silencePolicy,
   scopeNew,
   profile,
   args,
@@ -40,6 +41,7 @@ export function workerOrder({
     phase,
     // D2: the phase's wall-clock budget is frozen before the worker, never re-read from config.
     budget_minutes: budgetMinutes,
+    silence_policy: silencePolicy,
     scope_new: scopeNew,
     // Which worker was ordered, and where each half of that answer came from. Recorded separately
     // from args because an absent flag says nothing: a run without `-m` looked exactly like a run
