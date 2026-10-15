@@ -88,6 +88,7 @@ export async function diagnose({
   codexProbe = probeCodex,
   sandbox,
   sessionLog,
+  silenceCalibration,
   bridgeProbe = probeCodexBridge,
   launcherProbe,
   currentPackage,
@@ -219,6 +220,11 @@ export async function diagnose({
     : resolution ? liveRunsCheck(resolution)
       : check('liveRuns', 'warn', `working-run count unavailable: ${runsRoot.value}`));
   checks.push(projectRuns);
+  if (typeof silenceCalibration === 'function') {
+    checks.push(!resolution || resolution.staleOverride
+      ? check('silenceCalibration', 'warn', `unavailable: ${runsRoot.value}`)
+      : await silenceCalibration({ runsRoot: resolution.root, now }));
+  }
 
   return {
     exitCode: !record || recordBroken || missingFiles.length || agents.status === 'fail' || rules.status === 'fail'

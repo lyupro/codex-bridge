@@ -968,6 +968,17 @@ still being written) are `ok`; unavailable, empty or unrecognized logs are `warn
 Plan_80 stall recovery will see this host's logs as unknown evidence. This row never fails doctor
 or changes its exit code, and reports structural metadata without log content.
 
+The `silenceCalibration` row reads run metadata from the resolved runs root for the last 30
+days, grouping successful runs with recorded pauses by role and phase. Plan_80 E12 requires
+this early warning because the silence threshold ships with the package: Codex or model
+changes can make healthy runs pause longer before a stall verdict exposes calibration drift.
+A successful run whose longest quiet pause reaches or exceeds its own frozen
+`silence_policy.threshold_ms` produces `warn`, with counts, the longest pause, and instructions
+to remeasure Codex session logs and release a threshold change together with its evidence in
+`silence-policy.mjs`. No breaches (including no eligible runs) are `ok`; unreadable metadata
+records are counted as skipped. An unavailable runs root is `warn`. This check writes nothing,
+never fails doctor, and does not change its exit code.
+
 A dead-sandbox row prints the diagnosis from `$CODEX_HOME/.sandbox/` logs and
 `setup_error.json`; an order refused for the same dead sandbox prints the same diagnosis.
 The 2026-10-10 TradeForge incident exposed only “setup refresh had errors” until the log named
