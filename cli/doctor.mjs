@@ -87,6 +87,7 @@ export async function diagnose({
   host,
   codexProbe = probeCodex,
   sandbox,
+  sessionLog,
   bridgeProbe = probeCodexBridge,
   launcherProbe,
   currentPackage,
@@ -204,6 +205,7 @@ export async function diagnose({
   const codex = codexProbe();
   checks.push(check('codex', codex.available ? 'ok' : 'warn', codex.value || 'available'));
   if (typeof sandbox === 'function') checks.push(...await sandbox({ codexAvailable: codex.available }));
+  if (typeof sessionLog === 'function') checks.push(await sessionLog({ now }));
   const nodeMajor = Number.parseInt(process.versions.node.split('.')[0], 10);
   checks.push(check('node', nodeMajor >= 24 ? 'ok' : 'fail', `${process.versions.node} (requires >=24)`));
   // Plan_77 D6: catch a corrupt move record without aborting doctor, and share one resolution.

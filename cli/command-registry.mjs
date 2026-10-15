@@ -5,6 +5,7 @@
  */
 import { diagnose, renderDoctor } from './doctor.mjs';
 import { sandboxChecks } from './doctor-sandbox.mjs';
+import { sessionLogCheck } from './doctor-session-log.mjs';
 import { probeContract } from './probe-contract.mjs';
 import { resolveProbeTarget } from './probe-target.mjs';
 import { brandStateDir } from '../src/home/lib/brand-home.mjs';
@@ -189,7 +190,7 @@ export const COMMANDS = [
           io.log(`probe: ${name} ${verdict.result} — ${verdict.detail}`);
         }
       }
-      const result = await diagnose({ host, sandbox: sandboxChecks });
+      const result = await diagnose({ host, sandbox: sandboxChecks, sessionLog: sessionLogCheck });
       io.log(renderDoctor(result));
       // An inconclusive probe wrote nothing and measured nothing; exiting 0 would let a failed
       // measurement pass silently in a script (Plan_52 D26).

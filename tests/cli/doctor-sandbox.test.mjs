@@ -250,7 +250,8 @@ test('doctor command passes sandboxChecks to diagnose', async () => {
   const source = await fs.readFile(new URL('../../cli/command-registry.mjs', import.meta.url), 'utf8');
   assert.match(source, /import\s*\{\s*sandboxChecks\s*\}\s*from\s*['"]\.\/doctor-sandbox\.mjs['"]/);
   const doctor = source.slice(source.indexOf("name: 'doctor'"), source.indexOf("name: 'run'"));
-  assert.match(doctor, /diagnose\(\{\s*host,\s*sandbox:\s*sandboxChecks\s*\}\)/);
+  // Plan_80 E11: the session-log row is injected beside the sandbox probe.
+  assert.match(doctor, /diagnose\(\{\s*host,\s*sandbox:\s*sandboxChecks,\s*sessionLog:\s*sessionLogCheck\s*\}\)/);
 });
 
 test('Codex version timeout is bounded and reported even if stderr is present', (t) => {

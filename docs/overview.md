@@ -961,6 +961,13 @@ folder. A live sandbox is `ok`, a dead one is `fail`, and an inconclusive or uns
 is `warn`; an inconclusive read-only probe prevents the writing probe from racing a setup that
 may still be running.
 
+The `sessionLog` row checks this host's newest Codex session log with the same reader used by
+stall recovery. Plan_80 E11 requires this live format check because synthetic fixtures can stay
+green after a Codex update changes the real log format. Recognized logs (including a last line
+still being written) are `ok`; unavailable, empty or unrecognized logs are `warn`. A warning means
+Plan_80 stall recovery will see this host's logs as unknown evidence. This row never fails doctor
+or changes its exit code, and reports structural metadata without log content.
+
 A dead-sandbox row prints the diagnosis from `$CODEX_HOME/.sandbox/` logs and
 `setup_error.json`; an order refused for the same dead sandbox prints the same diagnosis.
 The 2026-10-10 TradeForge incident exposed only “setup refresh had errors” until the log named
