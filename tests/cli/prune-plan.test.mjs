@@ -29,6 +29,7 @@ test('gentle plans name only transport files and leave the rest outside targets'
   assert.strictEqual(TRANSPORT_FILES, RETENTION_FILES);
   const run = makeRun(root, 'alpha', '2026-07-01_090000_old', {
     'events.jsonl': 'events',
+    'stdout-receipts.jsonl': 'receipts',
     'stderr.log': 'stderr',
     'raw.log': 'raw',
     'meta.json': '{}',

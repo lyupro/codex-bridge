@@ -418,6 +418,35 @@ on a corrupt witness or without an identified host, a general `claudeRulesLoad` 
 These rows never fail: absence of a hook record cannot prove a load failure. The separate
 `claudeRules` row checks installed bytes, not witnessed loading.
 
+## `events.jsonl` and `stdout-receipts.jsonl`
+
+`events.jsonl` preserves Codex stdout bytes. Alongside it, the runner appends one JSON object
+per saved stdout line to `stdout-receipts.jsonl` (Plan_80 S1, E10/A4 dual-evidence):
+
+| Field | Meaning |
+| --- | --- |
+| `seq` | 1-based line number in `events.jsonl`. |
+| `offset` | Byte offset of the line start in `events.jsonl`. |
+| `bytes` | Saved byte length, including the newline for complete lines. |
+| `received_at` | ISO wall-clock time of the stdout data chunk that completed the line. |
+
+Lines completed by the same chunk share its timestamp. A final fragment without a newline
+has `incomplete: true`; its timestamp belongs to the chunk that delivered its last byte,
+never the later flush. At the events size cap, one terminal record
+`{ "truncated": true, "received_at": "<ISO>", "written_bytes": W }` records the cutting
+chunk's time and the bytes saved to `events.jsonl`; no further receipts are written.
+
+If receipts cannot be written, the runner stops writing them and appends one line
+`run-codex: cannot write stdout-receipts.jsonl: <message>` to `stderr.log`. Codex continues:
+the verdict does not read receipts. The resolved `runCodex` result adds a `receipts` summary
+with `lines` (saved events lines, including a final fragment), `last_received_at` (last line,
+fragment or truncation receipt, initially `null`), `incomplete`, `truncated`, and `write_error`
+(message or `null`). Observation counts continue even if the receipts file fails.
+
+Receipts are transport files removed by retention and gentle pruning, like `events.jsonl`.
+They are diagnostics only, never the silence signal: stdout carries no timestamps and goes
+silent earlier than the Codex session log.
+
 ## File relationships
 
 - `status.json` answers “is the process running, and how did it end?”

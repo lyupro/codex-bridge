@@ -12,6 +12,7 @@ import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { createHeartbeat, HEARTBEAT_INTERVAL_MS } from '../heartbeat.mjs';
 import { MAX_LOG } from './git-state.mjs';
+import { createStdoutReceipts } from './stdout-receipts.mjs';
 
 // Thirty seconds, not a fraction of one: after `exit` the pipe still holds whatever Codex wrote
 // last, and that tail carries `item.completed` — the result the verdict is read from. A quarter
@@ -168,6 +169,9 @@ export function runCodex(args, taskText, eventsPath, budgetMinutes, graceMs = ST
   };
   const stderrLog = fs.createWriteStream(path.join(path.dirname(eventsPath), 'stderr.log'), { flags: 'a' });
   const eventsLog = fs.createWriteStream(eventsPath, { flags: 'a' });
+  const receipts = createStdoutReceipts(path.dirname(eventsPath), (note) => {
+    if (stderrLog.writable && !stderrLog.destroyed && !stderrLog.errored) stderrLog.write(note);
+  });
   const appendTo = (stream, label) => {
     let written = 0;
     let cut = false;
@@ -190,12 +194,15 @@ export function runCodex(args, taskText, eventsPath, budgetMinutes, graceMs = ST
   const appendStderr = appendTo(stderrLog, 'stderr log');
   const appendEvents = (() => {
     let pending = Buffer.alloc(0);
+    let pendingReceivedAt;
     let written = 0;
     let cut = false;
     const append = (chunk) => {
+      const receivedAt = new Date().toISOString();
       stampHeartbeat();
       if (cut) return;
       const incoming = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), 'utf8');
+      if (incoming.length) pendingReceivedAt = receivedAt;
       pending = pending.length ? Buffer.concat([pending, incoming]) : incoming;
       let newline = pending.indexOf(0x0a);
       while (newline !== -1) {
@@ -203,20 +210,26 @@ export function runCodex(args, taskText, eventsPath, budgetMinutes, graceMs = ST
         pending = pending.subarray(newline + 1);
         if (written + line.length > MAX_LOG) {
           cut = true;
+          receipts.recordTruncation(receivedAt, written);
           pending = Buffer.alloc(0);
           return;
         }
-        written += line.length;
         eventsLog.write(line);
+        receipts.recordLine(written, line.length, receivedAt);
+        written += line.length;
         newline = pending.indexOf(0x0a);
       }
       if (pending.length > MAX_LOG - written) {
         cut = true;
+        receipts.recordTruncation(receivedAt, written);
         pending = Buffer.alloc(0);
       }
     };
     const finish = () => {
-      if (!cut && pending.length && written + pending.length <= MAX_LOG) eventsLog.write(pending);
+      if (!cut && pending.length && written + pending.length <= MAX_LOG) {
+        eventsLog.write(pending);
+        receipts.recordFragment(written, pending.length, pendingReceivedAt);
+      }
       pending = Buffer.alloc(0);
     };
     return { append, finish };
@@ -318,9 +331,10 @@ export function runCodex(args, taskText, eventsPath, budgetMinutes, graceMs = ST
         try { child.stdout.destroy(); } catch {}
         try { child.stderr.destroy(); } catch {}
       }
+      await receipts.close();
       await close(stderrLog);
       await close(eventsLog);
-      resolve({ exit, stoppedOnDeadline, elapsedMs, stdioDrained });
+      resolve({ exit, stoppedOnDeadline, elapsedMs, stdioDrained, receipts: receipts.summary });
     };
 
     child.on('exit', (code) => {

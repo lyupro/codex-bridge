@@ -5,7 +5,7 @@ import { liveRuns, normalizePath } from '../hooks/live-runs.mjs';
 
 // Plan_17 step 3 found one order's copied list and age default diverging on the same day. Keeping
 // the transport boundary here prevents automatic cleanup from eating accounting files.
-export const TRANSPORT_FILES = Object.freeze(['events.jsonl', 'stderr.log', 'raw.log']);
+export const TRANSPORT_FILES = Object.freeze(['events.jsonl', 'stdout-receipts.jsonl', 'stderr.log', 'raw.log']);
 
 function ageDate(name) {
   const match = /^(\d{4})-(\d{2})-(\d{2})_(\d{2})(\d{2})(\d{2})(?:_|$)/.exec(name);

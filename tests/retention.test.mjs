@@ -30,6 +30,7 @@ test('old runs lose only regular transport files and keep metadata and directori
   const root = fixture(t);
   const old = makeRun(root, '2026-07-01_090000_old', {
     'events.jsonl': 'events',
+    'stdout-receipts.jsonl': 'receipts',
     'stderr.log': 'stderr',
     'meta.json': '{}',
     'status.json': '{}',
@@ -42,11 +43,11 @@ test('old runs lose only regular transport files and keep metadata and directori
   const result = cleanupRetention(root, { enabled: true, days: 30 }, { now: NOW });
 
   assert.deepEqual(result, {
-    bytes_freed: Buffer.byteLength('events') + Buffer.byteLength('stderr'),
+    bytes_freed: Buffer.byteLength('events') + Buffer.byteLength('receipts') + Buffer.byteLength('stderr'),
     runs: 1,
     days: 30,
   });
-  for (const file of ['events.jsonl', 'stderr.log']) assert.equal(fs.existsSync(path.join(old, file)), false);
+  for (const file of ['events.jsonl', 'stdout-receipts.jsonl', 'stderr.log']) assert.equal(fs.existsSync(path.join(old, file)), false);
   assert.equal(fs.existsSync(path.join(old, 'meta.json')), true);
   assert.equal(fs.existsSync(path.join(old, 'status.json')), true);
   assert.equal(fs.existsSync(path.join(old, 'raw.log', 'nested.txt')), true);
