@@ -156,7 +156,12 @@ test('collect copies the saved policy verbatim without registry recomputation or
       assert.deepEqual(recorded.silence_policy, savedPolicy);
       assert.equal(meta.status, original.meta.status);
       assert.equal(meta.reason, original.meta.reason);
-      assert.equal(reply, original.reply);
+      // The assessment rows report the frozen policy (Plan_80 B1c4); the verdict rows are unchanged.
+      const verdictRows = (text) => text.split('\n')
+        .filter((row) => !/^(Situation|Continuation|Treatment): /.test(row));
+      assert.deepEqual(verdictRows(reply), verdictRows(original.reply));
+      assert.doesNotMatch(reply, /threshold-unconfigured/);
+      assert.match(reply, /^Situation: .* · threshold=1000000 ms · /m);
     }
   });
 });

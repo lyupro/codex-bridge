@@ -85,7 +85,7 @@ this record or reads additional evidence for it, so collecting again preserves t
 | --- | --- |
 | `agent` | Agent name. |
 | `phase` | Resolved phase copied from `worker.json` (or `status.json` if needed); `null` for runs made before phases existed. |
-| `silence_policy` | Policy frozen in `worker.json#silence_policy`, copied verbatim without consulting today's registry. A `null` object means an older run without this record; a `null` threshold inside an object means not calibrated. Diagnostic only in this release; no verdict or reply uses it. See below. |
+| `silence_policy` | Policy frozen in `worker.json#silence_policy`, copied verbatim without consulting today's registry. A `null` object means an older run without this record; a `null` threshold inside an object means not calibrated. Diagnostic only in this release; replies use the stored assessments below, never this policy directly. See below. |
 | `situation` | Version-1 classification of the frozen stop evidence; see “Stop assessments” below. |
 | `continuation_eligibility` | Version-1 automatic/grant assessments with ordered blockers. Both `allowed` values are always `false` in this release. |
 | `treatment` | Version-1 diagnostic action: `{ version: 1, effect: 'diagnostic-only', action }`. It never executes recovery. |
@@ -117,8 +117,9 @@ this record or reads additional evidence for it, so collecting again preserves t
 
 Plan_80 A2/A5 and E10/E12 separate the stop facts, their classification and diagnostic
 treatment. After `resolveStatus`, `collect()` records `situation`,
-`continuation_eligibility` and `treatment`. These fields do not change the verdict, status
-or reply text. Automatic recovery and the `resume:` grant are not implemented and are
+`continuation_eligibility` and `treatment`. These fields do not change the verdict or status.
+Only a `FAIL` reply with `result_ok: false` renders the three diagnostic rows below.
+Automatic recovery and the `resume:` grant are not implemented and are
 never allowed. Collecting the same unchanged folder twice produces identical assessments.
 
 `assessStop({ status, resultOk, agentWrites, threadId, stop, silencePolicy })` is pure.
@@ -190,6 +191,22 @@ starts with `recovery-not-enabled`, `resume-grant-not-implemented`, then
 Calibration means a package recalibration backed by evidence, not a host setting;
 there is no host override. None of these actions authorizes or performs continuation.
 
+The reply renders exactly these stored fields, without re-deriving their assessments
+(Plan_80 A5), after `Artifacts:` and optional build `Worktree:`, before the log link:
+
+```text
+Situation: <situation.kind> · silence=<situation.silence_ms> ms · threshold=<situation.threshold_ms> ms · command=<situation.commands.state>
+Continuation: automatic blocked (<automatic.blocking_reasons>) · grant blocked (<grant.blocking_reasons>)
+Treatment: <treatment.action> · diagnostic only, nothing runs it
+```
+
+Null silence, threshold, and command state print `silence=unknown`,
+`threshold=unconfigured`, and `command=unknown` respectively. Each continuation code list
+is joined by `, ` in stored order, without truncation; its stored `allowed` flag selects
+`allowed` or `blocked`. No rows appear if `situation` is absent in an older record.
+Every `OK`, `LIMIT`, `UNAVAILABLE`, and `FAIL` with a usable result keeps its reply unchanged.
+These rows are explanatory only: they change no status and execute no treatment.
+
 ### Silence policy
 
 Plan_80 S2/E12 puts `silenceThresholdMs` beside each agent's `budget` in the package-owned
@@ -226,7 +243,8 @@ the evidence rather than only a reference to a measurement that might later be m
 The selected threshold is the midpoint rounded to seconds: `996000` ms, strictly between
 the measured healthy maximum and stalled minimum. The bounds test keeps the number tied to
 this evidence so it cannot drift outside the measured interval in a later round-number edit.
-This release only records the policy; it makes no silence-based classification or reply change.
+The policy is diagnostic only: stored stop assessments classify the evidence and supply the
+unusable-result `FAIL` rows above, without changing the verdict or enabling recovery.
 
 ### Early `writeFailure()`
 

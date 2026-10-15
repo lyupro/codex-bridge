@@ -17,6 +17,7 @@ import { splitRunChanges } from './environment.mjs';
 import { scoutCoverage } from './verdict.mjs';
 import { orderInputName } from '../order-schema.mjs';
 import { unavailableRows } from './unavailable-rows.mjs';
+import { stopRows } from './stop-rows.mjs';
 
 /** What the run itself changed, and what the tooling around it changed while it worked. */
 const runChanges = (runDir) =>
@@ -200,6 +201,7 @@ export function failReply(ctx, meta) {
     // and the orchestrator has to know whether there is something to revert before it decides
     // anything else.
     ...(ctx.agent === 'codex-build' ? [`Worktree: ${worktreeState(ctx.runDir)}`] : []),
+    ...(meta.result_ok === false ? stopRows(meta) : []),
     `Log: ${readCommand(ctx.runDir)}`,
   ];
 }

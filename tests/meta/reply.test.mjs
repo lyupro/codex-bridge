@@ -142,6 +142,15 @@ test('failed replies report events and stderr sizes plus the read command', () =
   assert.match(reply, /Artifacts: events\.jsonl \d+ B · stderr\.log \d+ B/);
   assert.ok(reply.includes(`Log: codex-bridge read ${dir}`));
   assert.doesNotMatch(reply, /raw\.log|log_bytes/);
+  assert.equal(reply, [
+    'FAIL — panic: failed before result',
+    'Artifacts: events.jsonl 0 B · stderr.log 28 B · result.json empty or missing · exit=1',
+    'Worktree: no new changes',
+    'Situation: evidence-unknown · silence=unknown · threshold=unconfigured · command=unknown',
+    'Continuation: automatic blocked (recovery-not-enabled, resume-contract-unverified, writer-role-not-approved, thread-unavailable, session-evidence-not-observed, command-evidence-unknown, threshold-unconfigured, process-tree-stop-unverified) · grant blocked (recovery-not-enabled, resume-grant-not-implemented, resume-contract-unverified, writer-role-not-approved, thread-unavailable, session-evidence-not-observed, command-evidence-unknown, process-tree-stop-unverified)',
+    'Treatment: inspect-evidence · diagnostic only, nothing runs it',
+    `Log: codex-bridge read ${dir}`,
+  ].join('\n'));
 });
 
 test('replies report retained bytes from status.json, the only place housekeeping is recorded', () => {

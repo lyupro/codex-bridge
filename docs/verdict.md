@@ -243,3 +243,21 @@ does not mean “the tree is clean”: a run may write half a change and declare
 are absent (the run was killed before `state-after.txt`), the line honestly says `unknown` rather than
 “no changes”: making a claim from absent data is exactly the error for which `tree_after: false` exists
 in `status.json`.
+
+Plan_80 A5 adds three diagnostic rows only to a `FAIL` reply whose `meta.result_ok` is
+`false` and whose stored `meta.situation` exists. They follow `Artifacts:` and the optional
+build `Worktree:` row, before `Log:` (and its existing adjacent `Model:` row):
+
+```text
+Situation: <kind> · silence=<N> ms · threshold=<N> ms · command=<state>
+Continuation: automatic blocked (<codes>) · grant blocked (<codes>)
+Treatment: <action> · diagnostic only, nothing runs it
+```
+
+Null values render as `silence=unknown`, `threshold=unconfigured`, and `command=unknown`.
+Both continuation lists include every stored blocking code in order, joined by `, `;
+an assessment with `allowed: true` prints `allowed` instead of `blocked`.
+The rows render `meta.situation`, `meta.continuation_eligibility`, and `meta.treatment.action`
+as stored, without re-deriving assessments. They change neither status nor recovery behavior.
+All `OK`, `LIMIT`, `UNAVAILABLE`, and usable-result `FAIL` replies remain unchanged, as do
+older records with no situation assessment.
