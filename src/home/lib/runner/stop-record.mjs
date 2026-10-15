@@ -60,6 +60,7 @@ export function buildStopRecord(run, runDir, agent) {
   const session = readSessionActivity({
     threadId,
     startedAt: threadId ? readJsonFileSync(path.join(runDir, 'status.json')).started_at : undefined,
+    referenceAt: run.stop?.stopped_at,
   });
   return { version: 1, ...run.stop, receipts: run.receipts, result_file: resultFile, session };
 }

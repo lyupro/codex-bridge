@@ -33,7 +33,10 @@ test('missing result is observed without adding a file write', () => {
     version: 1, ...run.stop, receipts, result_file: { state: 'missing' },
     // No events.jsonl, so no thread id: the session log was not looked for.
     session: { state: 'not-observed', reason: null, file: null, last_record_at: null,
-      last_record_kind: null, records: 0, unknown_kinds: [] },
+      last_record_kind: null, records: 0, unknown_kinds: [],
+      longest_gap_ms: null, longest_quiet_gap_ms: null,
+      at_reference: { as_of: run.stop.stopped_at, last_record_at: null, last_record_kind: null,
+        records: 0, commands: { state: 'unknown', reason: 'session not-observed', pending: [] } } },
   });
   assert.deepEqual(fs.readdirSync(dir), []);
 });
@@ -256,4 +259,42 @@ test('a thread without a recorded start time still builds the stop record (no th
   const record = buildStopRecord(run, dir, 'codex-review');
   assert.equal(record.session.state, 'not-observed');
   assert.equal(record.session.reason, 'run start time unknown');
+});
+
+test('session reference is the first stop time, excluding tool output written during drain', (t) => {
+  const { dir } = resultTree();
+  const thread = '00000000-0000-4000-8000-000000000001';
+  const stopped = Date.parse(run.stop.stopped_at);
+  const at = (offset) => new Date(stopped + offset).toISOString();
+  const day = new Date(stopped);
+  const folder = path.join(dir, 'sessions', String(day.getFullYear()),
+    String(day.getMonth() + 1).padStart(2, '0'), String(day.getDate()).padStart(2, '0'));
+  fs.mkdirSync(folder, { recursive: true });
+  const entries = [
+    { timestamp: at(-2000), ordinal: 1, type: 'session_meta', payload: { id: thread } },
+    { timestamp: at(-1000), ordinal: 2, type: 'response_item',
+      payload: { type: 'custom_tool_call', call_id: 'running', name: 'exec', input: '<private>' } },
+    { timestamp: at(1000), ordinal: 3, type: 'response_item',
+      payload: { type: 'custom_tool_call_output', call_id: 'running', output: '<private>' } },
+  ];
+  fs.writeFileSync(path.join(folder, 'rollout-2026-10-15T08-00-00-' + thread + '.jsonl'),
+    entries.map((entry) => JSON.stringify(entry)).join('\n') + '\n');
+  fs.writeFileSync(path.join(dir, 'status.json'), JSON.stringify({ started_at: at(-2000) }));
+  fs.writeFileSync(path.join(dir, 'events.jsonl'),
+    JSON.stringify({ type: 'thread.started', thread_id: thread }) + '\n');
+  const previous = process.env.CODEX_HOME;
+  process.env.CODEX_HOME = dir;
+  t.after(() => {
+    if (previous === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = previous;
+  });
+  const record = buildStopRecord(run, dir, 'codex-review');
+  assert.equal(record.version, 1);
+  assert.equal(record.session.last_record_at, at(1000));
+  assert.deepEqual(record.session.at_reference, {
+    as_of: run.stop.stopped_at, last_record_at: at(-1000),
+    last_record_kind: 'response_item/custom_tool_call', records: 2,
+    commands: { state: 'in-flight', reason: null,
+      pending: [{ call_id: 'running', name: 'exec', called_at: at(-1000) }] },
+  });
 });

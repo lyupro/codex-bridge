@@ -540,6 +540,48 @@ times because stdout goes silent earlier. This observation does not change the v
 | `records` | Number of valid records read before the end or a format violation, including `token_count` events. |
 | `unknown_kinds` | Distinct top-level `type` values outside the known list; these do not invalidate an otherwise valid envelope. |
 | `sampled_at` | Time the reader ran. Never an activity clock; neither file mtime nor heartbeat is activity either. |
+| `longest_gap_ms` | Largest timestamp difference between consecutive valid records read in file order across the whole thread; `null` with fewer than two records. |
+| `longest_quiet_gap_ms` | Largest such gap with no tool call open throughout the interval. `null` when whole-thread command evidence is `unknown`, there are fewer than two records, or no interval is quiet. |
+| `at_reference` | `null` without `referenceAt`; otherwise `{ as_of, last_record_at, last_record_kind, records, commands }` using only records with timestamps at or before that reference. |
+
+Plan_80 A5/E12 adds these fields without changing stop record `version: 1`, verdicts or
+replies. Older runs without these fields have not observed this evidence. The runner passes
+`stop.stopped_at` as the reader's optional ISO `referenceAt`: the first stop trigger owns
+the reference, never the later drain or collection. `as_of` is that reference time; the
+snapshot's activity fields and record count preserve file order within the qualifying records.
+The raw session activity and gap maxima still cover all records read, including later ones.
+An invalid reference produces null snapshot times, zero records, and unknown commands with
+`reason: "reference time invalid"`; it does not change the raw reader state.
+
+`at_reference.commands` contains `{ state, reason, pending }`. Calls are `response_item`
+records with `payload.type` of `custom_tool_call` or `function_call`; their matching outputs
+are `custom_tool_call_output` or `function_call_output`, paired by string `payload.call_id`.
+A call starts at its record timestamp; an output after the reference cannot close it there.
+The conservative rules, also applied across the whole thread for quiet-gap evidence, are:
+
+| Evidence | Command state and reason |
+| --- | --- |
+| Reader state other than `observed` | `unknown`, `session <state>`. A valid prefix never proves command absence in an incomplete or invalid log. |
+| Any call or output without a string `call_id` | `unknown`, `tool record missing string call_id`. |
+| Output without an earlier call | `unknown`, `orphan tool output`. |
+| Any `wait` call, including a completed one | `unknown`, `asynchronous command lifecycle`: an `exec` output alone does not prove that an asynchronous command finished. |
+| Open call named something other than `exec` | `unknown`, `open tool <name>` (`unknown` for a missing/non-string name). |
+| Only open `exec` calls remain | `in-flight`, null reason, with each `{ call_id, name, called_at }` in `pending`. |
+| All checks passed and no call remains open | `none`, null reason, empty `pending`. |
+
+Unknown command evidence has empty `pending`. Completed non-`exec` calls other than `wait`
+do not themselves make the lifecycle unknown, but their open intervals are not quiet.
+Only structural call ids, tool names and timestamps leave the reader; command input,
+output, messages and other payload text never do.
+
+The pure exported `silenceAgeMs(atReference, referenceAt)` is the only place silence age is
+computed. It returns `{ ms, reason }` from session-log records only: reference time minus
+the snapshot's `last_record_at`, including exactly zero at the boundary. It reads no files
+and accepts no stdout receipts, `events.jsonl` activity, heartbeat or file times. Invalid
+reference time returns null with `reference time invalid`; unavailable reader evidence
+returns null with `session evidence <state>`; absent/invalid last-record time or a negative
+difference returns null with `no session record before reference`. Command lifecycle
+uncertainty alone does not invalidate an observed session timestamp.
 
 `not-observed` means no thread id was available, or no valid run start time to pick the day
 folder (`reason: "run start time unknown"`; the reader never throws for it and never guesses
@@ -553,7 +595,8 @@ The rule and line number are reported without echoing values from the log.
 `incomplete` means the last line lacks LF or cannot parse and every earlier line is valid;
 activity from valid records is retained, including a valid final record without LF.
 `observed` means all records are valid and LF-terminated. Structural timestamps and kinds
-are the only log fields exposed; payload text, metadata and identities are never returned.
+and structural tool call ids/names are the only log fields exposed; payload text, metadata
+and other identities are never returned.
 
 ## File relationships
 

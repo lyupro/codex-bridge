@@ -41,6 +41,7 @@ function read(home, options = {}) {
   assert.equal(result.sampled_at, SAMPLED);
   assert.deepEqual(Object.keys(result).sort(), [
     'state', 'reason', 'file', 'last_record_at', 'last_record_kind', 'records', 'unknown_kinds', 'sampled_at',
+    'longest_gap_ms', 'longest_quiet_gap_ms', 'at_reference',
   ].sort());
   return result;
 }
@@ -56,6 +57,7 @@ test('healthy activity counts reasoning and the final token_count; it never uses
     assert.deepEqual(result, {
       state: 'observed', reason: null, file, last_record_at: LAST,
       last_record_kind: 'event_msg/token_count', records: 3, unknown_kinds: [], sampled_at: SAMPLED,
+      longest_gap_ms: 120000, longest_quiet_gap_ms: 120000, at_reference: null,
     });
     assert.notEqual(result.last_record_at, result.sampled_at);
     assert.notEqual(Date.parse(result.last_record_at), before);

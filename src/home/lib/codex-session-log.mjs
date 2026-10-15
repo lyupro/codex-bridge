@@ -15,6 +15,58 @@ const KNOWN_TYPES = new Set([
 const TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const object = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 
+/** Plan_80 E12: pair structural tool records without retaining command input or output. */
+function commandEvidence() {
+  const pending = new Map();
+  const called = new Set();
+  let reason = null;
+  return {
+    get open() { return pending.size > 0; },
+    accept(record) {
+      if (record.type !== 'response_item') return;
+      const { type, call_id: callId, name } = record.payload;
+      const call = type === 'custom_tool_call' || type === 'function_call';
+      const output = type === 'custom_tool_call_output' || type === 'function_call_output';
+      if (!call && !output) return;
+      if (typeof callId !== 'string') {
+        reason ??= 'tool record missing string call_id';
+        return;
+      }
+      if (call) {
+        called.add(callId);
+        pending.set(callId, { call_id: callId, name, called_at: record.timestamp });
+        if (name === 'wait') reason ??= 'asynchronous command lifecycle';
+      } else {
+        if (!called.has(callId)) reason ??= 'orphan tool output';
+        pending.delete(callId);
+      }
+    },
+    snapshot(state) {
+      const unsupported = [...pending.values()].find((call) => call.name !== 'exec');
+      const unknown = state !== 'observed' ? `session ${state}` : reason ??
+        (unsupported ? `open tool ${typeof unsupported.name === 'string' ? unsupported.name : 'unknown'}` : null);
+      if (unknown) return { state: 'unknown', reason: unknown, pending: [] };
+      return { state: pending.size ? 'in-flight' : 'none', reason: null, pending: [...pending.values()] };
+    },
+  };
+}
+
+const validTime = (value) => typeof value === 'string' && Number.isFinite(Date.parse(value));
+
+/** Compute silence solely from the reader's reference snapshot, never transport receipts. */
+export function silenceAgeMs(atReference, referenceAt) {
+  if (!validTime(referenceAt)) return { ms: null, reason: 'reference time invalid' };
+  const evidenceReason = atReference?.commands?.reason;
+  if (typeof evidenceReason === 'string' && evidenceReason.startsWith('session ')) {
+    return { ms: null, reason: `session evidence ${evidenceReason.slice('session '.length)}` };
+  }
+  if (!validTime(atReference?.last_record_at)) {
+    return { ms: null, reason: 'no session record before reference' };
+  }
+  const ms = Date.parse(referenceAt) - Date.parse(atReference.last_record_at);
+  return ms >= 0 ? { ms, reason: null } : { ms: null, reason: 'no session record before reference' };
+}
+
 /** Read only the start day's local folder and its two neighbors; never scan the store. */
 function findRollout(codexHome, threadId, start) {
   for (const offset of [0, -1, 1]) {
@@ -38,35 +90,54 @@ function findRollout(codexHome, threadId, start) {
 }
 
 /** Returns structural activity evidence only; payload text never leaves this reader. */
-export function readSessionActivity({ threadId, startedAt, codexHome = resolveCodexHome(), now = () => new Date() }) {
+export function readSessionActivity({ threadId, startedAt, referenceAt, codexHome = resolveCodexHome(), now = () => new Date() }) {
   const result = {
     state: 'not-observed', reason: null, file: null, last_record_at: null,
     last_record_kind: null, records: 0, unknown_kinds: [], sampled_at: now().toISOString(),
+    longest_gap_ms: null, longest_quiet_gap_ms: null, at_reference: null,
   };
-  if (!threadId) return result;
+  const wholeCommands = commandEvidence();
+  const referenceCommands = commandEvidence();
+  const referenceValid = validTime(referenceAt);
+  const reference = {
+    as_of: referenceValid ? referenceAt : null, last_record_at: null,
+    last_record_kind: null, records: 0, commands: null,
+  };
+  let quietGap = null;
+  const finish = (overrides = {}) => {
+    Object.assign(result, overrides);
+    if (wholeCommands.snapshot(result.state).state !== 'unknown') result.longest_quiet_gap_ms = quietGap;
+    if (referenceAt !== undefined) {
+      reference.commands = referenceValid ? referenceCommands.snapshot(result.state) :
+        { state: 'unknown', reason: 'reference time invalid', pending: [] };
+      result.at_reference = reference;
+    }
+    return result;
+  };
+  if (!threadId) return finish();
   // A state, not a throw: the worker builds the stop record before collect(), and a reader that
   // threw there would fail a finished run over evidence the verdict never reads. Guessing today's
   // folder instead would read the wrong day as "missing".
   const start = new Date(startedAt);
   if (startedAt == null || !Number.isFinite(start.getTime())) {
-    return { ...result, reason: 'run start time unknown' };
+    return finish({ reason: 'run start time unknown' });
   }
   let source;
   try {
     const found = findRollout(codexHome, threadId, start);
-    if (!found) return { ...result, state: 'missing' };
+    if (!found) return finish({ state: 'missing' });
     result.file = found.file;
     source = fs.readFileSync(found.fullPath, 'utf8');
   } catch (error) {
-    return { ...result, state: 'unreadable', reason: error.message };
+    return finish({ state: 'unreadable', reason: error.message });
   }
-  if (source === '') return { ...result, state: 'empty' };
+  if (source === '') return finish({ state: 'empty' });
   const terminated = source.endsWith('\n');
   const lines = source.split('\n');
   if (terminated) lines.pop();
   let sawSessionMeta = false;
-  const invalid = (rule, line) => ({
-    ...result, state: 'unrecognized', reason: `${rule} at line ${line}`,
+  const invalid = (rule, line) => finish({
+    state: 'unrecognized', reason: `${rule} at line ${line}`,
     last_record_at: null, last_record_kind: null,
   });
   for (let index = 0; index < lines.length; index += 1) {
@@ -79,7 +150,7 @@ export function readSessionActivity({ threadId, startedAt, codexHome = resolveCo
     try {
       record = parseJsonText(result.file, lines[index]);
     } catch {
-      if (index === lines.length - 1) return { ...result, state: 'incomplete' };
+      if (index === lines.length - 1) return finish({ state: 'incomplete' });
       return invalid('JSON record required', line);
     }
     if (!object(record) || typeof record.timestamp !== 'string' ||
@@ -98,10 +169,22 @@ export function readSessionActivity({ threadId, startedAt, codexHome = resolveCo
     if (!KNOWN_TYPES.has(record.type) && !result.unknown_kinds.includes(record.type)) {
       result.unknown_kinds.push(record.type);
     }
+    if (result.last_record_at !== null) {
+      const gap = Date.parse(record.timestamp) - Date.parse(result.last_record_at);
+      result.longest_gap_ms = result.longest_gap_ms === null ? gap : Math.max(result.longest_gap_ms, gap);
+      if (!wholeCommands.open) quietGap = quietGap === null ? gap : Math.max(quietGap, gap);
+    }
+    wholeCommands.accept(record);
     result.records += 1;
     result.last_record_at = record.timestamp;
     result.last_record_kind = ['event_msg', 'response_item'].includes(record.type) &&
       typeof record.payload.type === 'string' ? `${record.type}/${record.payload.type}` : record.type;
+    if (referenceValid && Date.parse(record.timestamp) <= Date.parse(referenceAt)) {
+      referenceCommands.accept(record);
+      reference.records += 1;
+      reference.last_record_at = result.last_record_at;
+      reference.last_record_kind = result.last_record_kind;
+    }
   }
-  return { ...result, state: terminated ? 'observed' : 'incomplete' };
+  return finish({ state: terminated ? 'observed' : 'incomplete' });
 }
