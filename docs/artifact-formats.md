@@ -86,6 +86,9 @@ this record or reads additional evidence for it, so collecting again preserves t
 | `agent` | Agent name. |
 | `phase` | Resolved phase copied from `worker.json` (or `status.json` if needed); `null` for runs made before phases existed. |
 | `silence_policy` | Policy frozen in `worker.json#silence_policy`, copied verbatim without consulting today's registry. A `null` object means an older run without this record; a `null` threshold inside an object means not calibrated. Diagnostic only in this release; no verdict or reply uses it. See below. |
+| `situation` | Version-1 classification of the frozen stop evidence; see “Stop assessments” below. |
+| `continuation_eligibility` | Version-1 automatic/grant assessments with ordered blockers. Both `allowed` values are always `false` in this release. |
+| `treatment` | Version-1 diagnostic action: `{ version: 1, effect: 'diagnostic-only', action }`. It never executes recovery. |
 | `sufficient` | Advisor only: the boolean from the advisor result, or `null` when the result did not say. An insufficient scope can still be a valid `OK` result. |
 | `missing_paths` | Advisor only: paths the result identified as needed, or `null` when the result did not say. |
 | `advice` | Build only: copied from `status.json#advice`, or `null` when absent. |
@@ -109,6 +112,83 @@ this record or reads additional evidence for it, so collecting again preserves t
 | `sandbox` | The `--sandbox` argument the run was started with, or `null`. |
 | `env` | Contents of `env.json`; may be `null` for an old or early run. |
 | `session_id` | Value of the `session id:` line from the log, or `null`. |
+
+### Stop assessments
+
+Plan_80 A2/A5 and E10/E12 separate the stop facts, their classification and diagnostic
+treatment. After `resolveStatus`, `collect()` records `situation`,
+`continuation_eligibility` and `treatment`. These fields do not change the verdict, status
+or reply text. Automatic recovery and the `resume:` grant are not implemented and are
+never allowed. Collecting the same unchanged folder twice produces identical assessments.
+
+`assessStop({ status, resultOk, agentWrites, threadId, stop, silencePolicy })` is pure.
+It receives the resolved status, result usability, registry `writes`, the recorded thread
+id, and frozen `meta.stop` and `meta.silence_policy`; it reads no files. Recollection
+must use the same frozen session reference and policy rather than today's activity or
+configuration. Stdout receipts are not the calibrated signal and cannot affect assessments.
+
+`situation` has the following fields; missing facts are `null`, never inferred inactivity:
+
+| Field | Value |
+| --- | --- |
+| `version` | `1`. |
+| `kind` | First matching classification in the order below. |
+| `cause` | `stop.trigger`, or `null`. |
+| `silence_ms`, `silence_reason` | The `{ ms, reason }` returned by `silenceAgeMs(stop.session.at_reference, stop.stopped_at)`. This shared function is the only silence computation. An unavailable age is `null` with its evidence reason. |
+| `threshold_ms` | Frozen `silence_policy.threshold_ms`, or `null` when unconfigured or absent. |
+| `commands` | `{ state, reason, pending_count }` from `stop.session.at_reference.commands`; pending count is the array length, or `null` when absent. No call ids or command names are copied. |
+| `session_state` | `stop.session.state`, or `null`. |
+| `result_file_state` | `stop.result_file.state`, or `null`. Usability still comes from `resultOk`. |
+
+Kind precedence is fixed:
+
+1. A usable result (`resultOk: true`) gives `result-present`, regardless of status or stop.
+2. Status `LIMIT` gives `limit`; status `UNAVAILABLE` gives `unavailable`.
+3. An older run with no stop record gives `evidence-unknown`.
+4. Trigger `spawn-error` or `stream-error` gives `runner-error`.
+5. Trigger `exit` gives `process-exit-no-result`, including exit code zero.
+6. Command state `in-flight` gives `command-in-flight`.
+7. For trigger `deadline`, unknown or absent command evidence, or a null silence age,
+   gives `evidence-unknown`. Otherwise a null threshold gives `silence-unclassified`;
+   silence greater than or equal to the threshold gives `silent-stall-candidate`, and
+   silence below it gives `recent-activity`.
+8. Anything else, including a null trigger, gives `evidence-unknown`.
+
+Unknown evidence never becomes silence. A null threshold never becomes stalled or recent.
+
+`continuation_eligibility` is `{ version: 1, automatic: { allowed: false,
+blocking_reasons }, grant: { allowed: false, blocking_reasons } }`. The automatic list
+starts with `recovery-not-enabled`, then `resume-contract-unverified`. The grant list
+starts with `recovery-not-enabled`, `resume-grant-not-implemented`, then
+`resume-contract-unverified`. Append every applicable blocker in this fixed order:
+
+1. `result-present` when a usable result exists.
+2. `limit` or `unavailable` for the resolved status, even if the kind is `result-present`.
+3. `writer-role-not-approved` when registry `writes` is true.
+4. `thread-unavailable` when there is no thread id.
+5. `session-evidence-<state>` for any session state other than `observed`;
+   `session-evidence-not-observed` when absent.
+6. `command-in-flight` for open commands, or `command-evidence-unknown` for unknown
+   or absent command evidence.
+7. Automatic only: `threshold-unconfigured` when `threshold_ms` is null.
+8. Automatic only: `not-silent-stall` when the kind is known not to be a stall: never for
+   `evidence-unknown` or `silence-unclassified` (whether the run stalled is unknown, and their
+   own reasons already block), nor for `silent-stall-candidate`.
+9. Always `process-tree-stop-unverified`: no fact yet confirms the process tree stopped.
+
+`treatment.effect` is always `diagnostic-only`: the action is advice and nothing executes it. Its action mapping is:
+
+| Kind | Action |
+| --- | --- |
+| `result-present`, `limit`, `unavailable`, `silent-stall-candidate`, `recent-activity` | `retain-stop-facts` |
+| `process-exit-no-result` | `inspect-exit-and-drain` |
+| `command-in-flight` | `inspect-command-effects` |
+| `evidence-unknown` | `inspect-evidence` |
+| `silence-unclassified` | `calibrate-silence-threshold` |
+| `runner-error` | `inspect-runner-error` |
+
+Calibration means a package recalibration backed by evidence, not a host setting;
+there is no host override. None of these actions authorizes or performs continuation.
 
 ### Silence policy
 

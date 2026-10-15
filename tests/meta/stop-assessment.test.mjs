@@ -1,0 +1,271 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { assessStop } from '../../src/home/lib/meta/stop-assessment.mjs';
+
+const stopFacts = () => ({
+  trigger: 'deadline',
+  stopped_at: '2026-10-15T08:20:00.000Z',
+  result_file: { state: 'missing' },
+  session: {
+    state: 'observed',
+    at_reference: {
+      last_record_at: '2026-10-15T08:00:00.000Z',
+      commands: { state: 'none', reason: null, pending: [] },
+    },
+  },
+});
+
+const input = (overrides = {}) => ({
+  status: 'FAIL', resultOk: false, agentWrites: false, threadId: 'thread',
+  stop: stopFacts(), silencePolicy: { threshold_ms: 1200000 }, ...overrides,
+});
+
+function changedStop(change) {
+  const stop = stopFacts();
+  change(stop);
+  return stop;
+}
+
+// Plan_80 A5/E12: precedence is part of the contract, especially at the threshold.
+const cases = [
+  ['result wins over LIMIT and absent stop', { resultOk: true, status: 'LIMIT', stop: null }, 'result-present', 'retain-stop-facts'],
+  ['result wins over UNAVAILABLE', { resultOk: true, status: 'UNAVAILABLE' }, 'result-present', 'retain-stop-facts'],
+  ['LIMIT wins over absent stop', { status: 'LIMIT', stop: null }, 'limit', 'retain-stop-facts'],
+  ['UNAVAILABLE wins over absent stop', { status: 'UNAVAILABLE', stop: null }, 'unavailable', 'retain-stop-facts'],
+  ['older run without stop', { stop: undefined }, 'evidence-unknown', 'inspect-evidence'],
+  ['spawn error wins over in-flight commands', { stop: changedStop((s) => {
+    s.trigger = 'spawn-error'; s.session.at_reference.commands.state = 'in-flight';
+  }) }, 'runner-error', 'inspect-runner-error'],
+  ['stream error', { stop: changedStop((s) => { s.trigger = 'stream-error'; }) }, 'runner-error', 'inspect-runner-error'],
+  ['exit zero without result wins over in-flight commands', { stop: changedStop((s) => {
+    s.trigger = 'exit'; s.exit_code = 0; s.session.at_reference.commands.state = 'in-flight';
+  }) }, 'process-exit-no-result', 'inspect-exit-and-drain'],
+  ['exit nonzero without result', { stop: changedStop((s) => {
+    s.trigger = 'exit'; s.exit_code = 1;
+  }) }, 'process-exit-no-result', 'inspect-exit-and-drain'],
+  ['deadline with in-flight command wins over null threshold', {
+    stop: changedStop((s) => { s.session.at_reference.commands.state = 'in-flight'; }),
+    silencePolicy: { threshold_ms: null },
+  }, 'command-in-flight', 'inspect-command-effects'],
+  ['deadline with unknown commands despite old activity', { stop: changedStop((s) => {
+    s.session.at_reference.commands = { state: 'unknown', reason: 'orphan tool output', pending: [] };
+  }) }, 'evidence-unknown', 'inspect-evidence'],
+  ['deadline with absent command evidence', { stop: changedStop((s) => {
+    delete s.session.at_reference.commands;
+  }) }, 'evidence-unknown', 'inspect-evidence'],
+  ['deadline without session timestamp wins over null threshold', {
+    stop: changedStop((s) => { s.session.at_reference.last_record_at = null; }),
+    silencePolicy: null,
+  }, 'evidence-unknown', 'inspect-evidence'],
+  ['invalid stop reference', { stop: changedStop((s) => {
+    s.stopped_at = null;
+  }) }, 'evidence-unknown', 'inspect-evidence'],
+  ['deadline with null threshold', { silencePolicy: { threshold_ms: null } }, 'silence-unclassified', 'calibrate-silence-threshold'],
+  ['deadline with missing policy', { silencePolicy: null }, 'silence-unclassified', 'calibrate-silence-threshold'],
+  ['silence equals threshold', {}, 'silent-stall-candidate', 'retain-stop-facts'],
+  ['silence exceeds threshold', { silencePolicy: { threshold_ms: 1199999 } }, 'silent-stall-candidate', 'retain-stop-facts'],
+  ['silence one millisecond below threshold', {
+    stop: changedStop((s) => { s.session.at_reference.last_record_at = '2026-10-15T08:00:00.001Z'; }),
+  }, 'recent-activity', 'retain-stop-facts'],
+  ['zero silence is recent', { stop: changedStop((s) => {
+    s.session.at_reference.last_record_at = s.stopped_at;
+  }) }, 'recent-activity', 'retain-stop-facts'],
+  ['negative age is unknown', { stop: changedStop((s) => {
+    s.session.at_reference.last_record_at = '2026-10-15T08:20:00.001Z';
+  }) }, 'evidence-unknown', 'inspect-evidence'],
+  ['null trigger never classifies silence', { stop: changedStop((s) => {
+    s.trigger = null;
+  }) }, 'evidence-unknown', 'inspect-evidence'],
+];
+
+for (const [name, overrides, kind, action] of cases) {
+  test(name, () => {
+    const args = input(overrides);
+    const before = structuredClone(args);
+    const result = assessStop(args);
+    assert.equal(result.situation.kind, kind);
+    assert.deepEqual(result.treatment, { version: 1, effect: 'diagnostic-only', action });
+    assert.equal(result.continuation_eligibility.version, 1);
+    assert.equal(result.continuation_eligibility.automatic.allowed, false);
+    assert.equal(result.continuation_eligibility.grant.allowed, false);
+    assert.deepEqual(args, before, 'assessment must not mutate frozen facts');
+    assert.deepEqual(assessStop(args), result);
+  });
+}
+
+test('situation records only frozen facts and a pending count, never command identities', () => {
+  const stop = changedStop((s) => {
+    s.session.at_reference.commands = { state: 'in-flight', reason: null, pending: [
+      { call_id: 'private-1', name: 'exec' }, { call_id: 'private-2', name: 'exec' },
+    ] };
+  });
+  assert.deepEqual(assessStop(input({ stop })).situation, {
+    version: 1, kind: 'command-in-flight', cause: 'deadline',
+    silence_ms: 1200000, silence_reason: null, threshold_ms: 1200000,
+    commands: { state: 'in-flight', reason: null, pending_count: 2 },
+    session_state: 'observed', result_file_state: 'missing',
+  });
+});
+
+test('older facts stay null and silence explains the absent reference', () => {
+  assert.deepEqual(assessStop(input({ stop: null, silencePolicy: null })).situation, {
+    version: 1, kind: 'evidence-unknown', cause: null,
+    silence_ms: null, silence_reason: 'reference time invalid', threshold_ms: null,
+    commands: { state: null, reason: null, pending_count: null },
+    session_state: null, result_file_state: null,
+  });
+});
+
+test('stalled advise has the exact ordered diagnostic-only blockers', () => {
+  assert.deepEqual(assessStop(input()).continuation_eligibility, {
+    version: 1,
+    automatic: { allowed: false, blocking_reasons: [
+      'recovery-not-enabled', 'resume-contract-unverified', 'process-tree-stop-unverified',
+    ] },
+    grant: { allowed: false, blocking_reasons: [
+      'recovery-not-enabled', 'resume-grant-not-implemented', 'resume-contract-unverified',
+      'process-tree-stop-unverified',
+    ] },
+  });
+});
+
+test('build records writer-role and unconfigured-threshold blockers in order', () => {
+  assert.deepEqual(assessStop(input({ agentWrites: true, silencePolicy: { threshold_ms: null } }))
+    .continuation_eligibility, {
+    version: 1,
+    automatic: { allowed: false, blocking_reasons: [
+      'recovery-not-enabled', 'resume-contract-unverified', 'writer-role-not-approved',
+      'threshold-unconfigured', 'process-tree-stop-unverified',
+    ] },
+    grant: { allowed: false, blocking_reasons: [
+      'recovery-not-enabled', 'resume-grant-not-implemented', 'resume-contract-unverified',
+      'writer-role-not-approved', 'process-tree-stop-unverified',
+    ] },
+  });
+});
+
+test('missing session log is unknown evidence with exact blockers, never a silent stall', () => {
+  const stop = changedStop((s) => {
+    s.session = { state: 'missing', at_reference: {
+      last_record_at: null,
+      commands: { state: 'unknown', reason: 'session missing', pending: [] },
+    } };
+  });
+  const result = assessStop(input({ stop }));
+  assert.equal(result.situation.kind, 'evidence-unknown');
+  assert.equal(result.situation.silence_ms, null);
+  assert.equal(result.situation.silence_reason, 'session evidence missing');
+  assert.deepEqual(result.continuation_eligibility, {
+    version: 1,
+    automatic: { allowed: false, blocking_reasons: [
+      'recovery-not-enabled', 'resume-contract-unverified', 'session-evidence-missing',
+      'command-evidence-unknown', 'process-tree-stop-unverified',
+    ] },
+    grant: { allowed: false, blocking_reasons: [
+      'recovery-not-enabled', 'resume-grant-not-implemented', 'resume-contract-unverified',
+      'session-evidence-missing', 'command-evidence-unknown', 'process-tree-stop-unverified',
+    ] },
+  });
+});
+
+test('LIMIT without a result has the exact ordered blockers', () => {
+  assert.deepEqual(assessStop(input({ status: 'LIMIT' })).continuation_eligibility, {
+    version: 1,
+    automatic: { allowed: false, blocking_reasons: [
+      'recovery-not-enabled', 'resume-contract-unverified', 'limit',
+      'not-silent-stall', 'process-tree-stop-unverified',
+    ] },
+    grant: { allowed: false, blocking_reasons: [
+      'recovery-not-enabled', 'resume-grant-not-implemented', 'resume-contract-unverified',
+      'limit', 'process-tree-stop-unverified',
+    ] },
+  });
+});
+
+test('all applicable factual blockers survive result and LIMIT precedence', () => {
+  const stop = changedStop((s) => {
+    s.session.at_reference.commands.state = 'in-flight';
+  });
+  assert.deepEqual(assessStop(input({
+    status: 'LIMIT', resultOk: true, agentWrites: true, threadId: null,
+    stop, silencePolicy: null,
+  })).continuation_eligibility, {
+    version: 1,
+    automatic: { allowed: false, blocking_reasons: [
+      'recovery-not-enabled', 'resume-contract-unverified', 'result-present', 'limit',
+      'writer-role-not-approved', 'thread-unavailable', 'command-in-flight',
+      'threshold-unconfigured', 'not-silent-stall', 'process-tree-stop-unverified',
+    ] },
+    grant: { allowed: false, blocking_reasons: [
+      'recovery-not-enabled', 'resume-grant-not-implemented', 'resume-contract-unverified',
+      'result-present', 'limit', 'writer-role-not-approved', 'thread-unavailable',
+      'command-in-flight', 'process-tree-stop-unverified',
+    ] },
+  });
+});
+
+test('UNAVAILABLE with no session or commands reports absence, not silence', () => {
+  assert.deepEqual(assessStop(input({
+    status: 'UNAVAILABLE', threadId: null, stop: null, silencePolicy: null,
+  })).continuation_eligibility, {
+    version: 1,
+    automatic: { allowed: false, blocking_reasons: [
+      'recovery-not-enabled', 'resume-contract-unverified', 'unavailable', 'thread-unavailable',
+      'session-evidence-not-observed', 'command-evidence-unknown', 'threshold-unconfigured',
+      'not-silent-stall', 'process-tree-stop-unverified',
+    ] },
+    grant: { allowed: false, blocking_reasons: [
+      'recovery-not-enabled', 'resume-grant-not-implemented', 'resume-contract-unverified',
+      'unavailable', 'thread-unavailable', 'session-evidence-not-observed',
+      'command-evidence-unknown', 'process-tree-stop-unverified',
+    ] },
+  });
+});
+
+for (const state of ['not-observed', 'unreadable', 'empty', 'unrecognized', 'incomplete']) {
+  test(`session state ${state} remains a factual blocker`, () => {
+    const stop = changedStop((s) => {
+      s.session.state = state;
+      s.session.at_reference.commands = { state: 'unknown', reason: `session ${state}`, pending: [] };
+    });
+    const result = assessStop(input({ stop }));
+    assert.equal(result.situation.silence_ms, null);
+    assert.equal(result.situation.silence_reason, `session evidence ${state}`);
+    for (const path of ['automatic', 'grant']) {
+      assert.equal(result.continuation_eligibility[path].allowed, false);
+      assert.ok(result.continuation_eligibility[path].blocking_reasons.includes(`session-evidence-${state}`));
+    }
+  });
+}
+
+test('receipt independence across every kind and arbitrary receipt summaries', () => {
+  for (const [, overrides] of cases) {
+    const args = input(overrides);
+    if (!args.stop) continue;
+    const expected = assessStop(args);
+    for (const receipts of [null, {}, { lines: 999, last_received_at: '2099-01-01T00:00:00.000Z' },
+      { lines: 0, write_error: 'disk full', truncated: true, incomplete: true }]) {
+      assert.deepEqual(assessStop({ ...args, stop: { ...args.stop, receipts } }), expected);
+    }
+  }
+});
+
+function guardSource(source) {
+  const code = source.replace(/\/\*[\s\S]*?\*\/|\/\/[^\r\n]*/g, '');
+  const permitted = /\bimport\s*\{\s*silenceAgeMs\s*\}\s*from\s*(['"])\.\.\/codex-session-log\.mjs\1\s*;/g;
+  assert.equal([...code.matchAll(permitted)].length, 1, 'only the silenceAgeMs import is permitted');
+  assert.doesNotMatch(code.replace(permitted, ''), /\bimport\b/, 'no other imports are permitted');
+  assert.doesNotMatch(code, /\b(?:receipts|events|heartbeat)\b|node:fs/, 'frozen session facts only');
+}
+
+test('static guard allows only silenceAgeMs and no alternate activity sources', () => {
+  const source = fs.readFileSync(new URL('../../src/home/lib/meta/stop-assessment.mjs', import.meta.url), 'utf8');
+  guardSource(source);
+  assert.throws(() => guardSource(`${source}\nstop.receipts;`), /frozen session facts only/);
+  for (const mutation of ["import fs from 'node:fs';", "import 'another-module';",
+    "import('another-module');", 'stop.events;', 'stop.heartbeat;']) {
+    assert.throws(() => guardSource(`${source}\n${mutation}`));
+  }
+  assert.throws(() => guardSource(source.replace('{ silenceAgeMs }', '{ silenceAgeMs, readSessionActivity }')));
+});

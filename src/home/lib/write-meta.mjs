@@ -29,6 +29,7 @@ import { splitRunChanges } from './meta/environment.mjs';
 import { readEvents } from './meta/events.mjs';
 import { writeStatus } from './meta/run-state.mjs';
 import { resolveStatus } from './meta/verdict.mjs';
+import { assessStop } from './meta/stop-assessment.mjs';
 import { AGENTS, failReply, limitReply, unavailableReply, withProfileRow } from './meta/reply.mjs';
 import { withLaunchRows } from './meta/launch-rows.mjs';
 
@@ -152,6 +153,12 @@ export function collect(runDir, agent, exitCode) {
     env: readJson(path.join(runDir, 'env.json')),
     session_id: events.session_id,
   };
+
+  // Plan_80 A5: diagnostics follow the verdict and use the frozen stop observation.
+  Object.assign(meta, assessStop({
+    status, resultOk, agentWrites: cfg.writes, threadId: events.session_id,
+    stop: meta.stop, silencePolicy: meta.silence_policy,
+  }));
 
   fs.writeFileSync(path.join(runDir, 'meta.json'), `${JSON.stringify(meta, null, 2)}\n`);
   // meta.json first, status.json after it: status only ever claims a verdict that is
