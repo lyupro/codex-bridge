@@ -78,6 +78,13 @@ const REFUSALS = [
     why: 'OW-040: failed scope repeats only with retry, preserving the advise continuation',
   },
   {
+    name: 'a refused resume',
+    side: 'before',
+    file: 'pass-gate.mjs',
+    marker: 'if (resumeError) die(resumeError)',
+    why: 'Plan_80 E13: a resume needs a finished, eligible, stopped run of its own order whose thread has not advanced',
+  },
+  {
     name: 'a refused retry',
     side: 'before',
     file: 'pass-gate.mjs',

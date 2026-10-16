@@ -11,7 +11,7 @@ import { chainRuns, startedRuns, taskFingerprint, readJson } from '../write-meta
 import { die } from './args.mjs';
 import { EXIT } from './exit-codes.mjs';
 import { attach } from './attach.mjs';
-import { continuationRefusal, retryRefusal, readyGrantLines } from './continuation.mjs';
+import { continuationRefusal, retryRefusal, resumeRefusal, readyGrantLines } from './continuation.mjs';
 import { advisorTaskOrRefuse } from './advise-carry.mjs';
 import { scopeRunRefusal } from './preflight.mjs';
 import { orderInputName } from '../order-schema.mjs';
@@ -30,14 +30,15 @@ export async function passGate({ opts, taskText, header, projectRunsRoot, repoRo
   // like an impossible scope.
   const taskHash = taskFingerprint(taskText);
   const grant = header.grant;
-  // OW-040, 2026-09-30: only a retry repeats failed scope without spending advise's continuation.
-  if (opts.agent === 'codex-advisor' && opts.phase === 'scope' && opts.continue && grant?.kind !== 'retry') {
+  // Plan_80 E13: retry and resume repeat failed scope without spending advise's continuation.
+  if (opts.agent === 'codex-advisor' && opts.phase === 'scope' && opts.continue && grant?.kind !== 'retry' && grant?.kind !== 'resume') {
     die([orderRuleMessage('advisor-scope-continuation', {
       phaseLabel: orderInputName('phase'), continueLabel: orderInputName('continue'),
     }), orderDiagnosticMessage('run-not-created')].join(' '));
   }
   let continuationGrant = grant?.kind === 'continue' ? grant : null;
   const retryOf = grant?.kind === 'retry' ? grant.run : null;
+  const resumedFrom = grant?.kind === 'resume' ? grant.run : null;
   const chain = chainRuns(projectRunsRoot, repoRoot, opts.slug, taskHash, opts.orderId, grant?.run);
   const startedChain = startedRuns(projectRunsRoot, chain);
   const attachExistingRun = () => attach({
@@ -54,7 +55,14 @@ export async function passGate({ opts, taskText, header, projectRunsRoot, repoRo
   // markAbandoned() ran before this gate, so a dead runner already has meta.json with FAIL.
   // A run without a verdict can therefore only still be in flight; ordinary repeats go through
   // attach() after this gate. Repeated continuation calls attach first because their grant is spent.
-  if (grant?.kind === 'retry') {
+  if (grant?.kind === 'resume') {
+    const resumeError = resumeRefusal(projectRunsRoot, startedChain, opts.orderId, grant, { agent: opts.agent, phase: opts.phase });
+    if (resumeError) die(resumeError);
+    const namedStatus = readJson(path.join(projectRunsRoot, grant.run, 'status.json'));
+    // Plan_80 E13: a resume replays the named pass against its recorded continuation base.
+    continuationGrant = String(namedStatus.continued_from ?? '').trim()
+      ? { run: namedStatus.continued_from, reason: grant.reason } : null;
+  } else if (grant?.kind === 'retry') {
     const retryError = retryRefusal(projectRunsRoot, startedChain, opts.continue, opts.orderId, grant);
     if (retryError) die(retryError);
     const namedStatus = readJson(path.join(projectRunsRoot, grant.run, 'status.json'));
@@ -83,7 +91,7 @@ export async function passGate({ opts, taskText, header, projectRunsRoot, repoRo
     scopeRunRefusal({ agent: opts.agent, phase: opts.phase, runsRoot: projectRunsRoot, grantRun: continuationGrant.run });
   if (scopeRun) die(scopeRun, EXIT.FAIL);
   // Plan_59 D22: the advise snapshot is read before the folder exists, so a broken scope result refuses for free.
-  const advisorTask = opts.agent === 'codex-advisor' ? advisorTaskOrRefuse({ taskText, phase: opts.phase, runsRoot: projectRunsRoot, grantRun: continuationGrant?.run }) : null;
+  const advisorTask = !resumedFrom && opts.agent === 'codex-advisor' ? advisorTaskOrRefuse({ taskText, phase: opts.phase, runsRoot: projectRunsRoot, grantRun: continuationGrant?.run }) : null;
 
   // One order produced six Codex runs on 2026-08-03 because the caller's time ceiling made it
   // restart the synchronous launcher. A live same-order run is now the repeat target: attach
@@ -103,5 +111,5 @@ export async function passGate({ opts, taskText, header, projectRunsRoot, repoRo
     }), orderDiagnosticMessage('run-not-created')].join(' '));
   }
 
-  return { taskHash, chain, startedChain, continuationGrant, advisorTask, retryOf };
+  return { taskHash, chain, startedChain, continuationGrant, advisorTask, retryOf, resumedFrom };
 }
