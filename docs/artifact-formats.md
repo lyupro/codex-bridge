@@ -127,8 +127,9 @@ non-negative integer `meta.json#commands_executed.run` and recorded `session_id`
 is absent: `meta.json` survives retention, so pruned `events.jsonl` does not lose that evidence,
 and stored `chain` totals are never added again.
 A non-resume has `chain = run`, `chain_runs = []`, and `gap = null`; a valid resume sums its own
-count and its predecessors (keeping `chain = null` when `run` is `null`), and this accounting
-does not yet affect verdicts or replies.
+count and its predecessors (keeping `chain = null` when `run` is `null`); the scout execution,
+startup-context coordinate, and advisor command-evidence checks now use `chain` (see
+[verdict checks 12–13](verdict.md#resolvestatus-order)).
 
 ### Stop assessments
 

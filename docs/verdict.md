@@ -57,7 +57,11 @@ the first matching branch determines the status. The order is therefore part of 
     after verification and before scope: unfinished work matters more than where it was left, while a
     failed mandatory command remains the louder failure. Only runs whose own `schema.json` required the
     field are judged by it — see “Run age” below.
-12. **Scout coverage.** First, a run that left an events stream must show at least one executed command:
+12. **Scout coverage.** First, the execution fact counts this run plus its proven resume ancestry in
+    the same Codex thread (`meta.commands_executed.chain`; see [artifact formats](artifact-formats.md)).
+    An unprovable ancestry fails with its provenance reason; a chain that executed nothing still
+    fails under the same startup-context exemption, preserving the 2026-09-16 dead sandbox protection.
+    A run that left an events stream must therefore show at least one executed command in that chain:
     an `item.completed` event whose item is a `command_execution`, with any status and exit code (a grep
     that finds nothing still read the code). Without one the run is `FAIL` unless every question in
     `questions.json` is `startup-context`; mixed runs and archived questions without `kind` keep the
@@ -71,12 +75,16 @@ the first matching branch determines the status. The order is therefore part of 
     An archived run without a stream is not judged by it. Then multiple extracted questions require
     separate answers, enough substantive text, and at least one evidence link for each question. For a
     single question, the overall `answer` is checked for substance. Finally, each marked question's answer must cite `startup:<source>` evidence or the run is `FAIL`.
-    With zero executed commands, any repository `path:line` in answers' evidence or findings' `where`
+    With zero executed commands in the chain, any repository `path:line` in answers' evidence or findings' `where`
     also produces `FAIL`: an address cited without reading is invented, so a code question marked by
     mistake still fails.
 13. **Advisor contract.** After scout checks and before the build-only scope check, the advisor judge
-    validates the result against `advisor-task.json` and the phase context. It returns `FAIL` if the run
-    executed no command; a scope result has an empty `taken_on_trust`, says `sufficient: false` without
+    validates the result against `advisor-task.json` and the phase context. Command evidence uses the
+    execution fact for this run plus its proven resume ancestry in the same Codex thread
+    (`meta.commands_executed.chain`; see [artifact formats](artifact-formats.md)).
+    An unprovable ancestry fails with its provenance reason as one contract reason; a chain that
+    executed nothing still fails D4, preserving the 2026-09-16 dead sandbox protection.
+    It also returns `FAIL` if a scope result has an empty `taken_on_trust`, says `sufficient: false` without
     any `missing_paths`, or says `sufficient: true` while still listing missing paths; a citation does
     not resolve to a readable file and valid line range inside the repository or falls outside the task's
     listed paths (plus the applicable scope `missing_paths`); or the recommendation is not a task option

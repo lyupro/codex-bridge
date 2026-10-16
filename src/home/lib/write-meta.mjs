@@ -100,6 +100,7 @@ export function collect(runDir, agent, exitCode) {
     result,
     runDir,
     events,
+    execution: executionFact,
   });
 
   const meta = {

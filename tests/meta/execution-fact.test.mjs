@@ -6,8 +6,9 @@ import { makeTempTree } from '../temp-tree.mjs';
 import { readEvents } from '../../src/home/lib/meta/events.mjs';
 import { line } from '../../src/home/lib/meta/paths.mjs';
 import {
-  EXECUTION_FACT_VERSION, readExecutionFact,
+  EXECUTION_FACT_VERSION, readExecutionFact, scoutExecutionGap,
 } from '../../src/home/lib/meta/execution-fact.mjs';
+import { QUESTION_KIND } from '../../src/home/lib/runner/question-kind.mjs';
 
 const json = (dir, file, value) =>
   fs.writeFileSync(path.join(dir, file), `${JSON.stringify(value)}\n`, 'utf8');
@@ -235,7 +236,48 @@ test('gap names are bounded to sixty characters', () => {
   assert.ok(line(name, 60).length <= 60);
 });
 
-test('module never reads a predecessor stored chain total', () => {
+test('execution fact reader never reads a predecessor stored chain total', () => {
   const source = fs.readFileSync(new URL('../../src/home/lib/meta/execution-fact.mjs', import.meta.url), 'utf8');
-  assert.doesNotMatch(source, /(?:\?\.|\.)\s*chain\b|\[\s*['"]chain['"]\s*\]/);
+  const reader = source.slice(source.indexOf('export function readExecutionFact('));
+  assert.doesNotMatch(reader, /(?:\?\.|\.)\s*chain\b|\[\s*['"]chain['"]\s*\]/);
+});
+
+const noCommandReason = 'scout executed no command, so no answer rests on reading the code; '
+  + 'check stderr.log for sandbox refusals before changing the order';
+const startupQuestions = [{ id: 'Q1', kind: QUESTION_KIND.STARTUP_CONTEXT }];
+
+test('scout execution provenance gap wins over counts and startup context', () => {
+  const gap = 'resume chain: missing — run folder not found';
+  for (const chain of [0, null, 8]) {
+    for (const questions of [[], startupQuestions]) {
+      assert.equal(scoutExecutionGap({ execution: { chain, gap }, questions }), gap);
+    }
+  }
+});
+
+test('scout zero-command chain without all startup questions keeps the exact old reason', () => {
+  for (const questions of [[], [{ id: 'Q1', kind: QUESTION_KIND.CODE_REQUIRED }],
+    [...startupQuestions, { id: 'Q2', kind: QUESTION_KIND.CODE_REQUIRED }]]) {
+    assert.equal(scoutExecutionGap({ execution: { chain: 0, gap: null }, questions }), noCommandReason);
+  }
+});
+
+test('scout zero-command chain with all startup-context questions has no execution gap', () => {
+  assert.equal(scoutExecutionGap({ execution: { chain: 0, gap: null }, questions: startupQuestions }), null);
+});
+
+test('scout archived null chain stays unjudged', () => {
+  assert.equal(scoutExecutionGap({ execution: { chain: null, gap: null }, questions: [] }), null);
+});
+
+test('scout proven positive chain has no execution gap', () => {
+  assert.equal(scoutExecutionGap({ execution: { chain: 8, gap: null }, questions: [] }), null);
+});
+
+test('verdict consumers never read the current-run command count directly', () => {
+  for (const module of ['verdict', 'advice-status']) {
+    const source = fs.readFileSync(new URL(`../../src/home/lib/meta/${module}.mjs`, import.meta.url), 'utf8');
+    assert.doesNotMatch(source,
+      /eventData\s*(?:(?:\?\.|\.)\s*commands_executed\b|(?:\?\.)?\s*\[\s*['"]commands_executed['"]\s*\])/);
+  }
 });

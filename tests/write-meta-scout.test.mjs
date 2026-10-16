@@ -246,3 +246,14 @@ test('single-question mode passes a substantial answer, with no coverage line', 
   assert.equal(meta.status, 'OK');
   assert.doesNotMatch(reply, /Coverage/);
 });
+
+test('an ordinary scout with zero commands keeps the exact dead-sandbox failure reason', () => {
+  const dir = makeRun({
+    events: [{ type: 'thread.started', thread_id: 'ordinary-scout' }],
+    result: { answer: LONG_PROSE_ANSWER, findings: [], unknowns: [], report_markdown: '# report' },
+  });
+  const { meta } = collect(dir, 'codex-scout', 0);
+  assert.equal(meta.status, 'FAIL');
+  assert.equal(meta.reason, 'scout executed no command, so no answer rests on reading the code; '
+    + 'check stderr.log for sandbox refusals before changing the order');
+});

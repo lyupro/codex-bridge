@@ -29,7 +29,8 @@ import { transportGap } from './transport.mjs';
 import { sandboxWitnessGap } from './sandbox-witness.mjs';
 import { reasonFrom } from './reason.mjs';
 import { adviceGap } from './advice-status.mjs';
-import { allStartupContext, contextOnlyGap } from './context-only.mjs';
+import { contextOnlyGap } from './context-only.mjs';
+import { readExecutionFact, scoutExecutionGap } from './execution-fact.mjs';
 import { compareSnapshots } from './snapshot-format.mjs';
 import { readSnapshot, runSnapshotChanges, snapshotRefusal } from './run-snapshots.mjs';
 
@@ -257,8 +258,9 @@ function branchDuringRun(runDir) {
  * events and silent stderr is abandoned at startup; an empty result with no structured
  * transport error is FAIL, because diagnostic text cannot turn a quoted limit into LIMIT.
  */
-export function resolveStatus({ resultOk, exit, agent, result, runDir, events }) {
+export function resolveStatus({ resultOk, exit, agent, result, runDir, events, execution }) {
   const eventData = events ?? readEvents(runDir);
+  execution ??= readExecutionFact(runDir, eventData);
   // First, as the empty raw.log check was before it: a run that never started cannot be graded
   // for what happened in its window. Below this line sit accusations about the run's conduct —
   // a commit, a moved branch — and HEAD moving while Codex was absent is somebody else's doing.
@@ -325,29 +327,19 @@ export function resolveStatus({ resultOk, exit, agent, result, runDir, events })
   // only when questions.json is absent — see scoutCoverageGap().
   if (agent === 'codex-scout') {
     const questions = questionsOf(runDir);
-    // The 2026-09-16 dead sandbox produced nonempty evidence without reading code. Require an
-    // execution fact first: checking whether evidence paths existed falsely rejected 64/151 runs.
-    // Only a run that left a stream can prove it: an archived run from before `--json` has none and
-    // is judged by the contract of its day; a `--json` run missing its stream already failed above.
-    // Plan_60 D1 exempts only orders whose every question asks about handed startup context.
-    if (eventData.hasStream && eventData.commands_executed === 0 && !allStartupContext(questions)) {
-      return {
-        status: 'FAIL',
-        reason: 'scout executed no command, so no answer rests on reading the code; '
-          + 'check stderr.log for sandbox refusals before changing the order',
-      };
-    }
+    const executionGap = scoutExecutionGap({ execution, questions });
+    if (executionGap) return { status: 'FAIL', reason: executionGap };
     const gap = scoutCoverageGap(questions, result);
     if (gap) return { status: 'FAIL', reason: gap };
     const contextGap = contextOnlyGap({
-      questions, result, commandsExecuted: eventData.hasStream ? eventData.commands_executed : null,
+      questions, result, commandsExecuted: execution.chain,
     });
     if (contextGap) return { status: 'FAIL', reason: contextGap };
   }
   // Plan_59 D3/D4/D5/D10: a schema-valid agreement still needs evidence and decision checks.
   // Place the advisor judge before the build-only scope check, alongside the other agent contracts.
   if (agent === 'codex-advisor') {
-    const gap = adviceGap(runDir, result, eventData);
+    const gap = adviceGap(runDir, result, eventData, execution);
     if (gap) return { status: 'FAIL', reason: gap };
   }
   // Files the task never authorised. Checked before the mismatch below, because a run that

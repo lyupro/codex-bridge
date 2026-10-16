@@ -4,11 +4,26 @@ import path from 'node:path';
 import { readEvents } from './events.mjs';
 import { line, readJson } from './paths.mjs';
 import { resumeOrigin } from './sandbox-witness.mjs';
+import { allStartupContext } from './context-only.mjs';
 
 export const EXECUTION_FACT_VERSION = 1;
 
 const canonicalKey = (value) => process.platform === 'win32' ? value.toLowerCase() : value;
 const threadKnown = (value) => typeof value === 'string' && value.trim().length > 0;
+
+export function scoutExecutionGap({ execution, questions }) {
+  if (execution.gap) return execution.gap;
+  // The 2026-09-16 dead sandbox produced nonempty evidence without reading code. Require an
+  // execution fact first: checking whether evidence paths existed falsely rejected 64/151 runs.
+  // Only a run that left a stream can prove it (`chain` is null without one): an archived run from
+  // before `--json` is judged by the contract of its day. Plan_60 D1 exempts only orders whose every
+  // question asks about handed startup context; E14 counts the proven resume chain of the thread.
+  if (execution.chain === 0 && !allStartupContext(questions)) {
+    return 'scout executed no command, so no answer rests on reading the code; '
+      + 'check stderr.log for sandbox refusals before changing the order';
+  }
+  return null;
+}
 
 export function readExecutionFact(runDir, eventData) {
   const run = eventData.hasStream ? eventData.commands_executed : null;

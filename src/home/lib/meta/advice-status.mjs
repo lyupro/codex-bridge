@@ -4,13 +4,15 @@ import path from 'node:path';
 import { DEFAULTS } from '../run-config.mjs';
 import { judgeAdvice } from './advice-verdict.mjs';
 import { readJson, safeSlice } from './paths.mjs';
+import { readExecutionFact } from './execution-fact.mjs';
 
 function contractReason(reasons) {
   const message = `advice contract broken (${reasons.length}): ${reasons.slice(0, 2).join('; ')}`;
   return message.length <= 200 ? message : `${safeSlice(message, 197)}...`;
 }
 
-export function adviceGap(runDir, result, eventData) {
+export function adviceGap(runDir, result, eventData, execution) {
+  execution ??= readExecutionFact(runDir, eventData);
   const worker = readJson(path.join(runDir, 'worker.json')) || {};
   const status = readJson(path.join(runDir, 'status.json')) || {};
   const env = readJson(path.join(runDir, 'env.json')) || {};
@@ -25,8 +27,9 @@ export function adviceGap(runDir, result, eventData) {
   }
   if (phase !== 'scope' && phase !== 'advise') reasons.push('worker.json/status.json is missing a valid advisor phase');
   if (typeof status.repo !== 'string' || !status.repo) reasons.push('status.json#repo is missing');
-  if (!Number.isInteger(eventData?.commands_executed) || eventData.commands_executed < 0) {
-    reasons.push('eventData.commands_executed is missing or invalid');
+  if (execution.gap) reasons.push(execution.gap);
+  else if (!Number.isInteger(execution.chain) || execution.chain < 0) {
+    reasons.push('commands_executed.chain is missing or invalid');
   }
   if (!result || typeof result !== 'object' || Array.isArray(result)) reasons.push('result.json is missing or is not an object');
 
@@ -46,7 +49,7 @@ export function adviceGap(runDir, result, eventData) {
       result,
       task,
       repoRoot: status.repo,
-      commandsRun: eventData.commands_executed,
+      commandsRun: execution.chain,
       language: env.answerLanguage ?? DEFAULTS.answerLanguage,
       scopeResult,
     });
