@@ -17,10 +17,10 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 test('the registry owns execution agents and the phased advisor defaults from Plan_59', () => {
   assert.deepEqual(AGENTS, {
-    'codex-scout': { role: 'scout', budget: 15, silenceThresholdMs: null, writes: false, result: 'result.json' },
-    'codex-build': { role: 'build', budget: 25, silenceThresholdMs: null, writes: true, result: 'result.json' },
-    'codex-review': { role: 'review', budget: 20, silenceThresholdMs: null, writes: false, result: 'review.json' },
-    'codex-advisor': { role: 'advisor', budget: { scope: 10, advise: 25 }, silenceThresholdMs: { scope: null, advise: 996000 }, writes: false, result: 'result.json' },
+    'codex-scout': { role: 'scout', budget: 15, silenceThresholdMs: null, recoveryBudgetMs: null, writes: false, result: 'result.json' },
+    'codex-build': { role: 'build', budget: 25, silenceThresholdMs: null, recoveryBudgetMs: null, writes: true, result: 'result.json' },
+    'codex-review': { role: 'review', budget: 20, silenceThresholdMs: null, recoveryBudgetMs: null, writes: false, result: 'review.json' },
+    'codex-advisor': { role: 'advisor', budget: { scope: 10, advise: 25 }, silenceThresholdMs: { scope: null, advise: 996000 }, recoveryBudgetMs: { scope: null, advise: 1102000 }, writes: false, result: 'result.json' },
   });
   for (const [name, agent] of Object.entries(AGENTS)) {
     assert.equal(typeof agent.role, 'string', `${name} must have a role`);
@@ -48,6 +48,23 @@ test('every agent declares silence thresholds with the same phase shape as its b
     const thresholds = phased ? Object.values(agent.silenceThresholdMs) : [agent.silenceThresholdMs];
     for (const value of thresholds) {
       assert.ok(value === null || (Number.isInteger(value) && value > 0), `${name}: invalid threshold`);
+    }
+  }
+});
+
+test('every agent declares recovery budgets with the same phase shape as its budget', () => {
+  for (const [name, agent] of Object.entries(AGENTS)) {
+    assert.ok(Object.hasOwn(agent, 'recoveryBudgetMs'), `${name} must declare recoveryBudgetMs`);
+    const phased = typeof agent.budget === 'object' && agent.budget !== null;
+    if (phased) {
+      assert.ok(agent.recoveryBudgetMs && typeof agent.recoveryBudgetMs === 'object');
+      assert.deepEqual(Object.keys(agent.recoveryBudgetMs).sort(), Object.keys(agent.budget).sort());
+    } else {
+      assert.ok(agent.recoveryBudgetMs === null || typeof agent.recoveryBudgetMs === 'number');
+    }
+    const budgets = phased ? Object.values(agent.recoveryBudgetMs) : [agent.recoveryBudgetMs];
+    for (const value of budgets) {
+      assert.ok(value === null || (Number.isInteger(value) && value > 0), `${name}: invalid recovery budget`);
     }
   }
 });
