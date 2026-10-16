@@ -67,6 +67,47 @@ export function sandboxModeFor(agent) {
   throw new Error(`unknown agent for sandbox mode: ${agent}`);
 }
 
+/**
+ * Resume needs its own builder: exec resume has no -C or --sandbox, and must use the failed
+ * run's frozen profile rather than today's configuration (Plan_80 E13/O4). S3 proved that
+ * sandbox_mode=read-only keeps the resumed thread read-only; the worker supplies process cwd.
+ */
+export function resumeArgs({ agent, profile, threadId, runDir }) {
+  if (sandboxModeFor(agent) !== 'read-only') {
+    throw new RangeError('Only read-only agents can be resumed.');
+  }
+  if (typeof threadId !== 'string' ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(threadId)) {
+    throw new TypeError('Resume requires a UUID threadId.');
+  }
+  if (!profile || typeof profile !== 'object' || Array.isArray(profile) ||
+      typeof profile.effort !== 'string' || !profile.effort.trim()) {
+    throw new TypeError('Resume requires a frozen profile with non-empty effort.');
+  }
+  return [
+    'exec',
+    'resume',
+    threadId,
+    '--json',
+    ...CLEAN_ENV,
+    '--ignore-user-config',
+    '-c',
+    `model_reasoning_effort=${profile.effort}`,
+    ...(profile.speed ? ['-c', `service_tier=${profile.speed}`] : []),
+    ...NO_SUBAGENTS,
+    ...platformSandboxArgs(),
+    ...(profile.model ? ['-m', profile.model] : []),
+    '-c',
+    'sandbox_mode=read-only',
+    '--skip-git-repo-check',
+    '--output-schema',
+    path.join(runDir, 'schema.json'),
+    '-o',
+    path.join(runDir, agent === 'codex-review' ? 'review.json' : 'result.json'),
+    '-',
+  ];
+}
+
 export function codexArgs(opts, runDir, isGitRepo) {
   const sandboxMode = sandboxModeFor(opts.agent);
   const schema = path.join(runDir, 'schema.json');

@@ -32,6 +32,7 @@ The file is created after all task/schema/snapshot artifacts and before the work
     "effort": "max",
     "effort_source": "config"
   },
+  "resume": null,
   "args": ["exec", "--disable", "hooks", "--disable", "plugins"]
 }
 ```
@@ -50,6 +51,7 @@ The file is created after all task/schema/snapshot artifacts and before the work
 | `scope_new` | always (an empty list if the flag was absent) | Paths from `--scope-new`: files that do not exist at startup and that the run creates. Only for `codex-build`. They are recorded so that months later it remains clear which missing paths were declared intentionally rather than accepted by mistake. |
 | `profile` | always | The worker that was ordered: `model` (empty when nothing is pinned and Codex chooses), `model_source` (`config` or `codex default`), `effort`, and `effort_source` (`request`, `config`, or `fallback`). Recorded apart from `args` because an absent `-m` says nothing on its own — a run that was never given the operator's configured model looked exactly like a run for which none was configured, which is how a pinned profile went unnoticed for three releases (2026-08-26). `meta.json` and the dispatcher reply both read it from here. |
 | `args` | always | Full argv for the Codex command, including the sandbox, output schema, and result path. |
+| `resume` | always | `null` for a fresh run. For a resume run, `{ "thread_id": "<UUID>", "resumed_from": "<failed run folder>", "sandbox_mode": "read-only" }` freezes the thread id, the run folder it continues, and the literal sandbox mode carried by `args`. Only `codex-scout`, `codex-review`, and `codex-advisor` can resume. The worker does not read it; `meta.json` will. |
 
 `args` already contains the decisions about `hooks` and `plugins`, `effort`, directory, schema, and
 result file. The worker must not assemble this list again.
@@ -69,7 +71,7 @@ The current implementation reads five fields:
 `phase` is carried in the saved order for phase-aware accounting and verdicts. The worker does not
 consult `config.json` to reinterpret the phase or recalculate its budget.
 
-The worker does not read `slug`, `order_id`, `launcher_pid`, `silence_policy`, `scope_new`, or `profile`. This is the actual
+The worker does not read `slug`, `order_id`, `launcher_pid`, `silence_policy`, `scope_new`, `profile`, or `resume`. This is the actual
 asymmetric state of the contract, not a documentation error: these fields are retained to make the
 directory explainable during later investigation — including making it clear months later which job
 owned the run. The chain link and active worker pid come from `status.json`, not `worker.json`.

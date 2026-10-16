@@ -13,6 +13,24 @@ import { RUN_ENV } from './run-env.mjs';
 import { advisorSchema, schemaFor } from './schemas.mjs';
 import { QUESTION_KIND } from './question-kind.mjs';
 
+/**
+ * Package-owned continuation artifact (Plan_80 E13/A8 point 2). Sending the original task
+ * again would restart the work that resume exists to continue.
+ */
+export function resumePrompt(situationKind) {
+  if (typeof situationKind !== 'string' || !/^[a-z][a-z-]*$/.test(situationKind)) {
+    throw new RangeError('Resume requires a lowercase stop situation kind.');
+  }
+  return [
+    `Your previous turn in this thread stopped before it returned a result (stop situation: ${situationKind}).`,
+    'Continue from what this thread has already read and reasoned. Do not start the task over and do not',
+    're-read files whose content you already have, unless one specific fact is missing.',
+    "Return the final answer now as JSON that matches this run's output schema, following the rules you",
+    'were given at the start of this thread.',
+    '',
+  ].join('\n');
+}
+
 function boundedArrayRules(schema, path = '') {
   if (schema.type === 'object') {
     return Object.entries(schema.properties ?? {}).flatMap(([name, child]) =>
