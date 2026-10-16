@@ -101,6 +101,9 @@ const resumeMessages = [
   ['not-eligible', { run: 'B', blockers: ['stop-record-missing', 'session-evidence-not-observed'] },
     'Resume is refused: run B cannot be resumed: stop-record-missing, session-evidence-not-observed. ' +
       'A retry: grant repeats it on a fresh thread.'],
+  ['inputs-unusable', { run: 'B', reasons: ['artifact-missing:schema.json', 'profile-missing'] },
+    'Resume is refused: run B cannot be replayed: artifact-missing:schema.json, profile-missing. ' +
+      'A retry: grant repeats it on a fresh thread.'],
   ['thread-unreadable', { run: 'B', state: 'unreadable', reason: 'access denied' },
     'Resume is refused: run B Codex thread is unreadable; reason: access denied.'],
   ['thread-advanced-after-stop', { run: 'B', recordedAt: '2026-10-16T09:25:00.000Z', currentAt: '2026-10-16T09:26:00.000Z' },

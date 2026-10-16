@@ -7,6 +7,7 @@ import { makeTempTree } from '../temp-tree.mjs';
 import { validScope } from '../meta/advisor-fixtures.mjs';
 import { passGate } from '../../src/home/lib/runner/pass-gate.mjs';
 import { orderRuleMessage } from '../../src/home/lib/order-rules.mjs';
+import { readResumeInputs } from '../../src/home/lib/runner/resume-inputs.mjs';
 
 const S = '2026-10-03_180000_scope';
 const A = '2026-10-03_180100_advise';
@@ -30,12 +31,12 @@ function fixture() {
   };
 }
 
-function run(tree, name, status, meta) {
+function run(tree, name, status, meta, artifacts = {}) {
   const dir = path.join(tree.projectRunsRoot, name);
   fs.mkdirSync(dir);
   const record = {
     agent: 'codex-advisor', phase: 'scope', repo: tree.repoRoot, slug: tree.opts.slug,
-    order_id: 'o', state: 'finished', started_at: START, ...status,
+    order_id: 'o', state: 'finished', started_at: START, task_hash: 'frozen-task-hash', ...status,
   };
   fs.writeFileSync(path.join(dir, 'status.json'), `${JSON.stringify(record)}\n`);
   // Plan_80 E13: exercise the real eligibility and liveness judges, not cached eligibility.
@@ -45,6 +46,18 @@ function run(tree, name, status, meta) {
       session: { state: 'observed', last_record_at: STOP } },
     ...meta,
   })}\n`);
+  const files = {
+    'worker.json': JSON.stringify({ profile: { model: 'fixture-model' } }),
+    'events.jsonl': `${JSON.stringify({ type: 'thread.started', thread_id: THREAD })}\n`,
+    'task-original.md': TASK,
+    'schema.json': '{"type":"object"}\n',
+    ...(record.agent === 'codex-advisor' && record.phase === 'advise'
+      ? { 'advisor-task.json': '{"frozen":true}\n' } : {}),
+    ...artifacts,
+  };
+  for (const [file, body] of Object.entries(files)) {
+    if (body !== null) fs.writeFileSync(path.join(dir, file), body);
+  }
   return dir;
 }
 
@@ -99,9 +112,14 @@ test('resume advise carries its original OK scope and returns only resume proven
   assert.equal(result.retryOf, null);
   assert.deepEqual(result.continuationGrant, { run: S, reason: REASON });
   assert.equal(result.advisorTask, null);
+  assert.equal(result.resumeInputs.thread_id, THREAD);
+  assert.deepEqual(result.resumeInputs.files, {
+    'task-original.md': TASK, 'schema.json': '{"type":"object"}\n',
+    'advisor-task.json': '{"frozen":true}\n',
+  });
   assert.deepEqual(result.startedChain, [S, A]);
   assert.deepEqual(Object.keys(result).sort(), [
-    'advisorTask', 'chain', 'continuationGrant', 'resumedFrom', 'retryOf', 'startedChain', 'taskHash',
+    'advisorTask', 'chain', 'continuationGrant', 'resumeInputs', 'resumedFrom', 'retryOf', 'startedChain', 'taskHash',
   ]);
   assert.deepEqual(fs.readdirSync(tree.projectRunsRoot), [S, A]);
 });
@@ -196,10 +214,46 @@ test('retry retains its original scope and advisor task and has no resume proven
   const tree = adviseFixture();
   const result = await gate(tree, 'retry', A);
   assert.equal(result.resumedFrom, null);
+  assert.equal(result.resumeInputs, null);
   assert.equal(result.retryOf, A);
   assert.deepEqual(result.continuationGrant, { run: S, reason: REASON });
   assert.equal(result.advisorTask.scope.run, S);
   assert.deepEqual(result.advisorTask.scope.predicted_risks, validScope().predicted_risks);
   assert.deepEqual(result.advisorTask.scope.missing_paths, validScope().missing_paths);
   assert.deepEqual(fs.readdirSync(tree.projectRunsRoot), [S, A]);
+});
+
+for (const [artifacts, reasons] of [
+  [{ 'schema.json': null }, ['artifact-missing:schema.json']],
+  [{ 'worker.json': '{}' }, ['profile-missing']],
+  [{ 'schema.json': null, 'worker.json': '{}' }, ['profile-missing', 'artifact-missing:schema.json']],
+]) {
+  test(`resume refuses unusable frozen inputs before creating a folder: ${reasons.join(', ')}`, async () => {
+    const tree = fixture();
+    const dir = run(tree, S, {}, {}, artifacts);
+    session(tree, STOP);
+    assert.deepEqual(readResumeInputs(dir), { ok: false, reasons });
+    await assert.rejects(gate(tree, 'resume', S, { phase: 'scope' }), refusal(orderRuleMessage('resume-grant-usable', {
+      violation: 'inputs-unusable', run: S, reasons,
+    })));
+    assert.deepEqual(fs.readdirSync(tree.projectRunsRoot), [S]);
+  });
+}
+
+test('a repeated resume grant attaches before the named run becomes a not-last refusal', async () => {
+  const tree = adviseFixture();
+  run(tree, R, { phase: 'advise', resumed_from: A, continued_from: S }, { status: 'OK' }, {
+    'reply.txt': 'OK — resumed pass finished\n',
+  });
+  const lines = [];
+  const original = console.log;
+  console.log = (...parts) => lines.push(parts.join(' '));
+  try {
+    assert.deepEqual(await gate(tree, 'resume', A), { exitCode: 0 });
+  } finally {
+    console.log = original;
+  }
+  assert.match(lines[1], /previous run started at .*; no new work was started/);
+  assert.equal(lines[2], 'OK — resumed pass finished');
+  assert.deepEqual(fs.readdirSync(tree.projectRunsRoot), [S, A, R]);
 });

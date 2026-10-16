@@ -27,7 +27,7 @@ export const expectedData = {
   'continuation-grant-usable': ['violation', 'labelName', 'run', 'runsRoot', 'lastRun', 'orderId', 'spent', 'previous', 'example'],
   'retry-grant-usable': ['violation', 'run', 'runsRoot', 'previousOrder', 'orderId', 'labelName'],
   'resume-grant-usable': ['violation', 'run', 'runsRoot', 'previousOrder', 'orderId', 'labelName',
-    'blockers', 'state', 'reason', 'recordedAt', 'currentAt'],
+    'blockers', 'state', 'reason', 'recordedAt', 'currentAt', 'reasons'],
   'ready-grant-line': ['variant', 'run', 'reason', 'orderId'],
   'grant-last-run-hint': ['variant', 'run', 'status', 'reason'],
   'advise-scope-input-required': [],

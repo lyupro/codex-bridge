@@ -85,6 +85,13 @@ const REFUSALS = [
     why: 'Plan_80 E13: a resume needs a finished, eligible, stopped run of its own order whose thread has not advanced',
   },
   {
+    name: 'a resume whose frozen inputs cannot be replayed',
+    side: 'before',
+    file: 'pass-gate.mjs',
+    marker: "violation: 'inputs-unusable'",
+    why: 'Plan_80 E13 O6: a resume replays the named run\'s task, schema and profile, never today\'s files',
+  },
+  {
     name: 'a refused retry',
     side: 'before',
     file: 'pass-gate.mjs',

@@ -123,14 +123,14 @@ export const RULES = Object.freeze({
   }),
   'resume-grant-usable': Object.freeze({
     data: Object.freeze(['violation', 'run', 'runsRoot', 'previousOrder', 'orderId', 'labelName',
-      'blockers', 'state', 'reason', 'recordedAt', 'currentAt']),
+      'blockers', 'state', 'reason', 'recordedAt', 'currentAt', 'reasons']),
     topic: 'order',
     rule: 'Grant resume only to the last run of the task chain under its own order id, after a finished non-OK ' +
       'verdict with its worker stopped, when the run is eligible by its recorded stop facts and its Codex thread ' +
       'has not advanced since it stopped; resume continues that pass\'s thread, retry repeats it on a fresh ' +
       'thread, continue grants the next pass.',
     message: ({ violation, run, runsRoot, previousOrder, orderId, labelName, blockers, state, reason,
-      recordedAt, currentAt }) => {
+      recordedAt, currentAt, reasons }) => {
       if (violation === 'missing-folder') {
         return `Resume is refused: ${run} is not a bare existing run folder in ${runsRoot}.`;
       }
@@ -151,6 +151,10 @@ export const RULES = Object.freeze({
       }
       if (violation === 'not-eligible') {
         return `Resume is refused: run ${run} cannot be resumed: ${blockers.join(', ')}. ` +
+          'A retry: grant repeats it on a fresh thread.';
+      }
+      if (violation === 'inputs-unusable') {
+        return `Resume is refused: run ${run} cannot be replayed: ${reasons.join(', ')}. ` +
           'A retry: grant repeats it on a fresh thread.';
       }
       if (violation === 'thread-unreadable') {

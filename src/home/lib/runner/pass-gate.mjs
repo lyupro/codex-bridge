@@ -11,6 +11,7 @@ import { chainRuns, startedRuns, taskFingerprint, readJson } from '../write-meta
 import { die } from './args.mjs';
 import { EXIT } from './exit-codes.mjs';
 import { attach } from './attach.mjs';
+import { readResumeInputs } from './resume-inputs.mjs';
 import { continuationRefusal, retryRefusal, resumeRefusal, readyGrantLines } from './continuation.mjs';
 import { advisorTaskOrRefuse } from './advise-carry.mjs';
 import { scopeRunRefusal } from './preflight.mjs';
@@ -39,12 +40,13 @@ export async function passGate({ opts, taskText, header, projectRunsRoot, repoRo
   let continuationGrant = grant?.kind === 'continue' ? grant : null;
   const retryOf = grant?.kind === 'retry' ? grant.run : null;
   const resumedFrom = grant?.kind === 'resume' ? grant.run : null;
+  let resumeInputs = null;
   const chain = chainRuns(projectRunsRoot, repoRoot, opts.slug, taskHash, opts.orderId, grant?.run);
   const startedChain = startedRuns(projectRunsRoot, chain);
   const attachExistingRun = () => attach({
     runsRoot: projectRunsRoot, repo: repoRoot, slug: opts.slug, taskHash, orderId: opts.orderId, chain,
     grantRun: continuationGrant?.run, isContinue: opts.continue, noWait: opts.noWait,
-    retryRun: retryOf ?? undefined, beforeWait,
+    retryRun: retryOf ?? undefined, resumeRun: resumedFrom ?? undefined, beforeWait,
   });
   let attachedExitCode = opts.continue ? await attachExistingRun() : null;
   if (attachedExitCode !== null) return { exitCode: attachedExitCode };
@@ -58,6 +60,11 @@ export async function passGate({ opts, taskText, header, projectRunsRoot, repoRo
   if (grant?.kind === 'resume') {
     const resumeError = resumeRefusal(projectRunsRoot, startedChain, opts.orderId, grant, { agent: opts.agent, phase: opts.phase });
     if (resumeError) die(resumeError);
+    const frozen = readResumeInputs(path.join(projectRunsRoot, grant.run));
+    if (!frozen.ok) die([orderRuleMessage('resume-grant-usable', {
+      violation: 'inputs-unusable', run: grant.run, reasons: frozen.reasons,
+    }), orderDiagnosticMessage('run-not-created')].join(' '));
+    resumeInputs = frozen.inputs;
     const namedStatus = readJson(path.join(projectRunsRoot, grant.run, 'status.json'));
     // Plan_80 E13: a resume replays the named pass against its recorded continuation base.
     continuationGrant = String(namedStatus.continued_from ?? '').trim()
@@ -111,5 +118,5 @@ export async function passGate({ opts, taskText, header, projectRunsRoot, repoRo
     }), orderDiagnosticMessage('run-not-created')].join(' '));
   }
 
-  return { taskHash, chain, startedChain, continuationGrant, advisorTask, retryOf, resumedFrom };
+  return { taskHash, chain, startedChain, continuationGrant, advisorTask, retryOf, resumedFrom, resumeInputs };
 }

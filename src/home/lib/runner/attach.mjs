@@ -99,7 +99,7 @@ export async function waitForReply(runDir, workerPid, status) {
  * incident showed that repeating the identical continuation command must return to that run.
  */
 export async function attach({
-  runsRoot, repo, slug, taskHash, orderId, chain, grantRun, retryRun, isContinue, noWait, beforeWait,
+  runsRoot, repo, slug, taskHash, orderId, chain, grantRun, retryRun, resumeRun, isContinue, noWait, beforeWait,
 } = {}) {
   const runs = chain || chainRuns(runsRoot, repo, slug, taskHash, orderId);
   const runRecords = runs
@@ -109,7 +109,9 @@ export async function attach({
   const attachRuns = isContinue
     ? sameOrder.filter(({ status }) => retryRun
       ? status.retry_of && sameRun(runsRoot, status.retry_of, retryRun)
-      : grantRun && status.continued_from && sameRun(runsRoot, status.continued_from, grantRun))
+      : resumeRun
+        ? status.resumed_from && sameRun(runsRoot, status.resumed_from, resumeRun)
+        : grantRun && status.continued_from && sameRun(runsRoot, status.continued_from, grantRun))
     : sameOrder;
   if (isContinue && !attachRuns.length) return null;
 
