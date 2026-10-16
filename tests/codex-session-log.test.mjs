@@ -41,7 +41,7 @@ function read(home, options = {}) {
   assert.equal(result.sampled_at, SAMPLED);
   assert.deepEqual(Object.keys(result).sort(), [
     'state', 'reason', 'file', 'last_record_at', 'last_record_kind', 'records', 'unknown_kinds', 'sampled_at',
-    'longest_gap_ms', 'longest_quiet_gap_ms', 'at_reference',
+    'longest_gap_ms', 'longest_quiet_gap_ms', 'at_reference', 'sandbox_witness',
   ].sort());
   return result;
 }
@@ -58,6 +58,7 @@ test('healthy activity counts reasoning and the final token_count; it never uses
       state: 'observed', reason: null, file, last_record_at: LAST,
       last_record_kind: 'event_msg/token_count', records: 3, unknown_kinds: [], sampled_at: SAMPLED,
       longest_gap_ms: 120000, longest_quiet_gap_ms: 120000, at_reference: null,
+      sandbox_witness: { state: 'absent', policy: null, at: null },
     });
     assert.notEqual(result.last_record_at, result.sampled_at);
     assert.notEqual(Date.parse(result.last_record_at), before);
@@ -93,10 +94,14 @@ test('no thread id is not-observed and never reads the filesystem or needs a sta
   });
 });
 
-test('missing searches only the start day and neighboring local days, including year rollover', async () => {
+// Plan_80 O9a: a resume appends to the thread's original day, so a far day is found by the store
+// fallback; a store without this thread still reads missing.
+test('a thread two days away is found by the store fallback; another thread there stays missing', async () => {
   await withTempTree('session-log-', (home) => {
-    fixture(home, jsonl([meta()]), 2);
-    const result = read(home);
+    const { file } = fixture(home, jsonl([meta()]), 2);
+    assert.equal(read(home).state, 'observed');
+    assert.equal(read(home).file, file);
+    const result = read(home, { threadId: '00000000-0000-4000-8000-000000000002' });
     assert.equal(result.state, 'missing');
     assert.equal(result.file, null);
     assert.equal(result.records, 0);

@@ -67,7 +67,7 @@ export function silenceAgeMs(atReference, referenceAt) {
   return ms >= 0 ? { ms, reason: null } : { ms: null, reason: 'no session record before reference' };
 }
 
-/** Read only the start day's local folder and its two neighbors; never scan the store. */
+/** Prefer nearby days; Plan_80 E13/O9 resumes append to the thread's original day. */
 function findRollout(codexHome, threadId, start) {
   for (const offset of [0, -1, 1]) {
     const day = new Date(start);
@@ -86,6 +86,30 @@ function findRollout(codexHome, threadId, start) {
       entry.endsWith(`-${threadId}.jsonl`));
     if (name) return { file: name, fullPath: path.join(folder, name) };
   }
+  const directories = (folder, pattern) => {
+    try {
+      return fs.readdirSync(folder, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory() && pattern.test(entry.name))
+        .map((entry) => entry.name).sort().reverse();
+    } catch (error) {
+      if (error.code === 'ENOENT') return [];
+      throw error;
+    }
+  };
+  const sessions = path.join(codexHome, 'sessions');
+  for (const year of directories(sessions, /^\d{4}$/)) {
+    const yearFolder = path.join(sessions, year);
+    for (const month of directories(yearFolder, /^(0[1-9]|1[0-2])$/)) {
+      const monthFolder = path.join(yearFolder, month);
+      for (const day of directories(monthFolder, /^(0[1-9]|[12]\d|3[01])$/)) {
+        const folder = path.join(monthFolder, day);
+        const name = fs.readdirSync(folder).sort().find((entry) =>
+          /^rollout-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-/.test(entry) &&
+          entry.endsWith(`-${threadId}.jsonl`));
+        if (name) return { file: name, fullPath: path.join(folder, name) };
+      }
+    }
+  }
   return null;
 }
 
@@ -95,6 +119,7 @@ export function readSessionActivity({ threadId, startedAt, referenceAt, codexHom
     state: 'not-observed', reason: null, file: null, last_record_at: null,
     last_record_kind: null, records: 0, unknown_kinds: [], sampled_at: now().toISOString(),
     longest_gap_ms: null, longest_quiet_gap_ms: null, at_reference: null,
+    sandbox_witness: { state: 'not-observed', policy: null, at: null },
   };
   const wholeCommands = commandEvidence();
   const referenceCommands = commandEvidence();
@@ -104,8 +129,12 @@ export function readSessionActivity({ threadId, startedAt, referenceAt, codexHom
     last_record_kind: null, records: 0, commands: null,
   };
   let quietGap = null;
+  let sandboxWitness = null;
   const finish = (overrides = {}) => {
     Object.assign(result, overrides);
+    result.sandbox_witness = result.state === 'observed'
+      ? sandboxWitness ?? { state: 'absent', policy: null, at: null }
+      : { state: 'not-observed', policy: null, at: null };
     if (wholeCommands.snapshot(result.state).state !== 'unknown') result.longest_quiet_gap_ms = quietGap;
     if (referenceAt !== undefined) {
       reference.commands = referenceValid ? referenceCommands.snapshot(result.state) :
@@ -168,6 +197,11 @@ export function readSessionActivity({ threadId, startedAt, referenceAt, codexHom
     }
     if (!KNOWN_TYPES.has(record.type) && !result.unknown_kinds.includes(record.type)) {
       result.unknown_kinds.push(record.type);
+    }
+    // Plan_80 E13/O9: an original turn cannot vouch for a later resumed run.
+    if (record.type === 'turn_context' && Date.parse(record.timestamp) >= start.getTime() &&
+        typeof record.payload.sandbox_policy?.type === 'string' && record.payload.sandbox_policy.type.length > 0) {
+      sandboxWitness = { state: 'observed', policy: record.payload.sandbox_policy.type, at: record.timestamp };
     }
     if (result.last_record_at !== null) {
       const gap = Date.parse(record.timestamp) - Date.parse(result.last_record_at);

@@ -685,9 +685,13 @@ for this record and adds no new file write. Later changes to artifacts cannot re
 record through `collect()`.
 
 `session` is read once using `events.jsonl`'s `thread.started` id and
-`status.json#started_at`. The independent reader uses `resolveCodexHome()` and looks only in
-`sessions/YYYY/MM/DD/` for the local start day, the day before, and the day after; it never
-recursively scans the session store. Plan_80 S1/S2 calibrated silence on session-log record
+`status.json#started_at`. The independent reader uses `resolveCodexHome()` and first looks in
+`sessions/YYYY/MM/DD/` for the local start day, the day before, and the day after. If no matching
+rollout is found, it searches date-shaped year/month/day directories, newest day first, using
+the same rollout filename pattern and taking the first match. Other directory shapes are not
+searched. Plan_80 E13/O9 requires this fallback because a resume appends to the thread's original
+rollout file, which may be days older than the run. A missing `sessions` folder remains `missing`.
+Plan_80 S1/S2 calibrated silence on session-log record
 times because stdout goes silent earlier. This observation does not change the verdict.
 
 | Session field | Meaning |
@@ -703,6 +707,15 @@ times because stdout goes silent earlier. This observation does not change the v
 | `longest_gap_ms` | Largest timestamp difference between consecutive valid records read in file order across the whole thread; `null` with fewer than two records. |
 | `longest_quiet_gap_ms` | Largest such gap with no tool call open throughout the interval. `null` when whole-thread command evidence is `unknown`, there are fewer than two records, or no interval is quiet. |
 | `at_reference` | `null` without `referenceAt`; otherwise `{ as_of, last_record_at, last_record_kind, records, commands }` using only records with timestamps at or before that reference. |
+| `sandbox_witness` | Always present: `{ state, policy, at }`. For an `observed` session, the last qualifying `turn_context` in file order gives `{ state: 'observed', policy, at }`, where `policy` is its non-empty string `payload.sandbox_policy.type` and `at` is its timestamp. Without a qualifying record it is `{ state: 'absent', policy: null, at: null }`. Every other session state gives `{ state: 'not-observed', policy: null, at: null }`. |
+
+Plan_80 E13/O9 adds `stop.session.sandbox_witness` as evidence of the sandbox actually assigned
+to this run's turns. Only records timestamped at or after the run's `startedAt`
+(`status.json#started_at`) qualify: an original turn before a resume cannot vouch for the
+resumed turn. Only the policy type string leaves the reader; no other sandbox payload fields
+are retained. An incomplete or otherwise unobserved session never supplies a witness, even
+when a qualifying record preceded the failure. This evidence lets a later order reject a
+resume whose witnessed policy is not `read-only`; this reader does not enforce that verdict.
 
 Plan_80 A5/E12 adds these fields without changing stop record `version: 1`, verdicts or
 replies. Older runs without these fields have not observed this evidence. The runner passes
