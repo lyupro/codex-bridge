@@ -56,6 +56,7 @@ export const HOME_WRITE_INVENTORY = Object.freeze([
   outside('src/home/lib/runner/build-evidence.mjs', 'writeFileSync', 11, 'Writes the before and after tree evidence of a build run, flags.txt and flags-coverage.txt inside a run folder.'),
   outside('src/home/lib/runner/codex-cmd.mjs', 'createWriteStream', 2, 'Appends stderr.log and events.jsonl inside a run folder.'),
   outside('src/home/lib/runner/stdout-receipts.mjs', 'createWriteStream', 1, 'Appends stdout-receipts.jsonl inside a run folder.'),
+  outside('src/home/lib/runner/resume-launch.mjs', 'writeFileSync', 2, 'Writes frozen input artifacts and the continuation prompt inside a resume run folder (Plan_80 E13/O6).'),
   outside('src/home/lib/runner/flag-baseline.mjs', 'mkdirSync', 1, 'Creates the start-content copy folder inside a run folder (Plan_60 D3a).'),
   outside('src/home/lib/runner/flag-baseline.mjs', 'rmSync', 1, 'Removes the start-content copies inside a run folder after the flag scan; the manifest stays.'),
   outside('src/home/lib/runner/flag-baseline.mjs', 'writeFileSync', 2, 'Writes start-content copies and the flag baseline manifest inside a run folder.'),
