@@ -12,7 +12,7 @@ export function stopRows(meta, runDir) {
   const { kind, silence_ms: silence, threshold_ms: threshold, commands } = meta.situation;
   const { automatic, grant } = meta.continuation_eligibility;
   const eligibility = (assessment) =>
-    `${assessment.allowed ? 'allowed' : 'blocked'} (${assessment.blocking_reasons.join(', ')})`;
+    assessment.allowed ? 'allowed' : `blocked (${assessment.blocking_reasons.join(', ')})`;
   const orderId = grant.allowed === true ? readJson(path.join(runDir, 'status.json'))?.order_id : null;
   return [
     `Situation: ${kind} · silence=${silence === null ? 'unknown' : `${silence} ms`} · threshold=${threshold === null ? 'unconfigured' : `${threshold} ms`} · command=${commands.state === null ? 'unknown' : commands.state}`,

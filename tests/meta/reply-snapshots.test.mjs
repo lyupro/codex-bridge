@@ -109,7 +109,7 @@ test('FAIL without a result reply snapshot', () => {
     + 'Artifacts: events.jsonl 252 B · stderr.log 28 B · result.json empty or missing · exit=1\n'
     + 'Worktree: no new changes\n'
     + 'Situation: evidence-unknown · silence=unknown · threshold=unconfigured · command=unknown\n'
-    + 'Continuation: automatic blocked (recovery-not-enabled, resume-contract-unverified, writer-role-not-approved, session-evidence-not-observed, command-evidence-unknown, threshold-unconfigured, process-tree-stop-unverified) · grant blocked (resume-grant-not-implemented, writer-role-not-approved, stop-record-missing, session-evidence-not-observed, process-tree-stop-unverified)\n'
+    + 'Continuation: automatic blocked (recovery-not-enabled, resume-contract-unverified, writer-role-not-approved, session-evidence-not-observed, command-evidence-unknown, threshold-unconfigured, process-tree-stop-unverified) · grant blocked (writer-role-not-approved, stop-record-missing, session-evidence-not-observed, process-tree-stop-unverified)\n'
     + 'Treatment: inspect-evidence · diagnostic only, nothing runs it\n'
     + 'Log: codex-bridge read <run>');
 });

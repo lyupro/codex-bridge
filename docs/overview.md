@@ -265,7 +265,8 @@ The header contains consecutive lowercase `label: value` lines starting at the t
 with no leading blank line; one initial BOM is ignored. The registry is `src/home/lib/order-schema.mjs`:
 `order id:` is required for all agents; `scope:` is required and `scope new:` is optional for build
 only; `phase:` is required for advisor only. `continue:` and `retry:` are conditional grants for all
-agents. Optional `slug:`, `effort:` and `repository:` apply to all agents; `changeset:` is review-only.
+agents; `resume:` is accepted by read-only `codex-scout`, `codex-review` and `codex-advisor`.
+Optional `slug:`, `effort:` and `repository:` apply to all agents; `changeset:` is review-only.
 `advice:` is build-only. Labels may appear in any order, followed by a blank line and the body.
 The first blank or other line ends the header. Values must be non-empty and
 single-line. A duplicate label or both grants together is refused before any run folder or quota.
@@ -307,6 +308,17 @@ scope. Its reply shows `Attempt: N of this pass — retry of <run>`. A saved non
 attach ends with ready grant lines; refusals that encounter a failed last run with an order id
 include a ready `retry:` line. Details and all refusals are in
 [run-lifecycle.md](run-lifecycle.md).
+
+`resume: <failed run> — <reason>` continues a failed read-only pass in its existing Codex thread,
+with its frozen task, schema and profile; it does not authorize the next pass. It is accepted by
+`codex-scout`, `codex-review` and `codex-advisor`, including advisor `advise`.
+The recorded grant is decided only by `grantBlockers` (policy version 1): an eligible failed run
+records `grant: { allowed: true, policy_version: 1, blocking_reasons: [] }`. Its FAIL reply renders
+`grant allowed` without empty parentheses and, when the order id is recorded, prints a ready
+`resume:` line immediately after `Continuation:`. A writer role remains blocked by
+`writer-role-not-approved`. Automatic recovery remains blocked by `recovery-not-enabled` and
+`resume-contract-unverified`; the ready line is an instruction for the orchestrator, not an
+automatic restart.
 
 When reconciling the builder's report, the runner considers accumulated changes from the state
 before the chain's first run through the state after the current one. A continuation can therefore

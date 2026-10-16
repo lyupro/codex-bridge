@@ -124,7 +124,6 @@ test('stalled advise has the exact ordered diagnostic-only blockers', () => {
       'recovery-not-enabled', 'resume-contract-unverified', 'process-tree-stop-unverified',
     ] },
     grant: { allowed: false, policy_version: 1, blocking_reasons: [
-      'resume-grant-not-implemented',
       'process-tree-stop-unverified',
     ] },
   });
@@ -139,7 +138,6 @@ test('build records writer-role and unconfigured-threshold blockers in order', (
       'threshold-unconfigured', 'process-tree-stop-unverified',
     ] },
     grant: { allowed: false, policy_version: 1, blocking_reasons: [
-      'resume-grant-not-implemented',
       'writer-role-not-approved', 'process-tree-stop-unverified',
     ] },
   });
@@ -163,7 +161,6 @@ test('missing session log is unknown evidence with exact blockers, never a silen
       'command-evidence-unknown', 'process-tree-stop-unverified',
     ] },
     grant: { allowed: false, policy_version: 1, blocking_reasons: [
-      'resume-grant-not-implemented',
       'session-evidence-missing', 'process-tree-stop-unverified',
     ] },
   });
@@ -177,7 +174,6 @@ test('LIMIT without a result has the exact ordered blockers', () => {
       'not-silent-stall', 'process-tree-stop-unverified',
     ] },
     grant: { allowed: false, policy_version: 1, blocking_reasons: [
-      'resume-grant-not-implemented',
       'limit', 'process-tree-stop-unverified',
     ] },
   });
@@ -198,7 +194,6 @@ test('all applicable factual blockers survive result and LIMIT precedence', () =
       'threshold-unconfigured', 'not-silent-stall', 'process-tree-stop-unverified',
     ] },
     grant: { allowed: false, policy_version: 1, blocking_reasons: [
-      'resume-grant-not-implemented',
       'result-present', 'limit', 'writer-role-not-approved', 'thread-unavailable',
       'process-tree-stop-unverified',
     ] },
@@ -216,7 +211,6 @@ test('UNAVAILABLE with no session or commands reports absence, not silence', () 
       'not-silent-stall', 'process-tree-stop-unverified',
     ] },
     grant: { allowed: false, policy_version: 1, blocking_reasons: [
-      'resume-grant-not-implemented',
       'unavailable', 'stop-record-missing', 'thread-unavailable', 'session-evidence-not-observed', 'process-tree-stop-unverified',
     ] },
   });

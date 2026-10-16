@@ -82,7 +82,6 @@ for (const agent of ['codex-advisor', 'codex-build']) {
         'recovery-not-enabled', 'resume-contract-unverified', ...writer, 'process-tree-stop-unverified',
       ] },
       grant: { allowed: false, policy_version: 1, blocking_reasons: [
-        'resume-grant-not-implemented',
         ...writer, 'process-tree-stop-unverified',
       ] },
     });

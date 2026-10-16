@@ -64,8 +64,7 @@ export function assessStop({ status, resultOk, agentWrites, threadId, stop, sile
     result_file_state: stop?.result_file?.state ?? null,
   };
   const automatic = ['recovery-not-enabled', 'resume-contract-unverified'];
-  const grant = ['resume-grant-not-implemented',
-    ...grantBlockers({ status, resultOk, agentWrites, threadId, stop })];
+  const grant = grantBlockers({ status, resultOk, agentWrites, threadId, stop });
   const factual = [];
   if (resultOk) factual.push('result-present');
   if (status === 'LIMIT') factual.push('limit');

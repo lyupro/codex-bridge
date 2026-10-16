@@ -29,7 +29,7 @@ test('policy version 1 allows an otherwise eligible silent stall without mutatin
   assert.deepEqual(assessStop(args).continuation_eligibility, {
     version: 2,
     automatic: { allowed: false, blocking_reasons: ['recovery-not-enabled', 'resume-contract-unverified'] },
-    grant: { allowed: false, policy_version: 1, blocking_reasons: ['resume-grant-not-implemented'] },
+    grant: { allowed: true, policy_version: 1, blocking_reasons: [] },
   });
 });
 
@@ -64,7 +64,7 @@ for (const [name, change, expected] of cases) {
     assert.deepEqual(grantBlockers(args), expected);
     assert.deepEqual(assessStop(args).continuation_eligibility.grant, {
       allowed: false, policy_version: 1,
-      blocking_reasons: ['resume-grant-not-implemented', ...expected],
+      blocking_reasons: expected,
     });
     assert.deepEqual(args, before);
   });
@@ -96,7 +96,7 @@ for (const [state, blocker, kind] of [
       'recovery-not-enabled', 'resume-contract-unverified', blocker,
       ...(state === 'in-flight' ? ['not-silent-stall'] : []),
     ]);
-    assert.deepEqual(assessment.continuation_eligibility.grant.blocking_reasons, ['resume-grant-not-implemented']);
+    assert.deepEqual(assessment.continuation_eligibility.grant.blocking_reasons, []);
   });
 }
 
@@ -145,7 +145,7 @@ test('all applicable blockers have a fixed order even when result precedence hid
     ];
     assert.deepEqual(grantBlockers(args), expected);
     assert.deepEqual(assessStop(args).continuation_eligibility.grant.blocking_reasons,
-      ['resume-grant-not-implemented', ...expected]);
+      expected);
     // A missing stop cannot also carry a runner-error trigger; check that ordering separately.
     args.stop = null;
     assert.deepEqual(grantBlockers(args), [

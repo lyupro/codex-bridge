@@ -121,8 +121,9 @@ Plan_80 A2/A5 and E10/E12 separate the stop facts, their classification and diag
 treatment. After `resolveStatus`, `collect()` records `situation`,
 `continuation_eligibility` and `treatment`. These fields do not change the verdict or status.
 Only a `FAIL` reply with `result_ok: false` renders the three diagnostic rows below.
-Automatic recovery and the `resume:` grant are not implemented and are
-never allowed. Collecting the same unchanged folder twice produces identical assessments.
+Automatic recovery remains blocked. The `resume:` grant is decided by `grantBlockers`
+(policy version 1); an allowed grant prints a ready `resume:` line when an order id is recorded.
+Collecting the same unchanged folder twice produces identical assessments.
 
 `assessStop({ status, resultOk, agentWrites, threadId, stop, silencePolicy })` is pure.
 It receives the resolved status, result usability, registry `writes`, the recorded thread
@@ -162,12 +163,12 @@ Unknown evidence never becomes silence. A null threshold never becomes stalled o
 Plan_80 E13/O2 records `continuation_eligibility` as `{ version: 2,
 automatic: { allowed, blocking_reasons }, grant: { allowed, policy_version: 1,
 blocking_reasons } }`. Each `allowed` is computed as no blocking reasons. The grant list
-starts with `resume-grant-not-implemented`, followed by the pure exported
+is exactly the result of the pure exported
 `grantBlockers({ status, resultOk, agentWrites, threadId, stop })` from
 `meta/stop-assessment.mjs`. Its exported `GRANT_POLICY_VERSION = 1` is stored as
 `grant.policy_version`, so the recorded assessment and the later grant gate share the
-same versioned predicate. The grant remains blocked in this release even when that
-predicate returns an empty list; activating the `resume:` label is a later order.
+same versioned predicate. An empty list records
+`grant: { allowed: true, policy_version: 1, blocking_reasons: [] }`.
 `situation` and `treatment` remain version 1.
 
 The grant predicate returns every applicable safety/identity blocker in this fixed order:
@@ -234,7 +235,8 @@ Treatment: <treatment.action> · diagnostic only, nothing runs it
 Null silence, threshold, and command state print `silence=unknown`,
 `threshold=unconfigured`, and `command=unknown` respectively. Each continuation code list
 is joined by `, ` in stored order, without truncation; its stored `allowed` flag selects
-`allowed` or `blocked`. No rows appear if `situation` is absent in an older record.
+`allowed` (without empty parentheses) or `blocked (<reasons>)`.
+No rows appear if `situation` is absent in an older record.
 
 When `continuation_eligibility.grant.allowed === true` and this run's `status.json#order_id`
 is recorded as a non-empty string, the reply inserts the registry-rendered ready resume line
@@ -244,8 +246,8 @@ immediately after `Continuation:` and before `Treatment:` (Plan_80 E13/O7):
 Ready resume line: resume: <run folder> — continue after <situation.kind> (continues that pass's Codex thread under order <order_id>).
 ```
 
-A blocked grant or missing order id adds no line. Grants remain blocked by
-`resume-grant-not-implemented` until the resume label is enabled, preserving existing replies.
+A blocked grant or missing order id adds no line. Grant eligibility is decided only by
+`grantBlockers` (policy version 1); automatic recovery remains blocked separately.
 
 Every `OK`, `LIMIT`, `UNAVAILABLE`, and `FAIL` with a usable result keeps its reply unchanged.
 These rows are explanatory only: they change no status and execute no treatment.
