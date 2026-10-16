@@ -52,6 +52,7 @@ export async function worker(runDir) {
     fs.readFileSync(path.join(runDir, 'task.md'), 'utf8'),
     path.join(runDir, 'events.jsonl'),
     cfg.budget_minutes,
+    { cwd: cfg.repo },
   );
   // This runner-owned fact cannot be forged through events.jsonl, which Codex can write.
   // Written even when no deadline fired: `false` is the marker that a runner was watching,

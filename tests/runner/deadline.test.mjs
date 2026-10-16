@@ -130,6 +130,8 @@ setInterval(() => {}, 1000);
         const order = workerOrder({ phase, budgetMinutes: budgets.fixture[phase] });
         const run = await runCodex([], 'phase deadline', path.join(root, 'events.jsonl'), order.budget_minutes);
         assert.equal(run.stoppedOnDeadline, true);
+        assert.equal(run.stop.tree_stop.requested, true);
+        assert.equal(run.stop.tree_stop.state, 'stopped');
         assert.equal(run.exit, 1);
         const expected = phase === 'scope' ? 600 : 1200;
         assert.ok(fs.readFileSync(path.join(root, 'stderr.log'), 'utf8').includes(`(budget ${expected} ms)`));
@@ -178,6 +180,8 @@ setInterval(() => {}, 1000);
         const run = await result;
         assert.equal(run.exit, 1);
         assert.equal(run.stoppedOnDeadline, true);
+        assert.equal(run.stop.tree_stop.requested, true);
+        assert.equal(run.stop.tree_stop.state, 'stopped');
         assert.ok(run.elapsedMs >= 0);
         const pid = Number(fs.readFileSync(pidPath, 'utf8'));
         assert.equal(await waitFor(() => !processAlive(pid)), true);
@@ -217,12 +221,34 @@ test('an early exit is not replaced by a deadline kill', async () => {
       const run = await runCodex([], 'early exit test', eventsPath, 0.05);
       assert.equal(run.exit, 23);
       assert.equal(run.stoppedOnDeadline, false);
+      assert.equal(run.stop.tree_stop.requested, false);
+      assert.equal(run.stop.tree_stop.state, 'exited');
       const events = fs.readFileSync(eventsPath, 'utf8');
       assert.match(events, /finished early/);
       assert.doesNotMatch(events, /stopped on its deadline/);
       assert.equal(fs.readFileSync(path.join(root, 'stderr.log'), 'utf8'), '');
     },
   );
+});
+
+test('an explicit cwd is the directory used by the spawned Codex process', async () => {
+  await withFakeCodex("console.log(JSON.stringify({ cwd: process.cwd() }));",
+    async (root) => {
+      const cwd = path.join(root, 'repo with spaces');
+      fs.mkdirSync(cwd);
+      const eventsPath = path.join(root, 'events.jsonl');
+      const run = await runCodex([], 'cwd test', eventsPath, 0.05, { cwd });
+      assert.equal(run.exit, 0);
+      assert.equal(JSON.parse(fs.readFileSync(eventsPath, 'utf8')).cwd, cwd);
+    });
+});
+
+// Plan_80 S3: a resumed thread takes its cwd from the spawning process, so the worker must name
+// the run's repository instead of relying on the cwd the launcher happened to give it.
+test('the worker spawns Codex in the run repository', () => {
+  const source = fs.readFileSync(new URL('../../src/home/lib/runner/worker.mjs', import.meta.url), 'utf8');
+  const call = source.slice(source.indexOf('await runCodex('), source.indexOf(');', source.indexOf('await runCodex(')));
+  assert.match(call, /\{\s*cwd:\s*cfg\.repo\s*\}/);
 });
 
 // A process can be gone while its stdio is not: a detached grandchild holds the pipes open, so
@@ -256,10 +282,12 @@ process.exit(7);
         // asserted is that an honest early exit is not branded a kill. At 1.2 seconds it was
         // reachable, and full-suite load turned the race into `1 !== 7` on 2026-08-24. The
         // two-second assertion below is what still holds the fallback to account.
-        const run = await runCodex([], 'late close test', eventsPath, 0.5, 250);
+        const run = await runCodex([], 'late close test', eventsPath, 0.5, { graceMs: 250 });
         assert.ok(Date.now() - started < 2_000);
         assert.equal(run.exit, 7);
         assert.equal(run.stoppedOnDeadline, false);
+        assert.equal(run.stop.tree_stop.requested, false);
+        assert.equal(run.stop.tree_stop.state, 'exited');
         assert.equal(run.stdioDrained, false);
         assert.doesNotMatch(fs.readFileSync(eventsPath, 'utf8'), /stopped on its deadline/);
         // Cleanup removes a tree this grandchild holds open as its Windows working directory, so
@@ -306,6 +334,8 @@ setInterval(() => {}, 1000);
         const run = await runCodex([], 'stderr failure test', eventsPath, 0.25);
         assert.equal(run.exit, 1);
         assert.equal(run.stoppedOnDeadline, false);
+        assert.equal(run.stop.tree_stop.requested, true);
+        assert.equal(run.stop.tree_stop.state, 'stopped');
         const pid = Number(fs.readFileSync(pidPath, 'utf8'));
         assert.equal(await waitFor(() => !processAlive(pid)), true);
       } finally {

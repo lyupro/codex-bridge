@@ -10,10 +10,13 @@ import { readEvents } from '../meta/events.mjs';
 import { readSessionActivity } from '../codex-session-log.mjs';
 
 /** Keep the first observed cause separate from the eventual exit and pipe drain. */
-export function createStopObservation() {
+export function createStopObservation(onWindows = process.platform === 'win32') {
   let first;
   let exitCode = null;
   let exitSignal = null;
+  let childExitObserved = false;
+  let exitedBeforeKill = false;
+  let lastKill;
   const observe = (trigger, error) => {
     if (!first) {
       first = { trigger, stopped_at: new Date().toISOString(), process_error: error?.message ?? null };
@@ -21,8 +24,15 @@ export function createStopObservation() {
   };
   return {
     observe,
+    kill(result) {
+      lastKill = result;
+    },
     exit(code, signal) {
       observe('exit');
+      childExitObserved = true;
+      // A kill sent after Codex already left (a stream error during the drain) finds no process:
+      // taskkill then reports failure for a tree that is gone, which must not read as unverified.
+      if (!lastKill) exitedBeforeKill = true;
       exitCode = code;
       exitSignal = signal;
     },
@@ -35,6 +45,17 @@ export function createStopObservation() {
         signal: exitSignal,
         stdio_drained: stdioDrained,
         elapsed_ms: elapsedMs,
+        tree_stop: {
+          requested: Boolean(lastKill),
+          method: lastKill?.method ?? null,
+          status: lastKill?.status ?? null,
+          error: lastKill?.error ?? null,
+          child_exit_observed: childExitObserved,
+          // E13: killing only cmd.exe can leave the 2026-07-31 Codex orphan alive.
+          state: !childExitObserved ? 'unverified' : !lastKill || exitedBeforeKill ? 'exited'
+            : !onWindows || (lastKill.method === 'taskkill' && lastKill.status === 0)
+              ? 'stopped' : 'unverified',
+        },
       };
     },
   };
@@ -62,5 +83,5 @@ export function buildStopRecord(run, runDir, agent) {
     startedAt: threadId ? readJsonFileSync(path.join(runDir, 'status.json')).started_at : undefined,
     referenceAt: run.stop?.stopped_at,
   });
-  return { version: 1, ...run.stop, receipts: run.receipts, result_file: resultFile, session };
+  return { version: 2, ...run.stop, receipts: run.receipts, result_file: resultFile, session };
 }

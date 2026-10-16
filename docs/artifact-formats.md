@@ -597,7 +597,7 @@ independent facts. The runner writes `status.json#stop`, because Codex can write
 
 | Field | Meaning |
 | --- | --- |
-| `version` | `1`. |
+| `version` | `2`. Version-1 records (0.6.16 and earlier) have no `tree_stop`. |
 | `trigger` | First observed stop trigger: `exit`, `deadline`, `stream-error`, or `spawn-error`; `null` (with `stopped_at` and `process_error`) when the run settled with no trigger observed first. |
 | `stopped_at` | ISO wall-clock time when that first trigger was observed, never the later settlement time after draining. |
 | `exit_code` | Code from the child's `exit` event; `null` if that event never fired (or exited by signal). |
@@ -605,6 +605,7 @@ independent facts. The runner writes `status.json#stop`, because Codex can write
 | `process_error` | Error message for a first stream/spawn error trigger; otherwise `null`. |
 | `stdio_drained` | The resolved `runCodex` drain observation, also recorded separately in status. |
 | `elapsed_ms` | The resolved `runCodex` elapsed time, also recorded separately in status. |
+| `tree_stop` | Codex process stop evidence: `{ requested, method, status, error, child_exit_observed, state }`; rules below. |
 | `receipts` | The stdout receipt summary: `lines`, `last_received_at`, `incomplete`, `truncated`, `write_error`. |
 | `result_file` | One observation of the selected agent's result file, with `state` as below. |
 | `session` | Read-only observation of this thread's Codex session-log activity, with fields and states below. |
@@ -614,6 +615,22 @@ while the child was alive. `stream-error` means a log stream failed and the runn
 Codex; `spawn-error` means the child emitted `error`. A later exit supplies its code/signal
 without replacing the first trigger or its timestamp. Receipt write failures remain receipt
 diagnostics and do not stop Codex.
+
+Plan_80 E13/O1 records the **last** kill attempt in `tree_stop`, independently of the first
+stop trigger. `requested` says a kill was attempted; `method` is `taskkill`, `kill` (Windows
+shell-only fallback), or `signal` (POSIX), and is `null` without an attempt. `status` is the
+taskkill exit status or `null`; `error` is its spawn error message, or the taskkill failure
+status/error that caused the fallback, otherwise `null`. `child_exit_observed` records whether
+the child's `exit` event fired, including a signal exit with a null code.
+
+On Windows, `state: stopped` requires the last attempt to be `taskkill` with status `0`
+**and** the child's `exit` event. With no kill requested, an observed exit means `exited`:
+`cmd /c` waits for Codex, so its exit proves Codex is gone. Every other case is `unverified`,
+including a `kill` fallback followed by exit: killing only the shell can leave the
+2026-07-31 Codex orphan alive. Off Windows the child is Codex itself: an observed exit means
+`stopped` if a kill was requested, otherwise `exited`; without an observed exit it is
+`unverified`. This evidence concerns Codex itself, not proof that every descendant is gone.
+The classifier and grant do not consume this new fact yet.
 
 `result_file.state` distinguishes presence from usability: `missing` means no file;
 `unreadable` means reading failed and includes an `error` message; `malformed` means the

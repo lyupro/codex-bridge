@@ -262,7 +262,7 @@ test('stop record adds activity from thread.started and status started_at, prese
     try {
       const run = { stop: { trigger: 'deadline', exit_code: null }, receipts: { lines: 2 } };
       const result = buildStopRecord(run, runDir, 'codex-build');
-      assert.equal(result.version, 1);
+      assert.equal(result.version, 2);
       assert.equal(result.trigger, 'deadline');
       assert.equal(result.exit_code, null);
       assert.deepEqual(result.receipts, run.receipts);

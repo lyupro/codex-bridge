@@ -53,14 +53,19 @@ export function codexSpawnSpec(args, platform = process.platform) {
 export function stopCodex(child, onWindows = process.platform === 'win32') {
   if (!onWindows) {
     child.kill('SIGKILL');
-    return;
+    return { method: 'signal', status: null, error: null };
   }
   const killed = spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], {
     stdio: 'ignore',
     windowsHide: true,
     timeout: TASKKILL_TIMEOUT_MS,
   });
-  if (killed.error || killed.status !== 0) child.kill();
+  if (killed.error || killed.status !== 0) {
+    child.kill();
+    return { method: 'kill', status: null,
+      error: killed.error?.message ?? `taskkill exited with status ${killed.status ?? null}` };
+  }
+  return { method: 'taskkill', status: killed.status ?? null, error: killed.error?.message ?? null };
 }
 
 // Plan_57 D28: keep spawnSync's 1 MiB default (stdout head, stderr tail); overflow is inconclusive, never dead.
@@ -157,7 +162,7 @@ export function spawnCaptured(command, args, options) {
  * own bounded file because text outside the JSONL protocol must remain distinguishable from
  * protocol events, and a line cut in half cannot be parsed back safely.
  */
-export function runCodex(args, taskText, eventsPath, budgetMinutes, graceMs = STDIO_DRAIN_GRACE_MS) {
+export function runCodex(args, taskText, eventsPath, budgetMinutes, { graceMs = STDIO_DRAIN_GRACE_MS, cwd } = {}) {
   const onWindows = process.platform === 'win32';
   const deadlineMs =
     Number.isFinite(budgetMinutes) && budgetMinutes > 0
@@ -245,13 +250,14 @@ export function runCodex(args, taskText, eventsPath, budgetMinutes, graceMs = ST
   const spec = codexSpawnSpec(args);
   const child = spawn(spec.command, spec.args, {
     ...spec.options,
+    cwd,
     stdio: ['pipe', 'pipe', 'pipe'],
     windowsHide: true,
   });
 
   return new Promise((resolve) => {
     let failed = false;
-    const stop = createStopObservation();
+    const stop = createStopObservation(onWindows);
     let deadlineTimer;
     let heartbeatTimer;
     let stdioGraceTimer;
@@ -276,7 +282,7 @@ export function runCodex(args, taskText, eventsPath, budgetMinutes, graceMs = ST
       stop.observe('stream-error', err);
       const note = `\nrun-codex: cannot write ${which}: ${err.message}\n`;
       if (which !== 'stderr.log' && stderrLog.writable) stderrLog.write(note);
-      stopCodex(child, onWindows);
+      stop.kill(stopCodex(child, onWindows));
     };
     stderrLog.on('error', onStreamError('stderr.log'));
     eventsLog.on('error', onStreamError('events.jsonl'));
@@ -304,7 +310,7 @@ export function runCodex(args, taskText, eventsPath, budgetMinutes, graceMs = ST
             `\nrun-codex: run stopped on its deadline after ${elapsed} ms (budget ${deadlineMs} ms)\n`,
           );
         }
-        stopCodex(child, onWindows);
+        stop.kill(stopCodex(child, onWindows));
       }, deadlineMs);
     }
     // A stream that already failed never calls back from end(), so waiting on both callbacks in

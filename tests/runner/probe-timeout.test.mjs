@@ -170,12 +170,27 @@ test('spawnCaptured keeps ETIMEDOUT when stdout overflows before or after the de
 test('stopCodex falls back to child.kill when taskkill times out', async (t) => {
   await withCapturedChild(t, async ({ child, stop }) => {
     stop.mock.mockImplementation(() => ({ error: Object.assign(new Error('taskkill timed out'), { code: 'ETIMEDOUT' }) }));
-    stopCodex(child, true);
+    assert.deepEqual(stopCodex(child, true), { method: 'kill', status: null, error: 'taskkill timed out' });
     assert.deepEqual(stop.mock.calls[0].arguments, ['taskkill', ['/pid', '424242', '/T', '/F'], {
       stdio: 'ignore', windowsHide: true, timeout: 10_000,
     }]);
     assert.equal(child.kill.mock.callCount(), 1);
     assert.deepEqual(child.kill.mock.calls[0].arguments, []);
+  });
+});
+
+test('stopCodex reports successful taskkill, nonzero fallback and POSIX signal', async (t) => {
+  await withCapturedChild(t, async ({ child, stop }) => {
+    assert.deepEqual(stopCodex(child, true), { method: 'taskkill', status: 0, error: null });
+    assert.equal(child.kill.mock.callCount(), 0);
+    stop.mock.mockImplementation(() => ({ status: 1, error: null }));
+    assert.deepEqual(stopCodex(child, true), {
+      method: 'kill', status: null, error: 'taskkill exited with status 1',
+    });
+    assert.deepEqual(child.kill.mock.calls[0].arguments, []);
+    assert.deepEqual(stopCodex(child, false), { method: 'signal', status: null, error: null });
+    assert.equal(stop.mock.callCount(), 2);
+    assert.deepEqual(child.kill.mock.calls[1].arguments, ['SIGKILL']);
   });
 });
 

@@ -15,7 +15,9 @@ import { buildStopRecord, createStopObservation } from '../../src/home/lib/runne
 const receipts = { lines: 0, last_received_at: null, incomplete: false, truncated: false, write_error: null };
 const run = {
   stop: { trigger: 'exit', stopped_at: '2026-10-15T08:00:00.000Z', exit_code: 0,
-    signal: null, process_error: null, stdio_drained: true, elapsed_ms: 10 },
+    signal: null, process_error: null, stdio_drained: true, elapsed_ms: 10,
+    tree_stop: { requested: false, method: null, status: null, error: null,
+      child_exit_observed: true, state: 'exited' } },
   receipts,
 };
 
@@ -30,7 +32,7 @@ test('missing result is observed without adding a file write', () => {
   const { sampled_at: sampledAt, ...session } = record.session;
   assert.match(sampledAt, /Z$/);
   assert.deepEqual({ ...record, session }, {
-    version: 1, ...run.stop, receipts, result_file: { state: 'missing' },
+    version: 2, ...run.stop, receipts, result_file: { state: 'missing' },
     // No events.jsonl, so no thread id: the session log was not looked for.
     session: { state: 'not-observed', reason: null, file: null, last_record_at: null,
       last_record_kind: null, records: 0, unknown_kinds: [],
@@ -95,8 +97,48 @@ test('deadline before exit keeps its first timestamp and later exit facts', (t) 
   assert.deepEqual(stop.snapshot(false, 10), {
     trigger: 'deadline', stopped_at: new Date(now).toISOString(), exit_code: null,
     signal: 'SIGKILL', process_error: null, stdio_drained: false, elapsed_ms: 10,
+    tree_stop: { requested: false, method: null, status: null, error: null,
+      child_exit_observed: true, state: 'exited' },
   });
 });
+
+const taskkill = { method: 'taskkill', status: 0, error: null };
+const fallback = { method: 'kill', status: null, error: 'taskkill exited with status 1' };
+const signal = { method: 'signal', status: null, error: null };
+
+for (const scenario of [
+  { name: 'Windows taskkill 0 and exit', windows: true, attempts: [taskkill], exit: true, state: 'stopped' },
+  { name: 'Windows failed taskkill then fallback and exit', windows: true,
+    attempts: [{ method: 'taskkill', status: 1, error: null }, fallback], exit: true, state: 'unverified' },
+  { name: 'Windows no kill and exit', windows: true, attempts: [], exit: true, state: 'exited' },
+  { name: 'Windows kill without exit', windows: true, attempts: [taskkill], exit: false, state: 'unverified' },
+  { name: 'Windows nonzero taskkill and exit', windows: true,
+    attempts: [{ method: 'taskkill', status: 1, error: null }], exit: true, state: 'unverified' },
+  { name: 'Windows null taskkill status and exit', windows: true,
+    attempts: [{ method: 'taskkill', status: null, error: 'spawn failed' }], exit: true, state: 'unverified' },
+  { name: 'Windows successful taskkill then fallback', windows: true,
+    attempts: [taskkill, fallback], exit: true, state: 'unverified' },
+  { name: 'Windows fallback then successful taskkill', windows: true,
+    attempts: [fallback, taskkill], exit: true, state: 'stopped' },
+  { name: 'POSIX kill and exit', windows: false, attempts: [signal], exit: true, state: 'stopped' },
+  { name: 'POSIX no kill and exit', windows: false, attempts: [], exit: true, state: 'exited' },
+  { name: 'POSIX kill without exit', windows: false, attempts: [signal], exit: false, state: 'unverified' },
+  { name: 'POSIX no kill or exit', windows: false, attempts: [], exit: false, state: 'unverified' },
+  { name: 'Windows exit before a failed kill', windows: true, exitFirst: true,
+    attempts: [{ method: 'taskkill', status: 128, error: null }, fallback], exit: true, state: 'exited' },
+]) {
+  test(`tree stop evidence: ${scenario.name}`, () => {
+    const stop = createStopObservation(scenario.windows);
+    if (scenario.exitFirst) stop.exit(0, null);
+    for (const attempt of scenario.attempts) stop.kill(attempt);
+    if (scenario.exit && !scenario.exitFirst) stop.exit(null, 'SIGKILL');
+    const last = scenario.attempts.at(-1);
+    assert.deepEqual(stop.snapshot(true, 10).tree_stop, {
+      requested: Boolean(last), method: last?.method ?? null, status: last?.status ?? null,
+      error: last?.error ?? null, child_exit_observed: scenario.exit, state: scenario.state,
+    });
+  });
+}
 
 function fakeCodex(t, stopChild) {
   const child = new EventEmitter();
@@ -120,7 +162,7 @@ function fakeCodex(t, stopChild) {
 test('runCodex exit records the exit event time before a delayed stdio settlement', async (t) => {
   const { dir } = resultTree();
   const { child, close } = fakeCodex(t, () => assert.fail('normal exit must not kill'));
-  const pending = runCodex([], 'task', path.join(dir, 'events.jsonl'), null, 1000);
+  const pending = runCodex([], 'task', path.join(dir, 'events.jsonl'), null, { graceMs: 1000 });
   const beforeExit = Date.now();
   child.emit('exit', 7, null);
   const afterExit = Date.now();
@@ -144,7 +186,7 @@ test('runCodex exit records the exit event time before a delayed stdio settlemen
 test('runCodex drain grace keeps the original exit timestamp', async (t) => {
   const { dir } = resultTree();
   const { child } = fakeCodex(t, () => assert.fail('grace fallback must not kill'));
-  const pending = runCodex([], 'task', path.join(dir, 'events.jsonl'), null, 30);
+  const pending = runCodex([], 'task', path.join(dir, 'events.jsonl'), null, { graceMs: 30 });
   child.emit('exit', null, 'SIGTERM');
   const exitedAt = Date.now();
   const result = await pending;
@@ -168,7 +210,7 @@ test('runCodex deadline before exit records deadline time and eventual signal', 
       close(null);
     }, 30);
   });
-  const result = await runCodex([], 'task', path.join(dir, 'events.jsonl'), 10 / 60000, 1000);
+  const result = await runCodex([], 'task', path.join(dir, 'events.jsonl'), 10 / 60000, { graceMs: 1000 });
   assert.equal(result.stoppedOnDeadline, true);
   assert.equal(result.stop.trigger, 'deadline');
   assert.equal(result.stop.signal, 'SIGKILL');
@@ -192,7 +234,7 @@ test('runCodex log stream error stops the child and records the error before exi
     stops++;
     queueMicrotask(() => { child.emit('exit', 9, null); close(9); });
   });
-  const result = await runCodex([], 'task', events, null, 1000);
+  const result = await runCodex([], 'task', events, null, { graceMs: 1000 });
   assert.equal(stops, 1);
   assert.equal(result.exit, 1);
   assert.equal(result.stop.trigger, 'stream-error');
@@ -204,14 +246,15 @@ test('runCodex log stream error stops the child and records the error before exi
 test('runCodex spawn error without exit keeps null exit facts', async (t) => {
   const { dir } = resultTree();
   const { child, close } = fakeCodex(t, () => assert.fail('spawn error must not acquire a deadline'));
-  const pending = runCodex([], 'task', path.join(dir, 'events.jsonl'), null, 1000);
+  const pending = runCodex([], 'task', path.join(dir, 'events.jsonl'), null, { graceMs: 1000 });
   child.emit('error', new Error('spawn refused'));
   close(-2);
   const result = await pending;
   assert.equal(result.exit, 1);
   assert.deepEqual(result.stop, { trigger: 'spawn-error', stopped_at: result.stop.stopped_at,
     exit_code: null, signal: null, process_error: 'spawn refused', stdio_drained: true,
-    elapsed_ms: result.elapsedMs });
+    elapsed_ms: result.elapsedMs, tree_stop: { requested: false, method: null, status: null,
+      error: null, child_exit_observed: false, state: 'unverified' } });
   assert.ok(Number.isFinite(Date.parse(result.stop.stopped_at)));
 });
 
@@ -248,6 +291,8 @@ test('a settlement with no observed trigger names the trigger fields as null', (
     signal: null,
     stdio_drained: true,
     elapsed_ms: 5,
+    tree_stop: { requested: false, method: null, status: null, error: null,
+      child_exit_observed: false, state: 'unverified' },
   });
 });
 
@@ -289,7 +334,7 @@ test('session reference is the first stop time, excluding tool output written du
     else process.env.CODEX_HOME = previous;
   });
   const record = buildStopRecord(run, dir, 'codex-review');
-  assert.equal(record.version, 1);
+  assert.equal(record.version, 2);
   assert.equal(record.session.last_record_at, at(1000));
   assert.deepEqual(record.session.at_reference, {
     as_of: run.stop.stopped_at, last_record_at: at(-1000),
