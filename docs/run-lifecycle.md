@@ -362,7 +362,7 @@ thread that has not advanced after the recorded stop. `resume-grant-usable` refu
 inputs refuse as `resume-grant-usable` / `inputs-unusable`, before a new folder or paid work.
 Build writers cannot resume.
 
-Under `resume:`, the task body is a plain note for the record, saved verbatim as `resume-note.md` in the new run folder and never read by the resumed run, which reuses the frozen questions, options, paths and verification of the named run.
+Under `resume:`, the task body is a plain note for the record, saved as written (surrounding blank lines trimmed) as `resume-note.md` in the new run folder and never read by the resumed run, which reuses the frozen questions, options, paths and verification of the named run.
 Questions, Options, Paths and Verify headings in that body are refused before start; a changed task needs `retry:` or a new order id.
 
 An advisor `advise` resume carries the original `OK` scope in `continued_from`, including through

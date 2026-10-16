@@ -320,7 +320,7 @@ empty list.
 
 ## `resume-note.md`
 
-Resume runs only: the orchestrator's task body is saved verbatim as `resume-note.md` in the new
+Resume runs only: the orchestrator's task body, as written but without surrounding blank lines, is saved as `resume-note.md` in the new
 run folder for the record. It is never sent to Codex; `task.md` remains the package's continuation
 prompt. The note is not a frozen input or a transport file, so retention keeps it.
 
