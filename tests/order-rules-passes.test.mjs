@@ -67,6 +67,10 @@ const messages = [
     'run B is already active for this repository; two writing runs in one tree are prohibited\nActive run: C:/runs/B'],
   ['writing-run-exclusive', { run: 'B', activePath: 'C:/runs/B', identity: 'unverified' },
     'run B is already active for this repository; two writing runs in one tree are prohibited; process identity could not be confirmed\nActive run: C:/runs/B'],
+  ['resume-pass-identity', { agent: 'codex-advisor', phase: 'advise' },
+    "a resume continues the named run's own agent and phase: codex-advisor/advise."],
+  ['resume-pass-identity', { agent: 'codex-scout', phase: 'default' },
+    "a resume continues the named run's own agent and phase: codex-scout/default."],
 ];
 const hostMessages = [
   ['codex-readiness-unconfirmed', { detail: 'PATH miss\nDetails' },
@@ -94,7 +98,7 @@ for (const [key, values, expected] of hostMessages) {
 
 test('entries live in their declared places, freeze data and reuse the run-state suffix', () => {
   for (const [owners, keys] of [
-    [GRANT_RULES, ['advisor-scope-continuation', 'retry-pass-identity', 'repeat-task-grant-required',
+    [GRANT_RULES, ['advisor-scope-continuation', 'retry-pass-identity', 'resume-pass-identity', 'repeat-task-grant-required',
       'advisor-advise-continuation', 'build-advice-required', 'advise-scope-run-required']],
     [HEADER_RULES, ['run-phase-required']], [CALL_RULES, ['writing-run-exclusive']],
   ]) {

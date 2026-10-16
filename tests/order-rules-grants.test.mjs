@@ -23,6 +23,8 @@ const repairMessages = [
   ['grant-last-run-hint', { variant: 'none' }, 'Last run: none. Outcome: none.'],
   ['grant-last-run-hint', { variant: 'last', run: 'B', status: 'FAIL', reason: 'capacity' },
     'Last run: B. Outcome: FAIL — capacity.'],
+  ['ready-grant-line', { variant: 'resume', run: 'B', reason: 'finish advice', orderId: 'o' },
+    "Ready resume line: resume: B — finish advice (continues that pass's Codex thread under order o)."],
 ];
 const hints = [4, 1, 2].map((index) => {
   const [key, values] = repairMessages[index];
@@ -79,6 +81,32 @@ const retryMessages = [
   ['ended-ok', { run: 'B' },
     'Retry is refused: run B ended OK. A retry repeats a failed pass; use continue: for the next pass.'],
 ];
+const resumeMessages = [
+  ['missing-folder', { run: 'missing', runsRoot: 'C:/runs' },
+    'Resume is refused: missing is not a bare existing run folder in C:/runs.'],
+  ['not-last', { run: 'A' },
+    "Resume is refused: grant A is not the LAST run of this task's chain; a resume is single-use."],
+  ['order-mismatch', { run: 'B', previousOrder: 'other', orderId: 'o' },
+    'Resume is refused: run B order_id other differs from order o. ' +
+      'A resume continues its own order; a run without order_id predates orders — start a new order.'],
+  ['order-mismatch', { run: 'B', previousOrder: '(missing)', orderId: 'o' },
+    'Resume is refused: run B order_id (missing) differs from order o. ' +
+      'A resume continues its own order; a run without order_id predates orders — start a new order.'],
+  ['unfinished', { run: 'B', labelName: '`resume:`' },
+    'Resume is refused: run B has no finished verdict or its worker may still be alive and writing. ' +
+      'Repeat without `resume:` to attach to it.'],
+  ['ended-ok', { run: 'B' },
+    "Resume is refused: run B ended OK. A resume continues a failed pass's Codex thread; " +
+      'use continue: for the next pass.'],
+  ['not-eligible', { run: 'B', blockers: ['stop-record-missing', 'session-evidence-not-observed'] },
+    'Resume is refused: run B cannot be resumed: stop-record-missing, session-evidence-not-observed. ' +
+      'A retry: grant repeats it on a fresh thread.'],
+  ['thread-unreadable', { run: 'B', state: 'unreadable', reason: 'access denied' },
+    'Resume is refused: run B Codex thread is unreadable; reason: access denied.'],
+  ['thread-advanced-after-stop', { run: 'B', recordedAt: '2026-10-16T09:25:00.000Z', currentAt: '2026-10-16T09:26:00.000Z' },
+    'Resume is refused: run B Codex thread advanced after stop: recorded last_record_at ' +
+      '2026-10-16T09:25:00.000Z; current last_record_at 2026-10-16T09:26:00.000Z.'],
+];
 const diagnosticMessages = [
   ['advise-scope-input-required', {}, 'internal',
     'Cannot carry advise scope result: runsRoot and grantRun are required.'],
@@ -91,6 +119,7 @@ const diagnosticMessages = [
 for (const [key, messages, defaults] of [
   ['continuation-grant-usable', continuationMessages, common],
   ['retry-grant-usable', retryMessages, {}],
+  ['resume-grant-usable', resumeMessages, {}],
 ]) {
   for (const [violation, values, expected] of messages) {
     test(`${key} ${violation} ${JSON.stringify(values)} preserves literal text`, () => {
@@ -115,7 +144,8 @@ for (const [key, values, category, expected] of diagnosticMessages) {
 }
 
 test('grant rules are frozen header grant rules with explicit data and author guidance', () => {
-  for (const key of ['continuation-grant-usable', 'retry-grant-usable', 'ready-grant-line', 'grant-last-run-hint']) {
+  for (const key of ['continuation-grant-usable', 'retry-grant-usable', 'resume-grant-usable',
+    'ready-grant-line', 'grant-last-run-hint']) {
     const entry = ORDER_RULES[key];
     assert.equal(entry, GRANT_RULES[key]);
     assert.equal(entry.topic, 'order');
@@ -130,6 +160,7 @@ test('grant rules are frozen header grant rules with explicit data and author gu
 test('grant selectors reject absent and unknown violations and variants without a default', () => {
   for (const [key, selector] of [
     ['continuation-grant-usable', 'violation'], ['retry-grant-usable', 'violation'],
+    ['resume-grant-usable', 'violation'],
     ['ready-grant-line', 'variant'], ['grant-last-run-hint', 'variant'],
   ]) {
     for (const value of [undefined, 'unknown', 'toString', '__proto__']) {
@@ -270,6 +301,7 @@ test('issued hints compose cleanly and handwritten hints journal a parameter vio
     const hints = [4, 1, 2].map((index) => orderRuleMessage(repairs[index][0], repairs[index][1])).join(' ');
     for (const [key, messages, defaults] of ${JSON.stringify([
       ['continuation-grant-usable', continuationMessages, common], ['retry-grant-usable', retryMessages, {}],
+      ['resume-grant-usable', resumeMessages, {}],
     ])}) {
       for (const [violation, values, expected] of messages) {
         const input = { ...defaults, ...values, violation };

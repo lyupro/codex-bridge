@@ -89,6 +89,9 @@ export const RULES = Object.freeze({
       if (variant === 'retry') {
         return `Ready retry line: retry: ${run} — ${reason} (repeats that pass under order ${orderId}).`;
       }
+      if (variant === 'resume') {
+        return `Ready resume line: resume: ${run} — ${reason} (continues that pass's Codex thread under order ${orderId}).`;
+      }
       throw new Error(`unknown ready-grant-line variant: ${variant}`);
     },
   }),
@@ -117,6 +120,58 @@ export const RULES = Object.freeze({
     topic: 'order',
     rule: 'Retry the named run with its own agent and phase.',
     message: ({ agent, phase }) => `a retry repeats the named run's own agent and phase: ${agent}/${phase}.`,
+  }),
+  'resume-grant-usable': Object.freeze({
+    data: Object.freeze(['violation', 'run', 'runsRoot', 'previousOrder', 'orderId', 'labelName',
+      'blockers', 'state', 'reason', 'recordedAt', 'currentAt']),
+    topic: 'order',
+    rule: 'Grant resume only to the last run of the task chain under its own order id, after a finished non-OK ' +
+      'verdict with its worker stopped, when the run is eligible by its recorded stop facts and its Codex thread ' +
+      'has not advanced since it stopped; resume continues that pass\'s thread, retry repeats it on a fresh ' +
+      'thread, continue grants the next pass.',
+    message: ({ violation, run, runsRoot, previousOrder, orderId, labelName, blockers, state, reason,
+      recordedAt, currentAt }) => {
+      if (violation === 'missing-folder') {
+        return `Resume is refused: ${run} is not a bare existing run folder in ${runsRoot}.`;
+      }
+      if (violation === 'not-last') {
+        return `Resume is refused: grant ${run} is not the LAST run of this task's chain; a resume is single-use.`;
+      }
+      if (violation === 'order-mismatch') {
+        return `Resume is refused: run ${run} order_id ${previousOrder} differs from order ${orderId}. ` +
+          'A resume continues its own order; a run without order_id predates orders — start a new order.';
+      }
+      if (violation === 'unfinished') {
+        return `Resume is refused: run ${run} has no finished verdict or its worker may still be alive and writing. ` +
+          `Repeat without ${labelName} to attach to it.`;
+      }
+      if (violation === 'ended-ok') {
+        return `Resume is refused: run ${run} ended OK. A resume continues a failed pass's Codex thread; ` +
+          'use continue: for the next pass.';
+      }
+      if (violation === 'not-eligible') {
+        return `Resume is refused: run ${run} cannot be resumed: ${blockers.join(', ')}. ` +
+          'A retry: grant repeats it on a fresh thread.';
+      }
+      if (violation === 'thread-unreadable') {
+        return `Resume is refused: run ${run} Codex thread is ${state}; reason: ${reason}.`;
+      }
+      if (violation === 'thread-time-unknown') {
+        return `Resume is refused: run ${run} Codex thread last record time is unknown: ` +
+          `recorded last_record_at ${recordedAt}; current last_record_at ${currentAt}.`;
+      }
+      if (violation === 'thread-advanced-after-stop') {
+        return `Resume is refused: run ${run} Codex thread advanced after stop: ` +
+          `recorded last_record_at ${recordedAt}; current last_record_at ${currentAt}.`;
+      }
+      throw new Error(`unknown resume-grant-usable violation: ${violation}`);
+    },
+  }),
+  'resume-pass-identity': Object.freeze({
+    data: Object.freeze(['agent', 'phase']),
+    topic: 'order',
+    rule: 'Resume the named run with its own agent and phase.',
+    message: ({ agent, phase }) => `a resume continues the named run's own agent and phase: ${agent}/${phase}.`,
   }),
   'repeat-task-grant-required': Object.freeze({
     data: Object.freeze(['violation', 'continueLabel', 'slugLabel', 'slug', 'count', 'latest']),

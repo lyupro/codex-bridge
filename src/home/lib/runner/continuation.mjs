@@ -11,6 +11,9 @@ import { orderRuleMessage } from '../order-rules.mjs';
 import { orderDiagnosticMessage } from '../order-diagnostics.mjs';
 import { readJson } from '../write-meta.mjs';
 import { workerMayBeAlive } from '../meta/run-liveness.mjs';
+import { readSessionActivity } from '../codex-session-log.mjs';
+import { grantBlockers } from '../meta/stop-assessment.mjs';
+import { AGENTS } from '../agents.mjs';
 
 // One comparison of run names for the grant gate and for attach, so a repeat and a grant can never
 // disagree about whether two spellings name the same folder.
@@ -108,10 +111,11 @@ export function continuationRefusal(runsRootPath, chain, isContinue, orderId, gr
   }
 
   const wanted = String(orderId ?? '').trim();
-  // Plan_75 D1, TradeForge capacity incident: a retry spends no new pass, even after an OK verdict.
+  // Plan_75 D1 / Plan_80 E13 O5: retries and resumes spend no new pass, even after an OK verdict.
   const ofThisOrder = chain.filter((run) => {
     const status = readJson(path.join(runsRootPath, run, 'status.json'));
-    return String(status?.order_id ?? '').trim() === wanted && !String(status?.retry_of ?? '').trim();
+    return String(status?.order_id ?? '').trim() === wanted && !String(status?.retry_of ?? '').trim() &&
+      !String(status?.resumed_from ?? '').trim();
   });
   if (ofThisOrder.length === 0) return null;
   if (ofThisOrder.length > 1) {
@@ -153,6 +157,56 @@ export function retryRefusal(runsRootPath, chain, isContinue, orderId, grant, li
   }
   if (meta.status === 'OK') {
     return refuse('ended-ok', {});
+  }
+  return null;
+}
+
+export function resumeRefusal(runsRootPath, chain, orderId, grant, {
+  agent, phase, liveness = workerMayBeAlive, readSession = readSessionActivity,
+}) {
+  const refuse = (violation, values) => [orderRuleMessage('resume-grant-usable', {
+    violation, run: grant?.run || 'none', ...values,
+  }), orderDiagnosticMessage('run-not-created')].join(' ');
+  const runDir = namedRunDirectory(runsRootPath, grant?.run);
+  if (!runDir) return refuse('missing-folder', { runsRoot: runsRootPath });
+  const last = chain[chain.length - 1];
+  if (!last || !sameRun(runsRootPath, grant.run, last)) return refuse('not-last', {});
+  const status = readJson(path.join(runDir, 'status.json'));
+  const wanted = String(orderId ?? '').trim();
+  const previousOrder = String(status?.order_id ?? '').trim();
+  if (!previousOrder || previousOrder !== wanted) {
+    return refuse('order-mismatch', { previousOrder: previousOrder || '(missing)', orderId: wanted });
+  }
+  const phaseOf = (value) => String(value ?? '').trim() || 'default';
+  const previousPhase = phaseOf(status.phase);
+  if (status.agent !== agent || previousPhase !== phaseOf(phase)) {
+    return [orderRuleMessage('resume-pass-identity', { agent: status.agent, phase: previousPhase }),
+      orderDiagnosticMessage('run-not-created')].join(' ');
+  }
+  const meta = readJson(path.join(runDir, 'meta.json'));
+  if (!meta?.status || liveness({ runDir, status })) {
+    return refuse('unfinished', { labelName: '`resume:`' });
+  }
+  if (meta.status === 'OK') return refuse('ended-ok', {});
+  // Plan_80 E13 O5: a cached eligibility claim cannot authorize resuming a writer or a legacy run.
+  const blockers = grantBlockers({
+    status: meta.status, resultOk: meta.result_ok === true, agentWrites: AGENTS[agent].writes,
+    threadId: meta.session_id, stop: meta.stop,
+  });
+  if (blockers.length) return refuse('not-eligible', { blockers });
+  const session = readSession({ threadId: meta.session_id, startedAt: status.started_at, referenceAt: null });
+  if (session.state !== 'observed') {
+    return refuse('thread-unreadable', { state: session.state, reason: session.reason });
+  }
+  // Plan_80 E13 guard 4: resuming a thread changed since the frozen stop would reuse a spent grant.
+  const recordedAt = meta.stop.session.last_record_at;
+  const currentAt = session.last_record_at;
+  // An unparsable time would make the comparison false and pass the grant on unknown evidence.
+  if (!Number.isFinite(Date.parse(recordedAt)) || !Number.isFinite(Date.parse(currentAt))) {
+    return refuse('thread-time-unknown', { recordedAt, currentAt });
+  }
+  if (Date.parse(currentAt) > Date.parse(recordedAt)) {
+    return refuse('thread-advanced-after-stop', { recordedAt, currentAt });
   }
   return null;
 }

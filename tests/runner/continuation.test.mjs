@@ -151,3 +151,15 @@ test('a retroactive pre-start folder leaves the same order eligible for its firs
   assert.deepEqual(started, []);
   assert.equal(continuationRefusal(runsRoot, started, false, 'order-1'), null);
 });
+
+test('Plan_80 E13 O5: resumes spend no continuation but the next pass still spends it', (t) => {
+  const runsRoot = fixture(t);
+  run(runsRoot, 'A');
+  run(runsRoot, 'B', { resumed_from: 'A' });
+  run(runsRoot, 'C', { resumed_from: ' B ' });
+  assert.equal(continuationRefusal(runsRoot, ['A', 'B', 'C'], true, 'order-1', grant('C')), null);
+  run(runsRoot, 'D', { resumed_from: '  ' });
+  const message = continuationRefusal(runsRoot, ['A', 'B', 'C', 'D'], true, 'order-1', grant('D'));
+  assert.match(message, /already spent its allowed continuation/);
+  assert.ok(message.includes(path.join(runsRoot, 'A') + ', ' + path.join(runsRoot, 'D')));
+});

@@ -1,4 +1,4 @@
-﻿/** Plan_80 E13/O4: resume preserves the failed read-only run's profile and thread. */
+/** Plan_80 E13/O4: resume preserves the failed read-only run's profile and thread. */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
