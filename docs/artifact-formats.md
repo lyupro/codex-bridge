@@ -716,6 +716,7 @@ resumed turn. Only the policy type string leaves the reader; no other sandbox pa
 are retained. An incomplete or otherwise unobserved session never supplies a witness, even
 when a qualifying record preceded the failure. This evidence lets a later order reject a
 resume whose witnessed policy is not `read-only`; this reader does not enforce that verdict.
+The verdict fails a resume run whose witness is `observed` and not `read-only` (`docs/verdict.md`, item 7).
 
 Plan_80 A5/E12 adds these fields without changing stop record `version: 1`, verdicts or
 replies. Older runs without these fields have not observed this evidence. The runner passes

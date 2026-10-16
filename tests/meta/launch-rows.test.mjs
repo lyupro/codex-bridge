@@ -47,9 +47,10 @@ test('launchRows omits attempt provenance when retry_of is absent or empty', () 
 test('launchRows identifies a resume without counting it as a retry', () => {
   const dir = retryRun({ current: { resumed_from: 'failed-pass' } });
   const expected = "Attempt: resume of failed-pass — continues that pass's Codex thread";
-  assert.deepEqual(launchRows(dir), [expected]);
+  const witness = 'Sandbox witness: not observed — the session log was not read to the end; read-only is not confirmed';
+  assert.deepEqual(launchRows(dir), [expected, witness]);
   assert.deepEqual(withLaunchRows(['FAIL — stopped', 'Log: existing'], dir), [
-    'FAIL — stopped', expected, 'Log: existing',
+    'FAIL — stopped', expected, witness, 'Log: existing',
   ]);
 });
 

@@ -1,6 +1,7 @@
-/** Reply rows about facts the launcher recorded in status.json before the run began. */
+/** Reply rows about how this run was launched and attempted. */
 import path from 'node:path';
 import { line, readJson } from './paths.mjs';
+import { resumeOrigin, sandboxWitnessRow } from './sandbox-witness.mjs';
 
 function formatBytes(bytes) {
   const units = ['B', 'KB', 'MB', 'GB'];
@@ -25,9 +26,8 @@ function retentionReply(runDir) {
 
 function attemptReply(runDir) {
   const launched = readJson(path.join(runDir, 'status.json'));
-  const resumedFrom = launched?.resumed_from;
-  if (typeof resumedFrom === 'string' && resumedFrom.trim() && !/[/\\]/.test(resumedFrom)
-    && path.win32.basename(resumedFrom) === resumedFrom && resumedFrom !== '.' && resumedFrom !== '..') {
+  const resumedFrom = resumeOrigin(launched);
+  if (resumedFrom) {
     return `Attempt: resume of ${resumedFrom} — continues that pass's Codex thread`;
   }
   const retryOf = launched?.retry_of;
@@ -62,6 +62,8 @@ export function launchRows(runDir) {
   }
   const attempt = attemptReply(runDir);
   if (attempt) rows.push(attempt);
+  const witness = sandboxWitnessRow(runDir);
+  if (witness !== null) rows.push(witness);
   return rows;
 }
 

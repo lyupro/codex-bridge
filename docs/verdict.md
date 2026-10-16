@@ -37,22 +37,27 @@ the first matching branch determines the status. The order is therefore part of 
    prints an error event for an interrupted stream that it then survives, and coloring a run that
    completed its work would mirror the false `LIMIT`. `item.completed` is never a source — see
    “Transport and data.”
-7. **The result is absent or unfilled.** `FAIL`, with the reason selected in this order: first the model's
+7. **A resume run's witnessed sandbox is not read-only.** Reads `status.json#resumed_from` and
+   `stop.session.sandbox_witness`; a valid bare-folder resume origin with an `observed` policy other
+   than exactly `read-only` produces `FAIL`. This ranks after the transport check and before the
+   absent-result check: a result produced outside read-only is not trusted even when filled. Absent
+   and unconfirmed witnesses only print a row; they do not fail the run.
+8. **The result is absent or unfilled.** `FAIL`, with the reason selected in this order: first the model's
    last complaint about the job content (`item.completed` with `item.type: "error"`), then a transport
    error from events, and only then `stderr.log`. The order follows from the live probe on 2026-08-05:
    a healthy run has execpolicy refusals in `stderr.log`, and the previous parser presented an arbitrary
    blocked call as the cause of failure. There is no separate quota search here: check 6 is the only
    source of `LIMIT`.
-8. **Nonzero exit with a filled result.** This is `FAIL`. Having JSON does not cancel a process failure.
-9. **Failed build verification.** `verify_passed === false` produces `FAIL` even if the changes and
+9. **Nonzero exit with a filled result.** This is `FAIL`. Having JSON does not cancel a process failure.
+10. **Failed build verification.** `verify_passed === false` produces `FAIL` even if the changes and
    schema are correct. This check must come before scope and report matching: a failed mandatory command
    is already sufficient for failure.
-10. **Declared build outcome.** The executor reports in the mandatory `outcome` field whether the
+11. **Declared build outcome.** The executor reports in the mandatory `outcome` field whether the
     requested work was completed: `fail` produces `FAIL` with the reason from `summary`. The check comes
     after verification and before scope: unfinished work matters more than where it was left, while a
     failed mandatory command remains the louder failure. Only runs whose own `schema.json` required the
     field are judged by it — see “Run age” below.
-11. **Scout coverage.** First, a run that left an events stream must show at least one executed command:
+12. **Scout coverage.** First, a run that left an events stream must show at least one executed command:
     an `item.completed` event whose item is a `command_execution`, with any status and exit code (a grep
     that finds nothing still read the code). Without one the run is `FAIL` unless every question in
     `questions.json` is `startup-context`; mixed runs and archived questions without `kind` keep the
@@ -69,7 +74,7 @@ the first matching branch determines the status. The order is therefore part of 
     With zero executed commands, any repository `path:line` in answers' evidence or findings' `where`
     also produces `FAIL`: an address cited without reading is invented, so a code question marked by
     mistake still fails.
-12. **Advisor contract.** After scout checks and before the build-only scope check, the advisor judge
+13. **Advisor contract.** After scout checks and before the build-only scope check, the advisor judge
     validates the result against `advisor-task.json` and the phase context. It returns `FAIL` if the run
     executed no command; a scope result has an empty `taken_on_trust`, says `sufficient: false` without
     any `missing_paths`, or says `sufficient: true` while still listing missing paths; a citation does
@@ -91,14 +96,14 @@ the first matching branch determines the status. The order is therefore part of 
     In prose, an address counts as a citation when its left side (before the final line suffix) contains
     `/` or `\`, or names an existing file directly in the repository root; it must still resolve inside
     task scope and within a valid line range. Other `word:number` text is ordinary prose.
-13. **Build edits outside scope.** `environmentPaths` are subtracted from the tree delta first, then the
+14. **Build edits outside scope.** `environmentPaths` are subtracted from the tree delta first, then the
     remaining paths are compared with `scope.txt`. This check ranks above report matching: a report can
     name one allowed file while concealing several extra ones.
-14. **Build report matches actual work.** `changes[].file` entries are first compared with the current
+15. **Build report matches actual work.** `changes[].file` entries are first compared with the current
     run's delta. If there are no matches, service paths are rejected before examining the chain. The
     declared files are then searched in the accumulated diff from the chain's first `state-before.txt`
     through the current `state-after.txt`.
-15. **Success.** A match only with accumulated work returns `OK` and `carried: true`; normal completion
+16. **Success.** A match only with accumulated work returns `OK` and `carried: true`; normal completion
     returns `OK` without a reason.
 
 ## Transport and data
@@ -206,7 +211,7 @@ runs without these fields are linked by slug as before.
 An empty `changes[]` with an empty delta is allowed — the runner does not know whether the job required
 edits, and zero changes can be a legitimate outcome. The former cost of this rule (a run that did
 nothing because the task was impossible received `OK`) is addressed not here but by the declared
-outcome: check 10 turns red on the `outcome` field before report matching. The rule itself remains the
+outcome: check 11 turns red on the `outcome` field before report matching. The rule itself remains the
 same — the runner does not invent the job's intent. An empty report with a nonempty delta, or a report
 matching neither the current delta nor the chain's accumulated work, produces `FAIL` for “wrong work
 was done.” Service paths are checked before chain lookup so an earlier run cannot legitimize work in
