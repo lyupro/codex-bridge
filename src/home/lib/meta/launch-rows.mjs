@@ -24,7 +24,13 @@ function retentionReply(runDir) {
 }
 
 function attemptReply(runDir) {
-  const retryOf = readJson(path.join(runDir, 'status.json'))?.retry_of;
+  const launched = readJson(path.join(runDir, 'status.json'));
+  const resumedFrom = launched?.resumed_from;
+  if (typeof resumedFrom === 'string' && resumedFrom.trim() && !/[/\\]/.test(resumedFrom)
+    && path.win32.basename(resumedFrom) === resumedFrom && resumedFrom !== '.' && resumedFrom !== '..') {
+    return `Attempt: resume of ${resumedFrom} — continues that pass's Codex thread`;
+  }
+  const retryOf = launched?.retry_of;
   if (typeof retryOf !== 'string' || !retryOf.trim()) return null;
   const runsRoot = path.dirname(runDir);
   const key = (name) => process.platform === 'win32' ? name.toLowerCase() : name;

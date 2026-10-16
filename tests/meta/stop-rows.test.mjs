@@ -85,13 +85,63 @@ for (const [automatic, grant, expected] of [
       automatic: { allowed: automatic, blocking_reasons: [] },
       grant: { allowed: grant, blocking_reasons: [] },
     };
-    assert.equal(stopRows(meta)[1], expected);
+    assert.equal(stopRows(meta, makeRun())[1], expected);
   });
 }
 
 test('an absent or null situation keeps older records free of stop rows', () => {
   assert.deepEqual(stopRows({}), []);
   assert.deepEqual(stopRows({ situation: null }), []);
+});
+
+test('an allowed grant with an order id inserts the exact ready resume line after Continuation', () => {
+  const dir = makeRun({ status: { order_id: 'ow066-o7' } });
+  const meta = storedMeta();
+  meta.continuation_eligibility.grant = { allowed: true, blocking_reasons: [] };
+  const before = structuredClone(meta);
+  const expected = `Ready resume line: resume: ${path.basename(dir)} — continue after silent-stall-candidate (continues that pass's Codex thread under order ow066-o7).`;
+  const rows = stopRows(meta, dir);
+  assert.equal(rows.length, 4);
+  assert.equal(rows[1], 'Continuation: automatic blocked (recovery-not-enabled, resume-contract-unverified) · grant allowed ()');
+  assert.equal(rows[2], expected);
+  assert.equal(rows[3], 'Treatment: retain-stop-facts · diagnostic only, nothing runs it');
+  assert.deepEqual(meta, before);
+
+  const reply = failReply({ runDir: dir, agent: 'codex-advisor', resultPath: path.join(dir, 'result.json') }, {
+    ...meta, reason: 'result is empty, exit=1', events_bytes: 0, stderr_bytes: 0, result_ok: false, exit: 1,
+  });
+  assert.equal(reply[reply.findIndex((row) => row.startsWith('Continuation:')) + 1], expected);
+});
+
+test('the ready resume reason uses the recorded situation kind', () => {
+  const dir = makeRun({ status: { order_id: 'ow066-o7' } });
+  const meta = storedMeta();
+  meta.situation.kind = 'recent-activity';
+  meta.continuation_eligibility.grant = { allowed: true, blocking_reasons: [] };
+  assert.equal(stopRows(meta, dir)[2],
+    `Ready resume line: resume: ${path.basename(dir)} — continue after recent-activity (continues that pass's Codex thread under order ow066-o7).`);
+});
+
+test('the ready resume line requires grant.allowed to be exactly true', () => {
+  const dir = makeRun({ status: { order_id: 'ow066-o7' } });
+  for (const allowed of [false, undefined, null, 0, 1, 'true']) {
+    const meta = storedMeta();
+    meta.continuation_eligibility.automatic.allowed = true;
+    meta.continuation_eligibility.grant = { allowed, blocking_reasons: [] };
+    const rows = stopRows(meta, dir);
+    assert.equal(rows.length, 3);
+    assert.equal(rows.some((row) => row.startsWith('Ready resume line:')), false);
+  }
+});
+
+test('an allowed grant without a recorded order id adds no ready resume line', () => {
+  const meta = storedMeta();
+  meta.continuation_eligibility.grant = { allowed: true, blocking_reasons: [] };
+  for (const order_id of [undefined, null, '', '   ', 42]) {
+    const dir = makeRun({ status: { order_id } });
+    assert.equal(stopRows(meta, dir).length, 3);
+  }
+  assert.equal(stopRows(meta, makeRun()).length, 3);
 });
 
 test('a present situation requires its stored assessments instead of supplying silent defaults', () => {

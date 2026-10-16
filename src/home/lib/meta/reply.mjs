@@ -201,7 +201,7 @@ export function failReply(ctx, meta) {
     // and the orchestrator has to know whether there is something to revert before it decides
     // anything else.
     ...(ctx.agent === 'codex-build' ? [`Worktree: ${worktreeState(ctx.runDir)}`] : []),
-    ...(meta.result_ok === false ? stopRows(meta) : []),
+    ...(meta.result_ok === false ? stopRows(meta, ctx.runDir) : []),
     `Log: ${readCommand(ctx.runDir)}`,
   ];
 }

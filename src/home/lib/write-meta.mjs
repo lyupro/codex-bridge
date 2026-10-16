@@ -119,6 +119,8 @@ export function collect(runDir, agent, exitCode) {
     runner_version: RUNNER_VERSION,
     project: path.basename(path.dirname(runDir)),
     run: path.basename(runDir),
+    resumed_from: typeof launched.resumed_from === 'string' && launched.resumed_from.trim()
+      ? launched.resumed_from : null,
     finished_at: new Date().toISOString(),
     exit,
     status,
@@ -148,7 +150,10 @@ export function collect(runDir, agent, exitCode) {
     // the operator had configured and never received (2026-08-26).
     profile: worker?.profile ?? null,
     model: worker?.profile?.model || argValue('-m'),
-    sandbox: argValue('--sandbox'),
+    sandbox: argValue('--sandbox') ?? (
+      typeof worker?.resume?.sandbox_mode === 'string' && worker.resume.sandbox_mode.trim()
+        ? worker.resume.sandbox_mode : null
+    ),
     // Null for runs made before env.json existed: absence is not the same as "both off".
     env: readJson(path.join(runDir, 'env.json')),
     session_id: events.session_id,

@@ -28,6 +28,7 @@ before the final update to `status.json`.
 | `sandbox_probe` | The launcher's check of the host Codex sandbox, written whole: `outcome` (`alive`, `inconclusive` or `skipped`), `reason`, and `attempts` — one entry per probe form with `form` (`flagged`, `control`, `version`), `status`, `marker`, `ms` and `stderrTail` (at most 300 characters, evidence only, never judged). `dead` never appears here: a dead sandbox refuses before the folder exists. Every launch that reaches the run folder carries it, a busy-tree refusal included; an absent field means a run from before 0.6.3. `inconclusive` adds the row `Sandbox probe: inconclusive — <reason> The run started without a sandbox check.` to the run's reply, whatever the verdict, including a runner failure closed by `writeFailure()`. |
 | `continued_from` | Optional name of the run named by the `continue:` grant in the task header. Unlike `continues`, this is not the start of the chain, but the run after which the orchestrator instructed execution to continue. Grant enforcement is handled by the “named run is the last in the chain” rule; this field is the key by which a repeated identical continuation command attaches to the run it already started. For an advisor `advise` phase, the target must also be an `OK` advisor `scope` run. |
 | `retry_of` | Optional name of the failed run named by the `retry:` grant in the task header. The retry repeats that pass with the same order id, agent, and phase; it does not count as another continuation. This field lets a repeated identical retry command attach to the run it already started. An advisor `advise` retry carries the original `OK` scope. |
+| `resumed_from` | Optional name of the failed run named by the `resume:` grant. The new run continues that pass's Codex thread. When this is a non-empty bare folder name, its reply includes `Attempt: resume of <resumed_from> — continues that pass's Codex thread`; empty or non-bare values add no resume row. Retry rows retain their existing format. |
 
 ### Completion fields
 
@@ -95,6 +96,7 @@ this record or reads additional evidence for it, so collecting again preserves t
 | `runner_version` | Version of the runner package whose code wrote `meta.json`; taken directly from its `package.json`, not from launch arguments. An absent field means a historical run created before the runner: it does not violate the contract and is not evaluated under the runner sandbox rules. |
 | `project` | Repository directory name used as the run grouping level. |
 | `run` | Directory name of this run. |
+| `resumed_from` | Non-empty string from `status.json#resumed_from`, preserved verbatim; otherwise `null`. Always present in a normal collect. |
 | `finished_at` | Time when meta was computed, in ISO 8601. |
 | `exit` | Numeric Codex code; `null` if none exists. |
 | `status` | `OK`, `FAIL`, or `LIMIT`. |
@@ -109,7 +111,7 @@ this record or reads additional evidence for it, so collecting again preserves t
 | `tokens_reported` | Whether a token count was recognized. `false` does not mean zero usage. |
 | `profile` | The worker that was ordered, copied from `worker.json`: `model` (empty when nothing was pinned), `model_source` (`config` or `codex default`), `effort` and `effort_source` (`request`, `config` or `fallback`). `null` for runs recorded before the field existed. The reply prints it as one row, because a run answering on a model nobody ordered was invisible for three releases (2026-08-26). |
 | `model` | The model the run was ordered with, from `profile.model` or the `-m` argument; `null` when nothing was pinned and Codex chose. The CLI never reports the model it served, so this is what was asked for, not what answered. |
-| `sandbox` | The `--sandbox` argument the run was started with, or `null`. |
+| `sandbox` | The `--sandbox` argument the run was started with. When absent, the non-empty string `worker.json#resume.sandbox_mode` is used; otherwise `null`. Fresh runs keep their existing value. Resume argv uses `codex exec resume` with `-c sandbox_mode=read-only` and no `--sandbox` flag. |
 | `env` | Contents of `env.json`; may be `null` for an old or early run. |
 | `session_id` | Value of the `session id:` line from the log, or `null`. |
 
@@ -233,6 +235,18 @@ Null silence, threshold, and command state print `silence=unknown`,
 `threshold=unconfigured`, and `command=unknown` respectively. Each continuation code list
 is joined by `, ` in stored order, without truncation; its stored `allowed` flag selects
 `allowed` or `blocked`. No rows appear if `situation` is absent in an older record.
+
+When `continuation_eligibility.grant.allowed === true` and this run's `status.json#order_id`
+is recorded as a non-empty string, the reply inserts the registry-rendered ready resume line
+immediately after `Continuation:` and before `Treatment:` (Plan_80 E13/O7):
+
+```text
+Ready resume line: resume: <run folder> — continue after <situation.kind> (continues that pass's Codex thread under order <order_id>).
+```
+
+A blocked grant or missing order id adds no line. Grants remain blocked by
+`resume-grant-not-implemented` until the resume label is enabled, preserving existing replies.
+
 Every `OK`, `LIMIT`, `UNAVAILABLE`, and `FAIL` with a usable result keeps its reply unchanged.
 These rows are explanatory only: they change no status and execute no treatment.
 

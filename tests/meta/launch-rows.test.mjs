@@ -44,6 +44,27 @@ test('launchRows omits attempt provenance when retry_of is absent or empty', () 
   }
 });
 
+test('launchRows identifies a resume without counting it as a retry', () => {
+  const dir = retryRun({ current: { resumed_from: 'failed-pass' } });
+  const expected = "Attempt: resume of failed-pass — continues that pass's Codex thread";
+  assert.deepEqual(launchRows(dir), [expected]);
+  assert.deepEqual(withLaunchRows(['FAIL — stopped', 'Log: existing'], dir), [
+    'FAIL — stopped', expected, 'Log: existing',
+  ]);
+});
+
+test('launchRows omits resume provenance that is empty or not a bare folder name', () => {
+  for (const resumed_from of [undefined, null, '', '   ', 42, {}, '../pass', '..\\pass',
+    '/pass', 'C:\\runs\\pass', 'C:pass', 'C:', 'parent/pass', 'parent\\pass', '.', '..']) {
+    assert.deepEqual(launchRows(retryRun({ current: { resumed_from } })), []);
+  }
+});
+
+test('invalid resume provenance leaves existing retry rows unchanged', () => {
+  const dir = retryRun({ first: {}, current: { resumed_from: '../pass', retry_of: 'first' } });
+  assert.deepEqual(launchRows(dir), ['Attempt: 2 of this pass — retry of first']);
+});
+
 test('launchRows counts one retry and a retry of a retry within the same pass', () => {
   for (const [base, attempt] of [[{}, 2], [{ retry_of: 'first' }, 3]]) {
     const dir = retryRun({ first: {}, base, current: { retry_of: 'base' } });
