@@ -14,8 +14,9 @@ function storedMeta() {
       commands: { state: 'none' },
     },
     continuation_eligibility: {
+      version: 2,
       automatic: { allowed: false, blocking_reasons: ['recovery-not-enabled', 'resume-contract-unverified'] },
-      grant: { allowed: false, blocking_reasons: ['recovery-not-enabled', 'resume-grant-not-implemented'] },
+      grant: { allowed: false, policy_version: 1, blocking_reasons: ['resume-grant-not-implemented'] },
     },
     treatment: { version: 1, effect: 'diagnostic-only', action: 'retain-stop-facts' },
   };
@@ -30,7 +31,7 @@ test('renders exactly three rows from stored assessments, without reclassifying 
   const before = structuredClone(meta);
   assert.deepEqual(stopRows(meta), [
     'Situation: silent-stall-candidate · silence=12345 ms · threshold=996000 ms · command=none',
-    'Continuation: automatic blocked (recovery-not-enabled, resume-contract-unverified) · grant blocked (recovery-not-enabled, resume-grant-not-implemented)',
+    'Continuation: automatic blocked (recovery-not-enabled, resume-contract-unverified) · grant blocked (resume-grant-not-implemented)',
     'Treatment: inspect-evidence · diagnostic only, nothing runs it',
   ]);
   assert.deepEqual(meta, before);
@@ -65,12 +66,11 @@ test('preserves all blocking codes, their stored order and duplicates without tr
     'process-tree-stop-unverified',
   ];
   meta.continuation_eligibility.grant.blocking_reasons = [
-    'recovery-not-enabled', 'resume-grant-not-implemented', 'resume-contract-unverified',
-    'writer-role-not-approved', 'thread-unavailable', 'session-evidence-not-observed',
-    'command-evidence-unknown', 'process-tree-stop-unverified',
+    'resume-grant-not-implemented', 'writer-role-not-approved', 'stop-record-missing',
+    'thread-unavailable', 'session-evidence-not-observed', 'process-tree-stop-unverified',
   ];
   assert.equal(stopRows(meta)[1],
-    'Continuation: automatic blocked (z-stored-first, a-stored-second, z-stored-first, recovery-not-enabled, resume-contract-unverified, writer-role-not-approved, thread-unavailable, session-evidence-not-observed, command-evidence-unknown, threshold-unconfigured, process-tree-stop-unverified) · grant blocked (recovery-not-enabled, resume-grant-not-implemented, resume-contract-unverified, writer-role-not-approved, thread-unavailable, session-evidence-not-observed, command-evidence-unknown, process-tree-stop-unverified)');
+    'Continuation: automatic blocked (z-stored-first, a-stored-second, z-stored-first, recovery-not-enabled, resume-contract-unverified, writer-role-not-approved, thread-unavailable, session-evidence-not-observed, command-evidence-unknown, threshold-unconfigured, process-tree-stop-unverified) · grant blocked (resume-grant-not-implemented, writer-role-not-approved, stop-record-missing, thread-unavailable, session-evidence-not-observed, process-tree-stop-unverified)');
 });
 
 for (const [automatic, grant, expected] of [
@@ -131,8 +131,8 @@ for (const agent of ['codex-build', 'codex-advisor']) {
     assert.equal(meta.status, 'FAIL');
     assert.equal(meta.result_ok, false);
     const continuation = agent === 'codex-build'
-      ? 'Continuation: automatic blocked (recovery-not-enabled, resume-contract-unverified, writer-role-not-approved, thread-unavailable, session-evidence-not-observed, command-evidence-unknown, threshold-unconfigured, process-tree-stop-unverified) · grant blocked (recovery-not-enabled, resume-grant-not-implemented, resume-contract-unverified, writer-role-not-approved, thread-unavailable, session-evidence-not-observed, command-evidence-unknown, process-tree-stop-unverified)'
-      : 'Continuation: automatic blocked (recovery-not-enabled, resume-contract-unverified, thread-unavailable, session-evidence-not-observed, command-evidence-unknown, threshold-unconfigured, process-tree-stop-unverified) · grant blocked (recovery-not-enabled, resume-grant-not-implemented, resume-contract-unverified, thread-unavailable, session-evidence-not-observed, command-evidence-unknown, process-tree-stop-unverified)';
+      ? 'Continuation: automatic blocked (recovery-not-enabled, resume-contract-unverified, writer-role-not-approved, thread-unavailable, session-evidence-not-observed, command-evidence-unknown, threshold-unconfigured, process-tree-stop-unverified) · grant blocked (resume-grant-not-implemented, writer-role-not-approved, stop-record-missing, thread-unavailable, session-evidence-not-observed, process-tree-stop-unverified)'
+      : 'Continuation: automatic blocked (recovery-not-enabled, resume-contract-unverified, thread-unavailable, session-evidence-not-observed, command-evidence-unknown, threshold-unconfigured, process-tree-stop-unverified) · grant blocked (resume-grant-not-implemented, stop-record-missing, thread-unavailable, session-evidence-not-observed, process-tree-stop-unverified)';
     assert.equal(reply, [
       'FAIL — panic: failed before result',
       'Artifacts: events.jsonl 0 B · stderr.log 28 B · result.json empty or missing · exit=1',

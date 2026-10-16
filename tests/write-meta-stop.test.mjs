@@ -77,12 +77,12 @@ for (const agent of ['codex-advisor', 'codex-build']) {
     });
     const writer = agent === 'codex-build' ? ['writer-role-not-approved'] : [];
     assert.deepEqual(first.meta.continuation_eligibility, {
-      version: 1,
+      version: 2,
       automatic: { allowed: false, blocking_reasons: [
         'recovery-not-enabled', 'resume-contract-unverified', ...writer, 'process-tree-stop-unverified',
       ] },
-      grant: { allowed: false, blocking_reasons: [
-        'recovery-not-enabled', 'resume-grant-not-implemented', 'resume-contract-unverified',
+      grant: { allowed: false, policy_version: 1, blocking_reasons: [
+        'resume-grant-not-implemented',
         ...writer, 'process-tree-stop-unverified',
       ] },
     });

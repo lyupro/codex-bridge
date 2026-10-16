@@ -86,7 +86,7 @@ for (const [name, overrides, kind, action] of cases) {
     const result = assessStop(args);
     assert.equal(result.situation.kind, kind);
     assert.deepEqual(result.treatment, { version: 1, effect: 'diagnostic-only', action });
-    assert.equal(result.continuation_eligibility.version, 1);
+    assert.equal(result.continuation_eligibility.version, 2);
     assert.equal(result.continuation_eligibility.automatic.allowed, false);
     assert.equal(result.continuation_eligibility.grant.allowed, false);
     assert.deepEqual(args, before, 'assessment must not mutate frozen facts');
@@ -119,12 +119,12 @@ test('older facts stay null and silence explains the absent reference', () => {
 
 test('stalled advise has the exact ordered diagnostic-only blockers', () => {
   assert.deepEqual(assessStop(input()).continuation_eligibility, {
-    version: 1,
+    version: 2,
     automatic: { allowed: false, blocking_reasons: [
       'recovery-not-enabled', 'resume-contract-unverified', 'process-tree-stop-unverified',
     ] },
-    grant: { allowed: false, blocking_reasons: [
-      'recovery-not-enabled', 'resume-grant-not-implemented', 'resume-contract-unverified',
+    grant: { allowed: false, policy_version: 1, blocking_reasons: [
+      'resume-grant-not-implemented',
       'process-tree-stop-unverified',
     ] },
   });
@@ -133,13 +133,13 @@ test('stalled advise has the exact ordered diagnostic-only blockers', () => {
 test('build records writer-role and unconfigured-threshold blockers in order', () => {
   assert.deepEqual(assessStop(input({ agentWrites: true, silencePolicy: { threshold_ms: null } }))
     .continuation_eligibility, {
-    version: 1,
+    version: 2,
     automatic: { allowed: false, blocking_reasons: [
       'recovery-not-enabled', 'resume-contract-unverified', 'writer-role-not-approved',
       'threshold-unconfigured', 'process-tree-stop-unverified',
     ] },
-    grant: { allowed: false, blocking_reasons: [
-      'recovery-not-enabled', 'resume-grant-not-implemented', 'resume-contract-unverified',
+    grant: { allowed: false, policy_version: 1, blocking_reasons: [
+      'resume-grant-not-implemented',
       'writer-role-not-approved', 'process-tree-stop-unverified',
     ] },
   });
@@ -157,27 +157,27 @@ test('missing session log is unknown evidence with exact blockers, never a silen
   assert.equal(result.situation.silence_ms, null);
   assert.equal(result.situation.silence_reason, 'session evidence missing');
   assert.deepEqual(result.continuation_eligibility, {
-    version: 1,
+    version: 2,
     automatic: { allowed: false, blocking_reasons: [
       'recovery-not-enabled', 'resume-contract-unverified', 'session-evidence-missing',
       'command-evidence-unknown', 'process-tree-stop-unverified',
     ] },
-    grant: { allowed: false, blocking_reasons: [
-      'recovery-not-enabled', 'resume-grant-not-implemented', 'resume-contract-unverified',
-      'session-evidence-missing', 'command-evidence-unknown', 'process-tree-stop-unverified',
+    grant: { allowed: false, policy_version: 1, blocking_reasons: [
+      'resume-grant-not-implemented',
+      'session-evidence-missing', 'process-tree-stop-unverified',
     ] },
   });
 });
 
 test('LIMIT without a result has the exact ordered blockers', () => {
   assert.deepEqual(assessStop(input({ status: 'LIMIT' })).continuation_eligibility, {
-    version: 1,
+    version: 2,
     automatic: { allowed: false, blocking_reasons: [
       'recovery-not-enabled', 'resume-contract-unverified', 'limit',
       'not-silent-stall', 'process-tree-stop-unverified',
     ] },
-    grant: { allowed: false, blocking_reasons: [
-      'recovery-not-enabled', 'resume-grant-not-implemented', 'resume-contract-unverified',
+    grant: { allowed: false, policy_version: 1, blocking_reasons: [
+      'resume-grant-not-implemented',
       'limit', 'process-tree-stop-unverified',
     ] },
   });
@@ -191,16 +191,16 @@ test('all applicable factual blockers survive result and LIMIT precedence', () =
     status: 'LIMIT', resultOk: true, agentWrites: true, threadId: null,
     stop, silencePolicy: null,
   })).continuation_eligibility, {
-    version: 1,
+    version: 2,
     automatic: { allowed: false, blocking_reasons: [
       'recovery-not-enabled', 'resume-contract-unverified', 'result-present', 'limit',
       'writer-role-not-approved', 'thread-unavailable', 'command-in-flight',
       'threshold-unconfigured', 'not-silent-stall', 'process-tree-stop-unverified',
     ] },
-    grant: { allowed: false, blocking_reasons: [
-      'recovery-not-enabled', 'resume-grant-not-implemented', 'resume-contract-unverified',
+    grant: { allowed: false, policy_version: 1, blocking_reasons: [
+      'resume-grant-not-implemented',
       'result-present', 'limit', 'writer-role-not-approved', 'thread-unavailable',
-      'command-in-flight', 'process-tree-stop-unverified',
+      'process-tree-stop-unverified',
     ] },
   });
 });
@@ -209,16 +209,15 @@ test('UNAVAILABLE with no session or commands reports absence, not silence', () 
   assert.deepEqual(assessStop(input({
     status: 'UNAVAILABLE', threadId: null, stop: null, silencePolicy: null,
   })).continuation_eligibility, {
-    version: 1,
+    version: 2,
     automatic: { allowed: false, blocking_reasons: [
       'recovery-not-enabled', 'resume-contract-unverified', 'unavailable', 'thread-unavailable',
       'session-evidence-not-observed', 'command-evidence-unknown', 'threshold-unconfigured',
       'not-silent-stall', 'process-tree-stop-unverified',
     ] },
-    grant: { allowed: false, blocking_reasons: [
-      'recovery-not-enabled', 'resume-grant-not-implemented', 'resume-contract-unverified',
-      'unavailable', 'thread-unavailable', 'session-evidence-not-observed',
-      'command-evidence-unknown', 'process-tree-stop-unverified',
+    grant: { allowed: false, policy_version: 1, blocking_reasons: [
+      'resume-grant-not-implemented',
+      'unavailable', 'stop-record-missing', 'thread-unavailable', 'session-evidence-not-observed', 'process-tree-stop-unverified',
     ] },
   });
 });

@@ -87,7 +87,7 @@ this record or reads additional evidence for it, so collecting again preserves t
 | `phase` | Resolved phase copied from `worker.json` (or `status.json` if needed); `null` for runs made before phases existed. |
 | `silence_policy` | Policy frozen in `worker.json#silence_policy`, copied verbatim without consulting today's registry. A `null` object means an older run without this record; a `null` threshold inside an object means not calibrated. Diagnostic only in this release; replies use the stored assessments below, never this policy directly. See below. |
 | `situation` | Version-1 classification of the frozen stop evidence; see “Stop assessments” below. |
-| `continuation_eligibility` | Version-1 automatic/grant assessments with ordered blockers. Both `allowed` values are always `false` in this release. |
+| `continuation_eligibility` | Version-2 automatic/grant assessments with ordered blockers and a grant `policy_version`. Both `allowed` values are always `false` in this release. |
 | `treatment` | Version-1 diagnostic action: `{ version: 1, effect: 'diagnostic-only', action }`. It never executes recovery. |
 | `sufficient` | Advisor only: the boolean from the advisor result, or `null` when the result did not say. An insufficient scope can still be a valid `OK` result. |
 | `missing_paths` | Advisor only: paths the result identified as needed, or `null` when the result did not say. |
@@ -157,11 +157,39 @@ Kind precedence is fixed:
 
 Unknown evidence never becomes silence. A null threshold never becomes stalled or recent.
 
-`continuation_eligibility` is `{ version: 1, automatic: { allowed: false,
-blocking_reasons }, grant: { allowed: false, blocking_reasons } }`. The automatic list
-starts with `recovery-not-enabled`, then `resume-contract-unverified`. The grant list
-starts with `recovery-not-enabled`, `resume-grant-not-implemented`, then
-`resume-contract-unverified`. Append every applicable blocker in this fixed order:
+Plan_80 E13/O2 records `continuation_eligibility` as `{ version: 2,
+automatic: { allowed, blocking_reasons }, grant: { allowed, policy_version: 1,
+blocking_reasons } }`. Each `allowed` is computed as no blocking reasons. The grant list
+starts with `resume-grant-not-implemented`, followed by the pure exported
+`grantBlockers({ status, resultOk, agentWrites, threadId, stop })` from
+`meta/stop-assessment.mjs`. Its exported `GRANT_POLICY_VERSION = 1` is stored as
+`grant.policy_version`, so the recorded assessment and the later grant gate share the
+same versioned predicate. The grant remains blocked in this release even when that
+predicate returns an empty list; activating the `resume:` label is a later order.
+`situation` and `treatment` remain version 1.
+
+The grant predicate returns every applicable safety/identity blocker in this fixed order:
+
+1. `result-present` when a usable result exists.
+2. `limit` or `unavailable` for the resolved status.
+3. `runner-error` when `stop.trigger` is `spawn-error` or `stream-error`.
+4. `writer-role-not-approved` when registry `writes` is true.
+5. `stop-record-missing` when there is no stop record (legacy runs).
+6. `thread-unavailable` when there is no thread id.
+7. `session-evidence-<state>` for any session state other than `observed`;
+   `session-evidence-not-observed` when absent.
+8. `process-tree-stop-unverified` unless `stop.tree_stop.state` is `stopped` or `exited`.
+   A version-1 stop without `tree_stop` remains unverified.
+
+Command evidence, silence thresholds and stall kind do not block a read-only grant:
+Plan_80 S3 verified that writes are denied outside `%TEMP%`, so interrupted commands
+leave no effects to reconcile there. The reply still shows `command=<state>` for the
+orchestrator's decision. The grant list has neither `recovery-not-enabled` nor
+`resume-contract-unverified` (S3 verified the read-only resume contract).
+
+The automatic list retains its strict policy: it starts with `recovery-not-enabled`,
+then `resume-contract-unverified`, so it also remains blocked. Append every applicable
+automatic blocker in this fixed order:
 
 1. `result-present` when a usable result exists.
 2. `limit` or `unavailable` for the resolved status, even if the kind is `result-present`.
@@ -171,11 +199,12 @@ starts with `recovery-not-enabled`, `resume-grant-not-implemented`, then
    `session-evidence-not-observed` when absent.
 6. `command-in-flight` for open commands, or `command-evidence-unknown` for unknown
    or absent command evidence.
-7. Automatic only: `threshold-unconfigured` when `threshold_ms` is null.
-8. Automatic only: `not-silent-stall` when the kind is known not to be a stall: never for
+7. `threshold-unconfigured` when `threshold_ms` is null.
+8. `not-silent-stall` when the kind is known not to be a stall: never for
    `evidence-unknown` or `silence-unclassified` (whether the run stalled is unknown, and their
    own reasons already block), nor for `silent-stall-candidate`.
-9. Always `process-tree-stop-unverified`: no fact yet confirms the process tree stopped.
+9. `process-tree-stop-unverified` unless `stop.tree_stop.state` is `stopped` or `exited`,
+   using the same evidence rule as the grant predicate.
 
 `treatment.effect` is always `diagnostic-only`: the action is advice and nothing executes it. Its action mapping is:
 
@@ -630,7 +659,7 @@ including a `kill` fallback followed by exit: killing only the shell can leave t
 2026-07-31 Codex orphan alive. Off Windows the child is Codex itself: an observed exit means
 `stopped` if a kill was requested, otherwise `exited`; without an observed exit it is
 `unverified`. This evidence concerns Codex itself, not proof that every descendant is gone.
-The classifier and grant do not consume this new fact yet.
+The continuation assessments consume this evidence; classification of the situation is unchanged.
 
 `result_file.state` distinguishes presence from usability: `missing` means no file;
 `unreadable` means reading failed and includes an `error` message; `malformed` means the

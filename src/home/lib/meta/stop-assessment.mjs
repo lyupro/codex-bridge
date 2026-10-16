@@ -5,6 +5,28 @@
  */
 import { silenceAgeMs } from '../codex-session-log.mjs';
 
+export const GRANT_POLICY_VERSION = 1;
+
+// One reading of O1's evidence for both paths: two copies of this rule could drift apart.
+const codexProvenGone = (stop) => ['stopped', 'exited'].includes(stop?.tree_stop?.state);
+
+// Plan_80 E13/O2: grants depend on safety and identity, not the diagnosed stall kind.
+export function grantBlockers({ status, resultOk, agentWrites, threadId, stop }) {
+  const blockers = [];
+  if (resultOk) blockers.push('result-present');
+  if (status === 'LIMIT') blockers.push('limit');
+  else if (status === 'UNAVAILABLE') blockers.push('unavailable');
+  if (stop?.trigger === 'spawn-error' || stop?.trigger === 'stream-error') blockers.push('runner-error');
+  if (agentWrites) blockers.push('writer-role-not-approved');
+  if (!stop) blockers.push('stop-record-missing');
+  if (!threadId) blockers.push('thread-unavailable');
+  if (stop?.session?.state !== 'observed') {
+    blockers.push(`session-evidence-${stop?.session?.state ?? 'not-observed'}`);
+  }
+  if (!codexProvenGone(stop)) blockers.push('process-tree-stop-unverified');
+  return blockers;
+}
+
 export function assessStop({ status, resultOk, agentWrites, threadId, stop, silencePolicy }) {
   const cause = stop?.trigger ?? null;
   const sessionState = stop?.session?.state ?? null;
@@ -42,7 +64,8 @@ export function assessStop({ status, resultOk, agentWrites, threadId, stop, sile
     result_file_state: stop?.result_file?.state ?? null,
   };
   const automatic = ['recovery-not-enabled', 'resume-contract-unverified'];
-  const grant = ['recovery-not-enabled', 'resume-grant-not-implemented', 'resume-contract-unverified'];
+  const grant = ['resume-grant-not-implemented',
+    ...grantBlockers({ status, resultOk, agentWrites, threadId, stop })];
   const factual = [];
   if (resultOk) factual.push('result-present');
   if (status === 'LIMIT') factual.push('limit');
@@ -53,15 +76,13 @@ export function assessStop({ status, resultOk, agentWrites, threadId, stop, sile
   if (commands.state === 'in-flight') factual.push('command-in-flight');
   else if (commands.state !== 'none') factual.push('command-evidence-unknown');
   automatic.push(...factual);
-  grant.push(...factual);
   if (threshold === null) automatic.push('threshold-unconfigured');
   // Without evidence or a calibrated threshold nobody knows whether this was a stall, so
   // "not a stall" would be a claim; those cases are already blocked by their own reasons.
   if (!['evidence-unknown', 'silence-unclassified', 'silent-stall-candidate'].includes(kind)) {
     automatic.push('not-silent-stall');
   }
-  automatic.push('process-tree-stop-unverified');
-  grant.push('process-tree-stop-unverified');
+  if (!codexProvenGone(stop)) automatic.push('process-tree-stop-unverified');
 
   const actions = {
     'result-present': 'retain-stop-facts',
@@ -78,9 +99,9 @@ export function assessStop({ status, resultOk, agentWrites, threadId, stop, sile
   return {
     situation,
     continuation_eligibility: {
-      version: 1,
-      automatic: { allowed: false, blocking_reasons: automatic },
-      grant: { allowed: false, blocking_reasons: grant },
+      version: 2,
+      automatic: { allowed: automatic.length === 0, blocking_reasons: automatic },
+      grant: { allowed: grant.length === 0, policy_version: GRANT_POLICY_VERSION, blocking_reasons: grant },
     },
     treatment: { version: 1, effect: 'diagnostic-only', action: actions[kind] },
   };
