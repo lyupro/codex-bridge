@@ -35,6 +35,7 @@ import { agentRole } from '../agents.mjs';
 import { resolveSilencePolicy } from '../silence-policy.mjs';
 import { codexArgs, runProfile } from './codex-args.mjs';
 import { writeWorkerOrder } from './worker-order.mjs';
+import { resumeSituationKind, writeResumeArtifacts, resumeWorkerFields } from './resume-launch.mjs';
 import { unsafeForCmd } from './codex-cmd.mjs';
 import { runsRootResolution, staleOverrideRefusal } from './runs-root.mjs';
 import { resolveProjectRunsDir } from './project-dir.mjs';
@@ -147,7 +148,7 @@ export async function launcher(argv = process.argv.slice(2)) {
     // The pass gate lives in pass-gate.mjs, Plan_75 P0.
     const gate = await passGate({ opts, taskText, header, projectRunsRoot, repoRoot, beforeWait: claim.release });
     if ('exitCode' in gate) return gate.exitCode;
-    const { taskHash, chain, startedChain, continuationGrant, advisorTask, retryOf } = gate;
+    const { taskHash, chain, startedChain, continuationGrant, advisorTask, retryOf, resumedFrom, resumeInputs } = gate;
 
     // Plan_60 D2: a signed-out Codex answers UNAVAILABLE (exit 5) before the paid sandbox probe;
     // a PATH miss, after one retry, is the free readiness-unconfirmed refusal (exit 1, Plan_78 D5).
@@ -217,6 +218,7 @@ export async function launcher(argv = process.argv.slice(2)) {
       ...(continuationGrant ? { continued_from: continuationGrant.run } : {}),
       // Plan_75: the repeated failed run; pass accounting skips runs carrying it.
       ...(retryOf ? { retry_of: retryOf } : {}),
+      ...(resumedFrom ? { resumed_from: resumedFrom } : {}),
       ...(retention ? { retention } : {}),
       sandbox_probe: sandboxProbe,
     });
@@ -225,27 +227,32 @@ export async function launcher(argv = process.argv.slice(2)) {
     // orchestrator with a folder to look into.
     console.log(`RUN=${runDir} order-id=${opts.orderId}`);
 
-    const scope = opts.agent === 'codex-review' ? reviewScope(repoRoot, opts.changeset) : null;
-    if (scope) {
-      fs.writeFileSync(
-        path.join(runDir, 'scope.txt'),
-        `${scope.label}\n${scope.diffCommand}\n${scope.files.join('\n')}\n`,
-      );
-    }
+    // Plan_80 E13: resume artifacts come only from the named pass, never today's repository.
+    let scope = null;
+    let questions = [];
+    if (!resumedFrom) {
+      scope = opts.agent === 'codex-review' ? reviewScope(repoRoot, opts.changeset) : null;
+      if (scope) {
+        fs.writeFileSync(
+          path.join(runDir, 'scope.txt'),
+          `${scope.label}\n${scope.diffCommand}\n${scope.files.join('\n')}\n`,
+        );
+      }
 
-    // The sub-questions this run will be graded against come only from the task document's
-    // `Questions` section. They are written before the task is assembled so the prompt and verdict
-    // read the same ordered list, including a valid one-question order.
-    const questions = opts.agent === 'codex-scout' ? questionsFromTexts(opts.questions) : [];
-    if (opts.agent === 'codex-scout') {
-      fs.writeFileSync(path.join(runDir, 'questions.json'), `${JSON.stringify(questions, null, 2)}\n`);
-    }
-    if (advisorTask) {
-      fs.writeFileSync(path.join(runDir, 'advisor-task.json'), `${JSON.stringify(advisorTask, null, 2)}\n`);
-    }
+      // The sub-questions this run will be graded against come only from the task document's
+      // `Questions` section. They are written before the task is assembled so the prompt and verdict
+      // read the same ordered list, including a valid one-question order.
+      questions = opts.agent === 'codex-scout' ? questionsFromTexts(opts.questions) : [];
+      if (opts.agent === 'codex-scout') {
+        fs.writeFileSync(path.join(runDir, 'questions.json'), `${JSON.stringify(questions, null, 2)}\n`);
+      }
+      if (advisorTask) {
+        fs.writeFileSync(path.join(runDir, 'advisor-task.json'), `${JSON.stringify(advisorTask, null, 2)}\n`);
+      }
 
-    if (opts.agent === 'codex-build') {
-      fs.writeFileSync(path.join(runDir, 'scope.txt'), `${opts.scopePatterns.join('\n')}\n`);
+      if (opts.agent === 'codex-build') {
+        fs.writeFileSync(path.join(runDir, 'scope.txt'), `${opts.scopePatterns.join('\n')}\n`);
+      }
     }
 
     // Which environment this run actually got. Without it a replay months later cannot tell
@@ -253,53 +260,59 @@ export async function launcher(argv = process.argv.slice(2)) {
     // wandered off task raises.
     fs.writeFileSync(path.join(runDir, 'env.json'), `${JSON.stringify(RUN_ENV, null, 2)}\n`);
 
-    // The extra sections carry the two things prose could not enforce: what has to be answered,
-    // and what may be edited. Both also go to disk as questions.json / scope.txt, so the verdict
-    // is computed from the same list Codex was handed, not from a second reading of the wording.
-    const sections = [`## Operator task (verbatim)\n\n${taskText}`];
-    const scopeResults = adviseSection(advisorTask);
-    if (scopeResults) sections.push(scopeResults);
-    if (questions.length) {
-      sections.push(
-        [
-          '## Sub-questions, each requires a separate response',
-          '',
-          questions.map((q) =>
-            `${q.id}${q.kind === QUESTION_KIND.STARTUP_CONTEXT ? ' [context-only]' : ''}: ${q.text}`).join('\n'),
-          '',
-          'A missed sub-question fails the run; a response containing only coordinates counts as missed.',
-        ].join('\n'),
+    if (resumedFrom) {
+      writeResumeArtifacts({ runDir, inputs: resumeInputs,
+        situationKind: resumeSituationKind(path.join(projectRunsRoot, resumedFrom)) });
+    } else {
+      // The extra sections carry the two things prose could not enforce: what has to be answered,
+      // and what may be edited. Both also go to disk as questions.json / scope.txt, so the verdict
+      // is computed from the same list Codex was handed, not from a second reading of the wording.
+      const sections = [`## Operator task (verbatim)\n\n${taskText}`];
+      const scopeResults = adviseSection(advisorTask);
+      if (scopeResults) sections.push(scopeResults);
+      if (questions.length) {
+        sections.push(
+          [
+            '## Sub-questions, each requires a separate response',
+            '',
+            questions.map((q) =>
+              `${q.id}${q.kind === QUESTION_KIND.STARTUP_CONTEXT ? ' [context-only]' : ''}: ${q.text}`).join('\n'),
+            '',
+            'A missed sub-question fails the run; a response containing only coordinates counts as missed.',
+          ].join('\n'),
+        );
+      }
+      if (opts.agent === 'codex-build') {
+        sections.push(
+          [
+            '## Scope (hard boundary)',
+            '',
+            'Only these may be changed:',
+            opts.scopePatterns.map((p) => `- ${p}`).join('\n'),
+            '',
+            'Do not touch any file outside this list — even if it blocks the work or looks broken.',
+            'Put the obstacle in leftovers instead of changing the file. The touched worktree is',
+            'checked against this list after the run.',
+          ].join('\n'),
+        );
+      }
+      const conventions = renderConventions(repoRoot);
+      if (conventions) sections.push(conventions);
+      sections.push(`## Instructions for Codex\n\n${INSTRUCTIONS[opts.agent](opts, scope, questions)}`);
+      fs.writeFileSync(path.join(runDir, 'task.md'), `${sections.join('\n\n')}\n`);
+      fs.writeFileSync(
+        path.join(runDir, 'schema.json'),
+        `${JSON.stringify(schemaFor(opts.agent, opts.phase), null, 2)}\n`,
       );
-    }
-    if (opts.agent === 'codex-build') {
-      sections.push(
-        [
-          '## Scope (hard boundary)',
-          '',
-          'Only these may be changed:',
-          opts.scopePatterns.map((p) => `- ${p}`).join('\n'),
-          '',
-          'Do not touch any file outside this list — even if it blocks the work or looks broken.',
-          'Put the obstacle in leftovers instead of changing the file. The touched worktree is',
-          'checked against this list after the run.',
-        ].join('\n'),
-      );
-    }
-    const conventions = renderConventions(repoRoot);
-    if (conventions) sections.push(conventions);
-    sections.push(`## Instructions for Codex\n\n${INSTRUCTIONS[opts.agent](opts, scope, questions)}`);
-    fs.writeFileSync(path.join(runDir, 'task.md'), `${sections.join('\n\n')}\n`);
-    fs.writeFileSync(
-      path.join(runDir, 'schema.json'),
-      `${JSON.stringify(schemaFor(opts.agent, opts.phase), null, 2)}\n`,
-    );
 
-    if (opts.agent === 'codex-build') writeBuildBefore({ runDir, repoRoot, isGitRepo });
+      if (opts.agent === 'codex-build') writeBuildBefore({ runDir, repoRoot, isGitRepo });
+    }
 
     // The worker's entire order, on disk. Not passed as arguments: the launcher may be gone
     // when the worker needs to know what it is doing, and a folder that explains itself is
     // also the only way to read a run back months later.
-    const codexArgv = codexArgs({ ...opts, repo: repoRoot }, runDir, isGitRepo);
+    const resumedWorker = resumedFrom ? resumeWorkerFields({ inputs: resumeInputs, runDir, resumedFrom }) : null;
+    const codexArgv = resumedWorker ? resumedWorker.args : codexArgs({ ...opts, repo: repoRoot }, runDir, isGitRepo);
     const unsafe = process.platform === 'win32' ? unsafeForCmd(codexArgv) : undefined;
     if (unsafe) {
       const { reply } = writeFailure(
@@ -323,7 +336,8 @@ export async function launcher(argv = process.argv.slice(2)) {
       budgetMinutes: RUN_ENV.budgets[agentRole(opts.agent)][opts.phase],
       silencePolicy: resolveSilencePolicy(opts.agent, opts.phase),
       scopeNew: opts.scopeNewPatterns,
-      profile: runProfile({ ...opts, repo: repoRoot }),
+      profile: resumedWorker ? resumedWorker.profile : runProfile({ ...opts, repo: repoRoot }),
+      ...(resumedWorker ? { resume: resumedWorker.resume } : {}),
       args: codexArgv,
     });
 

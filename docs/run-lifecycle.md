@@ -47,7 +47,9 @@ complete job before detaching from the launcher.
    (`none|low|medium|high|xhigh|max`) before invocation, not from an API response. An undeclared
    phase (or a missing required phase) is refused before the run folder exists; single-phase roles
    use `default` and do not accept `phase:`. Advisor `phase: advise` requires a `continue:` header
-   grant, or a `retry:` grant for a failed advise pass. Malformed or misplaced header entries are
+   grant, or a `retry:` grant for a failed advise pass. The Plan_80 E13 launch layer also supports
+   a `resume:` grant for that failed pass; the public header label is enabled by a later order.
+   Malformed or misplaced header entries are
    refused before creating a run folder or spending quota; the producer hook applies the same
    check. Before proceeding, it also rejects a biased or
    malformed advisor task: `## Options` must contain at least two distinct `- option-id: description`
@@ -101,14 +103,19 @@ complete job before detaching from the launcher.
    `[^A-Za-z0-9._-]+` → `-`; a result with no letters or digits is rejected before creating a directory.
    Then `chainRuns()` finds runs from the same repository by three signals: the same `slug`, the same
    header-free task-body fingerprint, or the same job label. A matching chain without a `continue:` or
-   `retry:` header grant stops startup
+   `retry:` (or, after activation, `resume:`) header grant stops startup
    before a new directory is created. Old-contract directories with a generic slug such as `build` are
    not lost: the saved job label or fingerprint finds them. Only runs that had a Codex session count:
    a directory with `state=aborted_pre_start` (and its old-contract equivalent) is excluded — it spent
    no quota and contains nothing to continue. The chain itself remains complete: it is the audit view,
    and the rejected run remains visible in it. An `advise` continuation is additionally refused before
    folder creation unless the named run's `meta.json` records `agent: codex-advisor`, `phase: scope`,
-   and `status: OK`; an `advise` retry carries the original `OK` scope instead.
+   and `status: OK`; an `advise` retry or resume carries the original `OK` scope instead.
+   Resume checks `resume-grant-usable` (last run, same order, finished non-OK, dead worker,
+   eligible stop facts and a readable thread that has not advanced since the stop) and
+   `resume-pass-identity` (same agent and phase). Unreadable or missing frozen task, schema,
+   role files or worker profile refuse as `resume-grant-usable` with `inputs-unusable`.
+   These checks precede folder creation and spend no quota; writers cannot resume.
 9. First, `codexAvailabilityRefusal()` (`runner/preflight.mjs`, built on `runner/codex-availability.mjs`)
    looks `codex` up on PATH (once more after ~1 s on a miss) and asks `codex login status` (10-second
    deadline each, through `spawnCaptured()`). The measured `Not logged in` answer produces an `UNAVAILABLE`
@@ -167,12 +174,21 @@ complete job before detaching from the launcher.
     response format: it tells the verdict whether the run was required to declare an outcome (`outcome`
     in `required`), so an old directory is judged by the contract of its own day — see
     [verdict.md](verdict.md).
+    A resume skips the current review scope, questions, advisor task, assembled task and schema.
+    It copies the named run's frozen `task-original.md` (or its original `task.md`), `schema.json`
+    and role files (`questions.json`, `advisor-task.json` or `scope.txt`) without regenerating them.
+    Its `task.md` is the package's continuation prompt for the named run's situation kind;
+    `env.json` still records this launch's environment.
 15. For build, `head-before.txt`, `branch-before.txt`, `git-before.txt`, and `state-before.txt` are
     captured. The launcher also copies start-dirty tracked and untracked files into `flags-baseline/`
     and writes `flags-baseline.json` before the run starts, so earlier uncommitted work is not
     attributed to this run. An empty `branch-before.txt` means detached HEAD, not missing data.
 16. argv for `codex exec` is assembled; an argument unsafe for `cmd.exe` produces an artifacted `FAIL`
     before Codex is invoked.
+    A resume uses `codex exec resume <thread>` with the frozen worker profile and
+    `-c sandbox_mode=read-only`, without `--sandbox` or `-C`; process cwd is the repository.
+    The same unsafe-argument refusal applies. Its budget is the full phase budget, and its
+    silence policy is resolved exactly as for an ordinary launch.
 17. `worker.json` is written — the complete job for the second half.
 18. Detachment point: the launcher creates a detached worker with `stdio: ignore`, calls `unref()`, and
     updates `status.json`, replacing the active `pid` with the worker pid and adding `runner_pid`.
@@ -217,9 +233,10 @@ directory creation, immediately after finding the chain and before the missing-g
 - **There is no `reply.txt`, and the pid is dead** — this is an abandoned run with nothing to attach to;
   the earlier path applies (`markAbandoned()` has already marked the directory, then the missing-grant
   refusal takes effect).
-- **A `continue:` or `retry:` grant is present in the header** — the invocation attaches only to a run of this order label whose
+- **A `continue:`, `retry:` or `resume:` grant is present** — the invocation attaches only to a run of this order label whose
   `status.json#continued_from` names the same run as the header's `continue:` grant, or whose
-  `status.json#retry_of` names the same run as its `retry:` grant, and it does so BEFORE the
+  `status.json#retry_of` names the same run as its `retry:` grant, or whose
+  `status.json#resumed_from` names the same run as its `resume:` grant, and it does so BEFORE the
   grant is checked: that run is what an identical earlier continuation command started, and by now the
   grant is spent. Live, saved and dead cases are then handled exactly as above. No such run — a new pass
   starts, subject to the authorization below. On 2026-09-23 a dispatcher repeating its continuation to
@@ -310,8 +327,10 @@ permitted once per job label and only after a run with a recorded verdict:
 - two or more — refusal naming the spent runs; another attempt requires a new job label from the
   orchestrator.
 
-Only non-retry runs with this label count, not the entire chain. Runs with `retry_of` do not spend
-another continuation. The chain also links runs by slug and header-free task-body
+Only runs with this label that are neither retries nor resumes count, not the entire chain.
+Runs with `retry_of` or `resumed_from` spend no additional pass or continuation, even if a resume
+ends `OK`. Scope plus advise still spend two passes; scout plus any number of resumes spend one.
+The chain also links runs by slug and header-free task-body
 fingerprint — catching a repeat that renamed itself — but applying the limit to the chain would break
 the promised exit: a new label joins the same chain through the fingerprint, and the task is rejected
 both with a grant (continuation already spent) and without one (a grant required). A permanently
@@ -331,6 +350,31 @@ continuation of the order. Appending it spends the grant; repeating the identica
 attaches to that run instead of starting another one. Its reply includes
 `Attempt: N of this pass — retry of <run>`. Refusals that encounter a failed last run with an order id
 print a ready `retry:` line, and attach appends ready grant lines to a saved non-OK reply.
+
+## Resume authorization
+
+Plan_80 E13 O6 supplies the launch and attach layer for `resume: <failed run> — <reason>`;
+the public header label is enabled by a later order. A resume continues the named failed run's
+Codex thread with its frozen inputs. It must name the chain's last run of the same order, agent
+and phase, with a finished non-OK verdict, a dead worker, eligible stop evidence and a readable
+thread that has not advanced after the recorded stop. `resume-grant-usable` refuses violations;
+`resume-pass-identity` refuses an agent or phase change. Missing, malformed or unreadable frozen
+inputs refuse as `resume-grant-usable` / `inputs-unusable`, before a new folder or paid work.
+Build writers cannot resume.
+
+An advisor `advise` resume carries the original `OK` scope in `continued_from`, including through
+multiple resumes, and never regenerates its advisor task from today's scope result. The new folder
+records `status.json#resumed_from`, frozen `task-original.md`, `schema.json` and role files, the
+package continuation prompt as `task.md`, and this launch's `env.json`. `worker.json` records the
+frozen profile and `resume: { thread_id, resumed_from, sandbox_mode: 'read-only' }`; ordinary runs
+record `resume: null`. The command is `codex exec resume <thread>` with `-c sandbox_mode=read-only`,
+no `--sandbox` or `-C`, and cwd set to the repository. It receives the full phase budget and the
+ordinary silence policy.
+
+A resume spends no pass. Appending it makes the grant single-use for starting work; repeating
+the same grant attaches by `status.json#resumed_from` before checking whether the grant is spent.
+Resuming a failed advisor scope preserves the advise continuation; resuming advise does not grant
+a third pass. A scout run followed by failed and successful resumes still has its continuation.
 
 ## Manual stop
 
