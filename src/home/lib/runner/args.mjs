@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import { AGENTS } from '../write-meta.mjs';
 import { isAbsoluteTaskFilePath } from '../order-values.mjs';
 import { firstShellUnsafeSequence } from '../shell-unsafe.mjs';
-import { parseTaskDocument } from './task-file.mjs';
+import { parseTaskDocument, resumeBodyHeading } from './task-file.mjs';
 import { parseTaskHeader, taskHeaderRefusal } from '../task-header.mjs';
 import { renderOrderHeaderHelp } from '../order-schema.mjs';
 import { orderRuleMessage, orderRefusalAt } from '../order-rules.mjs';
@@ -31,6 +31,12 @@ export function die(message, exitCode = EXIT.USAGE) {
   checkOutgoingRefusal(message, 'die');
   console.error(`run-codex: ${message}`);
   throw new RunnerUsageError(message, exitCode);
+}
+
+function resumeBodyRefusal(parsed) {
+  if (parsed.grant?.kind !== 'resume') return null;
+  const heading = resumeBodyHeading(parsed.body);
+  return heading === null ? null : orderRuleMessage('resume-task-body', { heading });
 }
 
 export function readTaskDocument(opts) {
@@ -58,6 +64,8 @@ export function readTaskDocument(opts) {
     const refusal = taskHeaderRefusal(parsed);
     if (refusal) refuse(orderRefusalAt(taskFile, refusal));
     if (!parsed.body.trim()) refuse(orderRuleMessage('task-body-required', { channel: 'task-file', taskFile }));
+    const bodyRefusal = resumeBodyRefusal(parsed);
+    if (bodyRefusal) refuse(orderRefusalAt(taskFile, bodyRefusal));
     let document;
     try {
       document = parseTaskDocument(parsed.body);
@@ -71,6 +79,8 @@ export function readTaskDocument(opts) {
   const refusal = taskHeaderRefusal(parsed);
   if (refusal) refuse(refusal);
   if (!parsed.body.trim()) refuse(orderRuleMessage('task-body-required', { channel: 'stdin' }));
+  const bodyRefusal = resumeBodyRefusal(parsed);
+  if (bodyRefusal) refuse(bodyRefusal);
   try {
     return { ...parseTaskDocument(parsed.body), header: parsed };
   } catch (err) {

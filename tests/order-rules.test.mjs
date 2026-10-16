@@ -21,7 +21,7 @@ test('registry maps and entries are frozen and have exactly their contracted fie
     'build-existing-scope-required', 'required-order-labels',
     'scope-pattern-shape', 'scope-pattern-match',
     'continuation-grant-usable', 'retry-grant-usable', 'ready-grant-line', 'grant-last-run-hint',
-    'resume-grant-usable', 'resume-pass-identity',
+    'resume-grant-usable', 'resume-pass-identity', 'resume-task-body',
     'advisor-scope-continuation', 'retry-pass-identity', 'repeat-task-grant-required',
     'advisor-advise-continuation', 'build-advice-required', 'advise-scope-run-required',
     'run-phase-required', 'writing-run-exclusive', 'order-launch-exclusive', 'order-id-owner',

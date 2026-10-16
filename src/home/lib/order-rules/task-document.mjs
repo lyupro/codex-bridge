@@ -1,5 +1,15 @@
 /** Plan_79 D4: owns rules for task-body sections. */
 export const RULES = Object.freeze({
+  'resume-task-body': Object.freeze({
+    data: Object.freeze(['heading']),
+    topic: 'order',
+    rule: 'Under a resume grant, write the task body as a plain note: the resumed run reuses the ' +
+      'frozen questions, options, paths and verification of the named run and never reads this body, ' +
+      'so Questions, Options, Paths and Verify headings are refused.',
+    message: ({ heading }) => '`resume:` task body has a "' + heading.slice(0, 60) +
+      '" section: a resumed run reuses the frozen inputs of the named run and never reads this body; ' +
+      'remove the section and keep a plain note (to change the task, use retry: or a new order id); no quota was spent.',
+  }),
   'scout-questions': Object.freeze({
     data: Object.freeze(['violation', 'line']),
     topic: 'order',

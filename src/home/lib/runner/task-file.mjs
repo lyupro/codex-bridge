@@ -28,8 +28,18 @@ const SECTION_NAMES = new Map([
 function headingFrom(line) {
   const match = SECTION_HEADING.exec(line);
   if (!match) return undefined;
-  const text = match[2].replace(/[ \t]+#+[ \t]*$/, '').trim().toLowerCase();
-  return { level: match[1].length, section: SECTION_NAMES.get(text) };
+  const text = match[2].replace(/[ \t]+#+[ \t]*$/, '').trim();
+  return { level: match[1].length, text, section: SECTION_NAMES.get(text.toLowerCase()) };
+}
+
+export function resumeBodyHeading(text) {
+  for (const line of String(text).split(/\r?\n/)) {
+    const heading = headingFrom(line);
+    if (heading && ['questions', 'verify', 'options', 'paths'].includes(heading.text.toLowerCase())) {
+      return heading.text;
+    }
+  }
+  return null;
 }
 
 function sectionFrom(line) {

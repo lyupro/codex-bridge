@@ -1,5 +1,6 @@
 export const expectedData = {
   'task-file-path': ['value'], 'task-body-required': ['channel', 'taskFile'],
+  'resume-task-body': ['heading'],
   'effort-value': ['value'], 'run-slug': ['value'],
   'repository-path': ['violation', 'value', 'segment', 'context', 'label'],
   'scout-questions': ['violation', 'line'], 'question-context-marker': ['index', 'text', 'context'],

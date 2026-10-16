@@ -36,7 +36,7 @@ export function taskPreflight({ agent, taskText, header, resolution = runsRootRe
     refusal: [reason, orderDiagnosticMessage('run-not-created')].join('\n'),
   });
   if (agent === 'codex-advisor') {
-    const reason = advisorTaskRefusal(taskText);
+    const reason = header?.grant?.kind === 'resume' ? null : advisorTaskRefusal(taskText);
     return reason ? freeRefusal(reason) : { refusal: null };
   }
   if (agent !== 'codex-build') return { refusal: null };

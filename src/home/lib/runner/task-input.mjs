@@ -58,10 +58,10 @@ export function settleTaskInput(opts, { cwd = process.cwd() } = {}) {
   opts.verify = fileVerify;
   // Still before the run folder exists and before a token of someone else's quota is touched,
   // which is where every refusal of this kind belongs.
-  if (opts.agent === 'codex-scout' && !opts.questions?.length) {
+  if (opts.agent === 'codex-scout' && header.grant?.kind !== 'resume' && !opts.questions?.length) {
     die(orderRuleMessage('scout-questions', { violation: 'missing' }));
   }
-  if (opts.agent === 'codex-scout') {
+  if (opts.agent === 'codex-scout' && header.grant?.kind !== 'resume') {
     const refusal = questionKindRefusal(opts.questions);
     if (refusal) {
       die(orderRuleMessage('question-context-marker', { context: 'task-input', refusal }));

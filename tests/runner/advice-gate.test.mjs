@@ -221,7 +221,9 @@ for (const taskFile of [false, true]) {
       for (const grantFirst of [false, true]) {
         const lines = ['advice: mechanical', `${kind}: X — finish the work`];
         if (grantFirst) lines.reverse();
-        const text = [`repository: ${tree.repo}`, 'order id: advice-fixture', ...lines, '', '## Task', 'Edit source.', '## Questions', '- Inspect source?', '## Verify', 'npm test'].join('\n');
+        // Plan_80 E14: a resume body is a plain note; its Questions and Verify sections are refused.
+        const sections = kind === 'resume' ? [] : ['## Questions', '- Inspect source?', '## Verify', 'npm test'];
+        const text = [`repository: ${tree.repo}`, 'order id: advice-fixture', ...lines, '', '## Task', 'Edit source.', ...sections].join('\n');
         const opts = { agent: 'codex-review' };
         if (taskFile) {
           opts['task-file'] = path.join(tree.root, 'task.md');
@@ -245,8 +247,8 @@ process.stdout.write(JSON.stringify({ input, questions: opts.questions, verify: 
         assert.equal(result.input.header.advice, 'mechanical');
         assert.deepEqual(result.input.header.grant, { kind, run: 'X', reason: 'finish the work' });
         assert.deepEqual(result.input.header.problems, []);
-        assert.deepEqual(result.questions, ['Inspect source?']);
-        assert.equal(result.verify, 'npm test');
+        assert.deepEqual(result.questions, kind === 'resume' ? undefined : ['Inspect source?']);
+        assert.equal(result.verify, kind === 'resume' ? undefined : 'npm test');
       }
     }
   });
