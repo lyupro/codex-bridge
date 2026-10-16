@@ -48,7 +48,7 @@ complete job before detaching from the launcher.
    phase (or a missing required phase) is refused before the run folder exists; single-phase roles
    use `default` and do not accept `phase:`. Advisor `phase: advise` requires a `continue:` header
    grant, or a `retry:` grant for a failed advise pass. The Plan_80 E13 launch layer also supports
-   a `resume:` grant for that failed pass; the public header label is enabled by a later order.
+   a `resume:` grant for that failed pass; the public header label is accepted for scout, review and advisor.
    Malformed or misplaced header entries are
    refused before creating a run folder or spending quota; the producer hook applies the same
    check. Before proceeding, it also rejects a biased or
@@ -354,7 +354,7 @@ print a ready `retry:` line, and attach appends ready grant lines to a saved non
 ## Resume authorization
 
 Plan_80 E13 O6 supplies the launch and attach layer for `resume: <failed run> — <reason>`;
-the public header label is enabled by a later order. A resume continues the named failed run's
+the public header label is accepted for scout, review and advisor. A resume continues the named failed run's
 Codex thread with its frozen inputs. It must name the chain's last run of the same order, agent
 and phase, with a finished non-OK verdict, a dead worker, eligible stop evidence and a readable
 thread that has not advanced after the recorded stop. `resume-grant-usable` refuses violations;
@@ -362,10 +362,13 @@ thread that has not advanced after the recorded stop. `resume-grant-usable` refu
 inputs refuse as `resume-grant-usable` / `inputs-unusable`, before a new folder or paid work.
 Build writers cannot resume.
 
+Under `resume:`, the task body is a plain note for the record, saved verbatim as `resume-note.md` in the new run folder and never read by the resumed run, which reuses the frozen questions, options, paths and verification of the named run.
+Questions, Options, Paths and Verify headings in that body are refused before start; a changed task needs `retry:` or a new order id.
+
 An advisor `advise` resume carries the original `OK` scope in `continued_from`, including through
 multiple resumes, and never regenerates its advisor task from today's scope result. The new folder
 records `status.json#resumed_from`, frozen `task-original.md`, `schema.json` and role files, the
-package continuation prompt as `task.md`, and this launch's `env.json`. `worker.json` records the
+package continuation prompt as `task.md`, the orchestrator's `resume-note.md`, and this launch's `env.json`. `worker.json` records the
 frozen profile and `resume: { thread_id, resumed_from, sandbox_mode: 'read-only' }`; ordinary runs
 record `resume: null`. The command is `codex exec resume <thread>` with `-c sandbox_mode=read-only`,
 no `--sandbox` or `-C`, and cwd set to the repository. It receives the full phase budget and the

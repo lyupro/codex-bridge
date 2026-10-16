@@ -261,7 +261,7 @@ export async function launcher(argv = process.argv.slice(2)) {
     fs.writeFileSync(path.join(runDir, 'env.json'), `${JSON.stringify(RUN_ENV, null, 2)}\n`);
 
     if (resumedFrom) {
-      writeResumeArtifacts({ runDir, inputs: resumeInputs,
+      writeResumeArtifacts({ runDir, inputs: resumeInputs, note: taskText,
         situationKind: resumeSituationKind(path.join(projectRunsRoot, resumedFrom)) });
     } else {
       // The extra sections carry the two things prose could not enforce: what has to be answered,

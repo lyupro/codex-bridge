@@ -16,6 +16,7 @@ const LAUNCHER = new URL('../../src/home/lib/runner/launcher.mjs', import.meta.u
 const TASK_INPUT = new URL('../../src/home/lib/runner/task-input.mjs', import.meta.url).href;
 const TASK = '## Options\n- keep: Keep the boundary.\n- split: Split the boundary.\n## Paths\n- source.mjs\n';
 const KIND = 'silent-stall-candidate';
+const NOTE = 'Finish the stopped pass \u2014 caf\u00e9 and \u65e5\u672c\u8a9e.  \nKeep this note for the record.';
 
 function fixture() {
   const root = makeTempTree('resume-launch-run-');
@@ -34,7 +35,7 @@ function launch(tree, phase, grant) {
   const { argv } = orderInvocation({
     agent: 'codex-advisor', order: { repository: tree.repo, 'order id': 'resume-launch', phase },
     grant: grant ? { ...grant, kind: grant.kind === 'resume' ? 'continue' : grant.kind } : undefined,
-    task: TASK, dir: tree.root,
+    task: grant?.kind === 'resume' ? NOTE : TASK, dir: tree.root,
   });
   // O8 enables the public label later; inject only the parsed grant, keeping the real input boundary.
   const inputWrapper = `
@@ -139,7 +140,9 @@ test('advise resume launches frozen bytes, profile, repository cwd and the full 
   for (const [destination, original] of [
     ['task-original.md', 'task.md'], ['schema.json', 'schema.json'], ['advisor-task.json', 'advisor-task.json'],
   ]) assert.deepEqual(fs.readFileSync(path.join(resumed.dir, destination)), fs.readFileSync(path.join(advise.dir, original)));
+  assert.deepEqual(fs.readFileSync(path.join(resumed.dir, 'resume-note.md')), Buffer.from(NOTE, 'utf8'));
   assert.equal(resumed.read('task.md'), resumePrompt(KIND));
+  assert.equal(resumed.read('task.md').includes(NOTE), false);
   assert.deepEqual(resumed.worker.args.slice(0, 3), ['exec', 'resume', thread]);
   for (const flag of ['--sandbox', '-C']) assert.equal(resumed.worker.args.includes(flag), false);
   const sandbox = resumed.worker.args.indexOf('sandbox_mode=read-only');
@@ -174,4 +177,5 @@ test('fresh advisor advise retains its normal task, schema and null resume order
   assert.equal(advise.worker.args[advise.worker.args.indexOf('--sandbox') + 1], 'read-only');
   assert.equal(advise.worker.args[advise.worker.args.indexOf('-C') + 1], tree.repo);
   assert.equal(fs.existsSync(path.join(advise.dir, 'task-original.md')), false);
+  assert.equal(fs.existsSync(path.join(advise.dir, 'resume-note.md')), false);
 });

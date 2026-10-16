@@ -18,6 +18,8 @@ The header ends at the first line that is not a recognized label line, including
 | codex-advisor | `order id`, `phase` | `continue`, `retry`, `resume` | `repository`, `slug`, `effort` |
 
 The three grant labels are conditional when this pass continues or repeats a named run: `continue` names the continued run; `retry` repeats a failed pass on a fresh thread; `resume` continues a failed read-only pass in its own Codex thread; neither `retry` nor `resume` authorizes the next pass.
+Under `resume:`, the task body is a plain note for the record, saved verbatim as `resume-note.md` in the new run folder and never read by the resumed run, which reuses the frozen questions, options, paths and verification of the named run.
+Questions, Options, Paths and Verify headings in that body are refused before start; a changed task needs `retry:` or a new order id.
 For advisor, pass `scope` first, then `advise` with a `continue:` grant naming the scope run of the same order.
 
 `repository` is the repository path; `slug` names this pass without replacing the order id.

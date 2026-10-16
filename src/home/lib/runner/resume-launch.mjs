@@ -24,7 +24,10 @@ export function resumeSituationKind(namedRunDir) {
   return 'evidence-unknown';
 }
 
-export function writeResumeArtifacts({ runDir, inputs, situationKind }) {
+export function writeResumeArtifacts({ runDir, inputs, situationKind, note }) {
+  if (typeof note !== 'string' || !note.trim()) {
+    throw new TypeError('Resume requires a non-empty note.');
+  }
   const entries = Object.entries(inputs.files);
   if (entries.some(([name]) => !ARTIFACT_NAMES.has(name)) ||
       !Object.hasOwn(inputs.files, 'task-original.md') ||
@@ -36,6 +39,7 @@ export function writeResumeArtifacts({ runDir, inputs, situationKind }) {
     fs.writeFileSync(path.join(runDir, name), text, 'utf8');
   }
   fs.writeFileSync(path.join(runDir, 'task.md'), prompt, 'utf8');
+  fs.writeFileSync(path.join(runDir, 'resume-note.md'), note, 'utf8');
 }
 
 export function resumeWorkerFields({ inputs, runDir, resumedFrom }) {

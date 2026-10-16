@@ -318,6 +318,12 @@ This branch has no `carried_from_earlier_run` or `environment_changes`: the requ
 result might not yet have existed. Consumers must distinguish an absent field from `false` or an
 empty list.
 
+## `resume-note.md`
+
+Resume runs only: the orchestrator's task body is saved verbatim as `resume-note.md` in the new
+run folder for the record. It is never sent to Codex; `task.md` remains the package's continuation
+prompt. The note is not a frozen input or a transport file, so retention keeps it.
+
 ## `questions.json`
 
 The launcher writes the parsed questions for scout runs only, before assembling `task.md`, as an

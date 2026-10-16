@@ -15,6 +15,7 @@ import {
 
 const THREAD_ID = '12345678-1234-1234-1234-123456789abc';
 const KIND = 'recent-activity';
+const NOTE = '  Continue the stopped pass \u2014 caf\u00e9 and \u65e5\u672c\u8a9e.  \n\nKeep this note for the record.\n';
 const PROFILE = {
   model: 'frozen-model-not-in-configuration', model_source: 'config',
   effort: 'high', effort_source: 'request', speed: 'fast', speed_source: 'config',
@@ -82,21 +83,23 @@ for (const [agent, phase, extra] of [
   ['codex-scout', 'scout', 'questions.json'],
   ['codex-review', 'review', 'scope.txt'],
 ]) {
-  test(agent + ' copies frozen artifacts byte for byte and writes only the continuation prompt', async () => {
+  test(agent + ' copies frozen artifacts and note byte for byte, with only the continuation prompt in task.md', async () => {
     await withTempTree('resume-launch-', (root) => {
       const named = namedRun(root, agent, phase);
       const inputs = inputsOf(named);
       const runDir = emptyRun(root);
       const situationKind = resumeSituationKind(named);
-      writeResumeArtifacts({ runDir, inputs, situationKind });
+      writeResumeArtifacts({ runDir, inputs, situationKind, note: NOTE });
       assert.deepEqual(fs.readdirSync(runDir).sort(),
-        ['task-original.md', 'schema.json', extra, 'task.md'].sort());
+        ['task-original.md', 'schema.json', extra, 'task.md', 'resume-note.md'].sort());
       for (const name of ['task-original.md', 'schema.json', extra]) {
         const source = name === 'task-original.md' ? 'task.md' : name;
         assert.deepEqual(fs.readFileSync(path.join(runDir, name)),
           fs.readFileSync(path.join(named, source)));
       }
       assert.equal(fs.readFileSync(path.join(runDir, 'task.md'), 'utf8'), resumePrompt(KIND));
+      assert.deepEqual(fs.readFileSync(path.join(runDir, 'resume-note.md')), Buffer.from(NOTE, 'utf8'));
+      assert.equal(fs.readFileSync(path.join(runDir, 'task.md'), 'utf8').includes(NOTE), false);
       assert.notEqual(fs.readFileSync(path.join(runDir, 'task.md'), 'utf8'), inputs.files['task-original.md']);
       assert.deepEqual(fs.readdirSync(root).sort(), ['named', 'resume']);
     });
@@ -107,10 +110,12 @@ test('a resume of a resume preserves task-original.md instead of the short task.
   await withTempTree('resume-launch-chain-', (root) => {
     const named = namedRun(root, 'codex-advisor', 'advise');
     const first = emptyRun(root, 'first-resume');
-    writeResumeArtifacts({ runDir: first, inputs: inputsOf(named), situationKind: KIND });
+    writeResumeArtifacts({ runDir: first, inputs: inputsOf(named), situationKind: KIND, note: NOTE });
     recordRun(first, 'codex-advisor', 'advise');
     const second = emptyRun(root, 'second-resume');
-    writeResumeArtifacts({ runDir: second, inputs: inputsOf(first), situationKind: KIND });
+    const secondNote = 'A separate note for the second resume.\n';
+    writeResumeArtifacts({ runDir: second, inputs: inputsOf(first), situationKind: KIND, note: secondNote });
+    assert.equal(fs.readFileSync(path.join(second, 'resume-note.md'), 'utf8'), secondNote);
     assert.deepEqual(fs.readFileSync(path.join(second, 'task-original.md')),
       fs.readFileSync(path.join(named, 'task.md')));
     assert.notDeepEqual(fs.readFileSync(path.join(second, 'task-original.md')),
@@ -152,14 +157,25 @@ test('resumeSituationKind never throws when meta.json is unreadable as a file', 
   });
 });
 
-for (const destination of ['unexpected.txt', '../escaped.md', 'nested/scope.txt', 'task.md']) {
+for (const note of [undefined, null, 42, {}, [], '', ' ', '\t\n\r ']) {
+  test('rejects invalid note ' + JSON.stringify(note) + ' before writing any artifact', async () => {
+    await withTempTree('resume-launch-note-', (root) => {
+      const inputs = inputsOf(namedRun(root, 'codex-advisor', 'advise'));
+      const runDir = emptyRun(root);
+      assert.throws(() => writeResumeArtifacts({ runDir, inputs, situationKind: KIND, note }), TypeError);
+      assert.deepEqual(fs.readdirSync(runDir), []);
+    });
+  });
+}
+
+for (const destination of ['unexpected.txt', '../escaped.md', 'nested/scope.txt', 'task.md', 'resume-note.md']) {
   test('rejects destination ' + destination + ' before writing any artifact', async () => {
     await withTempTree('resume-launch-destination-', (root) => {
       const named = namedRun(root, 'codex-advisor', 'advise');
       const inputs = inputsOf(named);
       inputs.files[destination] = 'must not be written';
       const runDir = emptyRun(root);
-      assert.throws(() => writeResumeArtifacts({ runDir, inputs, situationKind: KIND }), TypeError);
+      assert.throws(() => writeResumeArtifacts({ runDir, inputs, situationKind: KIND, note: NOTE }), TypeError);
       assert.deepEqual(fs.readdirSync(runDir), []);
       assert.deepEqual(fs.readdirSync(root).sort(), ['named', 'resume']);
     });
@@ -172,7 +188,7 @@ for (const missing of ['schema.json', 'task-original.md']) {
       const inputs = inputsOf(namedRun(root, 'codex-advisor', 'advise'));
       delete inputs.files[missing];
       const runDir = emptyRun(root);
-      assert.throws(() => writeResumeArtifacts({ runDir, inputs, situationKind: KIND }), TypeError);
+      assert.throws(() => writeResumeArtifacts({ runDir, inputs, situationKind: KIND, note: NOTE }), TypeError);
       assert.deepEqual(fs.readdirSync(runDir), []);
     });
   });
@@ -182,7 +198,7 @@ test('invalid situation kind is rejected before writing frozen artifacts', async
   await withTempTree('resume-launch-prompt-', (root) => {
     const inputs = inputsOf(namedRun(root, 'codex-scout', 'scout'));
     const runDir = emptyRun(root);
-    assert.throws(() => writeResumeArtifacts({ runDir, inputs, situationKind: 'Bad Kind' }), RangeError);
+    assert.throws(() => writeResumeArtifacts({ runDir, inputs, situationKind: 'Bad Kind', note: NOTE }), RangeError);
     assert.deepEqual(fs.readdirSync(runDir), []);
   });
 });
