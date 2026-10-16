@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { collect } from '../src/home/lib/write-meta.mjs';
-import { buildResult as build, makeRun } from './meta/test-fixtures.mjs';
+import { buildResult as build, COMPLETED_COMMAND, makeRun } from './meta/test-fixtures.mjs';
 
 function collectResume({ resumed_from = 'failed-pass', resume, args }) {
   const dir = makeRun({
@@ -76,4 +76,26 @@ test('resume accounting copies status provenance instead of worker provenance', 
     args: ['exec', 'resume', '--json', 'resume-thread'],
   });
   assert.equal(meta.resumed_from, 'failed-pass');
+});
+
+test('collect persists the resume execution chain while status and reason stay unchanged', () => {
+  const predecessor = makeRun({
+    events: [
+      { type: 'thread.started', thread_id: 'resume-thread' },
+      ...Array.from({ length: 8 }, () => COMPLETED_COMMAND),
+    ],
+  });
+  const dir = makeRun({
+    status: { resumed_from: path.basename(predecessor) }, result: build([]),
+    events: [{ type: 'thread.started', thread_id: 'resume-thread' }],
+  });
+  const { meta } = collect(dir, 'codex-build', 0);
+  assert.equal(meta.status, 'OK');
+  assert.equal(meta.reason, null);
+  const persisted = JSON.parse(fs.readFileSync(path.join(dir, 'meta.json'), 'utf8'));
+  assert.deepEqual(persisted.commands_executed, {
+    version: 1, run: 0, chain: 8, chain_runs: [path.basename(predecessor)], gap: null,
+  });
+  assert.equal(persisted.status, 'OK');
+  assert.equal(persisted.reason, null);
 });

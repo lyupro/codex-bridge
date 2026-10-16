@@ -27,6 +27,7 @@ import { readJsonFileSync } from './json-file.mjs';
 import { changedPaths, readJson, readText, size } from './meta/paths.mjs';
 import { splitRunChanges } from './meta/environment.mjs';
 import { readEvents } from './meta/events.mjs';
+import { readExecutionFact } from './meta/execution-fact.mjs';
 import { writeStatus } from './meta/run-state.mjs';
 import { resolveStatus } from './meta/verdict.mjs';
 import { assessStop } from './meta/stop-assessment.mjs';
@@ -83,6 +84,7 @@ export function collect(runDir, agent, exitCode) {
   const resultOk = Boolean(result) && cfg.filled(result);
   const exit = exitCode === undefined || exitCode === null ? null : Number(exitCode);
   const events = readEvents(runDir);
+  const executionFact = readExecutionFact(runDir, events);
   const worker = readJson(path.join(runDir, 'worker.json'));
   const launched = readJson(path.join(runDir, 'status.json')) || {};
 
@@ -157,6 +159,7 @@ export function collect(runDir, agent, exitCode) {
     // Null for runs made before env.json existed: absence is not the same as "both off".
     env: readJson(path.join(runDir, 'env.json')),
     session_id: events.session_id,
+    commands_executed: executionFact,
   };
 
   // Plan_80 A5: diagnostics follow the verdict and use the frozen stop observation.

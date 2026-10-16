@@ -114,6 +114,21 @@ this record or reads additional evidence for it, so collecting again preserves t
 | `sandbox` | The `--sandbox` argument the run was started with. When absent, the non-empty string `worker.json#resume.sandbox_mode` is used; otherwise `null`. Fresh runs keep their existing value. Resume argv uses `codex exec resume` with `-c sandbox_mode=read-only` and no `--sandbox` flag. |
 | `env` | Contents of `env.json`; may be `null` for an old or early run. |
 | `session_id` | Value of the `session id:` line from the log, or `null`. |
+| `commands_executed` | Execution fact: `version` (`1`), `run` (this stream's completed command count, or `null` without a stream), `chain` (the sum across resumed turns, or `null` when unknown), `chain_runs` (predecessor names, nearest first), and `gap` (first chain failure, or `null`). |
+
+Plan_80 E14 follows bare `status.json#resumed_from` names only, checking in order that each
+predecessor is a directory canonically inside the same project runs folder (case-insensitively
+on Windows), has not been visited, belongs to the current non-empty thread, has no disagreement
+between stream and recorded thread IDs, and has its own command evidence; the first failure
+sets `chain` to `null` and records `resume chain: <name> — <why>` in `gap`, with names bounded
+to 60 characters.
+Each predecessor contributes its stream's completed `command_execution` items, or its
+non-negative integer `meta.json#commands_executed.run` and recorded `session_id` when the stream
+is absent: `meta.json` survives retention, so pruned `events.jsonl` does not lose that evidence,
+and stored `chain` totals are never added again.
+A non-resume has `chain = run`, `chain_runs = []`, and `gap = null`; a valid resume sums its own
+count and its predecessors (keeping `chain = null` when `run` is `null`), and this accounting
+does not yet affect verdicts or replies.
 
 ### Stop assessments
 
