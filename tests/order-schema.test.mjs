@@ -2,15 +2,15 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   ORDER_AGENTS, ALL_ORDER_LABELS, orderLabelsFor, orderInputName, orderFromHeader, renderOrderHeaderHelp, renderOrderProblems,
-  CONTINUATION_ORDER_INPUT, RETRY_ORDER_INPUT,
+  CONTINUATION_ORDER_INPUT, RETRY_ORDER_INPUT, RESUME_ORDER_INPUT,
 } from '../src/home/lib/order-schema.mjs';
 import { parseTaskHeader } from '../src/home/lib/task-header.mjs';
 
 const expectedLabels = {
-  'codex-scout': ['order id', 'continue', 'retry', 'repository', 'slug', 'effort'],
+  'codex-scout': ['order id', 'continue', 'retry', 'resume', 'repository', 'slug', 'effort'],
   'codex-build': ['order id', 'scope', 'continue', 'retry', 'repository', 'scope new', 'slug', 'effort'],
-  'codex-review': ['order id', 'continue', 'retry', 'repository', 'slug', 'effort', 'changeset'],
-  'codex-advisor': ['order id', 'continue', 'retry', 'phase', 'repository', 'slug', 'effort'],
+  'codex-review': ['order id', 'continue', 'retry', 'resume', 'repository', 'slug', 'effort', 'changeset'],
+  'codex-advisor': ['order id', 'continue', 'retry', 'resume', 'phase', 'repository', 'slug', 'effort'],
 };
 const expectedOptionalAgents = {
   repository: ['codex-scout', 'codex-build', 'codex-review', 'codex-advisor'],
@@ -30,7 +30,7 @@ test('order schemas own the immutable registry without call labels or runner fie
     assert.ok(labels.every(Object.isFrozen));
     for (const entry of labels) {
       assert.equal(entry.required, ['order id', 'scope', 'phase'].includes(entry.label));
-      assert.equal(entry.conditional, ['continue', 'retry'].includes(entry.label));
+      assert.equal(entry.conditional, ['continue', 'retry', 'resume'].includes(entry.label));
       assert.equal(entry.optional, Object.hasOwn(expectedOptionalAgents, entry.label));
       assert.equal(Object.hasOwn(entry, 'flag'), false);
       assert.equal(Object.hasOwn(entry, 'source'), false);
@@ -43,7 +43,7 @@ test('order schemas own the immutable registry without call labels or runner fie
     }
   }
   assert.deepEqual(ALL_ORDER_LABELS, [
-    'changeset', 'continue', 'effort', 'order id', 'phase', 'repository', 'retry', 'scope', 'scope new', 'slug',
+    'changeset', 'continue', 'effort', 'order id', 'phase', 'repository', 'resume', 'retry', 'scope', 'scope new', 'slug',
   ]);
   assert.equal(ALL_ORDER_LABELS.includes('task file'), false);
   assert.ok(Object.isFrozen(ALL_ORDER_LABELS));
@@ -57,6 +57,7 @@ test('grant and phase explanations name header authorization instead of flags (P
   for (const [entry, label, example] of [
     [CONTINUATION_ORDER_INPUT, 'continue', '2026-08-05_092913_plan14-build — LIMIT at step 3, tests unwritten'],
     [RETRY_ORDER_INPUT, 'retry', '2026-10-03_172017_cc-d66-advisor — model at capacity, same pass again'],
+    [RESUME_ORDER_INPUT, 'resume', '2026-10-16_140740_ow066-b2-resume-grant — advise stalled after reading, continue its thread'],
   ]) {
     assert.ok(Object.isFrozen(entry));
     assert.equal(entry.label, label);
@@ -96,8 +97,8 @@ test('unknown order input labels throw an Error naming the label', () => {
 
 for (const agent of ORDER_AGENTS) {
   test(`${agent} reads a complete header without consuming its grant or advice`, () => {
-    for (const grantLabel of ['continue', 'retry']) {
-      const labels = orderLabelsFor(agent).filter(({ label }) => !['continue', 'retry'].includes(label));
+    for (const { label: grantLabel } of orderLabelsFor(agent).filter(({ conditional }) => conditional)) {
+      const labels = orderLabelsFor(agent).filter(({ label }) => !['continue', 'retry', 'resume'].includes(label));
       const text = labels.map(({ label, example }) => `${label}: ${example}`)
         .concat(`${grantLabel}: x — y`, 'advice: mechanical', '## Task').join('\n');
       const parsed = parseTaskHeader(text);

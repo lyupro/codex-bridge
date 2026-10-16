@@ -9,7 +9,7 @@ import {
   renderRequiredInputSummary,
 } from '../src/home/lib/dispatcher-call.mjs';
 import {
-  ALL_ORDER_LABELS, CONTINUATION_ORDER_INPUT, ORDER_AGENTS, RETRY_ORDER_INPUT,
+  ALL_ORDER_LABELS, CONTINUATION_ORDER_INPUT, ORDER_AGENTS, RETRY_ORDER_INPUT, RESUME_ORDER_INPUT,
   orderLabelsFor, renderOrderHeaderHelp,
 } from '../src/home/lib/order-schema.mjs';
 import { SHELL_UNSAFE_SEQUENCES } from '../src/home/lib/shell-unsafe.mjs';
@@ -274,7 +274,8 @@ test('summary names only agent-owned header labels in required, conditional, opt
       assert.ok(index > previous, `${agent}: ${entry.label}`);
       previous = index;
     }
-    for (const grant of [CONTINUATION_ORDER_INPUT, RETRY_ORDER_INPUT]) {
+    for (const grant of [CONTINUATION_ORDER_INPUT, RETRY_ORDER_INPUT, RESUME_ORDER_INPUT]
+      .filter(({ label }) => orderLabelsFor(agent).some((entry) => entry.label === label))) {
       assert.ok(summary.includes(`\`${grant.label}\` (${grant.conditional})`));
     }
     for (const label of ALL_ORDER_LABELS) {

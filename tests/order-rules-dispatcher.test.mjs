@@ -92,6 +92,7 @@ test('call refusal preserves all lines including the missing-path help and heade
     'order id: plan-13-scout-20260804',
     'continue: 2026-08-05_092913_plan14-build — LIMIT at step 3, tests unwritten',
     'retry: 2026-10-03_172017_cc-d66-advisor — model at capacity, same pass again',
+    'resume: 2026-10-16_140740_ow066-b2-resume-grant — advise stalled after reading, continue its thread',
     'repository: C:/work/codex-bridge',
     'slug: plan-76-parser',
     'effort: high',
@@ -105,7 +106,8 @@ test('summary keeps its bytes and the unknown-agent empty string', () => {
   assert.equal(renderRequiredInputSummary('codex-scout'),
     'The call is only `task file` (an absolute path). The task-file header requires `order id`; ' +
     'conditional labels: `continue` (when this pass continues or repeats a named run), ' +
-    '`retry` (when this pass continues or repeats a named run); optional labels: `repository`, `slug`, `effort`. ' +
+    '`retry` (when this pass continues or repeats a named run), ' +
+    '`resume` (when this pass continues or repeats a named run); optional labels: `repository`, `slug`, `effort`. ' +
     'Free text belongs in the task file.');
   assert.equal(renderRequiredInputSummary('unknown-agent'), '');
 });

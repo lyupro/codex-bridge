@@ -19,7 +19,7 @@ const messages = [
   ['unknown-header-label', { label: 'budget', knownLabels: ['order id', 'scope', 'advice'] },
     'unknown header label "budget"; known labels: order id, scope, advice'],
   ['duplicate-order-label', { label: 'continue' }, 'duplicate continue label'],
-  ['grant-label-exclusive', {}, 'continue and retry cannot both be present; keep exactly one grant label'],
+  ['grant-label-exclusive', {}, 'continue, retry and resume are mutually exclusive; keep exactly one grant label'],
   ['advice-value-shape', {}, 'advice value must be non-empty and single line'],
   ['grant-value-shape', {}, 'grant must name a bare run folder (not . or ..) and a non-placeholder reason'],
   ['header-metadata-placement', { label: 'continue', violation: 'misplaced' },

@@ -28,7 +28,7 @@ for (const agent of ORDER_AGENTS) {
       const after = orderOptions(agent, withLabel.order, { cwd });
       assert.deepEqual(after.problems, []);
 
-      if (entry.label === 'continue' || entry.label === 'retry') {
+      if (entry.label === 'continue' || entry.label === 'retry' || entry.label === 'resume') {
         // Grants authorize a pass through parsed.grant, rather than becoming ordinary options (D9).
         const [run, reason] = entry.example.split(' \u2014 ');
         assert.ok(run && reason, 'a grant example must name a run and its reason');

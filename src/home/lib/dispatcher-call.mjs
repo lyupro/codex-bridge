@@ -7,6 +7,7 @@ import {
   CONTINUATION_ORDER_INPUT,
   ORDER_AGENTS,
   RETRY_ORDER_INPUT,
+  RESUME_ORDER_INPUT,
   orderLabelsFor,
   renderOrderHeaderHelp,
 } from './order-schema.mjs';
@@ -158,7 +159,7 @@ function headerInputsFor(agentType) {
 }
 
 function conditionFor(entry) {
-  return [CONTINUATION_ORDER_INPUT, RETRY_ORDER_INPUT]
+  return [CONTINUATION_ORDER_INPUT, RETRY_ORDER_INPUT, RESUME_ORDER_INPUT]
     .find(({ label }) => label === entry.label)?.conditional;
 }
 

@@ -12,12 +12,12 @@ The header ends at the first line that is not a recognized label line, including
 
 | Agent | Required labels | Conditional labels | Optional labels |
 | --- | --- | --- | --- |
-| codex-scout | `order id` | `continue`, `retry` | `repository`, `slug`, `effort` |
+| codex-scout | `order id` | `continue`, `retry`, `resume` | `repository`, `slug`, `effort` |
 | codex-build | `order id`, `scope`, `advice` | `continue`, `retry` | `repository`, `scope new`, `slug`, `effort` |
-| codex-review | `order id` | `continue`, `retry` | `repository`, `slug`, `effort`, `changeset` |
-| codex-advisor | `order id`, `phase` | `continue`, `retry` | `repository`, `slug`, `effort` |
+| codex-review | `order id` | `continue`, `retry`, `resume` | `repository`, `slug`, `effort`, `changeset` |
+| codex-advisor | `order id`, `phase` | `continue`, `retry`, `resume` | `repository`, `slug`, `effort` |
 
-Both grant labels are conditional when this pass continues or repeats a named run: `continue` names the continued run; `retry` repeats a failed pass and does not authorize the next pass.
+The three grant labels are conditional when this pass continues or repeats a named run: `continue` names the continued run; `retry` repeats a failed pass on a fresh thread; `resume` continues a failed read-only pass in its own Codex thread; neither `retry` nor `resume` authorizes the next pass.
 For advisor, pass `scope` first, then `advise` with a `continue:` grant naming the scope run of the same order.
 
 `repository` is the repository path; `slug` names this pass without replacing the order id.

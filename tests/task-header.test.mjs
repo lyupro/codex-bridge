@@ -12,8 +12,8 @@ function assertProblem(parsed, lineNo, line, reason) {
   assert.match(problem.reason, reason);
 }
 
-test('advice and either grant parse in both header orders', () => {
-  for (const kind of ['continue', 'retry']) {
+test('advice and each grant parse in both header orders', () => {
+  for (const kind of ['continue', 'retry', 'resume']) {
     for (const header of [
       [`advice: ${advice}`, `${kind}: ${run} — why`],
       [`${kind}: ${run} — why`, `advice: ${advice}`],
@@ -53,7 +53,7 @@ test('a blank first line prevents a header and makes a later grant misplaced', (
 });
 
 test('duplicate labels are refused even when their values are identical', () => {
-  for (const label of ['advice', 'continue', 'retry']) {
+  for (const label of ['advice', 'continue', 'retry', 'resume']) {
     const first = label === 'advice' ? 'mechanical' : 'X — why';
     for (const second of [first, label === 'advice' ? 'docs-only' : 'Y — different']) {
       const line = `${label}: ${second}`;
@@ -83,8 +83,7 @@ test('continue and retry conflict in either order even if neither grant validate
     for (const order of [['continue', 'retry'], ['retry', 'continue']]) {
       const lines = order.map((label, index) => `${label}: ${values[index]}`);
       const parsed = parseTaskHeader(lines.join('\n'));
-      const retryIndex = order.indexOf('retry');
-      assertProblem(parsed, retryIndex + 1, lines[retryIndex], /cannot both be present/);
+      assertProblem(parsed, 2, lines[1], /continue, retry and resume are mutually exclusive/);
       assert.equal(parsed.problems.length, values[0] === 'TODO' ? 3 : 1);
       if (values[0] !== 'TODO') {
         assert.deepEqual(parsed.grant, { kind: order[0], run: 'X', reason: 'why' });
@@ -96,7 +95,7 @@ test('continue and retry conflict in either order even if neither grant validate
 });
 
 test('grant validation rejects paths, dot folders, placeholders and missing reasons', () => {
-  for (const kind of ['continue', 'retry']) {
+  for (const kind of ['continue', 'retry', 'resume']) {
     for (const value of ['a/b — why', 'a\\b — why', '.. — why', '. — why',
       '<run> — why', 'TODO — why', 'X — TODO', 'X — <reason>', 'X', 'X —', 'X Y — why']) {
       const line = `${kind}: ${value}`;
@@ -269,7 +268,7 @@ test('order labels populate fields and leave the header out of body without crea
 });
 
 test('every order label uses the strict spelling and leaves new values unvalidated', () => {
-  for (const label of ALL_ORDER_LABELS.filter((label) => !['continue', 'retry'].includes(label))) {
+  for (const label of ALL_ORDER_LABELS.filter((label) => !['continue', 'retry', 'resume'].includes(label))) {
     const parsed = parseTaskHeader(`${label}: todo\n## Task`);
     assert.deepEqual(parsed.fields, { [label]: 'todo' });
     assert.equal(parsed.grant, null);
@@ -323,7 +322,7 @@ test('unknown first lines, capitalized notes and headings remain task body', () 
 
 test('the misplaced guard does not widen to any order-only label in prose', () => {
   const body = ['## Task', ...ALL_ORDER_LABELS.filter((label) =>
-    !['continue', 'retry'].includes(label)).map((label) => `${label}: prose`)].join('\n');
+    !['continue', 'retry', 'resume'].includes(label)).map((label) => `${label}: prose`)].join('\n');
   const parsed = parseTaskHeader(`order id: y\n${body}`);
   assert.equal(parsed.body, body);
   assert.deepEqual(parsed.problems, []);

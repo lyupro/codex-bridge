@@ -185,7 +185,7 @@ export function resumeRefusal(runsRootPath, chain, orderId, grant, {
   }
   const meta = readJson(path.join(runDir, 'meta.json'));
   if (!meta?.status || liveness({ runDir, status })) {
-    return refuse('unfinished', { labelName: '`resume:`' });
+    return refuse('unfinished', { labelName: orderInputName('resume') });
   }
   if (meta.status === 'OK') return refuse('ended-ok', {});
   // Plan_80 E13 O5: a cached eligibility claim cannot authorize resuming a writer or a legacy run.

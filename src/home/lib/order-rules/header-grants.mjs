@@ -3,8 +3,8 @@ export const RULES = Object.freeze({
   'grant-label-exclusive': Object.freeze({
     data: Object.freeze([]),
     topic: 'order',
-    rule: 'Keep exactly one grant label: continue and retry cannot both appear, even with invalid values.',
-    message: () => 'continue and retry cannot both be present; keep exactly one grant label',
+    rule: 'Keep exactly one grant label: continue, retry and resume cannot appear together, even with invalid values.',
+    message: () => 'continue, retry and resume are mutually exclusive; keep exactly one grant label',
   }),
   'advice-value-shape': Object.freeze({
     data: Object.freeze([]),
@@ -15,7 +15,7 @@ export const RULES = Object.freeze({
   'grant-value-shape': Object.freeze({
     data: Object.freeze([]),
     topic: 'order',
-    rule: 'Give continue or retry a bare run folder other than . or .. and a non-placeholder reason, ' +
+    rule: 'Give continue, retry or resume a bare run folder other than . or .. and a non-placeholder reason, ' +
       'separated by an em dash, hyphen or colon.',
     message: () => 'grant must name a bare run folder (not . or ..) and a non-placeholder reason',
   }),

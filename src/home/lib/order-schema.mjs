@@ -26,6 +26,14 @@ export const RETRY_ORDER_INPUT = Object.freeze({
   conditional: 'when this pass continues or repeats a named run',
 });
 
+export const RESUME_ORDER_INPUT = Object.freeze({
+  label: 'resume',
+  explanation:
+    'The failed read-only run whose Codex thread this pass continues, followed by why the orchestrator pays for it. A resume continues that pass in the same thread with its frozen task, schema and profile; it does not authorize the next pass.',
+  example: '2026-10-16_140740_ow066-b2-resume-grant — advise stalled after reading, continue its thread',
+  conditional: 'when this pass continues or repeats a named run',
+});
+
 const REQUIRED_ORDER_INPUTS = Object.freeze({
   'codex-scout': freezeEntries([
     {
@@ -35,6 +43,7 @@ const REQUIRED_ORDER_INPUTS = Object.freeze({
     },
     CONTINUATION_ORDER_INPUT,
     RETRY_ORDER_INPUT,
+    RESUME_ORDER_INPUT,
   ]),
   'codex-build': freezeEntries([
     {
@@ -58,6 +67,7 @@ const REQUIRED_ORDER_INPUTS = Object.freeze({
     },
     CONTINUATION_ORDER_INPUT,
     RETRY_ORDER_INPUT,
+    RESUME_ORDER_INPUT,
   ]),
   // Plan_59 D7: the caller must name the phase and authorize the continued decision pass.
   'codex-advisor': freezeEntries([
@@ -68,6 +78,7 @@ const REQUIRED_ORDER_INPUTS = Object.freeze({
     },
     CONTINUATION_ORDER_INPUT,
     RETRY_ORDER_INPUT,
+    RESUME_ORDER_INPUT,
     {
       label: 'phase',
       explanation: 'Pass scope first to predict risks and check the reading boundary, then advise with a continue: grant naming the scope run of the same order.',
@@ -165,7 +176,7 @@ export function orderFromHeader(agentType, parsed) {
       continue;
     }
     // Grant values are validated by parseTaskHeader; re-reporting them would duplicate its problem.
-    if (label === 'continue' || label === 'retry') continue;
+    if (label === 'continue' || label === 'retry' || label === 'resume') continue;
     order.set(label, value);
     if (isInputPlaceholder(value, label)) {
       problems.push({ ...location, reason: orderRuleMessage('order-value-placeholder', { label }) });

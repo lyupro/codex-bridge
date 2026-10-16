@@ -51,6 +51,7 @@ const LABELS = Object.freeze([
     || path.posix.isAbsolute(value) || path.win32.isAbsolute(value)),
   descriptor('continue', validateGrant, (value) => MISPLACED_GRANT.test(value)),
   descriptor('retry', validateGrant, (value) => MISPLACED_GRANT.test(value)),
+  descriptor('resume', validateGrant, (value) => MISPLACED_GRANT.test(value)),
 ]);
 
 const HEADER_LABELS = Object.freeze([...ALL_ORDER_LABELS, 'advice']);
@@ -104,8 +105,13 @@ export function parseTaskHeader(text) {
   }
 
   // Plan_75 D5: conflicting authorization is a label-presence error even if a value is invalid.
-  if (Object.hasOwn(fields, 'continue') && Object.hasOwn(fields, 'retry')) {
-    const conflict = entries.find(({ label }) => label === 'retry');
+  const grantLabels = new Set();
+  const conflict = entries.find(({ label }) => {
+    if (!['continue', 'retry', 'resume'].includes(label) || grantLabels.has(label)) return false;
+    grantLabels.add(label);
+    return grantLabels.size === 2;
+  });
+  if (conflict) {
     problems.push({
       lineNo: conflict.lineNo,
       line: conflict.line,

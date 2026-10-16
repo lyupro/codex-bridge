@@ -110,6 +110,7 @@ test('the help builder renders schema data without owning a rule or adding a def
 const scoutHelp = 'order id: plan-13-scout-20260804\n' +
   'continue: 2026-08-05_092913_plan14-build — LIMIT at step 3, tests unwritten\n' +
   'retry: 2026-10-03_172017_cc-d66-advisor — model at capacity, same pass again\n' +
+  'resume: 2026-10-16_140740_ow066-b2-resume-grant — advise stalled after reading, continue its thread\n' +
   'repository: C:/work/codex-bridge\nslug: plan-76-parser\neffort: high';
 const buildHelp = 'order id: plan-13-build-20260804\nscope: src/home/lib/runner/**,tests/runner/**\n' +
   'continue: 2026-08-05_092913_plan14-build — LIMIT at step 3, tests unwritten\n' +
@@ -119,10 +120,12 @@ const buildHelp = 'order id: plan-13-build-20260804\nscope: src/home/lib/runner/
 const reviewHelp = 'order id: plan-13-review-20260804\n' +
   'continue: 2026-08-05_092913_plan14-build — LIMIT at step 3, tests unwritten\n' +
   'retry: 2026-10-03_172017_cc-d66-advisor — model at capacity, same pass again\n' +
+  'resume: 2026-10-16_140740_ow066-b2-resume-grant — advise stalled after reading, continue its thread\n' +
   'repository: C:/work/codex-bridge\nslug: plan-76-parser\neffort: high\nchangeset: base:main';
 const advisorHelp = 'order id: plan-59-advisor-20260922\nphase: scope\n' +
   'continue: 2026-08-05_092913_plan14-build — LIMIT at step 3, tests unwritten\n' +
   'retry: 2026-10-03_172017_cc-d66-advisor — model at capacity, same pass again\n' +
+  'resume: 2026-10-16_140740_ow066-b2-resume-grant — advise stalled after reading, continue its thread\n' +
   'repository: C:/work/codex-bridge\nslug: plan-76-parser\neffort: high';
 
 for (const [agent, expected] of [

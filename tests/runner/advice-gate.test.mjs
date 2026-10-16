@@ -190,7 +190,7 @@ const malformedHeaders = [
   ['decorated label below the header', 'advice: mechanical\n\nEdit source.\n**advice:** revert', /line 7: misplaced advice.*: \*\*advice:\*\* revert/],
   ['decorated first label', ' \t-  AdViCe \t: \t docs-only \t\r\n\r\nEdit source.', /line 4: misplaced advice/],
   ['grant hidden in Verify', 'advice: mechanical\n\nEdit source.\n## Verify\nretry: X — finish the failed work', /line 8: misplaced retry/],
-  ['conflicting header grants', 'advice: mechanical\ncontinue: X — finish the work\nretry: Y — repeat failed work\n\nEdit source.', /continue and retry cannot both be present/],
+  ['conflicting header grants', 'advice: mechanical\ncontinue: X — finish the work\nretry: Y — repeat failed work\n\nEdit source.', /continue, retry and resume are mutually exclusive/],
 ];
 for (const taskFile of [false, true]) {
   const channel = taskFile ? 'task file' : 'stdin';
@@ -215,9 +215,9 @@ for (const taskFile of [false, true]) {
 
 // Plan_75 D5: transport must retain metadata while extracting only the body sections.
 for (const taskFile of [false, true]) {
-  test(`settleTaskInput retains either header grant through ${taskFile ? 'task file' : 'stdin'} sections`, () => {
+  test(`settleTaskInput retains each header grant through ${taskFile ? 'task file' : 'stdin'} sections`, () => {
     const tree = fixture();
-    for (const kind of ['continue', 'retry']) {
+    for (const kind of ['continue', 'retry', 'resume']) {
       for (const grantFirst of [false, true]) {
         const lines = ['advice: mechanical', `${kind}: X — finish the work`];
         if (grantFirst) lines.reverse();

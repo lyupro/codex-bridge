@@ -78,7 +78,7 @@ test('header parsing refuses both grants regardless of their order or run names'
     'retry: A — same pass\r\ncontinue: A — next pass',
   ]) {
     assert.ok(parseTaskHeader(text).problems.some(({ reason }) =>
-      reason === 'continue and retry cannot both be present; keep exactly one grant label'));
+      reason === 'continue, retry and resume are mutually exclusive; keep exactly one grant label'));
   }
   // Plan_63 D9: the retired loose reader accepted decoration; the strict header refuses it.
   assert.match(parseTaskHeader('- *retry*: A — same pass\r\ncontinue: A — next pass')
@@ -88,7 +88,7 @@ test('header parsing refuses both grants regardless of their order or run names'
 test('retry and continuation share run/reason separators through the header value grammar', () => {
   for (const value of ['X — why', 'X - why', 'X: why']) {
     assert.deepEqual(splitGrantValue(value), { run: 'X', reason: 'why' });
-    for (const kind of ['continue', 'retry']) {
+    for (const kind of ['continue', 'retry', 'resume']) {
       assert.deepEqual(parseTaskHeader(`${kind}: ${value}`).grant, { kind, run: 'X', reason: 'why' });
     }
   }
@@ -96,7 +96,7 @@ test('retry and continuation share run/reason separators through the header valu
 });
 
 test('grant placeholders and incomplete run/reason pairs remain null', () => {
-  for (const label of ['continue', 'retry']) {
+  for (const label of ['continue', 'retry', 'resume']) {
     for (const value of ['', '<run> — why', 'X — <why>', 'TODO — why', 'X — TBD', 'X', 'X — ']) {
       assert.equal(splitGrantValue(value), null, value);
       assert.equal(parseTaskHeader(`${label}: ${value}`).grant, null, `${label}: ${value}`);
