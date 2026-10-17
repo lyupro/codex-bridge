@@ -501,8 +501,12 @@ change verdict or reply logic.
 
 The crash handler lives in `run-codex.mjs` and applies to both halves. If the directory is already known,
 it appends the error to `stderr.log` — the file specifically for events outside the CLI protocol —
-creates `meta.json`, closes `status.json` as `failed`, and forms the response. The worker writes the
-response to a file; the launcher writes it to stdout.
+and, when no verdict is recorded, creates `meta.json`, closes `status.json` as `failed`, and forms the
+response. A crash after the verdict is recorded keeps `meta.json` and `status.json` byte-identical and
+re-renders the recorded reply, appending `Runner crashed after the verdict was recorded: <error>` and
+`Log: codex-bridge read <run>`. The recorded verdict also determines the exit code, preserving the stop
+assessment and ready resume grant (Plan_80 E17, A14/A15). The worker writes the response to a file;
+the launcher writes it to stdout.
 
 If the process dies before the handler runs, the next launcher checks the previous `status.json`. A dead
 pid without `meta.json` becomes `abandoned` with `tree_after=false`; a dead pid with an existing

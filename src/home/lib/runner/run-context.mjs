@@ -30,6 +30,17 @@ export function setRun(dir, agent) {
   currentAgent = agent;
 }
 
+/**
+ * The worker moves to an automatic continuation child with this one call, so the reply,
+ * crash handler and run identity can never point at different runs (Plan_80 E17, A12 trap).
+ */
+export function adoptRun(dir, agent) {
+  if (workerDir === null) throw new Error('adoptRun is for the worker half only');
+  workerDir = dir;
+  currentRun = dir;
+  currentAgent = agent;
+}
+
 export const getRun = () => ({ dir: currentRun, agent: currentAgent });
 
 /**

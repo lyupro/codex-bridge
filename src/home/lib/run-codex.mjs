@@ -49,7 +49,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { writeFailure } from './write-meta.mjs';
+import { writeFailure, renderReply, exitCodeFor, readJson } from './write-meta.mjs';
 import { setWorkerDir, getRun, emitReply } from './runner/run-context.mjs';
 import { launcher } from './runner/launcher.mjs';
 import { worker } from './runner/worker.mjs';
@@ -71,10 +71,10 @@ export { runsPrefixInside, worktreeSnapshot } from './runner/git-state.mjs';
 const invokedDirectly =
   process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
 
-// A crash of the runner itself still has to read as a FAIL, and that FAIL still has to
-// be backed by meta.json — otherwise there would be a second path by which a reply
-// exists without an artifact behind it, which is the whole failure mode this design
-// removes. Before the run folder exists there is nowhere to write, so the reply says so.
+// Plan_80 E17, A14/A15: a recorded verdict must never be overwritten by a later runner
+// crash, or its stop assessment and ready resume grant would be lost. Before a verdict
+// exists, a crash still needs a FAIL backed by meta.json. Before the run folder exists
+// there is nowhere to write, so the reply says so.
 //
 // One handler, here, for both halves: it has to catch a crash whichever branch below is
 // running, and a second registration inside launcher.mjs or worker.mjs would be a second
@@ -85,6 +85,24 @@ export function installRunnerCrashBoundary() {
     if (currentRun) {
       try {
         fs.appendFileSync(path.join(currentRun, 'stderr.log'), `\nrun-codex crash: ${err.stack}\n`);
+        const meta = readJson(path.join(currentRun, 'meta.json'));
+        if (typeof meta?.status === 'string') {
+          let reply;
+          try {
+            reply = renderReply(currentRun, currentAgent, meta);
+          } catch {
+            reply = `${meta.status} — ${typeof meta.reason === 'string'
+              ? meta.reason : 'verdict recorded in meta.json'}`;
+          }
+          emitReply([
+            reply,
+            `Runner crashed after the verdict was recorded: ${
+              String(err.message).replace(/\s+/g, ' ').slice(0, 150)
+            }`,
+            `Log: codex-bridge read ${currentRun}`,
+          ].join('\n'));
+          process.exit(exitCodeFor(meta.status));
+        }
         const { reply } = writeFailure(currentRun, currentAgent, `Codex runner crashed: ${err.message}`, [
           `Log: codex-bridge read ${currentRun}`,
         ]);
