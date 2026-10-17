@@ -46,7 +46,7 @@ const mockedSpawn = childProcess.spawn;
 childProcess.spawn = (command, args, options) => {
   if (args.includes('--worker')) {
     const order = JSON.parse(fs.readFileSync(path.join(args[args.indexOf('--worker') + 1], 'worker.json'), 'utf8'));
-    if (!order.recovery_policy) throw new Error('Recovery policy must exist before worker spawn');
+    if (!order.recovery_policy?.watchdog) throw new Error('Recovery policy and watchdog must exist before worker spawn');
     if (${JSON.stringify(changeBrake)} && process.env.CODEX_BRIDGE_AUTO_RECOVERY !== 'off') {
       throw new Error('The fixture must change the host brake before the order is written');
     }
@@ -118,6 +118,9 @@ test('advise launch freezes the measured recovery policy and default host brake'
   assert.equal(policy.enabled, false);
   assert.equal(policy.calibration.id, 'plan80-s4-2026-10-15');
   assert.deepEqual(policy.brake, { key: BRAKE_KEY, value: 'on', source: 'default' });
+  assert.deepEqual(policy.watchdog, {
+    version: 1, arming: 'shadow', reason: 'package-switch-off', armed_switch: false,
+  });
 });
 
 test('scout launch freezes an uncalibrated recovery budget', () => {
@@ -125,6 +128,7 @@ test('scout launch freezes an uncalibrated recovery budget', () => {
   assert.deepEqual(worker.recovery_policy, {
     version: 1, role: 'scout', phase: 'default', budget_ms: null, enabled: false, calibration: null,
     brake: { key: BRAKE_KEY, value: 'on', source: 'default' },
+    watchdog: { version: 1, arming: 'off', reason: 'no-threshold', armed_switch: false },
   });
 });
 
@@ -133,6 +137,9 @@ test('launcher records an explicit off brake without changing the package switch
   assert.deepEqual(worker.recovery_policy.brake, { key: BRAKE_KEY, value: 'off', source: 'env' });
   assert.equal(worker.recovery_policy.enabled, false);
   assert.equal(worker.recovery_policy.budget_ms, 1102000);
+  assert.deepEqual(worker.recovery_policy.watchdog, {
+    version: 1, arming: 'off', reason: 'host-brake', armed_switch: false,
+  });
 });
 
 test('launcher resolves the host brake once before subprocess preparation', () => {

@@ -315,6 +315,8 @@ Plan_80 E15/O2b preserves the launcher's frozen `worker.json#recovery_policy` in
 it from today's registry or environment. The entire object is `null` for an older run
 without a saved policy.
 
+Plan_80 E16 therefore also carries `recovery_policy.watchdog` verbatim into `meta.json`, preserving the launcher's frozen arming, reason and package switch.
+
 | Field | Value |
 | --- | --- |
 | `version` | Policy format version, currently `1`. |

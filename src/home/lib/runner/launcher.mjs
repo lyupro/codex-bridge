@@ -33,6 +33,7 @@ import { git, branchName, worktreeSnapshot, reviewScope } from './git-state.mjs'
 import { writeBuildBefore } from './build-evidence.mjs';
 import { agentRole } from '../agents.mjs';
 import { resolveSilencePolicy } from '../silence-policy.mjs';
+import { resolveWatchdogArming } from '../silence-watchdog-arming.mjs';
 import { resolveRecoveryPolicy } from '../recovery-policy.mjs';
 import { codexArgs, runProfile } from './codex-args.mjs';
 import { writeWorkerOrder } from './worker-order.mjs';
@@ -326,6 +327,7 @@ export async function launcher(argv = process.argv.slice(2)) {
       console.log(reply);
       return EXIT.FAIL;
     }
+    const silencePolicy = resolveSilencePolicy(opts.agent, opts.phase);
     writeWorkerOrder(runDir, {
       agent: opts.agent,
       slug: opts.slug,
@@ -335,8 +337,12 @@ export async function launcher(argv = process.argv.slice(2)) {
       launcherPid: process.pid,
       phase: opts.phase,
       budgetMinutes: RUN_ENV.budgets[agentRole(opts.agent)][opts.phase],
-      silencePolicy: resolveSilencePolicy(opts.agent, opts.phase),
-      recoveryPolicy: { ...resolveRecoveryPolicy(opts.agent, opts.phase), brake: RECOVERY_BRAKE },
+      silencePolicy,
+      recoveryPolicy: {
+        ...resolveRecoveryPolicy(opts.agent, opts.phase),
+        brake: RECOVERY_BRAKE,
+        watchdog: resolveWatchdogArming({ silencePolicy, brake: RECOVERY_BRAKE }),
+      },
       scopeNew: opts.scopeNewPatterns,
       profile: resumedWorker ? resumedWorker.profile : runProfile({ ...opts, repo: repoRoot }),
       ...(resumedWorker ? { resume: resumedWorker.resume } : {}),
