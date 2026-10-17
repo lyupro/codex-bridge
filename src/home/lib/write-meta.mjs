@@ -177,6 +177,20 @@ export function collect(runDir, agent, exitCode) {
   // already on disk.
   writeStatus(runDir, { state: 'finished', status, finished_at: meta.finished_at });
 
+  return { meta, reply: renderReply(runDir, agent, meta) };
+}
+
+/**
+ * Re-renders a reply from recorded meta without re-judging the run (Plan_80 E17).
+ * Used by the worker when publishing later than collect(); must stay free of writes.
+ */
+export function renderReply(runDir, agent, meta) {
+  const cfg = AGENTS[agent];
+  if (!cfg) throw new Error(`unknown agent: ${agent} (expected one of ${Object.keys(AGENTS).join(', ')})`);
+  const resultPath = path.join(runDir, cfg.result);
+  const result = readJson(resultPath);
+  const status = meta.status;
+
   const ctx = {
     runDir,
     agent,
@@ -200,7 +214,7 @@ export function collect(runDir, agent, exitCode) {
       meta,
     );
 
-  return { meta, reply: reply.join('\n') };
+  return reply.join('\n');
 }
 
 /**
