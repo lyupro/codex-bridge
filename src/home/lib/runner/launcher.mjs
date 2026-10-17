@@ -22,7 +22,7 @@ import { orderDiagnosticMessage } from '../order-diagnostics.mjs';
 import { EXIT } from './exit-codes.mjs';
 import { passGate } from './pass-gate.mjs';
 import { setRun } from './run-context.mjs';
-import { loadRunEnv, RUN_ENV } from './run-env.mjs';
+import { loadRunEnv, RUN_ENV, RECOVERY_BRAKE } from './run-env.mjs';
 import { parseArgs, die } from './args.mjs';
 import { settleTaskInput } from './task-input.mjs';
 import { questionsFromTexts, QUESTION_KIND } from './question-kind.mjs';
@@ -33,6 +33,7 @@ import { git, branchName, worktreeSnapshot, reviewScope } from './git-state.mjs'
 import { writeBuildBefore } from './build-evidence.mjs';
 import { agentRole } from '../agents.mjs';
 import { resolveSilencePolicy } from '../silence-policy.mjs';
+import { resolveRecoveryPolicy } from '../recovery-policy.mjs';
 import { codexArgs, runProfile } from './codex-args.mjs';
 import { writeWorkerOrder } from './worker-order.mjs';
 import { resumeSituationKind, writeResumeArtifacts, resumeWorkerFields } from './resume-launch.mjs';
@@ -335,6 +336,7 @@ export async function launcher(argv = process.argv.slice(2)) {
       phase: opts.phase,
       budgetMinutes: RUN_ENV.budgets[agentRole(opts.agent)][opts.phase],
       silencePolicy: resolveSilencePolicy(opts.agent, opts.phase),
+      recoveryPolicy: { ...resolveRecoveryPolicy(opts.agent, opts.phase), brake: RECOVERY_BRAKE },
       scopeNew: opts.scopeNewPatterns,
       profile: resumedWorker ? resumedWorker.profile : runProfile({ ...opts, repo: repoRoot }),
       ...(resumedWorker ? { resume: resumedWorker.resume } : {}),

@@ -4,6 +4,7 @@
  * its evidence so it cannot be rounded by taste, and in package-owned defaults because
  * a seeded config key never reaches installed hosts. E15 keeps automatic recovery off
  * until real stalled runs have been continued by hand; a later order enables it.
+ * The host brake is resolved once by the launcher and can only switch automatic recovery off.
  */
 import { AGENTS } from './agents.mjs';
 import { resolveSilencePolicy } from './silence-policy.mjs';
@@ -27,6 +28,15 @@ export function deriveRecoveryBudgetMs(calibration) {
 }
 
 export const AUTOMATIC_RECOVERY_ENABLED = Object.freeze({ 'advisor.advise': false });
+
+export function resolveRecoveryBrake({ env = process.env } = {}) {
+  const key = 'CODEX_BRIDGE_AUTO_RECOVERY';
+  const received = env[key];
+  const value = received?.trim();
+  if (value === undefined || value === '') return { key, value: 'on', source: 'default' };
+  if (value === 'on' || value === 'off') return { key, value, source: 'env' };
+  throw new Error(`${key} from env: received ${JSON.stringify(received)}; expected on or off`);
+}
 
 export function resolveRecoveryPolicy(agent, phase, registry = AGENTS, {
   calibrations = RECOVERY_CALIBRATIONS,

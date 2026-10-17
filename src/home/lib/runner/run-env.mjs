@@ -13,6 +13,7 @@
  * falling back — a typo must not decide what environment a run gets.
  */
 import { readRunConfig, disableFlags } from '../run-config.mjs';
+import { resolveRecoveryBrake } from '../recovery-policy.mjs';
 import { EXIT } from './exit-codes.mjs';
 
 /**
@@ -22,6 +23,7 @@ import { EXIT } from './exit-codes.mjs';
  */
 export let RUN_ENV;
 export let CLEAN_ENV;
+export let RECOVERY_BRAKE;
 
 /**
  * Launcher-only: the worker gets the finished argument list in worker.json and never reads
@@ -32,6 +34,7 @@ export function loadRunEnv() {
   try {
     RUN_ENV = readRunConfig();
     CLEAN_ENV = disableFlags(RUN_ENV);
+    RECOVERY_BRAKE = resolveRecoveryBrake();
   } catch (err) {
     console.log(`FAIL — ${err.message}\nRun was not started; quota was not spent`);
     process.exit(EXIT.FAIL);

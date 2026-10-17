@@ -9,11 +9,52 @@ import {
   RECOVERY_CALIBRATIONS,
   AUTOMATIC_RECOVERY_ENABLED,
   deriveRecoveryBudgetMs,
+  resolveRecoveryBrake,
   resolveRecoveryPolicy,
 } from '../src/home/lib/recovery-policy.mjs';
 
 const phasesOf = (entry) => typeof entry.budget === 'object' ? Object.keys(entry.budget) : ['default'];
 const calibration = RECOVERY_CALIBRATIONS['advisor.advise'];
+
+for (const [received, value, source] of [
+  [undefined, 'on', 'default'], ['', 'on', 'default'], [' \t\n ', 'on', 'default'],
+  ['on', 'on', 'env'], ['off', 'off', 'env'], [' off ', 'off', 'env'],
+]) {
+  test(`host brake resolves ${JSON.stringify(received)} without enabling the package switch`, () => {
+    const env = received === undefined ? {} : { CODEX_BRIDGE_AUTO_RECOVERY: received };
+    assert.deepEqual(resolveRecoveryBrake({ env }), { key: 'CODEX_BRIDGE_AUTO_RECOVERY', value, source });
+    assert.equal(resolveRecoveryPolicy('codex-advisor', 'advise').enabled, false);
+  });
+}
+
+for (const received of ['OFF', '0', 'false', 'yes']) {
+  test(`host brake rejects ${JSON.stringify(received)} with an actionable diagnostic`, () => {
+    assert.throws(() => resolveRecoveryBrake({ env: { CODEX_BRIDGE_AUTO_RECOVERY: received } }), (error) => {
+      for (const part of ['CODEX_BRIDGE_AUTO_RECOVERY', 'env', JSON.stringify(received), 'on or off']) {
+        assert.ok(error.message.includes(part), error.message);
+      }
+      return true;
+    });
+  });
+}
+
+test('host brake reads only the injected environment and only its own key', () => {
+  const key = 'CODEX_BRIDGE_AUTO_RECOVERY';
+  const previous = process.env[key];
+  const reads = [];
+  const env = new Proxy({ CODEX_BRIDGE_AUTO_RECOVERY: 'off' }, {
+    get(target, key) { reads.push(key); return target[key]; },
+  });
+  try {
+    process.env[key] = 'invalid ambient brake';
+    assert.deepEqual(resolveRecoveryBrake({ env }), { key, value: 'off', source: 'env' });
+    assert.deepEqual(reads, [key]);
+    assert.deepEqual(resolveRecoveryBrake({ env: {} }), { key, value: 'on', source: 'default' });
+  } finally {
+    if (previous === undefined) delete process.env[key];
+    else process.env[key] = previous;
+  }
+});
 
 for (const [agent, entry] of Object.entries(AGENTS)) {
   for (const phase of phasesOf(entry)) {

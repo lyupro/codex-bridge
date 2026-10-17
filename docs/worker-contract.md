@@ -25,6 +25,19 @@ The file is created after all task/schema/snapshot artifacts and before the work
     "threshold_ms": null,
     "calibration": null
   },
+  "recovery_policy": {
+    "version": 1,
+    "role": "build",
+    "phase": "default",
+    "budget_ms": null,
+    "enabled": false,
+    "calibration": null,
+    "brake": {
+      "key": "CODEX_BRIDGE_AUTO_RECOVERY",
+      "value": "on",
+      "source": "default"
+    }
+  },
   "scope_new": ["src/runner/scope-check.mjs"],
   "profile": {
     "model": "gpt-5.6-luna",
@@ -48,6 +61,7 @@ The file is created after all task/schema/snapshot artifacts and before the work
 | `phase` | always | The resolved run phase. It travels with the job so the recorded run and its verdict retain the phase the launcher selected. |
 | `budget_minutes` | always | Run time limit in minutes, resolved once from the configured budget map by `(role, phase)` and frozen into this order. `budgets.mjs` normalizes the role's phase map; the worker uses this value and never rereads the config. When it expires, the worker kills Codex and writes the verdict itself. |
 | `silence_policy` | always | Versioned policy and calibration evidence resolved from the package-owned agent registry before spawn (Plan_80 S2/E12). Copied verbatim into `meta.json`; diagnostic only in this release, not read by the worker and not used for verdicts or replies. A `null` threshold means not calibrated. See [artifact formats](artifact-formats.md#silence-policy). |
+| `recovery_policy` | always | Recovery policy resolved by the launcher before worker spawn (Plan_80 E15/O2a): `version`, `role`, `phase`, `budget_ms` (positive milliseconds or `null` when uncalibrated), `enabled` (the package switch), `calibration` (evidence record or `null`), and `brake` (`key`, `value`, `source`). Written only in `worker.json` in this release; not read by the worker and not used for verdicts or replies. |
 | `scope_new` | always (an empty list if the flag was absent) | Paths from `--scope-new`: files that do not exist at startup and that the run creates. Only for `codex-build`. They are recorded so that months later it remains clear which missing paths were declared intentionally rather than accepted by mistake. |
 | `profile` | always | The worker that was ordered: `model` (empty when nothing is pinned and Codex chooses), `model_source` (`config` or `codex default`), `effort`, and `effort_source` (`request`, `config`, or `fallback`). Recorded apart from `args` because an absent `-m` says nothing on its own — a run that was never given the operator's configured model looked exactly like a run for which none was configured, which is how a pinned profile went unnoticed for three releases (2026-08-26). `meta.json` and the dispatcher reply both read it from here. |
 | `args` | always | Full argv for the Codex command, including the sandbox, output schema, and result path. |
@@ -55,6 +69,16 @@ The file is created after all task/schema/snapshot artifacts and before the work
 
 `args` already contains the decisions about `hooks` and `plugins`, `effort`, directory, schema, and
 result file. The worker must not assemble this list again.
+
+The launcher resolves `recovery_policy.brake` once per run, before any paid work. Its key is
+`CODEX_BRIDGE_AUTO_RECOVERY`: an unset or trimmed-empty value records `value: "on"` and
+`source: "default"`; exact lowercase `on` or `off` after trimming records that value and
+`source: "env"`. Any other value refuses the launch before a run folder exists. The brake can
+only switch automatic recovery off; `on` cannot enable a false package switch. The worker
+never reads this environment variable. The calibrated advisor `advise` policy records
+`budget_ms: 1102000`, `enabled: false`, and calibration id `plan80-s4-2026-10-15`. Its evidence
+includes `id`, `measured_on`, `window`, `codex_version`, `sample_runs`, `measure`, `max_tail_ms`,
+`margin`, and `rule`.
 
 ## What the worker reads
 
@@ -71,7 +95,7 @@ The current implementation reads five fields:
 `phase` is carried in the saved order for phase-aware accounting and verdicts. The worker does not
 consult `config.json` to reinterpret the phase or recalculate its budget.
 
-The worker does not read `slug`, `order_id`, `launcher_pid`, `silence_policy`, `scope_new`, `profile`, or `resume`. This is the actual
+The worker does not read `slug`, `order_id`, `launcher_pid`, `silence_policy`, `recovery_policy`, `scope_new`, `profile`, or `resume`. This is the actual
 asymmetric state of the contract, not a documentation error: these fields are retained to make the
 directory explainable during later investigation — including making it clear months later which job
 owned the run. The chain link and active worker pid come from `status.json`, not `worker.json`.
