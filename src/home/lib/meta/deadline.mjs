@@ -1,5 +1,5 @@
 /**
- * Reads the runner-owned deadline fact from status.json.
+ * Reads the runner-owned deadline and silence watchdog stop facts from status.json.
  *
  * stderr.log is diagnostic text and can contain a quoted copy of the runner's own message,
  * so it cannot prove that the runner actually stopped the process (Plan_15).
@@ -16,4 +16,14 @@ export function deadlineReason(runDir) {
   return Number.isFinite(elapsed)
     ? `run stopped on its deadline after ${elapsed} ms`
     : 'run stopped on its deadline';
+}
+
+export function silenceStopReason(runDir) {
+  const status = readJson(path.join(runDir, 'status.json'));
+  if (status?.stopped_by_silence !== true) return null;
+  const silence = status.stop?.watchdog?.decision?.silence_ms;
+  const threshold = status.stop?.watchdog?.threshold_ms;
+  const elapsed = Number.isFinite(silence) ? ` after ${silence} ms` : '';
+  const limit = Number.isFinite(threshold) ? ` (threshold ${threshold} ms)` : '';
+  return `run stopped by the silence watchdog${elapsed} without session activity${limit}`;
 }
