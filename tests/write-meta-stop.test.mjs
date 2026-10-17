@@ -77,9 +77,9 @@ for (const agent of ['codex-advisor', 'codex-build']) {
     });
     const writer = agent === 'codex-build' ? ['writer-role-not-approved'] : [];
     assert.deepEqual(first.meta.continuation_eligibility, {
-      version: 2,
+      version: 3,
       automatic: { allowed: false, blocking_reasons: [
-        'recovery-not-enabled', 'resume-contract-unverified', ...writer, 'process-tree-stop-unverified',
+        'recovery-policy-missing', ...writer, 'process-tree-stop-unverified',
       ] },
       grant: { allowed: false, policy_version: 1, blocking_reasons: [
         ...writer, 'process-tree-stop-unverified',
@@ -93,3 +93,41 @@ for (const agent of ['codex-advisor', 'codex-build']) {
     }
   });
 }
+
+test('collect assesses the frozen policy and denies a second automatic recovery attempt', () => {
+  const stop = {
+    version: 2, trigger: 'silence', stopped_at: '2026-10-15T08:20:00.000Z',
+    tree_stop: { state: 'stopped' }, result_file: { state: 'missing' },
+    session: { state: 'observed', at_reference: {
+      last_record_at: '2026-10-15T08:00:00.000Z',
+      commands: { state: 'none', reason: null, pending: [] },
+    } },
+  };
+  const recoveryPolicy = { enabled: true, brake: { value: 'on' }, budget_ms: 1102000 };
+  for (const resumedFrom of [null, 'stalled-pass']) {
+    const dir = makeRun({ status: { stop, resumed_from: resumedFrom },
+      events: [{ type: 'thread.started', thread_id: 'frozen-thread' }] });
+    fs.writeFileSync(path.join(dir, 'worker.json'), JSON.stringify({
+      phase: 'advise', silence_policy: { threshold_ms: 996000 }, recovery_policy: recoveryPolicy,
+    }));
+    const first = collect(dir, 'codex-advisor', 1);
+    const second = collect(dir, 'codex-advisor', 1);
+    assert.equal(first.meta.status, 'FAIL');
+    assert.equal(first.meta.situation.kind, 'silent-stall-candidate');
+    assert.equal(first.meta.situation.cause, 'silence');
+    assert.deepEqual(first.meta.recovery_policy, recoveryPolicy);
+    assert.equal(first.meta.resumed_from, resumedFrom);
+    assert.deepEqual(first.meta.continuation_eligibility, {
+      version: 3,
+      automatic: { allowed: resumedFrom === null, blocking_reasons: resumedFrom ? ['recovery-attempt-spent'] : [] },
+      grant: { allowed: true, policy_version: 1, blocking_reasons: [] },
+    });
+    assert.deepEqual(second.meta.continuation_eligibility, first.meta.continuation_eligibility);
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir, 'meta.json'), 'utf8')).continuation_eligibility,
+      first.meta.continuation_eligibility);
+    assert.equal(second.reply, first.reply);
+    assert.equal(first.reply.split('\n').find((row) => row.startsWith('Continuation:')), resumedFrom
+      ? 'Continuation: automatic blocked (recovery-attempt-spent) · grant allowed'
+      : 'Continuation: automatic allowed · grant allowed');
+  }
+});

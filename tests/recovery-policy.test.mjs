@@ -253,7 +253,7 @@ test('inherited catalog and switch keys do not configure a recovery policy', () 
   assert.equal(policy.enabled, false);
 });
 
-test('collect copies the saved recovery policy verbatim without changing assessments or replies', async () => {
+test('collect copies the saved recovery policy and uses it only for automatic eligibility and its reply row', async () => {
   await withTempTree('recovery-collect-', (dir) => {
     const workerPath = path.join(dir, 'worker.json');
     const original = collect(dir, 'codex-advisor', 1);
@@ -261,7 +261,7 @@ test('collect copies the saved recovery policy verbatim without changing assessm
     const savedPolicy = {
       ...resolveRecoveryPolicy('codex-advisor', 'advise'),
       budget_ms: 1200000,
-      enabled: true,
+      enabled: false,
       calibration: { ...calibration, id: 'historical-recovery-calibration' },
       brake: { key: 'CODEX_BRIDGE_AUTO_RECOVERY', value: 'off', source: 'env' },
     };
@@ -274,10 +274,23 @@ test('collect copies the saved recovery policy verbatim without changing assessm
       assert.deepEqual(recorded.recovery_policy, savedPolicy);
       const fields = Object.keys(recorded);
       assert.equal(fields[fields.indexOf('silence_policy') + 1], 'recovery_policy');
-      for (const field of ['status', 'reason', 'situation', 'continuation_eligibility', 'treatment']) {
+      for (const field of ['status', 'reason', 'situation', 'treatment']) {
         assert.deepEqual(meta[field], original.meta[field], field);
       }
-      assert.equal(reply, original.reply);
+      assert.deepEqual(meta.continuation_eligibility, {
+        version: 3,
+        automatic: { allowed: false, blocking_reasons: [
+          'recovery-not-enabled', 'recovery-brake-off', 'thread-unavailable',
+          'session-evidence-not-observed', 'command-evidence-unknown',
+          'threshold-unconfigured', 'process-tree-stop-unverified',
+        ] },
+        grant: original.meta.continuation_eligibility.grant,
+      });
+      assert.deepEqual(recorded.continuation_eligibility, meta.continuation_eligibility);
+      assert.equal(reply, original.reply.replace('automatic blocked (recovery-policy-missing,',
+        'automatic blocked (recovery-not-enabled, recovery-brake-off,'));
+      assert.equal(reply.split('\n').find((row) => row.startsWith('Continuation:')),
+        'Continuation: automatic blocked (recovery-not-enabled, recovery-brake-off, thread-unavailable, session-evidence-not-observed, command-evidence-unknown, threshold-unconfigured, process-tree-stop-unverified) · grant blocked (stop-record-missing, thread-unavailable, session-evidence-not-observed, process-tree-stop-unverified)');
     }
   });
 });

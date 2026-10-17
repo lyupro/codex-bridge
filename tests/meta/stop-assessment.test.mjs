@@ -86,13 +86,103 @@ for (const [name, overrides, kind, action] of cases) {
     const result = assessStop(args);
     assert.equal(result.situation.kind, kind);
     assert.deepEqual(result.treatment, { version: 1, effect: 'diagnostic-only', action });
-    assert.equal(result.continuation_eligibility.version, 2);
+    assert.equal(result.continuation_eligibility.version, 3);
     assert.equal(result.continuation_eligibility.automatic.allowed, false);
     assert.equal(result.continuation_eligibility.grant.allowed, false);
     assert.deepEqual(args, before, 'assessment must not mutate frozen facts');
     assert.deepEqual(assessStop(args), result);
   });
 }
+
+// Plan_80 E15/O4: the watchdog trigger shares deadline classification, not its cause.
+test('silence uses every deadline classification branch and keeps its recorded cause', () => {
+  for (const [, overrides] of cases) {
+    const args = input(overrides);
+    if (args.stop?.trigger !== 'deadline') continue;
+    const expected = assessStop(args);
+    args.stop.trigger = 'silence';
+    expected.situation.cause = 'silence';
+    assert.deepEqual(assessStop(args), expected);
+  }
+});
+
+const enabledPolicy = { enabled: true, brake: { value: 'on' }, budget_ms: 1102000 };
+const cleanInput = (overrides = {}) => input({
+  stop: changedStop((s) => { s.trigger = 'silence'; s.tree_stop = { state: 'stopped' }; }),
+  silencePolicy: { threshold_ms: 996000 }, recoveryPolicy: enabledPolicy, resumedFrom: null, ...overrides,
+});
+
+test('only silent-stall-candidate can be automatically eligible with a clean enabled policy', () => {
+  const kinds = new Set();
+  for (const [, overrides, kind] of cases) {
+    if (kind === 'silent-stall-candidate') continue;
+    const args = cleanInput({ silencePolicy: { threshold_ms: 1200000 }, ...overrides });
+    if (args.stop) args.stop.tree_stop = { state: 'stopped' };
+    const result = assessStop(args);
+    assert.equal(result.situation.kind, kind);
+    assert.equal(result.continuation_eligibility.automatic.allowed, false, kind);
+    // A refusal always names its reason: the reply must never print "blocked ()".
+    assert.ok(result.continuation_eligibility.automatic.blocking_reasons.length > 0, kind);
+    kinds.add(kind);
+  }
+  assert.deepEqual([...kinds].sort(), ['result-present', 'limit', 'unavailable', 'runner-error',
+    'process-exit-no-result', 'command-in-flight', 'evidence-unknown', 'silence-unclassified',
+    'recent-activity'].sort());
+  const result = assessStop(cleanInput());
+  assert.equal(result.situation.kind, 'silent-stall-candidate');
+  assert.equal(result.situation.cause, 'silence');
+  assert.equal(result.situation.silence_ms, 1200000);
+  assert.equal(result.situation.threshold_ms, 996000);
+  assert.deepEqual(result.continuation_eligibility.automatic, { allowed: true, blocking_reasons: [] });
+});
+
+test('an undiagnosed stop with otherwise clean facts is refused as stall-not-established', () => {
+  const args = cleanInput();
+  args.stop.session.at_reference.last_record_at = null;
+  const result = assessStop(args);
+  assert.equal(result.situation.kind, 'evidence-unknown');
+  assert.deepEqual(result.continuation_eligibility.automatic,
+    { allowed: false, blocking_reasons: ['stall-not-established'] });
+});
+
+for (const [overrides, reason] of [
+  ...[null, undefined, false, 1, 'policy'].map((recoveryPolicy) => [
+    { recoveryPolicy }, 'recovery-policy-missing',
+  ]),
+  ...[false, undefined, 1, 'true'].map((enabled) => [
+    { recoveryPolicy: { ...enabledPolicy, enabled } }, 'recovery-not-enabled',
+  ]),
+  [{ recoveryPolicy: { ...enabledPolicy, brake: { value: 'off' } } }, 'recovery-brake-off'],
+  ...[null, undefined, 0, -1, 1.5, NaN, Infinity, '1102000'].map((budget_ms) => [
+    { recoveryPolicy: { ...enabledPolicy, budget_ms } }, 'recovery-budget-unconfigured',
+  ]),
+  [{ resumedFrom: 'prior-run' }, 'recovery-attempt-spent'],
+]) {
+  test(`automatic policy blocker appears alone: ${reason}, ${JSON.stringify(overrides)}`, () => {
+    const args = cleanInput(overrides);
+    const before = structuredClone(args);
+    assert.deepEqual(assessStop(args).continuation_eligibility.automatic, {
+      allowed: false, blocking_reasons: [reason],
+    });
+    assert.deepEqual(args, before);
+  });
+}
+
+test('policy and spent-attempt blockers precede factual blockers in the fixed E15 order', () => {
+  assert.deepEqual(assessStop(cleanInput({
+    recoveryPolicy: { enabled: false, brake: { value: 'off' }, budget_ms: 0 },
+    resumedFrom: 'prior-run', status: 'LIMIT', agentWrites: true, threadId: null, silencePolicy: null,
+  })).continuation_eligibility.automatic.blocking_reasons, [
+    'recovery-not-enabled', 'recovery-brake-off', 'recovery-budget-unconfigured', 'recovery-attempt-spent',
+    'limit', 'writer-role-not-approved', 'thread-unavailable', 'threshold-unconfigured', 'not-silent-stall',
+  ]);
+  for (const resumedFrom of [null, undefined, '', 42, {}]) {
+    assert.deepEqual(assessStop(cleanInput({ resumedFrom })).continuation_eligibility.automatic,
+      { allowed: true, blocking_reasons: [] });
+  }
+  assert.deepEqual(assessStop(cleanInput({ recoveryPolicy: null, resumedFrom: 'prior-run' }))
+    .continuation_eligibility.automatic.blocking_reasons, ['recovery-policy-missing', 'recovery-attempt-spent']);
+});
 
 test('situation records only frozen facts and a pending count, never command identities', () => {
   const stop = changedStop((s) => {
@@ -119,9 +209,9 @@ test('older facts stay null and silence explains the absent reference', () => {
 
 test('stalled advise has the exact ordered diagnostic-only blockers', () => {
   assert.deepEqual(assessStop(input()).continuation_eligibility, {
-    version: 2,
+    version: 3,
     automatic: { allowed: false, blocking_reasons: [
-      'recovery-not-enabled', 'resume-contract-unverified', 'process-tree-stop-unverified',
+      'recovery-policy-missing', 'process-tree-stop-unverified',
     ] },
     grant: { allowed: false, policy_version: 1, blocking_reasons: [
       'process-tree-stop-unverified',
@@ -132,9 +222,9 @@ test('stalled advise has the exact ordered diagnostic-only blockers', () => {
 test('build records writer-role and unconfigured-threshold blockers in order', () => {
   assert.deepEqual(assessStop(input({ agentWrites: true, silencePolicy: { threshold_ms: null } }))
     .continuation_eligibility, {
-    version: 2,
+    version: 3,
     automatic: { allowed: false, blocking_reasons: [
-      'recovery-not-enabled', 'resume-contract-unverified', 'writer-role-not-approved',
+      'recovery-policy-missing', 'writer-role-not-approved',
       'threshold-unconfigured', 'process-tree-stop-unverified',
     ] },
     grant: { allowed: false, policy_version: 1, blocking_reasons: [
@@ -155,9 +245,9 @@ test('missing session log is unknown evidence with exact blockers, never a silen
   assert.equal(result.situation.silence_ms, null);
   assert.equal(result.situation.silence_reason, 'session evidence missing');
   assert.deepEqual(result.continuation_eligibility, {
-    version: 2,
+    version: 3,
     automatic: { allowed: false, blocking_reasons: [
-      'recovery-not-enabled', 'resume-contract-unverified', 'session-evidence-missing',
+      'recovery-policy-missing', 'session-evidence-missing',
       'command-evidence-unknown', 'process-tree-stop-unverified',
     ] },
     grant: { allowed: false, policy_version: 1, blocking_reasons: [
@@ -168,9 +258,9 @@ test('missing session log is unknown evidence with exact blockers, never a silen
 
 test('LIMIT without a result has the exact ordered blockers', () => {
   assert.deepEqual(assessStop(input({ status: 'LIMIT' })).continuation_eligibility, {
-    version: 2,
+    version: 3,
     automatic: { allowed: false, blocking_reasons: [
-      'recovery-not-enabled', 'resume-contract-unverified', 'limit',
+      'recovery-policy-missing', 'limit',
       'not-silent-stall', 'process-tree-stop-unverified',
     ] },
     grant: { allowed: false, policy_version: 1, blocking_reasons: [
@@ -187,9 +277,9 @@ test('all applicable factual blockers survive result and LIMIT precedence', () =
     status: 'LIMIT', resultOk: true, agentWrites: true, threadId: null,
     stop, silencePolicy: null,
   })).continuation_eligibility, {
-    version: 2,
+    version: 3,
     automatic: { allowed: false, blocking_reasons: [
-      'recovery-not-enabled', 'resume-contract-unverified', 'result-present', 'limit',
+      'recovery-policy-missing', 'result-present', 'limit',
       'writer-role-not-approved', 'thread-unavailable', 'command-in-flight',
       'threshold-unconfigured', 'not-silent-stall', 'process-tree-stop-unverified',
     ] },
@@ -204,9 +294,9 @@ test('UNAVAILABLE with no session or commands reports absence, not silence', () 
   assert.deepEqual(assessStop(input({
     status: 'UNAVAILABLE', threadId: null, stop: null, silencePolicy: null,
   })).continuation_eligibility, {
-    version: 2,
+    version: 3,
     automatic: { allowed: false, blocking_reasons: [
-      'recovery-not-enabled', 'resume-contract-unverified', 'unavailable', 'thread-unavailable',
+      'recovery-policy-missing', 'unavailable', 'thread-unavailable',
       'session-evidence-not-observed', 'command-evidence-unknown', 'threshold-unconfigured',
       'not-silent-stall', 'process-tree-stop-unverified',
     ] },

@@ -90,7 +90,7 @@ this record or reads additional evidence for it, so collecting again preserves t
 | `silence_policy` | Policy frozen in `worker.json#silence_policy`, copied verbatim without consulting today's registry. A `null` object means an older run without this record; a `null` threshold inside an object means not calibrated. Diagnostic only in this release; replies use the stored assessments below, never this policy directly. See below. |
 | `recovery_policy` | Policy frozen in `worker.json#recovery_policy`, copied verbatim without consulting today's registry or environment; `null` for an older run without this record. Diagnostic only in this release. See “Recovery policy” below. |
 | `situation` | Version-1 classification of the frozen stop evidence; see “Stop assessments” below. |
-| `continuation_eligibility` | Version-2 automatic/grant assessments with ordered blockers and a grant `policy_version`. Both `allowed` values are always `false` in this release. |
+| `continuation_eligibility` | Version-3 automatic/grant assessments with ordered blockers and grant `policy_version: 1`. Automatic eligibility requires a `silent-stall-candidate` and no blockers; this assessment starts no continuation. |
 | `treatment` | Version-1 diagnostic action: `{ version: 1, effect: 'diagnostic-only', action }`. It never executes recovery. |
 | `sufficient` | Advisor only: the boolean from the advisor result, or `null` when the result did not say. An insufficient scope can still be a valid `OK` result. |
 | `missing_paths` | Advisor only: paths the result identified as needed, or `null` when the result did not say. |
@@ -139,13 +139,14 @@ Plan_80 A2/A5 and E10/E12 separate the stop facts, their classification and diag
 treatment. After `resolveStatus`, `collect()` records `situation`,
 `continuation_eligibility` and `treatment`. These fields do not change the verdict or status.
 Only a `FAIL` reply with `result_ok: false` renders the three diagnostic rows below.
-Automatic recovery remains blocked. The `resume:` grant is decided by `grantBlockers`
+Automatic eligibility uses the frozen recovery policy and prior-attempt fact. The `resume:` grant is decided by `grantBlockers`
 (policy version 1); an allowed grant prints a ready `resume:` line when an order id is recorded.
 Collecting the same unchanged folder twice produces identical assessments.
 
-`assessStop({ status, resultOk, agentWrites, threadId, stop, silencePolicy })` is pure.
+`assessStop({ status, resultOk, agentWrites, threadId, stop, silencePolicy, recoveryPolicy, resumedFrom })` is pure.
 It receives the resolved status, result usability, registry `writes`, the recorded thread
-id, and frozen `meta.stop` and `meta.silence_policy`; it reads no files. Recollection
+id, and frozen `meta.stop`, `meta.silence_policy`, `meta.recovery_policy` and
+`meta.resumed_from`; it reads no files. Recollection
 must use the same frozen session reference and policy rather than today's activity or
 configuration. Stdout receipts are not the calibrated signal and cannot affect assessments.
 
@@ -170,17 +171,19 @@ Kind precedence is fixed:
 4. Trigger `spawn-error` or `stream-error` gives `runner-error`.
 5. Trigger `exit` gives `process-exit-no-result`, including exit code zero.
 6. Command state `in-flight` gives `command-in-flight`.
-7. For trigger `deadline`, unknown or absent command evidence, or a null silence age,
+7. For trigger `deadline` or `silence`, unknown or absent command evidence, or a null silence age,
    gives `evidence-unknown`. Otherwise a null threshold gives `silence-unclassified`;
    silence greater than or equal to the threshold gives `silent-stall-candidate`, and
    silence below it gives `recent-activity`.
 8. Anything else, including a null trigger, gives `evidence-unknown`.
 
 Unknown evidence never becomes silence. A null threshold never becomes stalled or recent.
+The `silence` trigger uses exactly the `deadline` branch; `situation.cause` retains the recorded trigger.
 
-Plan_80 E13/O2 records `continuation_eligibility` as `{ version: 2,
+Plan_80 E15/O4 records `continuation_eligibility` as `{ version: 3,
 automatic: { allowed, blocking_reasons }, grant: { allowed, policy_version: 1,
-blocking_reasons } }`. Each `allowed` is computed as no blocking reasons. The grant list
+blocking_reasons } }`. Automatic `allowed` requires kind `silent-stall-candidate` and no
+blocking reasons; grant `allowed` requires no grant blockers. The grant list
 is exactly the result of the pure exported
 `grantBlockers({ status, resultOk, agentWrites, threadId, stop })` from
 `meta/stop-assessment.mjs`. Its exported `GRANT_POLICY_VERSION = 1` is stored as
@@ -205,12 +208,22 @@ The grant predicate returns every applicable safety/identity blocker in this fix
 Command evidence, silence thresholds and stall kind do not block a read-only grant:
 Plan_80 S3 verified that writes are denied outside `%TEMP%`, so interrupted commands
 leave no effects to reconcile there. The reply still shows `command=<state>` for the
-orchestrator's decision. The grant list has neither `recovery-not-enabled` nor
-`resume-contract-unverified` (S3 verified the read-only resume contract).
+orchestrator's decision. The grant list does not depend on the recovery policy.
+Plan_80 S3 and two live `resume:` acceptances verified the read-only resume contract;
+there is no resume-contract blocker on either path.
 
-The automatic list retains its strict policy: it starts with `recovery-not-enabled`,
-then `resume-contract-unverified`, so it also remains blocked. Append every applicable
-automatic blocker in this fixed order:
+The automatic list starts with applicable frozen-policy blockers in this fixed order:
+
+1. `recovery-policy-missing` when `recoveryPolicy` is null, absent or not an object.
+   In this case, skip the next three policy checks.
+2. Otherwise, `recovery-not-enabled` when `recoveryPolicy.enabled !== true`.
+3. `recovery-brake-off` when `recoveryPolicy.brake?.value === 'off'`.
+4. `recovery-budget-unconfigured` when `recoveryPolicy.budget_ms` is not a positive integer.
+5. `recovery-attempt-spent` when `resumedFrom` is a non-empty string, regardless of whether
+   a policy exists. E15 permits one automatic attempt per stalled pass; a continuation
+   is never continued automatically again.
+
+Then append every applicable factual blocker in the unchanged fixed order:
 
 1. `result-present` when a usable result exists.
 2. `limit` or `unavailable` for the resolved status, even if the kind is `result-present`.
@@ -222,10 +235,12 @@ automatic blocker in this fixed order:
    or absent command evidence.
 7. `threshold-unconfigured` when `threshold_ms` is null.
 8. `not-silent-stall` when the kind is known not to be a stall: never for
-   `evidence-unknown` or `silence-unclassified` (whether the run stalled is unknown, and their
-   own reasons already block), nor for `silent-stall-candidate`.
+   `evidence-unknown` or `silence-unclassified` (whether the run stalled is unknown), nor
+   for `silent-stall-candidate`.
 9. `process-tree-stop-unverified` unless `stop.tree_stop.state` is `stopped` or `exited`,
    using the same evidence rule as the grant predicate.
+10. `stall-not-established` when the kind is not `silent-stall-candidate` and no reason
+    above applies, so a refusal always names why.
 
 `treatment.effect` is always `diagnostic-only`: the action is advice and nothing executes it. Its action mapping is:
 
@@ -265,7 +280,8 @@ Ready resume line: resume: <run folder> — continue after <situation.kind> (con
 ```
 
 A blocked grant or missing order id adds no line. Grant eligibility is decided only by
-`grantBlockers` (policy version 1); automatic recovery remains blocked separately.
+`grantBlockers` (policy version 1); automatic eligibility is assessed separately and
+starts no continuation.
 
 Every `OK`, `LIMIT`, `UNAVAILABLE`, and `FAIL` with a usable result keeps its reply unchanged.
 These rows are explanatory only: they change no status and execute no treatment.
@@ -329,9 +345,9 @@ Plan_80 E16 therefore also carries `recovery_policy.watchdog` verbatim into `met
 | `brake` | Frozen host brake `{ key, value, source }`: the environment key, its resolved `on`/`off` value, and `env`/`default` source. |
 
 `brake.value: off` means the host switched automatic recovery off. The host brake can
-only switch recovery off; it can never enable a disabled package switch. This record is
-diagnostic only in this release: it changes no verdict, stop assessment or reply and
-does not trigger automatic recovery.
+only switch recovery off; it can never enable a disabled package switch. Plan_80 E15/O4
+uses this frozen record for automatic eligibility and the stored `Continuation:` row.
+It changes no verdict, status, situation or treatment and starts no automatic continuation.
 
 ### Early `writeFailure()`
 

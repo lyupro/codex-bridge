@@ -316,9 +316,25 @@ The recorded grant is decided only by `grantBlockers` (policy version 1): an eli
 records `grant: { allowed: true, policy_version: 1, blocking_reasons: [] }`. Its FAIL reply renders
 `grant allowed` without empty parentheses and, when the order id is recorded, prints a ready
 `resume:` line immediately after `Continuation:`. A writer role remains blocked by
-`writer-role-not-approved`. Automatic recovery remains blocked by `recovery-not-enabled` and
-`resume-contract-unverified`; the ready line is an instruction for the orchestrator, not an
-automatic restart.
+`writer-role-not-approved`. Continuation eligibility is version 3; the grant policy remains
+version 1. Automatic blockers are computed from the run's frozen recovery policy in this order:
+`recovery-policy-missing` for a null, absent or non-object policy (skip the next three checks);
+otherwise `recovery-not-enabled` when `enabled !== true`, `recovery-brake-off` when
+`brake.value === 'off'`, then `recovery-budget-unconfigured` unless `budget_ms` is a positive
+integer. Next comes `recovery-attempt-spent` for a non-empty string `resumed_from`, even
+without a policy: E15 allows one automatic attempt per stalled pass.
+
+The existing factual blockers follow in order: `result-present`, `limit` or `unavailable`,
+`writer-role-not-approved`, `thread-unavailable`, `session-evidence-<state>`, then
+`command-in-flight` or `command-evidence-unknown`. Finally come `threshold-unconfigured`,
+`not-silent-stall`, and `process-tree-stop-unverified`, when applicable. `not-silent-stall`
+is omitted for `evidence-unknown`, `silence-unclassified`, and `silent-stall-candidate`.
+Any other kind left with no blocker gets `stall-not-established`, so automatic eligibility
+means `silent-stall-candidate` with an empty blocker list.
+Plan_80 S3 and two live `resume:` acceptances verified the read-only resume contract;
+there is no resume-contract blocker. The `silence` stop trigger is classified exactly like
+`deadline`, while `situation.cause` retains `silence`. These assessments start no continuation
+and change no verdict text; the ready line remains an instruction for the orchestrator.
 
 When reconciling the builder's report, the runner considers accumulated changes from the state
 before the chain's first run through the state after the current one. A continuation can therefore

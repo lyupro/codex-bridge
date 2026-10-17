@@ -147,7 +147,7 @@ test('failed replies report events and stderr sizes plus the read command', () =
     'Artifacts: events.jsonl 0 B · stderr.log 28 B · result.json empty or missing · exit=1',
     'Worktree: no new changes',
     'Situation: evidence-unknown · silence=unknown · threshold=unconfigured · command=unknown',
-    'Continuation: automatic blocked (recovery-not-enabled, resume-contract-unverified, writer-role-not-approved, thread-unavailable, session-evidence-not-observed, command-evidence-unknown, threshold-unconfigured, process-tree-stop-unverified) · grant blocked (writer-role-not-approved, stop-record-missing, thread-unavailable, session-evidence-not-observed, process-tree-stop-unverified)',
+    'Continuation: automatic blocked (recovery-policy-missing, writer-role-not-approved, thread-unavailable, session-evidence-not-observed, command-evidence-unknown, threshold-unconfigured, process-tree-stop-unverified) · grant blocked (writer-role-not-approved, stop-record-missing, thread-unavailable, session-evidence-not-observed, process-tree-stop-unverified)',
     'Treatment: inspect-evidence · diagnostic only, nothing runs it',
     `Log: codex-bridge read ${dir}`,
   ].join('\n'));

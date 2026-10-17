@@ -27,7 +27,7 @@ export function grantBlockers({ status, resultOk, agentWrites, threadId, stop })
   return blockers;
 }
 
-export function assessStop({ status, resultOk, agentWrites, threadId, stop, silencePolicy }) {
+export function assessStop({ status, resultOk, agentWrites, threadId, stop, silencePolicy, recoveryPolicy, resumedFrom }) {
   const cause = stop?.trigger ?? null;
   const sessionState = stop?.session?.state ?? null;
   const commandFacts = stop?.session?.at_reference?.commands;
@@ -46,7 +46,7 @@ export function assessStop({ status, resultOk, agentWrites, threadId, stop, sile
   else if (cause === 'spawn-error' || cause === 'stream-error') kind = 'runner-error';
   else if (cause === 'exit') kind = 'process-exit-no-result';
   else if (commands.state === 'in-flight') kind = 'command-in-flight';
-  else if (cause === 'deadline') {
+  else if (cause === 'deadline' || cause === 'silence') {
     if (commands.state !== 'none' || silence.ms === null) kind = 'evidence-unknown';
     else if (threshold === null) kind = 'silence-unclassified';
     else kind = silence.ms >= threshold ? 'silent-stall-candidate' : 'recent-activity';
@@ -63,7 +63,17 @@ export function assessStop({ status, resultOk, agentWrites, threadId, stop, sile
     session_state: sessionState,
     result_file_state: stop?.result_file?.state ?? null,
   };
-  const automatic = ['recovery-not-enabled', 'resume-contract-unverified'];
+  const automatic = [];
+  if (recoveryPolicy === null || typeof recoveryPolicy !== 'object') {
+    automatic.push('recovery-policy-missing');
+  } else {
+    if (recoveryPolicy.enabled !== true) automatic.push('recovery-not-enabled');
+    if (recoveryPolicy.brake?.value === 'off') automatic.push('recovery-brake-off');
+    if (!Number.isInteger(recoveryPolicy.budget_ms) || recoveryPolicy.budget_ms <= 0) {
+      automatic.push('recovery-budget-unconfigured');
+    }
+  }
+  if (typeof resumedFrom === 'string' && resumedFrom.length > 0) automatic.push('recovery-attempt-spent');
   const grant = grantBlockers({ status, resultOk, agentWrites, threadId, stop });
   const factual = [];
   if (resultOk) factual.push('result-present');
@@ -77,11 +87,13 @@ export function assessStop({ status, resultOk, agentWrites, threadId, stop, sile
   automatic.push(...factual);
   if (threshold === null) automatic.push('threshold-unconfigured');
   // Without evidence or a calibrated threshold nobody knows whether this was a stall, so
-  // "not a stall" would be a claim; those cases are already blocked by their own reasons.
+  // "not a stall" would be a claim; E15/O4 also requires the diagnosed stall kind for eligibility.
   if (!['evidence-unknown', 'silence-unclassified', 'silent-stall-candidate'].includes(kind)) {
     automatic.push('not-silent-stall');
   }
   if (!codexProvenGone(stop)) automatic.push('process-tree-stop-unverified');
+  // E15/O4: only a diagnosed stall continues; a refusal with no named reason would print "blocked ()".
+  if (kind !== 'silent-stall-candidate' && automatic.length === 0) automatic.push('stall-not-established');
 
   const actions = {
     'result-present': 'retain-stop-facts',
@@ -98,7 +110,7 @@ export function assessStop({ status, resultOk, agentWrites, threadId, stop, sile
   return {
     situation,
     continuation_eligibility: {
-      version: 2,
+      version: 3,
       automatic: { allowed: automatic.length === 0, blocking_reasons: automatic },
       grant: { allowed: grant.length === 0, policy_version: GRANT_POLICY_VERSION, blocking_reasons: grant },
     },

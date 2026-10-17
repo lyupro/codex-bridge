@@ -27,8 +27,8 @@ test('policy version 1 allows an otherwise eligible silent stall without mutatin
   assert.deepEqual(grantBlockers(args), []);
   assert.deepEqual(args, before);
   assert.deepEqual(assessStop(args).continuation_eligibility, {
-    version: 2,
-    automatic: { allowed: false, blocking_reasons: ['recovery-not-enabled', 'resume-contract-unverified'] },
+    version: 3,
+    automatic: { allowed: false, blocking_reasons: ['recovery-policy-missing'] },
     grant: { allowed: true, policy_version: 1, blocking_reasons: [] },
   });
 });
@@ -93,7 +93,7 @@ for (const [state, blocker, kind] of [
     assert.equal(assessment.situation.commands.state, state);
     assert.deepEqual(grantBlockers(args), []);
     assert.deepEqual(assessment.continuation_eligibility.automatic.blocking_reasons, [
-      'recovery-not-enabled', 'resume-contract-unverified', blocker,
+      'recovery-policy-missing', blocker,
       ...(state === 'in-flight' ? ['not-silent-stall'] : []),
     ]);
     assert.deepEqual(assessment.continuation_eligibility.grant.blocking_reasons, []);
@@ -113,7 +113,7 @@ test('process-exit-no-result with an observed exited tree is grant eligible', ()
   assert.equal(assessStop(args).situation.kind, 'process-exit-no-result');
   assert.deepEqual(grantBlockers(args), []);
   assert.deepEqual(assessStop(args).continuation_eligibility.automatic.blocking_reasons, [
-    'recovery-not-enabled', 'resume-contract-unverified', 'not-silent-stall',
+    'recovery-policy-missing', 'not-silent-stall',
   ]);
 });
 

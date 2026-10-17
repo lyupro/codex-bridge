@@ -169,6 +169,7 @@ export function collect(runDir, agent, exitCode) {
   Object.assign(meta, assessStop({
     status, resultOk, agentWrites: cfg.writes, threadId: events.session_id,
     stop: meta.stop, silencePolicy: meta.silence_policy,
+    recoveryPolicy: meta.recovery_policy, resumedFrom: meta.resumed_from,
   }));
 
   fs.writeFileSync(path.join(runDir, 'meta.json'), `${JSON.stringify(meta, null, 2)}\n`);

@@ -92,8 +92,8 @@ test('an eligible failed advisor advise run records an allowed grant and prints 
   assert.equal(meta.result_ok, false);
   assert.equal(meta.session_id, 'resume-thread');
   assert.deepEqual(meta.continuation_eligibility, {
-    version: 2,
-    automatic: { allowed: false, blocking_reasons: ['recovery-not-enabled', 'resume-contract-unverified'] },
+    version: 3,
+    automatic: { allowed: false, blocking_reasons: ['recovery-policy-missing'] },
     grant: { allowed: true, policy_version: 1, blocking_reasons: [] },
   });
   const persisted = JSON.parse(fs.readFileSync(path.join(dir, 'meta.json'), 'utf8'));
@@ -101,7 +101,7 @@ test('an eligible failed advisor advise run records an allowed grant and prints 
   const rows = reply.split('\n');
   const at = rows.findIndex((row) => row.startsWith('Continuation:'));
   assert.ok(at >= 0);
-  assert.equal(rows[at], 'Continuation: automatic blocked (recovery-not-enabled, resume-contract-unverified) · grant allowed');
+  assert.equal(rows[at], 'Continuation: automatic blocked (recovery-policy-missing) · grant allowed');
   assert.equal(rows[at + 1],
     `Ready resume line: resume: ${path.basename(dir)} — continue after silent-stall-candidate (continues that pass's Codex thread under order ow066-o8).`);
   assert.equal(rows[at + 2], 'Treatment: retain-stop-facts · diagnostic only, nothing runs it');
@@ -120,7 +120,7 @@ test('the same failed run for codex-build retains the writer-role blocker', () =
   });
   assert.deepEqual(meta.continuation_eligibility.automatic, {
     allowed: false,
-    blocking_reasons: ['recovery-not-enabled', 'resume-contract-unverified', 'writer-role-not-approved'],
+    blocking_reasons: ['recovery-policy-missing', 'writer-role-not-approved'],
   });
   assert.equal(reply.includes('Ready resume line:'), false);
 });
