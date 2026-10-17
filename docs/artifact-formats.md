@@ -35,6 +35,7 @@ before the final update to `status.json`.
 | Field | Value |
 | --- | --- |
 | `stopped_on_deadline` | Whether the runner killed the run at its time limit. Written by the worker immediately after Codex returns, before the verdict; `false` means “the runner monitored the run and did not kill it.” An absent field means a run from the previous contract. This fact used to live in a log line, where Codex itself also writes. |
+| `stopped_by_silence` | Whether the silence watchdog requested a stop. Written next to `stopped_on_deadline` before the verdict; `false` for shadow, off, an earlier deadline, or a normal exit. Absent on older runs. |
 | `elapsed_ms` | How long the run lived before Codex returned. This is actual elapsed time, not the allocated budget: the budget is in `worker.json#budget_minutes`. |
 | `stdio_drained` | Whether the worker managed to wait for stdout/stderr to close normally. `true` means a normal `close`; `false` means closure after a limited grace period because a stream held the process open. The field is written before the verdict and does not replace `stopped_on_deadline`. |
 | `stop` | Runner-owned versioned observation of the first stop trigger, stdout receipts and result-file availability; see “Stop record” below. Written after `runCodex`, before the verdict. Absent on older runs. |
@@ -690,7 +691,7 @@ independent facts. The runner writes `status.json#stop`, because Codex can write
 | Field | Meaning |
 | --- | --- |
 | `version` | `2`. Version-1 records (0.6.16 and earlier) have no `tree_stop`. |
-| `trigger` | First observed stop trigger: `exit`, `deadline`, `stream-error`, or `spawn-error`; `null` (with `stopped_at` and `process_error`) when the run settled with no trigger observed first. |
+| `trigger` | First observed stop trigger: `exit`, `deadline`, `silence`, `stream-error`, or `spawn-error`; `null` (with `stopped_at` and `process_error`) when the run settled with no trigger observed first. |
 | `stopped_at` | ISO wall-clock time when that first trigger was observed, never the later settlement time after draining. |
 | `exit_code` | Code from the child's `exit` event; `null` if that event never fired (or exited by signal). |
 | `signal` | Signal from the child's `exit` event; `null` if absent or that event never fired. |
@@ -701,9 +702,11 @@ independent facts. The runner writes `status.json#stop`, because Codex can write
 | `receipts` | The stdout receipt summary: `lines`, `last_received_at`, `incomplete`, `truncated`, `write_error`. |
 | `result_file` | One observation of the selected agent's result file, with `state` as below. |
 | `session` | Read-only observation of this thread's Codex session-log activity, with fields and states below. |
+| `watchdog` | Final silence-watchdog `record()` snapshot (below), or `null` when the run had no watchdog record. |
 
 `exit` means the child's `exit` event came first. `deadline` means the budget timer fired
-while the child was alive. `stream-error` means a log stream failed and the runner stopped
+while the child was alive. `silence` means the armed watchdog confirmed a stall before
+exit or deadline. `stream-error` means a log stream failed and the runner stopped
 Codex; `spawn-error` means the child emitted `error`. A later exit supplies its code/signal
 without replacing the first trigger or its timestamp. Receipt write failures remain receipt
 diagnostics and do not stop Codex.
@@ -730,6 +733,28 @@ file was read but was not JSON; `unfilled` means parsed JSON failed the agent re
 `filled` check; `filled` means that check passed. The runner reads the result exactly once
 for this record and adds no new file write. Later changes to artifacts cannot rewrite the
 record through `collect()`.
+
+### Silence watchdog record
+
+Plan_80 E16/O3b adds `stop.watchdog` without changing stop record version `2`.
+The worker supplies a watchdog even for `off`; a direct `runCodex` call without one
+records `null`. Older records may lack the field entirely.
+
+| Field | Meaning |
+| --- | --- |
+| `version` | Watchdog record version `1`. |
+| `arming` | Frozen `off`, `shadow`, or `armed` state. |
+| `threshold_ms` | Frozen silence threshold, or `null` when unconfigured. |
+| `interval_ms` | Poll interval in milliseconds; `null` for `off`. |
+| `checks` | Number of completed session-activity reads, including confirmation reads. |
+| `last_observation` | `null` before any completed read; otherwise `{ at, state, commands, silence_ms }`. |
+| `decision` | `null` without a confirmed stall; otherwise `{ at, silence_ms, confirmed_at, action }`, with `action` of `recorded` for shadow or `stop` for armed. |
+| `fault` | Reader/check error message, or `null` without a fault. A fault disables subsequent reads and never stops the run. |
+
+The decision uses two reads of the Codex session log. A shadow decision never kills
+Codex; the diagnostic record starts no continuation and changes no verdict or reply text.
+
+### Session activity
 
 `session` is read once using `events.jsonl`'s `thread.started` id and
 `status.json#started_at`. The independent reader uses `resolveCodexHome()` and first looks in

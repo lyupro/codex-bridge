@@ -3,7 +3,8 @@
  *
  * It takes its whole order from worker.json, written by launcher.mjs into the run folder —
  * after the split that file is the only connection between the two halves. Read here:
- * `repo`, `agent`, `args`, `is_git_repo`, `budget_minutes`, `order_id`. Written there: those six plus
+ * `repo`, `agent`, `args`, `is_git_repo`, `budget_minutes`, `order_id`, `silence_policy`,
+ * `recovery_policy`. Written there: those fields plus
  * `phase`, `slug`, `launcher_pid` and `scope_new`, which nothing here needs but a run folder read back
  * months later does. The launcher must write the selected phase's budget into worker.json before
  * spawning this half, so the worker never re-reads config.json and one run cannot acquire two
@@ -18,6 +19,7 @@ import { writeStatus } from '../meta/run-state.mjs';
 import { setRun, emitReply } from './run-context.mjs';
 import { writeBuildAfter } from './build-evidence.mjs';
 import { runCodex } from './codex-cmd.mjs';
+import { createSilenceWatchdog } from './silence-watchdog.mjs';
 import { buildStopRecord } from './stop-record.mjs';
 import { admitWorker } from './worker-admission.mjs';
 import { orderClaimHolderText } from './order-claim.mjs';
@@ -47,12 +49,17 @@ export async function worker(runDir) {
     process.exit(EXIT.FAIL);
   }
 
+  const watchdog = createSilenceWatchdog({
+    runDir,
+    arming: cfg.recovery_policy?.watchdog?.arming ?? 'off',
+    thresholdMs: cfg.silence_policy?.threshold_ms ?? null,
+  });
   const run = await runCodex(
     cfg.args,
     fs.readFileSync(path.join(runDir, 'task.md'), 'utf8'),
     path.join(runDir, 'events.jsonl'),
     cfg.budget_minutes,
-    { cwd: cfg.repo },
+    { cwd: cfg.repo, watchdog },
   );
   // This runner-owned fact cannot be forged through events.jsonl, which Codex can write.
   // Written even when no deadline fired: `false` is the marker that a runner was watching,
@@ -61,6 +68,7 @@ export async function worker(runDir) {
   // a grandchild kept a pipe open, the distinction the 2026-08-06 incident made necessary.
   writeStatus(runDir, {
     stopped_on_deadline: run.stoppedOnDeadline,
+    stopped_by_silence: run.stoppedBySilence,
     elapsed_ms: run.elapsedMs,
     stdio_drained: run.stdioDrained,
     stop: buildStopRecord(run, runDir, cfg.agent),

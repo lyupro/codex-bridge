@@ -34,6 +34,7 @@ export function createSilenceWatchdog({
   let checks = 0;
   let lastObservation = null;
   let decision = null;
+  let fault = null;
 
   function observe() {
     const referenceAt = now().toISOString();
@@ -49,27 +50,33 @@ export function createSilenceWatchdog({
 
   // check() is synchronous, so the caller's timer cannot re-enter it.
   function check() {
-    if (arming === 'off' || decision !== null) return 'none';
-    if (threadId === null) {
-      threadId = readEvents(runDir).session_id;
-      if (threadId === null) return 'none';
-      startedAt = readJsonFileSync(path.join(runDir, 'status.json')).started_at;
+    if (arming === 'off' || decision !== null || fault !== null) return 'none';
+    try {
+      if (threadId === null) {
+        threadId = readEvents(runDir).session_id;
+        if (threadId === null) return 'none';
+        startedAt = readJsonFileSync(path.join(runDir, 'status.json')).started_at;
+      }
+      const first = observe();
+      if (!first.verdict.stall) return 'none';
+      const second = observe();
+      if (!second.verdict.stall) return 'none';
+      decision = {
+        at: first.referenceAt, silence_ms: first.verdict.silence_ms,
+        confirmed_at: second.referenceAt, action: arming === 'shadow' ? 'recorded' : 'stop',
+      };
+      return arming === 'armed' ? 'stop' : 'none';
+    } catch (error) {
+      // Plan_80 B1b1: a diagnostic reader TypeError must never fail a good run.
+      fault = error?.message ?? String(error);
+      return 'none';
     }
-    const first = observe();
-    if (!first.verdict.stall) return 'none';
-    const second = observe();
-    if (!second.verdict.stall) return 'none';
-    decision = {
-      at: first.referenceAt, silence_ms: first.verdict.silence_ms,
-      confirmed_at: second.referenceAt, action: arming === 'shadow' ? 'recorded' : 'stop',
-    };
-    return arming === 'armed' ? 'stop' : 'none';
   }
 
   function record() {
     return {
       version: 1, arming, threshold_ms: thresholdMs, interval_ms: interval,
-      checks, last_observation: lastObservation, decision,
+      checks, last_observation: lastObservation, decision, fault,
     };
   }
 

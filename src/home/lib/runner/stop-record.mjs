@@ -83,5 +83,6 @@ export function buildStopRecord(run, runDir, agent) {
     startedAt: threadId ? readJsonFileSync(path.join(runDir, 'status.json')).started_at : undefined,
     referenceAt: run.stop?.stopped_at,
   });
-  return { version: 2, ...run.stop, receipts: run.receipts, result_file: resultFile, session };
+  return { version: 2, ...run.stop, receipts: run.receipts, result_file: resultFile, session,
+    watchdog: run.watchdog ?? null };
 }

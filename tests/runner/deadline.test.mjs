@@ -248,7 +248,7 @@ test('an explicit cwd is the directory used by the spawned Codex process', async
 test('the worker spawns Codex in the run repository', () => {
   const source = fs.readFileSync(new URL('../../src/home/lib/runner/worker.mjs', import.meta.url), 'utf8');
   const call = source.slice(source.indexOf('await runCodex('), source.indexOf(');', source.indexOf('await runCodex(')));
-  assert.match(call, /\{\s*cwd:\s*cfg\.repo\s*\}/);
+  assert.match(call, /\{\s*cwd:\s*cfg\.repo,\s*watchdog\s*\}/);
 });
 
 // A process can be gone while its stdio is not: a detached grandchild holds the pipes open, so

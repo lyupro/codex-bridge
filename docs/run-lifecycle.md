@@ -441,7 +441,8 @@ pass occurred.”
 
 ## Worker sequence
 
-1. The worker reads `worker.json`, takes `repo`, `agent`, `args`, `is_git_repo`, `budget_minutes`, and `order_id`,
+1. The worker reads `worker.json`, takes `repo`, `agent`, `args`, `is_git_repo`, `budget_minutes`, `order_id`,
+   `silence_policy.threshold_ms`, and `recovery_policy.watchdog.arming`,
    and registers the current directory with the crash handler.
 2. Before Codex starts, `admitWorker()` takes the same project-store and exact-order claim, waiting up
    to 60 seconds. Admission requires `status.json#state` to be `running` and no `meta.json`. Under the
@@ -465,7 +466,7 @@ pass occurred.”
    process tree, the killing is recorded as `stopped_on_deadline` in `status.json`, and the worker closes
    the directory with a normal verdict. What Codex has already said survives because it is streamed to
    disk rather than accumulated in memory.
-4. Immediately after `runCodex()` returns, the worker appends `stopped_on_deadline` and `elapsed_ms` to
+4. Immediately after `runCodex()` returns, the worker appends `stopped_on_deadline`, `stopped_by_silence`, and `elapsed_ms` to
    `status.json` — before `collect()` computes the verdict. The log line remains for people, but the
    verdict uses these fields: `status.json` is outside the repository covered by `workspace-write`, so
    Codex cannot forge it.
@@ -480,6 +481,21 @@ pass occurred.”
 9. `emitReply()` creates `reply.txt`. This is the final required file: its presence means that
    `meta.json` and the final state are already on disk.
 10. The worker exits with the code corresponding to the verdict.
+
+### Silence watchdog
+
+Plan_80 E16/O3b wires the watchdog using arming frozen at launch in
+`worker.json#recovery_policy.watchdog.arming` and the frozen
+`silence_policy.threshold_ms`. Only Codex session-log activity decides a stall;
+two consecutive reads must confirm command-free silence at or above the threshold.
+Stdout, heartbeat and file times are not activity signals. `shadow` records observations
+and a confirmed decision in `stop.watchdog`, and never stops Codex. `armed` requests a
+process-tree stop with trigger `silence`; the first stop cause wins, including an earlier
+deadline or exit. Polling stops on deadline, exit and settlement. The host brake `off`
+freezes arming to `off`, preserving the old behavior without polling; older orders
+without these policy fields also use `off`. Reader failures record `fault` and disable
+further reads without ending the run. The watchdog starts no continuation and does not
+change verdict or reply logic.
 
 ## Crashes and abandoned runs
 

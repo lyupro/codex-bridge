@@ -162,7 +162,7 @@ export function spawnCaptured(command, args, options) {
  * own bounded file because text outside the JSONL protocol must remain distinguishable from
  * protocol events, and a line cut in half cannot be parsed back safely.
  */
-export function runCodex(args, taskText, eventsPath, budgetMinutes, { graceMs = STDIO_DRAIN_GRACE_MS, cwd } = {}) {
+export function runCodex(args, taskText, eventsPath, budgetMinutes, { graceMs = STDIO_DRAIN_GRACE_MS, cwd, watchdog } = {}) {
   const onWindows = process.platform === 'win32';
   const deadlineMs =
     Number.isFinite(budgetMinutes) && budgetMinutes > 0
@@ -260,14 +260,30 @@ export function runCodex(args, taskText, eventsPath, budgetMinutes, { graceMs = 
     const stop = createStopObservation(onWindows);
     let deadlineTimer;
     let heartbeatTimer;
+    let watchdogPoll;
     let stdioGraceTimer;
     let stoppedOnDeadline = false;
+    let stoppedBySilence = false;
     let exitCode;
     let settled = false;
     let elapsedMs = 0;
     const startedAt = Date.now();
     stampHeartbeat();
     heartbeatTimer = setInterval(stampHeartbeat, HEARTBEAT_INTERVAL_MS);
+    if (watchdog && typeof watchdog.intervalMs === 'number' && watchdog.intervalMs > 0) {
+      watchdogPoll = setInterval(() => {
+        if (settled || exited || watchdog.check() !== 'stop') return;
+        stop.observe('silence');
+        stoppedBySilence = true;
+        const { decision: { silence_ms }, threshold_ms } = watchdog.record();
+        stderrLog.write(
+          `\nrun-codex: run stopped by the silence watchdog after ${silence_ms} ms without session activity (threshold ${threshold_ms} ms)\n`,
+        );
+        // The deadline stays armed: if this kill leaves Codex alive, it is the backstop (Plan_57 D28).
+        clearInterval(watchdogPoll);
+        stop.kill(stopCodex(child, onWindows));
+      }, watchdog.intervalMs);
+    }
     child.stdout.on('data', appendEvents.append);
     child.stdout.on('end', appendEvents.finish);
     child.stderr.on('data', (chunk) => {
@@ -298,6 +314,7 @@ export function runCodex(args, taskText, eventsPath, budgetMinutes, { graceMs = 
     child.stdin.end(Buffer.from(taskText, 'utf8'));
     if (deadlineMs !== null) {
       deadlineTimer = setTimeout(() => {
+        clearInterval(watchdogPoll);
         const elapsed = Date.now() - startedAt;
         // The tree is stopped either way — a grandchild still holding stdio is exactly what
         // the budget exists to end — but only a process that was still alive was killed by
@@ -334,6 +351,7 @@ export function runCodex(args, taskText, eventsPath, budgetMinutes, { graceMs = 
       settled = true;
       if (deadlineTimer) clearTimeout(deadlineTimer);
       if (heartbeatTimer) clearInterval(heartbeatTimer);
+      clearInterval(watchdogPoll);
       if (stdioGraceTimer) clearTimeout(stdioGraceTimer);
       if (!stoppedOnDeadline) elapsedMs = Date.now() - startedAt;
       const exit = failed || code === null ? 1 : code;
@@ -345,13 +363,15 @@ export function runCodex(args, taskText, eventsPath, budgetMinutes, { graceMs = 
       await receipts.close();
       await close(stderrLog);
       await close(eventsLog);
-      resolve({ exit, stoppedOnDeadline, elapsedMs, stdioDrained, receipts: receipts.summary,
+      resolve({ exit, stoppedOnDeadline, stoppedBySilence, watchdog: watchdog ? watchdog.record() : null,
+        elapsedMs, stdioDrained, receipts: receipts.summary,
         stop: stop.snapshot(stdioDrained, elapsedMs) });
     };
 
     child.on('exit', (code, signal) => {
       stop.exit(code, signal);
       exited = true;
+      clearInterval(watchdogPoll);
       exitCode = code;
       if (deadlineTimer) clearTimeout(deadlineTimer);
       if (heartbeatTimer) clearInterval(heartbeatTimer);

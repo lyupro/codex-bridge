@@ -32,7 +32,7 @@ test('missing result is observed without adding a file write', () => {
   const { sampled_at: sampledAt, ...session } = record.session;
   assert.match(sampledAt, /Z$/);
   assert.deepEqual({ ...record, session }, {
-    version: 2, ...run.stop, receipts, result_file: { state: 'missing' },
+    version: 2, ...run.stop, receipts, result_file: { state: 'missing' }, watchdog: null,
     // No events.jsonl, so no thread id: the session log was not looked for.
     session: { state: 'not-observed', reason: null, file: null, last_record_at: null,
       last_record_kind: null, records: 0, unknown_kinds: [],
@@ -263,14 +263,14 @@ test('runCodex spawn error without exit keeps null exit facts', async (t) => {
 test('Plan_80 A4: every first trigger owns its time and error despite later triggers', (t) => {
   const now = Date.parse('2026-10-15T08:00:00Z');
   t.mock.timers.enable({ apis: ['Date'], now });
-  for (const trigger of ['exit', 'deadline', 'stream-error', 'spawn-error']) {
+  for (const trigger of ['exit', 'deadline', 'silence', 'stream-error', 'spawn-error']) {
     const stop = createStopObservation();
     const firstAt = new Date().toISOString();
     const error = trigger.endsWith('-error') ? new Error(`${trigger} first`) : undefined;
     if (trigger === 'exit') stop.exit(4, null);
     else stop.observe(trigger, error);
     t.mock.timers.tick(1000);
-    for (const later of ['exit', 'deadline', 'stream-error', 'spawn-error']) {
+    for (const later of ['exit', 'deadline', 'silence', 'stream-error', 'spawn-error']) {
       stop.observe(later, new Error('later error'));
     }
     const record = stop.snapshot(true, 1000);
@@ -343,4 +343,14 @@ test('session reference is the first stop time, excluding tool output written du
     commands: { state: 'in-flight', reason: null,
       pending: [{ call_id: 'running', name: 'exec', called_at: at(-1000) }] },
   });
+});
+
+test('the watchdog observation is preserved without changing stop record version 2', () => {
+  const { dir } = resultTree();
+  const watchdog = { version: 1, arming: 'shadow', threshold_ms: 996000, interval_ms: 30000,
+    checks: 0, last_observation: null, decision: null, fault: null };
+  const record = buildStopRecord({ ...run, watchdog }, dir, 'codex-review');
+  assert.equal(record.version, 2);
+  assert.deepEqual(record.watchdog, watchdog);
+  assert.equal(buildStopRecord({ ...run, watchdog: null }, dir, 'codex-review').watchdog, null);
 });

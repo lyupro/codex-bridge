@@ -109,7 +109,7 @@ for (const arming of ['shadow', 'armed']) {
     assert.equal(watchdog.intervalMs, 30000);
     assert.deepEqual(watchdog.record(), {
       version: 1, arming, threshold_ms: THRESHOLD, interval_ms: 30000,
-      checks: 0, last_observation: null, decision: null,
+      checks: 0, last_observation: null, decision: null, fault: null,
     });
     assert.equal(watchdog.check(), arming === 'armed' ? 'stop' : 'none');
     assert.deepEqual(reads, [
@@ -120,7 +120,7 @@ for (const arming of ['shadow', 'armed']) {
       version: 1, arming, threshold_ms: THRESHOLD, interval_ms: 30000, checks: 2,
       last_observation: { at: CONFIRMED, state: 'observed', commands: 'none', silence_ms: 1201000 },
       decision: { at: REFERENCE, silence_ms: 1200000, confirmed_at: CONFIRMED,
-        action: arming === 'shadow' ? 'recorded' : 'stop' },
+        action: arming === 'shadow' ? 'recorded' : 'stop' }, fault: null,
     });
     const frozen = watchdog.record();
     assert.equal(watchdog.check(), 'none');
@@ -149,7 +149,7 @@ test('non-stall reads are counted once and preserve the latest observation', () 
   assert.deepEqual(watchdog.record(), {
     version: 1, arming: 'shadow', threshold_ms: THRESHOLD, interval_ms: 750, checks: 1,
     last_observation: { at: REFERENCE, state: 'missing', commands: null, silence_ms: null },
-    decision: null,
+    decision: null, fault: null,
   });
 });
 
@@ -193,7 +193,7 @@ test('off reads no files, session activity or clock and preserves the given thre
     assert.equal(watchdog.check(), 'none');
     assert.deepEqual(watchdog.record(), {
       version: 1, arming: 'off', threshold_ms: thresholdMs, interval_ms: null,
-      checks: 0, last_observation: null, decision: null,
+      checks: 0, last_observation: null, decision: null, fault: null,
     });
   }
 });
@@ -207,4 +207,46 @@ test('invalid arming values and non-positive or non-integer active thresholds fa
       assert.throws(() => createSilenceWatchdog({ arming, thresholdMs }), /positive integer/);
     }
   }
+});
+
+test('Plan_80 B1b1: a reader fault is recorded once and disables further reads', () => {
+  for (const failOn of [1, 2]) {
+    let reads = 0;
+    const { watchdog } = detector({ arming: 'armed', read: () => {
+      reads++;
+      if (reads === failOn) throw new TypeError('session reader failed');
+      return activity();
+    } });
+    assert.equal(watchdog.check(), 'none');
+    assert.equal(watchdog.record().fault, 'session reader failed');
+    assert.equal(watchdog.record().decision, null);
+    assert.equal(watchdog.record().checks, failOn - 1);
+    const frozen = watchdog.record();
+    assert.equal(watchdog.check(), 'none');
+    assert.equal(reads, failOn);
+    assert.deepEqual(watchdog.record(), frozen);
+  }
+});
+
+test('an unreadable status records a fault and never retries discovery or the reader', (t) => {
+  const runDir = fixture();
+  const status = path.join(runDir, 'status.json');
+  const originalRead = fs.readFileSync;
+  let statusReads = 0;
+  const readFile = t.mock.method(fs, 'readFileSync', (file, ...args) => {
+    if (file === status) {
+      statusReads++;
+      throw new Error('status is unreadable');
+    }
+    return originalRead(file, ...args);
+  });
+  const { watchdog, reads, ticks } = detector({ runDir });
+  assert.equal(watchdog.check(), 'none');
+  assert.match(watchdog.record().fault, /status is unreadable/);
+  const calls = readFile.mock.calls.length;
+  assert.equal(watchdog.check(), 'none');
+  assert.equal(readFile.mock.calls.length, calls);
+  assert.equal(statusReads, 1);
+  assert.equal(reads.length, 0);
+  assert.equal(ticks(), 0);
 });
