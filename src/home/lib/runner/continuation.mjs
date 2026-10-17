@@ -14,6 +14,7 @@ import { workerMayBeAlive } from '../meta/run-liveness.mjs';
 import { readSessionActivity } from '../codex-session-log.mjs';
 import { grantBlockers } from '../meta/stop-assessment.mjs';
 import { AGENTS } from '../agents.mjs';
+import { threadFreshnessGap } from './thread-freshness.mjs';
 
 // One comparison of run names for the grant gate and for attach, so a repeat and a grant can never
 // disagree about whether two spellings name the same folder.
@@ -194,19 +195,7 @@ export function resumeRefusal(runsRootPath, chain, orderId, grant, {
     threadId: meta.session_id, stop: meta.stop,
   });
   if (blockers.length) return refuse('not-eligible', { blockers });
-  const session = readSession({ threadId: meta.session_id, startedAt: status.started_at, referenceAt: null });
-  if (session.state !== 'observed') {
-    return refuse('thread-unreadable', { state: session.state, reason: session.reason });
-  }
-  // Plan_80 E13 guard 4: resuming a thread changed since the frozen stop would reuse a spent grant.
-  const recordedAt = meta.stop.session.last_record_at;
-  const currentAt = session.last_record_at;
-  // An unparsable time would make the comparison false and pass the grant on unknown evidence.
-  if (!Number.isFinite(Date.parse(recordedAt)) || !Number.isFinite(Date.parse(currentAt))) {
-    return refuse('thread-time-unknown', { recordedAt, currentAt });
-  }
-  if (Date.parse(currentAt) > Date.parse(recordedAt)) {
-    return refuse('thread-advanced-after-stop', { recordedAt, currentAt });
-  }
+  const gap = threadFreshnessGap({ meta, status, readSession });
+  if (gap) return refuse(gap.violation, gap.values);
   return null;
 }
