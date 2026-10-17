@@ -42,10 +42,10 @@ export function writeResumeArtifacts({ runDir, inputs, situationKind, note }) {
   fs.writeFileSync(path.join(runDir, 'resume-note.md'), note, 'utf8');
 }
 
-export function resumeWorkerFields({ inputs, runDir, resumedFrom }) {
+export function resumeWorkerFields({ inputs, runDir, resumedFrom, isolationFlags }) {
   return {
     args: resumeArgs({
-      agent: inputs.agent, profile: inputs.profile, threadId: inputs.thread_id, runDir,
+      agent: inputs.agent, profile: inputs.profile, threadId: inputs.thread_id, runDir, isolationFlags,
     }),
     profile: inputs.profile,
     resume: {

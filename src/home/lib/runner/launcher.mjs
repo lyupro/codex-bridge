@@ -22,7 +22,7 @@ import { orderDiagnosticMessage } from '../order-diagnostics.mjs';
 import { EXIT } from './exit-codes.mjs';
 import { passGate } from './pass-gate.mjs';
 import { setRun } from './run-context.mjs';
-import { loadRunEnv, RUN_ENV, RECOVERY_BRAKE } from './run-env.mjs';
+import { loadRunEnv, RUN_ENV, CLEAN_ENV, RECOVERY_BRAKE } from './run-env.mjs';
 import { parseArgs, die } from './args.mjs';
 import { settleTaskInput } from './task-input.mjs';
 import { questionsFromTexts, QUESTION_KIND } from './question-kind.mjs';
@@ -313,7 +313,9 @@ export async function launcher(argv = process.argv.slice(2)) {
     // The worker's entire order, on disk. Not passed as arguments: the launcher may be gone
     // when the worker needs to know what it is doing, and a folder that explains itself is
     // also the only way to read a run back months later.
-    const resumedWorker = resumedFrom ? resumeWorkerFields({ inputs: resumeInputs, runDir, resumedFrom }) : null;
+    const resumedWorker = resumedFrom
+      ? resumeWorkerFields({ inputs: resumeInputs, runDir, resumedFrom, isolationFlags: CLEAN_ENV })
+      : null;
     const codexArgv = resumedWorker ? resumedWorker.args : codexArgs({ ...opts, repo: repoRoot }, runDir, isGitRepo);
     const unsafe = process.platform === 'win32' ? unsafeForCmd(codexArgv) : undefined;
     if (unsafe) {

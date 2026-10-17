@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
 import { codexArgs, resumeArgs, sandboxModeFor } from '../../src/home/lib/runner/codex-args.mjs';
-import { loadRunEnv } from '../../src/home/lib/runner/run-env.mjs';
+import { CLEAN_ENV, loadRunEnv } from '../../src/home/lib/runner/run-env.mjs';
 
 const SANDBOX_BY_AGENT = new Map([
   ['codex-scout', 'read-only'],
@@ -57,6 +57,7 @@ test('every resume command carries exactly one literal read-only sandbox overrid
       profile: { effort: 'medium', sandbox_mode: 'workspace-write' },
       threadId: '01234567-89ab-cdef-0123-456789abcdef',
       runDir: path.join(os.tmpdir(), 'codex-resume'),
+      isolationFlags: CLEAN_ENV,
       sandbox_mode: 'workspace-write',
     });
     assert.equal(args.includes('--sandbox'), false, agent);
@@ -67,4 +68,5 @@ test('every resume command carries exactly one literal read-only sandbox overrid
   }
   // Plan_34 / Plan_80 E13: even a forged option must never select the resume sandbox.
   assert.match(resumeArgs.toString(), /['"]sandbox_mode=read-only['"]/);
+  assert.doesNotMatch(resumeArgs.toString(), /CLEAN_ENV/);
 });

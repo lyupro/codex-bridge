@@ -71,8 +71,10 @@ export function sandboxModeFor(agent) {
  * Resume needs its own builder: exec resume has no -C or --sandbox, and must use the failed
  * run's frozen profile rather than today's configuration (Plan_80 E13/O4). S3 proved that
  * sandbox_mode=read-only keeps the resumed thread read-only; the worker supplies process cwd.
+ * Isolation flags are explicit because the worker builds a continuation without loadRunEnv(),
+ * from the parent's frozen env.json (Plan_80 E17): a CLEAN_ENV default would be undefined there.
  */
-export function resumeArgs({ agent, profile, threadId, runDir }) {
+export function resumeArgs({ agent, profile, threadId, runDir, isolationFlags }) {
   if (sandboxModeFor(agent) !== 'read-only') {
     throw new RangeError('Only read-only agents can be resumed.');
   }
@@ -84,12 +86,16 @@ export function resumeArgs({ agent, profile, threadId, runDir }) {
       typeof profile.effort !== 'string' || !profile.effort.trim()) {
     throw new TypeError('Resume requires a frozen profile with non-empty effort.');
   }
+  if (!Array.isArray(isolationFlags) ||
+      ![...isolationFlags].every((flag) => typeof flag === 'string' && flag.length > 0)) {
+    throw new TypeError('Resume requires explicit isolation flags.');
+  }
   return [
     'exec',
     'resume',
     threadId,
     '--json',
-    ...CLEAN_ENV,
+    ...isolationFlags,
     '--ignore-user-config',
     '-c',
     `model_reasoning_effort=${profile.effort}`,

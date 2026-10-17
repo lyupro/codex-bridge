@@ -7,7 +7,7 @@ import { withTempTree } from '../temp-tree.mjs';
 import { readResumeInputs } from '../../src/home/lib/runner/resume-inputs.mjs';
 import { resumeArgs } from '../../src/home/lib/runner/codex-args.mjs';
 import { resumePrompt } from '../../src/home/lib/runner/prompts.mjs';
-import { loadRunEnv, RUN_ENV } from '../../src/home/lib/runner/run-env.mjs';
+import { loadRunEnv, RUN_ENV, CLEAN_ENV } from '../../src/home/lib/runner/run-env.mjs';
 import { CONFIG_PATH } from '../../src/home/lib/run-config.mjs';
 import {
   resumeSituationKind, writeResumeArtifacts, resumeWorkerFields,
@@ -213,10 +213,10 @@ for (const [agent, phase, output] of [
       const named = namedRun(root, agent, phase);
       const inputs = inputsOf(named);
       const runDir = emptyRun(root);
-      const fields = resumeWorkerFields({ inputs, runDir, resumedFrom: named });
+      const fields = resumeWorkerFields({ inputs, runDir, resumedFrom: named, isolationFlags: CLEAN_ENV });
       assert.deepEqual(Object.keys(fields).sort(), ['args', 'profile', 'resume']);
       assert.deepEqual(fields.args, resumeArgs({ agent, profile: inputs.profile,
-        threadId: THREAD_ID, runDir }));
+        threadId: THREAD_ID, runDir, isolationFlags: CLEAN_ENV }));
       assert.strictEqual(fields.profile, inputs.profile);
       assert.deepEqual(fields.profile, PROFILE);
       assert.equal(fields.args[fields.args.indexOf('-m') + 1], PROFILE.model);
@@ -231,3 +231,12 @@ for (const [agent, phase, output] of [
     });
   });
 }
+
+test('worker fields pass the supplied isolation flags to args unchanged', () => {
+  const isolationFlags = Object.freeze(['--disable', 'plugins', '--disable', 'hooks']);
+  const inputs = { agent: 'codex-scout', profile: PROFILE, thread_id: THREAD_ID };
+  const fields = resumeWorkerFields({ inputs, runDir: 'resume', resumedFrom: 'named', isolationFlags });
+  const start = fields.args.indexOf('--json') + 1;
+  assert.deepEqual(fields.args.slice(start, start + isolationFlags.length), isolationFlags);
+  assert.equal(fields.args[start + isolationFlags.length], '--ignore-user-config');
+});

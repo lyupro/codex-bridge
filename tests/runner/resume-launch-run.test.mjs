@@ -11,6 +11,7 @@ import { orderInvocation } from './order-invocation.mjs';
 import { validScope } from '../meta/advisor-fixtures.mjs';
 import { resumePrompt } from '../../src/home/lib/runner/prompts.mjs';
 import { advisorSchema } from '../../src/home/lib/runner/schemas.mjs';
+import { disableFlags } from '../../src/home/lib/run-config.mjs';
 
 const LAUNCHER = new URL('../../src/home/lib/runner/launcher.mjs', import.meta.url).href;
 const TASK_INPUT = new URL('../../src/home/lib/runner/task-input.mjs', import.meta.url).href;
@@ -144,6 +145,11 @@ test('advise resume launches frozen bytes, profile, repository cwd and the full 
   assert.equal(resumed.read('task.md'), resumePrompt(KIND));
   assert.equal(resumed.read('task.md').includes(NOTE), false);
   assert.deepEqual(resumed.worker.args.slice(0, 3), ['exec', 'resume', thread]);
+  const isolationFlags = disableFlags(JSON.parse(resumed.read('env.json')));
+  const isolationStart = resumed.worker.args.indexOf('--json') + 1;
+  assert.ok(isolationFlags.length > 0);
+  assert.deepEqual(resumed.worker.args.slice(isolationStart, isolationStart + isolationFlags.length), isolationFlags);
+  assert.equal(resumed.worker.args[isolationStart + isolationFlags.length], '--ignore-user-config');
   for (const flag of ['--sandbox', '-C']) assert.equal(resumed.worker.args.includes(flag), false);
   const sandbox = resumed.worker.args.indexOf('sandbox_mode=read-only');
   assert.ok(sandbox > 0);
