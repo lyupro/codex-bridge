@@ -87,6 +87,7 @@ this record or reads additional evidence for it, so collecting again preserves t
 | `agent` | Agent name. |
 | `phase` | Resolved phase copied from `worker.json` (or `status.json` if needed); `null` for runs made before phases existed. |
 | `silence_policy` | Policy frozen in `worker.json#silence_policy`, copied verbatim without consulting today's registry. A `null` object means an older run without this record; a `null` threshold inside an object means not calibrated. Diagnostic only in this release; replies use the stored assessments below, never this policy directly. See below. |
+| `recovery_policy` | Policy frozen in `worker.json#recovery_policy`, copied verbatim without consulting today's registry or environment; `null` for an older run without this record. Diagnostic only in this release. See “Recovery policy” below. |
 | `situation` | Version-1 classification of the frozen stop evidence; see “Stop assessments” below. |
 | `continuation_eligibility` | Version-2 automatic/grant assessments with ordered blockers and a grant `policy_version`. Both `allowed` values are always `false` in this release. |
 | `treatment` | Version-1 diagnostic action: `{ version: 1, effect: 'diagnostic-only', action }`. It never executes recovery. |
@@ -306,6 +307,28 @@ the measured healthy maximum and stalled minimum. The bounds test keeps the numb
 this evidence so it cannot drift outside the measured interval in a later round-number edit.
 The policy is diagnostic only: stored stop assessments classify the evidence and supply the
 unusable-result `FAIL` rows above, without changing the verdict or enabling recovery.
+
+### Recovery policy
+
+Plan_80 E15/O2b preserves the launcher's frozen `worker.json#recovery_policy` in
+`meta.json`, including its calibration evidence and host brake. `collect()` never recomputes
+it from today's registry or environment. The entire object is `null` for an older run
+without a saved policy.
+
+| Field | Value |
+| --- | --- |
+| `version` | Policy format version, currently `1`. |
+| `role` | Registry role, such as `advisor`. |
+| `phase` | Budget-declared phase; `default` for scalar budgets. |
+| `budget_ms` | Measured budget in milliseconds for one automatic continuation, or `null` when that role/phase has no measured recovery budget. |
+| `enabled` | Package-owned automatic recovery switch at launch. |
+| `calibration` | Frozen calibration evidence for the measured budget, or `null` when no budget is measured. |
+| `brake` | Frozen host brake `{ key, value, source }`: the environment key, its resolved `on`/`off` value, and `env`/`default` source. |
+
+`brake.value: off` means the host switched automatic recovery off. The host brake can
+only switch recovery off; it can never enable a disabled package switch. This record is
+diagnostic only in this release: it changes no verdict, stop assessment or reply and
+does not trigger automatic recovery.
 
 ### Early `writeFailure()`
 

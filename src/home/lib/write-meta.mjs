@@ -109,6 +109,8 @@ export function collect(runDir, agent, exitCode) {
     phase: worker?.phase ?? launched.phase ?? null,
     // Plan_80 S2/E12: retain the ordered policy, never today's registry; older runs have none.
     silence_policy: worker?.silence_policy ?? null,
+    // Plan_80 E15/O2b: retain the launch policy as diagnostics, never recompute it.
+    recovery_policy: worker?.recovery_policy ?? null,
     // Plan_59 D4: the scope outcome is a field the orchestrator branches on, not a sentence in
     // the reply. Null when the result never said, so a missing answer is not read as "sufficient".
     ...(agent === 'codex-advisor'
