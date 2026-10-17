@@ -74,7 +74,10 @@ The file is created after all task/schema/snapshot artifacts and before the work
 | `resume` | always | `null` for a fresh run. For a resume run, `{ "thread_id": "<UUID>", "resumed_from": "<failed run folder>", "sandbox_mode": "read-only" }` freezes the thread id, the run folder it continues, and the literal sandbox mode carried by `args`. Only `codex-scout`, `codex-review`, and `codex-advisor` can resume. The worker does not read it; `meta.json` will. |
 
 `args` already contains the decisions about `hooks` and `plugins`, `effort`, directory, schema, and
-result file. The worker must not assemble this list again.
+result file. The worker never rebuilds `args` from configuration. For an automatic continuation,
+the worker writes the child's order through `reserveRecoveryChild` only from the parent's frozen
+`worker.json`, `env.json` and frozen inputs, never from `config.json`. Both attempts execute the
+arguments in their own saved order.
 
 The launcher resolves `recovery_policy.brake` once per run, before any paid work. Its key is
 `CODEX_BRIDGE_AUTO_RECOVERY`: an unset or trimmed-empty value records `value: "on"` and
@@ -111,6 +114,7 @@ The current implementation reads the following fields:
 - `repo` — for post-execution snapshots;
 - `agent` — to select build artifacts and the result;
 - `args` — to start Codex;
+- `order_id` — to admit each attempt under the exact-order claim;
 - `silence_policy.threshold_ms` — the frozen silence threshold (`null` for older orders);
 - `recovery_policy.watchdog.arming` — the frozen `off`, `shadow`, or `armed` state (`off` for older orders);
 - `is_git_repo` — to decide whether to read HEAD after build;
@@ -121,7 +125,7 @@ The current implementation reads the following fields:
 `phase` is carried in the saved order for phase-aware accounting and verdicts. The worker does not
 consult `config.json` to reinterpret the phase or recalculate its budget.
 
-The worker does not read `slug`, `order_id`, `launcher_pid`, `scope_new`, `profile`, or `resume`. This is the actual
+Outside automatic child reservation, the worker does not read `slug`, `launcher_pid`, `scope_new`, `profile`, or `resume`. This is the actual
 asymmetric state of the contract, not a documentation error: these fields are retained to make the
 directory explainable during later investigation — including making it clear months later which job
 owned the run. The chain link and active worker pid come from `status.json`, not `worker.json`.

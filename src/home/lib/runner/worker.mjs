@@ -14,9 +14,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { readJsonFileSync } from '../json-file.mjs';
-import { collect, exitCodeFor, AGENTS, writeFailure } from '../write-meta.mjs';
+import { collect, renderReply, exitCodeFor, AGENTS, writeFailure } from '../write-meta.mjs';
 import { writeStatus } from '../meta/run-state.mjs';
-import { setRun, emitReply } from './run-context.mjs';
+import { setRun, adoptRun, emitReply } from './run-context.mjs';
 import { writeBuildAfter } from './build-evidence.mjs';
 import { runCodex } from './codex-cmd.mjs';
 import { createSilenceWatchdog } from './silence-watchdog.mjs';
@@ -25,16 +25,23 @@ import { admitWorker } from './worker-admission.mjs';
 import { orderClaimHolderText } from './order-claim.mjs';
 import { EXIT } from './exit-codes.mjs';
 import { commitRunRecord } from './run-autocommit.mjs';
+import { reserveRecoveryChild } from './recovery-launch.mjs';
+
+// Plan_80 E17/O5e: these seams make two attempts testable without a real Codex.
+const WORKER_DEPS = Object.freeze({
+  admitWorker, runCodex, collect, reserveRecoveryChild, commitRunRecord,
+  exit: (code) => process.exit(code),
+});
 
 /**
  * Runs the order in runDir and answers into reply.txt, never to a console — nothing here
  * may depend on anyone still being on the other end of a pipe.
+ * Dependency seams allow the two-attempt sequence to be tested without a real Codex.
  */
-export async function worker(runDir) {
+export async function worker(runDir, deps = WORKER_DEPS) {
   const cfg = readJsonFileSync(path.join(runDir, 'worker.json'));
-  const repoRoot = cfg.repo;
   setRun(runDir, cfg.agent);
-  const admission = await admitWorker({ runDir, orderId: cfg.order_id });
+  const admission = await deps.admitWorker({ runDir, orderId: cfg.order_id });
   if (!admission.admitted) {
     // Plan_60 A4 r4: a replacement launcher may have closed this run while the worker was starting.
     if (admission.reason === 'claim-timeout') {
@@ -44,17 +51,57 @@ export async function worker(runDir) {
       );
       emitReply(reply);
       // Plan_77 B6: publish the verdict before Git can wait on a lock or repository hook.
-      commitRunRecord({ runDir });
+      deps.commitRunRecord({ runDir });
     }
-    process.exit(EXIT.FAIL);
+    deps.exit(EXIT.FAIL);
+    return;
   }
 
+  const { meta, reply } = await runPass(runDir, cfg, deps);
+  if (meta.continuation_eligibility?.automatic?.allowed === true) {
+    const reservation = deps.reserveRecoveryChild({ parentDir: runDir, meta });
+    if (reservation.reserved) {
+      // A12/A15: reservation publishes the parent's pointer before its reply can be seen.
+      emitReply(renderReply(runDir, cfg.agent, meta));
+      deps.commitRunRecord({ runDir });
+      const { childDir, order } = reservation;
+      adoptRun(childDir, cfg.agent);
+      const childAdmission = await deps.admitWorker({ runDir: childDir, orderId: order.order_id });
+      if (!childAdmission.admitted) {
+        const { reply: childReply } = writeFailure(
+          childDir, cfg.agent, `automatic continuation was not admitted: ${childAdmission.reason}`,
+          ['Codex was not started; quota was not spent'], true,
+        );
+        emitReply(childReply);
+        deps.commitRunRecord({ runDir: childDir });
+        deps.exit(EXIT.FAIL);
+        return;
+      }
+      // E17/O5e: the child spends the recovery attempt; there is deliberately no loop.
+      const { meta: childMeta, reply: childReply } = await runPass(childDir, order, deps);
+      emitReply(childReply);
+      deps.commitRunRecord({ runDir: childDir });
+      deps.exit(exitCodeFor(childMeta.status));
+      return;
+    }
+    writeStatus(runDir, {
+      recovery_refused: { reason: reservation.reason, at: new Date().toISOString() },
+    });
+  }
+  emitReply(reply);
+  // Plan_77 B6: the launcher must receive its reply before any autocommit delay.
+  deps.commitRunRecord({ runDir });
+  deps.exit(exitCodeFor(meta.status));
+}
+
+async function runPass(runDir, cfg, deps) {
+  const repoRoot = cfg.repo;
   const watchdog = createSilenceWatchdog({
     runDir,
     arming: cfg.recovery_policy?.watchdog?.arming ?? 'off',
     thresholdMs: cfg.silence_policy?.threshold_ms ?? null,
   });
-  const run = await runCodex(
+  const run = await deps.runCodex(
     cfg.args,
     fs.readFileSync(path.join(runDir, 'task.md'), 'utf8'),
     path.join(runDir, 'events.jsonl'),
@@ -90,9 +137,5 @@ export async function worker(runDir) {
 
   // collect() writes meta.json and closes status.json; reply.txt comes last, so the launcher
   // seeing a reply is proof the verdict behind it is already on disk.
-  const { meta, reply } = collect(runDir, cfg.agent, run.exit);
-  emitReply(reply);
-  // Plan_77 B6: the launcher must receive its reply before any autocommit delay.
-  commitRunRecord({ runDir });
-  process.exit(exitCodeFor(meta.status));
+  return deps.collect(runDir, cfg.agent, run.exit);
 }

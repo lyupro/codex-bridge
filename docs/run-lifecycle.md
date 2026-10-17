@@ -482,6 +482,30 @@ pass occurred.”
    `meta.json` and the final state are already on disk.
 10. The worker exits with the code corresponding to the verdict.
 
+Steps 3–8 form one `runPass`, shared by both attempts. After the parent's `collect()`,
+Plan_80 E17/O5e adds this bounded path in the same worker process:
+
+1. Unless recorded `meta.continuation_eligibility.automatic.allowed` is exactly `true`, publish
+   the collected parent reply, commit its run record, and exit by its verdict as before.
+2. Otherwise call `reserveRecoveryChild({ parentDir, meta })`. A refusal records only
+   `status.json#recovery_refused: { reason, at }` (ISO timestamp), preserving `meta.json`,
+   then follows the ordinary parent reply, commit and exit path.
+3. A reservation writes the child folder and frozen order before the parent's
+   `status.json#recovery: { child, reserved_at, automatic: true }` pointer. Only after that
+   pointer is on disk, re-render the recorded parent reply, publish it and commit its run record.
+   The child's `status.json#recovery` records `{ automatic: true, attempt: 2, parent, reserved_at }`.
+4. Call `adoptRun(childDir, agent)` once to move the reply target, current run and crash identity together.
+5. Admit the child under its saved `order_id`. Any refusal writes a pre-start failure with
+   `automatic continuation was not admitted: <reason>` and `Codex was not started; quota was not spent`,
+   publishes the child reply, commits its run record and exits `FAIL`. Its state is
+   `aborted_pre_start`, so it cannot make a manual `resume:` of the parent fail `not-last` (A15).
+6. If admitted, run the child pass using its frozen order, publish its reply, commit its run record,
+   and exit by the child's verdict. There is no third attempt or loop: `resumed_from` blocks the
+   child's eligibility with `recovery-attempt-spent`. The parent reply remains unchanged.
+
+The package switch `AUTOMATIC_RECOVERY_ENABLED` remains `false`, so real runs currently follow
+the ordinary single-attempt path.
+
 ### Silence watchdog
 
 Plan_80 E16/O3b wires the watchdog using arming frozen at launch in

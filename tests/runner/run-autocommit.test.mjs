@@ -247,14 +247,16 @@ test('Git exceptions, timeout errors and unwritable diagnostics never escape', (
   });
 });
 
-test('both worker replies precede autocommit and process exit (Plan_77 B6 ordering)', () => {
+// Plan_80 E17/O5e: the worker now answers for two attempts (parent and automatic child) through
+// its dependency seams; every one of its five replies still comes before autocommit and exit.
+test('every worker reply precedes autocommit and process exit (Plan_77 B6 ordering)', () => {
   const source = fs.readFileSync(new URL('../../src/home/lib/runner/worker.mjs', import.meta.url), 'utf8');
-  assert.equal([...source.matchAll(/emitReply\(reply\);/g)].length, 2);
-  assert.equal([...source.matchAll(/commitRunRecord\(\{ runDir \}\);/g)].length, 2);
-  for (const reply of source.matchAll(/emitReply\(reply\);/g)) {
+  const replies = [...source.matchAll(/emitReply\([^;]*\);/g)];
+  assert.equal(replies.length, 5);
+  for (const reply of replies) {
     const tail = source.slice(reply.index + reply[0].length);
-    assert.match(tail, /^\s*\/\/[^\n]*\n\s*commitRunRecord\(\{ runDir \}\);/);
-    assert.ok(tail.indexOf('commitRunRecord({ runDir });') < tail.indexOf('process.exit('));
+    assert.match(tail, /^\s*(\/\/[^\n]*\n\s*)?deps\.commitRunRecord\(\{ runDir(: childDir)? \}\);/);
+    assert.ok(tail.indexOf('deps.commitRunRecord(') < tail.indexOf('deps.exit('));
   }
 });
 
