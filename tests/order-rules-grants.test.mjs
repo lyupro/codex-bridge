@@ -174,7 +174,7 @@ test('grant selectors reject absent and unknown violations and variants without 
   }
 });
 
-for (const name of ['continuation', 'advise-carry']) {
+for (const name of ['continuation', 'continuation-outcome', 'advise-carry']) {
   test(`${name} passes the static guard without pending migration or opt-outs`, () => {
     const file = `src/home/lib/runner/${name}.mjs`;
     assert.ok(ADMISSION_FILES.includes(file));

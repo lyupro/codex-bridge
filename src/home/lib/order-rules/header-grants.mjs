@@ -20,12 +20,12 @@ export const RULES = Object.freeze({
     message: () => 'grant must name a bare run folder (not . or ..) and a non-placeholder reason',
   }),
   'continuation-grant-usable': Object.freeze({
-    data: Object.freeze(['violation', 'labelName', 'run', 'runsRoot', 'lastRun', 'orderId', 'spent', 'previous', 'example']),
+    data: Object.freeze(['violation', 'labelName', 'run', 'runsRoot', 'lastRun', 'orderId', 'spent', 'previous', 'example', 'successor']),
     topic: 'order',
     rule: 'Grant continue to an existing last run of the task chain only when this order has not spent its ' +
       'one continuation and its previous pass has a finished verdict with no running worker; ' +
       'ask the orchestrator for the run and reason, and use a new order id for any further pass.',
-    message: ({ violation, labelName, run, runsRoot, lastRun, orderId, spent, previous, example, hints }) => {
+    message: ({ violation, labelName, run, runsRoot, lastRun, orderId, spent, previous, example, hints, successor }) => {
       if (violation === 'missing-folder' || violation === 'not-last') {
         const repair = `Example: \`continue: ${example}\`. ` +
           'Action: ask the orchestrator for an explicit grant naming the run and reason; ' +
@@ -34,6 +34,11 @@ export const RULES = Object.freeze({
           return `${labelName} is refused: the orchestrator named run “${run}”, but it does not ` +
             `exist as a run folder in this project's runs directory ${runsRoot}. ` +
             `${hints} ${repair} The submitted grant was not rewritten.`;
+        }
+        if (typeof successor === 'string' && successor.length > 0) {
+          return `${labelName} is refused: run ${run} was already continued automatically in ${successor}, ` +
+            `which is now the LAST run of this task's chain; name ${successor} in the grant instead. ` +
+            `${hints} ${repair}`;
         }
         return `${labelName} is refused: grant ${run} is not the LAST run of this task's chain; ` +
           `the current last run is ${lastRun}. A continuation is single-use: continuing the ` +
@@ -52,16 +57,20 @@ export const RULES = Object.freeze({
     },
   }),
   'retry-grant-usable': Object.freeze({
-    data: Object.freeze(['violation', 'run', 'runsRoot', 'previousOrder', 'orderId', 'labelName']),
+    data: Object.freeze(['violation', 'run', 'runsRoot', 'previousOrder', 'orderId', 'labelName', 'successor']),
     topic: 'order',
     rule: 'Grant retry to a bare existing last run of the task chain under its own recorded order id, ' +
       'only after a non-OK finished verdict and after its worker has stopped; retry repeats that pass, ' +
       'while continue grants the next pass.',
-    message: ({ violation, run, runsRoot, previousOrder, orderId, labelName }) => {
+    message: ({ violation, run, runsRoot, previousOrder, orderId, labelName, successor }) => {
       if (violation === 'missing-folder') {
         return `Retry is refused: ${run} is not a bare existing run folder in ${runsRoot}.`;
       }
       if (violation === 'not-last') {
+        if (typeof successor === 'string' && successor.length > 0) {
+          return `Retry is refused: run ${run} was already continued automatically in ${successor}, ` +
+            `which is now the LAST run of this task's chain; name ${successor} in the grant instead.`;
+        }
         return `Retry is refused: grant ${run} is not the LAST run of this task's chain; a retry is single-use.`;
       }
       if (violation === 'order-mismatch') {
@@ -123,18 +132,22 @@ export const RULES = Object.freeze({
   }),
   'resume-grant-usable': Object.freeze({
     data: Object.freeze(['violation', 'run', 'runsRoot', 'previousOrder', 'orderId', 'labelName',
-      'blockers', 'state', 'reason', 'recordedAt', 'currentAt', 'reasons']),
+      'blockers', 'state', 'reason', 'recordedAt', 'currentAt', 'reasons', 'successor']),
     topic: 'order',
     rule: 'Grant resume only to the last run of the task chain under its own order id, after a finished non-OK ' +
       'verdict with its worker stopped, when the run is eligible by its recorded stop facts and its Codex thread ' +
       'has not advanced since it stopped; resume continues that pass\'s thread, retry repeats it on a fresh ' +
       'thread, continue grants the next pass.',
     message: ({ violation, run, runsRoot, previousOrder, orderId, labelName, blockers, state, reason,
-      recordedAt, currentAt, reasons }) => {
+      recordedAt, currentAt, reasons, successor }) => {
       if (violation === 'missing-folder') {
         return `Resume is refused: ${run} is not a bare existing run folder in ${runsRoot}.`;
       }
       if (violation === 'not-last') {
+        if (typeof successor === 'string' && successor.length > 0) {
+          return `Resume is refused: run ${run} was already continued automatically in ${successor}, ` +
+            `which is now the LAST run of this task's chain; name ${successor} in the grant instead.`;
+        }
         return `Resume is refused: grant ${run} is not the LAST run of this task's chain; a resume is single-use.`;
       }
       if (violation === 'order-mismatch') {

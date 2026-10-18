@@ -11,6 +11,7 @@ export const ADMISSION_FILES = [
   'src/home/lib/runner/scope-check.mjs',
   'src/home/lib/runner/pass-gate.mjs',
   'src/home/lib/runner/continuation.mjs',
+  'src/home/lib/runner/continuation-outcome.mjs',
   'src/home/lib/runner/advise-carry.mjs',
   'src/home/lib/runner/preflight.mjs',
   'src/home/lib/runner/order-claim.mjs',

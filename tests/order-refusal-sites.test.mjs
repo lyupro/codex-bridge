@@ -20,9 +20,10 @@ function assertGuard(t, source, file) {
 // Plan_79 B5a admits subagent-model-env.mjs before the hook forwards its refusal.
 // Plan_79 B5b1 admits the dispatcher hook and shared protocol catalog and migrates the gate.
 // Plan_79 B5b2a / B4g: admit the installation-record producer before its pin forwarder.
-test('Plan_79 S1a-S1c and B4g/B4h/B5a/B5b1/B5b2a list 36 unique existing admission files', () => {
-  assert.equal(ADMISSION_FILES.length, 36);
-  assert.equal(new Set(ADMISSION_FILES).size, 36);
+// Plan_80 E18 O6c admits continuation-outcome.mjs, which took the ready grant lines out of continuation.mjs.
+test('Plan_79 S1a-S1c, B4g/B4h/B5a/B5b1/B5b2a and Plan_80 O6c list 37 unique existing admission files', () => {
+  assert.equal(ADMISSION_FILES.length, 37);
+  assert.equal(new Set(ADMISSION_FILES).size, 37);
   for (const file of ADMISSION_FILES) assert.ok(fs.statSync(new URL(`../${file}`, import.meta.url)).isFile(), file);
 });
 
