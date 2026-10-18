@@ -300,7 +300,7 @@ export function resolveStatus({ resultOk, exit, agent, result, runDir, events, e
     };
   }
   // Plan_80 E13/O9: a result produced outside the resumed turn's read-only sandbox is untrusted.
-  const witness = sandboxWitnessGap(runDir);
+  const witness = sandboxWitnessGap(runDir, { resultOk });
   if (witness) return { status: 'FAIL', reason: witness };
   if (!resultOk) {
     return { status: 'FAIL', reason: reasonFrom(runDir, eventData) || `result is empty, exit=${exit}` };

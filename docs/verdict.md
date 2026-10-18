@@ -48,6 +48,8 @@ the first matching branch determines the status. The order is therefore part of 
    than exactly `read-only` produces `FAIL`. This ranks after the transport check and before the
    absent-result check: a result produced outside read-only is not trusted even when filled. Absent
    and unconfirmed witnesses only print a row; they do not fail the run.
+   An automatic continuation child (recognised by its recovery marker) with a filled result also
+   fails when the witness is not `observed`; manual resume runs keep the row-only behaviour.
 8. **The result is absent or unfilled.** `FAIL`, with the reason selected in this order: first the model's
    last complaint about the job content (`item.completed` with `item.type: "error"`), then a transport
    error from events, and only then `stderr.log`. The order follows from the live probe on 2026-08-05:

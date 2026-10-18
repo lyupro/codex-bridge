@@ -6,6 +6,7 @@ import path from 'node:path';
 import { makeTempTree } from '../temp-tree.mjs';
 import { buildResult, makeRun } from './test-fixtures.mjs';
 import { collect } from '../../src/home/lib/write-meta.mjs';
+import { resolveStatus } from '../../src/home/lib/meta/verdict.mjs';
 import { resumeOrigin, sandboxWitnessGap, sandboxWitnessRow } from '../../src/home/lib/meta/sandbox-witness.mjs';
 
 const at = '2026-10-16T10:00:00.000Z';
@@ -24,6 +25,62 @@ function runWithStatus(status) {
 function resumedStatus(witness) {
   return { resumed_from: 'failed-pass', stop: { session: { sandbox_witness: witness } } };
 }
+
+function automaticStatus(witness) {
+  return {
+    ...resumedStatus(witness),
+    recovery: { automatic: true, attempt: 2, parent: 'failed-pass' },
+  };
+}
+
+for (const witness of [{ state: 'absent' }, { state: 'not-observed' }, undefined, { state: 'unknown' }]) {
+  const state = witness?.state ?? 'missing';
+  const reason = `automatic continuation ran without a confirmed sandbox policy (witness: ${state}); its result is not trusted`;
+  test(`an automatic child with a filled result fails for witness ${state}`, () => {
+    const dir = makeRun({ status: automaticStatus(witness), result: buildResult([]) });
+    assert.equal(sandboxWitnessGap(dir, { resultOk: true }), reason);
+    const { meta } = collect(dir, 'codex-build', 0);
+    assert.equal(meta.result_ok, true);
+    assert.equal(meta.status, 'FAIL');
+    assert.equal(meta.reason, reason);
+  });
+  test(`an automatic child with an empty result keeps its absent-result reason for witness ${state}`, () => {
+    const dir = makeRun({ status: automaticStatus(witness), result: buildResult([]) });
+    for (const resultOk of [undefined, false, null, 1, 'true']) {
+      assert.equal(sandboxWitnessGap(dir, { resultOk }), null);
+    }
+    assert.equal(sandboxWitnessGap(dir), null);
+    assert.deepEqual(resolveStatus({ resultOk: false, exit: 0, agent: 'codex-build', result: null, runDir: dir }),
+      { status: 'FAIL', reason: 'result is empty, exit=0' });
+  });
+}
+
+test('automatic children preserve the observed-policy verdict regardless of result presence', () => {
+  for (const policy of ['read-only', 'workspace-write']) {
+    const dir = runWithStatus(automaticStatus({ state: 'observed', policy, at }));
+    for (const resultOk of [true, false, undefined]) {
+      assert.equal(sandboxWitnessGap(dir, { resultOk }), policy === 'read-only' ? null : unsafeReason);
+    }
+  }
+});
+
+test('automatic child witness states are flattened and bounded to 60 characters', () => {
+  const dir = runWithStatus(automaticStatus({ state: `\r\n${'x'.repeat(80)}\tunknown` }));
+  assert.equal(sandboxWitnessGap(dir, { resultOk: true }),
+    `automatic continuation ran without a confirmed sandbox policy (witness: ${'x'.repeat(57)}...); its result is not trusted`);
+});
+
+test('an automatic-looking recovery record without the exact marker stays manual', () => {
+  for (const recovery of [
+    { automatic: true, attempt: 1, parent: 'failed-pass' },
+    { automatic: true, attempt: 2, parent: 'another-pass' },
+  ]) {
+    const dir = makeRun({ status: { ...resumedStatus({ state: 'absent' }), recovery }, result: buildResult([]) });
+    assert.equal(sandboxWitnessGap(dir, { resultOk: true }), null);
+    const { meta } = collect(dir, 'codex-build', 0);
+    assert.equal(meta.status, 'OK', meta.reason);
+  }
+});
 
 test('resumeOrigin preserves valid bare folder names exactly', () => {
   for (const resumed_from of ['failed-pass', ' pass ', '.pass', 'pass..']) {
@@ -130,6 +187,7 @@ for (const [policy, expectedStatus, expectedReason, expectedRow] of [
 for (const witness of [{ state: 'absent' }, { state: 'not-observed' }, undefined]) {
   test(`collect keeps an unconfirmed resume result OK (${witness?.state ?? 'missing'})`, () => {
     const dir = makeRun({ status: resumedStatus(witness), result: buildResult([]) });
+    assert.equal(sandboxWitnessGap(dir, { resultOk: true }), null);
     const { meta, reply } = collect(dir, 'codex-build', 0);
     assert.equal(meta.status, 'OK', meta.reason);
     assert.ok(reply.includes(witness?.state === 'absent' ? absentRow : unconfirmedRow));
@@ -142,7 +200,7 @@ test('resolveStatus checks the witness after the transport-error branch and befo
   const transportAt = source.indexOf('if (transportError) {', resolveAt);
   const transportReturnAt = source.indexOf('reason: transportError.reason,', transportAt);
   const transportEndAt = source.indexOf('\n  }', transportReturnAt);
-  const witnessAt = source.indexOf('const witness = sandboxWitnessGap(runDir);', resolveAt);
+  const witnessAt = source.indexOf('const witness = sandboxWitnessGap(runDir, { resultOk });', resolveAt);
   const witnessReturnAt = source.indexOf("if (witness) return { status: 'FAIL', reason: witness };", witnessAt);
   const absentAt = source.indexOf('if (!resultOk)', resolveAt);
   assert.ok(resolveAt >= 0 && transportAt > resolveAt && transportReturnAt > transportAt);
