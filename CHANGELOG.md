@@ -4,6 +4,39 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.17] - 2026-10-18
+
+### Added
+
+- A failed read-only pass (`codex-scout`, `codex-review`, `codex-advisor`) can be continued in its own Codex thread
+  with a `resume: <run folder> — <reason>` grant in the task-file header, instead of `retry:`, which starts a fresh
+  thread that rereads everything. The resumed pass reuses the frozen task, options, paths and verification of the
+  named run, gets its own run folder with `resumed_from` in `status.json`, and keeps the task body as
+  `resume-note.md`. It is allowed only for the last run of the chain after a finished non-OK verdict, with the
+  Codex process proven stopped and the thread unchanged since; a failed reply prints the ready `resume:` line when
+  these hold. A resumed run whose own turns were not given a read-only sandbox fails.
+- Every run records when each Codex stdout line arrived, how the Codex process stopped, and the commands and
+  silence open at that moment. A FAIL without a result now says why the run stopped in its reply.
+- A silence watchdog for advisor advise passes, with a threshold calibrated from successful runs, runs beside the
+  deadline in shadow mode: it records when it would have stopped a run and interrupts nothing. The automatic single
+  continuation of a stalled pass is built behind its own switch and stays off. `codex-bridge doctor` reports the
+  Codex session log format, the watchdog's would-be stops, recovery-budget drift and the gates for enabling the
+  automatic continuation.
+- Every rule a judge applies to a filled answer after the run is stated in that agent's prompt, from one catalog
+  that also produces the rejection text (advisor, scout and build). Each prompt also lists the string limits its
+  output schema enforces. Before this, an advisor pass could be rejected for rules its prompt never mentioned, such
+  as a cited line range past the end of a file or an unlisted option described in under 40 characters.
+
+### Changed
+
+- `codex-bridge guidance advisor` and `guidance records` explain `retry:` against `resume:` and how to read resumed
+  runs. The rules core installed into the Claude Code host carries the same one-line distinction; run
+  `codex-bridge update` to refresh it.
+
+### Fixed
+
+- A recorded verdict survives a runner crash that happens after it was written, and the reply is rendered from it.
+
 ## [0.6.16] - 2026-10-14
 
 ### Changed
