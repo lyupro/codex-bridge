@@ -90,6 +90,7 @@ export async function diagnose({
   sandbox,
   sessionLog,
   silenceCalibration,
+  silenceWatchdogShadow,
   bridgeProbe = probeCodexBridge,
   launcherProbe,
   currentPackage,
@@ -221,12 +222,18 @@ export async function diagnose({
     : resolution ? liveRunsCheck(resolution)
       : check('liveRuns', 'warn', `working-run count unavailable: ${runsRoot.value}`));
   checks.push(projectRuns);
-  const records = typeof silenceCalibration === 'function' && resolution && !resolution.staleOverride
+  // Plan_80 E19: every evidence row judges the same records, so the runs root is walked once.
+  const evidenceRows = [
+    ['silenceCalibration', silenceCalibration],
+    ['silenceWatchdogShadow', silenceWatchdogShadow],
+  ].filter(([, row]) => typeof row === 'function');
+  const recordsUsable = Boolean(resolution && !resolution.staleOverride);
+  const records = evidenceRows.length && recordsUsable
     ? scanRunRecords({ runsRoot: resolution.root, now }) : undefined;
-  if (typeof silenceCalibration === 'function') {
-    checks.push(!resolution || resolution.staleOverride
-      ? check('silenceCalibration', 'warn', `unavailable: ${runsRoot.value}`)
-      : await silenceCalibration({ runsRoot: resolution.root, now, records }));
+  for (const [key, row] of evidenceRows) {
+    checks.push(recordsUsable
+      ? await row({ runsRoot: resolution.root, now, records })
+      : check(key, 'warn', `unavailable: ${runsRoot.value}`));
   }
 
   return {

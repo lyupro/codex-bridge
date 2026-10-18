@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
 import { silenceCalibrationCheck } from '../../cli/doctor-silence-calibration.mjs';
+import { silenceWatchdogShadowCheck } from '../../cli/doctor-silence-watchdog-shadow.mjs';
 import { diagnose } from '../../cli/doctor.mjs';
 import { check } from '../../cli/doctor-format.mjs';
 import { installedFixture, codexProbe, ownPackage } from './doctor-fixtures.mjs';
@@ -210,9 +211,9 @@ test('diagnose shares one runs-root resolution, inserts calibration after projec
     };
     try {
       const baseline = await diagnose(options);
-      assert.ok(!baseline.checks.some(({ key }) => key === 'silenceCalibration'));
-      const disabled = await diagnose({ ...options, silenceCalibration: true });
-      assert.ok(!disabled.checks.some(({ key }) => key === 'silenceCalibration'));
+      assert.ok(!baseline.checks.some(({ key }) => ['silenceCalibration', 'silenceWatchdogShadow'].includes(key)));
+      const disabled = await diagnose({ ...options, silenceCalibration: true, silenceWatchdogShadow: true });
+      assert.ok(!disabled.checks.some(({ key }) => ['silenceCalibration', 'silenceWatchdogShadow'].includes(key)));
       const moveFile = path.join(root, 'state', 'runs-root.json');
       const read = fs.readFileSync;
       let resolutions = 0;
@@ -221,30 +222,45 @@ test('diagnose shares one runs-root resolution, inserts calibration after projec
         return read(file, ...args);
       });
       let calls = 0;
+      let shadowCalls = 0;
+      let sharedRecords;
       const result = await diagnose({ ...options, silenceCalibration: async (input) => {
         calls += 1;
+        sharedRecords = input.records;
         assert.deepEqual(input, { runsRoot: process.env.CODEX_RUNS_ROOT, now, records: {
           records: [], unreadable: 0, statusUnreadable: 0, days: 30,
           windowStart: now.getTime() - 30 * 24 * 60 * 60 * 1000, windowEnd: now.getTime(),
         } });
         return check('silenceCalibration', 'warn', 'fixture calibration breach');
+      }, silenceWatchdogShadow: async (input) => {
+        shadowCalls += 1;
+        assert.strictEqual(input.records, sharedRecords);
+        assert.equal(input.runsRoot, process.env.CODEX_RUNS_ROOT);
+        assert.equal(input.now, now);
+        return check('silenceWatchdogShadow', 'warn', 'fixture false stop');
       } });
       readMock.mock.restore();
       assert.equal(calls, 1);
+      assert.equal(shadowCalls, 1);
       assert.equal(resolutions, 1);
       assert.equal(result.exitCode, baseline.exitCode);
       const index = result.checks.findIndex(({ key }) => key === 'projectRuns');
       assert.deepEqual(result.checks[index + 1], check('silenceCalibration', 'warn', 'fixture calibration breach'));
+      assert.deepEqual(result.checks[index + 2], check('silenceWatchdogShadow', 'warn', 'fixture false stop'));
 
       fs.mkdirSync(path.dirname(moveFile), { recursive: true });
       for (const moveRecord of ['{', JSON.stringify({ version: 1, retired: [
         { root: process.env.CODEX_RUNS_ROOT, movedAt: '2026-10-14T00:00:00.000Z' },
       ] })]) {
         fs.writeFileSync(moveFile, moveRecord);
-        const unavailable = await diagnose({ ...options, silenceCalibration: () => assert.fail('must not scan unavailable roots') });
+        const unavailable = await diagnose({ ...options,
+          silenceCalibration: () => assert.fail('must not scan unavailable roots'),
+          silenceWatchdogShadow: () => assert.fail('must not scan unavailable roots'),
+        });
         const runsRoot = unavailable.checks.find(({ key }) => key === 'runsRoot');
         const index = unavailable.checks.findIndex(({ key }) => key === 'projectRuns');
         assert.deepEqual(unavailable.checks[index + 1], check('silenceCalibration', 'warn', `unavailable: ${runsRoot.value}`));
+        assert.deepEqual(unavailable.checks[index + 2], check('silenceWatchdogShadow', 'warn', `unavailable: ${runsRoot.value}`));
       }
     } finally {
       for (const [key, value] of Object.entries(previous)) {
@@ -272,7 +288,7 @@ test('a supplied scan is used without touching a missing runs root', async (t) =
   });
 });
 
-test('diagnose reads sampled metadata once and calibration reuses the shared scan', async (t) => {
+test('diagnose reads sampled metadata once and both evidence callbacks reuse the shared scan', async (t) => {
   const { host } = await installedFixture(t);
   await withTempTree('silence-shared-scan-', async (root) => {
     const previous = { CODEX_BRIDGE_HOME: process.env.CODEX_BRIDGE_HOME, CODEX_RUNS_ROOT: process.env.CODEX_RUNS_ROOT };
@@ -293,14 +309,27 @@ test('diagnose reads sampled metadata once and calibration reuses the shared sca
     });
     try {
       await diagnose(options);
-      await diagnose({ ...options, silenceCalibration: true });
+      await diagnose({ ...options, silenceCalibration: true, silenceWatchdogShadow: true });
       assert.equal(metadataReads, 0, 'no evidence callback means no metadata scan');
+      let sharedRecords;
       const result = await diagnose({ ...options, silenceCalibration: (input) => {
+        sharedRecords = input.records;
         assert.equal(input.records.records.length, 1);
         assert.equal(input.records.records[0].runDir, path.dirname(metaFile));
         return silenceCalibrationCheck(input);
+      }, silenceWatchdogShadow: (input) => {
+        assert.strictEqual(input.records, sharedRecords);
+        return silenceWatchdogShadowCheck(input);
       } });
-      assert.equal(metadataReads, 1, 'calibration must reuse the diagnose scan');
+      assert.equal(metadataReads, 1, 'both evidence callbacks must reuse the diagnose scan');
+      const calibrationIndex = result.checks.findIndex(({ key }) => key === 'silenceCalibration');
+      assert.deepEqual(result.checks[calibrationIndex + 1], check('silenceWatchdogShadow', 'ok',
+        'no shadow watchdog record in the last 30 days; outside the shadow cohort: off 0, armed 0, not recorded 1, unknown version 0'));
+      const shadowOnly = await diagnose({ ...options, silenceWatchdogShadow: silenceWatchdogShadowCheck });
+      assert.equal(metadataReads, 2, 'shadow callback alone must request a scan');
+      const projectIndex = shadowOnly.checks.findIndex(({ key }) => key === 'projectRuns');
+      assert.deepEqual(shadowOnly.checks[projectIndex + 1], result.checks[calibrationIndex + 1]);
+      assert.equal(shadowOnly.exitCode, result.exitCode);
       assert.deepEqual(result.checks.find(({ key }) => key === 'silenceCalibration'),
         check('silenceCalibration', 'ok',
           'advisor.advise: 0 of 1 successful runs reached 996000 ms (longest quiet pause 900000 ms)'));
@@ -310,8 +339,11 @@ test('diagnose reads sampled metadata once and calibration reuses the shared sca
         { root: process.env.CODEX_RUNS_ROOT, movedAt: '2026-10-14T00:00:00.000Z' },
       ] })]) {
         fs.writeFileSync(moveFile, moveRecord);
-        await diagnose({ ...options, silenceCalibration: () => assert.fail('unusable roots must not invoke evidence') });
-        assert.equal(metadataReads, 1, 'unusable roots must not scan metadata');
+        await diagnose({ ...options,
+          silenceCalibration: () => assert.fail('unusable roots must not invoke evidence'),
+          silenceWatchdogShadow: () => assert.fail('unusable roots must not invoke evidence'),
+        });
+        assert.equal(metadataReads, 2, 'unusable roots must not scan metadata');
       }
     } finally {
       readMock.mock.restore();

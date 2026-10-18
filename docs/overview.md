@@ -1008,6 +1008,13 @@ to remeasure Codex session logs and release a threshold change together with its
 records are counted as skipped. An unavailable runs root is `warn`. This check writes nothing,
 never fails doctor, and does not change its exit code.
 
+The `silenceWatchdogShadow` row counts shadow watchdog decisions on successful runs
+(false stops), deadline outcomes (true stops), and other outcomes by role and phase,
+alongside observations without decisions, unobserved runs, and faults. It also shows
+off, armed, unrecorded, and unknown-version records outside the shadow cohort.
+False stops, faults, and unknown versions warn; unknown is not clean. Review every
+false-stop run before arming: doctor does not track reviews. This row never fails doctor.
+
 A dead-sandbox row prints the diagnosis from `$CODEX_HOME/.sandbox/` logs and
 `setup_error.json`; an order refused for the same dead sandbox prints the same diagnosis.
 The 2026-10-10 TradeForge incident exposed only “setup refresh had errors” until the log named
