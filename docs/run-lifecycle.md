@@ -12,6 +12,11 @@ existing run instead of starting a second one. When startup and waiting were a s
 calling shell's time limit looked like a dead run: on 2026-08-03 one job produced six runs, four of
 which were never accounted for at all.
 
+Repeats select the anchor first, excluding automatic children from ordinary and manual-grant
+matching, then follow at most one recorded automatic successor after the anchor's reply is known.
+A started successor is introduced by `CONTINUED=<childDir> from=<anchor run name>` and a transition
+notice; attach then answers or waits for the child and returns the child's exit code.
+
 ## First failure point: the orchestrator gate
 
 Before the launcher starts, Claude Code invokes the `PreToolUse` hook `order-gate.mjs` on every attempt

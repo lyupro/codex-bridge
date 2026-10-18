@@ -4,6 +4,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { readJsonFileSync } from '../json-file.mjs';
 import { workerMayBeAlive } from '../meta/run-liveness.mjs';
+import { automaticChildMarker } from '../meta/pre-start.mjs';
+import { recoverySuccessor } from '../meta/recovery-successor.mjs';
 import { processAlive } from '../process-identity.mjs';
 import { exitCodeFor, writeFailure, chainRuns } from '../write-meta.mjs';
 import { readyGrantLines, sameRun } from './continuation.mjs';
@@ -106,13 +108,15 @@ export async function attach({
     .map((run) => ({ run, status: readJsonFile(path.join(runsRoot, run, 'status.json')) }))
     .filter(({ status }) => status);
   const sameOrder = runsForOrder(runRecords, orderId);
+  // Plan_80 E18: automatic ancestry is not a consumed manual grant; choose its anchor first.
+  const anchors = sameOrder.filter(({ status }) => !automaticChildMarker(status));
   const attachRuns = isContinue
-    ? sameOrder.filter(({ status }) => retryRun
+    ? anchors.filter(({ status }) => retryRun
       ? status.retry_of && sameRun(runsRoot, status.retry_of, retryRun)
       : resumeRun
         ? status.resumed_from && sameRun(runsRoot, status.resumed_from, resumeRun)
         : grantRun && status.continued_from && sameRun(runsRoot, status.continued_from, grantRun))
-    : sameOrder;
+    : anchors;
   if (isContinue && !attachRuns.length) return null;
 
   const owner = isContinue ? null : conflictingOrderOwner(runRecords, orderId, taskHash);
@@ -131,14 +135,8 @@ export async function attach({
     const entry = attachRuns[i];
     const dir = path.join(runsRoot, entry.run);
     if (fs.existsSync(path.join(dir, 'reply.txt'))) {
-      announceSavedReply(dir, orderId, entry.status.started_at);
-      console.log(fs.readFileSync(path.join(dir, 'reply.txt'), 'utf8').replace(/\s+$/, ''));
-      const meta = readJsonFile(path.join(dir, 'meta.json'));
-      // Plan_75 D1, 2026-10-03 TradeForge: a cached failure must name its current repair.
-      if (meta?.status !== 'OK' && entry.run === runs.at(-1)) {
-        console.log(readyGrantLines(runsRoot, runs));
-      }
-      return exitCodeFor(meta?.status);
+      candidate = entry;
+      break;
     }
     if (workerMayBeAlive({ runDir: dir, status: entry.status })) {
       candidate = entry;
@@ -151,37 +149,84 @@ export async function attach({
     return EXIT.PENDING;
   }
 
-  const runDir = path.join(runsRoot, candidate.run);
-  // On 2026-08-13 a killed waiting call became an invented FAIL over a run already finished OK.
-  // A distinct call outcome lets the dispatcher inspect disk without mistaking pending for failure.
-  if (noWait) {
-    announcePending(runDir, orderId, candidate.status.started_at);
-    return EXIT.PENDING;
-  }
-  await beforeWait?.();
-  announceLiveAttach(runDir, orderId, candidate.status.started_at);
-  const replyText = await waitForReply(runDir, candidate.status.pid, candidate.status);
-  if (replyText !== null) {
-    console.log(replyText);
-    return exitCodeFor(readJsonFile(path.join(runDir, 'meta.json'))?.status);
+  let releasedBeforeWait = false;
+  return answerRun(candidate, true);
+
+  async function answerRun(entry, followSuccessor) {
+    const runDir = path.join(runsRoot, entry.run);
+    const replyPath = path.join(runDir, 'reply.txt');
+    if (fs.existsSync(replyPath)) {
+      announceSavedReply(runDir, orderId, entry.status.started_at);
+      console.log(fs.readFileSync(replyPath, 'utf8').replace(/\s+$/, ''));
+      return afterReply(entry, followSuccessor, true);
+    }
+    // A successor can already be dead when the anchor's saved answer is read.
+    if (!followSuccessor && !workerMayBeAlive({ runDir, status: entry.status })) {
+      return answerDeath(entry, runDir);
+    }
+    // On 2026-08-13 a killed waiting call became an invented FAIL over a run already finished OK.
+    // A distinct call outcome lets the dispatcher inspect disk without mistaking pending for failure.
+    if (noWait) {
+      announcePending(runDir, orderId, entry.status.started_at);
+      return EXIT.PENDING;
+    }
+    if (!releasedBeforeWait) {
+      releasedBeforeWait = true;
+      await beforeWait?.();
+    }
+    announceLiveAttach(runDir, orderId, entry.status.started_at);
+    const replyText = await waitForReply(runDir, entry.status.pid, entry.status);
+    if (replyText !== null) {
+      console.log(replyText);
+      return afterReply(entry, followSuccessor, false);
+    }
+    return answerDeath(entry, runDir);
   }
 
-  // Preserve the existing outcome if a worker dies after this attach begins. Dead runs are
-  // excluded above; assigning an abandoned verdict is pass 2 of Plan_11 and remains separate.
-  const meta = readJsonFile(path.join(runDir, 'meta.json'));
-  if (meta) {
-    console.log(
-      [
-        `${meta.status} — ${meta.reason || 'verdict recorded, worker process response not saved'}`,
-        `Run: ${runDir}`,
-      ].join('\n'),
-    );
-    return exitCodeFor(meta.status);
+  function afterReply(entry, followSuccessor, cached) {
+    const runDir = path.join(runsRoot, entry.run);
+    const meta = readJsonFile(path.join(runDir, 'meta.json'));
+    const code = exitCodeFor(meta?.status);
+    if (!followSuccessor) return code;
+    // Plan_80 E18: the worker publishes the pointer before reply.txt, possibly during our wait.
+    const successor = recoverySuccessor(runsRoot, entry.run);
+    if (successor.state === 'none') {
+      // Plan_75 D1, 2026-10-03 TradeForge: a cached failure must name its current repair.
+      if (cached && meta?.status !== 'OK' && entry.run === runs.at(-1)) {
+        console.log(readyGrantLines(runsRoot, runs));
+      }
+    } else if (successor.state === 'invalid') {
+      console.log(`Automatic continuation record of ${runDir} is unusable (${successor.reason}); the verdict above is final.`);
+    } else if (!successor.started) {
+      console.log(`Automatic continuation ${successor.childDir} never started Codex; the verdict above is final.`);
+    } else {
+      console.log(`CONTINUED=${successor.childDir} from=${entry.run}`);
+      console.log("The run above stopped and was continued automatically in the same Codex thread; the verdict below is the continuation's.");
+      return answerRun({
+        run: successor.child, status: readJsonFile(path.join(successor.childDir, 'status.json')),
+      }, false);
+    }
+    return code;
   }
-  const { reply } = writeFailure(runDir, candidate.status.agent, 'run worker process died without recording a verdict', [
-    `Log: codex-bridge read ${runDir}`,
-    'Any Codex changes remain in the tree — check them with git status',
-  ]);
-  console.log(reply);
-  return EXIT.FAIL;
+
+  function answerDeath(entry, runDir) {
+    // Preserve the existing outcome if a worker dies after this attach begins. Dead anchors are
+    // excluded above; assigning an abandoned verdict is pass 2 of Plan_11 and remains separate.
+    const meta = readJsonFile(path.join(runDir, 'meta.json'));
+    if (meta) {
+      console.log(
+        [
+          `${meta.status} — ${meta.reason || 'verdict recorded, worker process response not saved'}`,
+          `Run: ${runDir}`,
+        ].join('\n'),
+      );
+      return exitCodeFor(meta.status);
+    }
+    const { reply } = writeFailure(runDir, entry.status.agent, 'run worker process died without recording a verdict', [
+      `Log: codex-bridge read ${runDir}`,
+      'Any Codex changes remain in the tree — check them with git status',
+    ]);
+    console.log(reply);
+    return EXIT.FAIL;
+  }
 }
