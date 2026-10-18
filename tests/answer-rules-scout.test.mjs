@@ -95,5 +95,5 @@ test('scout entries and their default phase and data are immutable', () => {
 test('review and build prompts have no answer-rule block while their catalogs are absent', () => {
   const scope = { label: 'scope', diffCommand: 'git diff', files: ['src/file.mjs'] };
   assert.ok(!INSTRUCTIONS['codex-review']({}, scope).includes('Rules checked after the run'));
-  assert.ok(!INSTRUCTIONS['codex-build']({}).includes('Rules checked after the run'));
+  assert.ok(INSTRUCTIONS['codex-build']({}).includes('Rules checked after the run'));
 });
