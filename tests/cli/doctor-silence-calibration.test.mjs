@@ -223,7 +223,10 @@ test('diagnose shares one runs-root resolution, inserts calibration after projec
       let calls = 0;
       const result = await diagnose({ ...options, silenceCalibration: async (input) => {
         calls += 1;
-        assert.deepEqual(input, { runsRoot: process.env.CODEX_RUNS_ROOT, now });
+        assert.deepEqual(input, { runsRoot: process.env.CODEX_RUNS_ROOT, now, records: {
+          records: [], unreadable: 0, statusUnreadable: 0, days: 30,
+          windowStart: now.getTime() - 30 * 24 * 60 * 60 * 1000, windowEnd: now.getTime(),
+        } });
         return check('silenceCalibration', 'warn', 'fixture calibration breach');
       } });
       readMock.mock.restore();
@@ -244,6 +247,74 @@ test('diagnose shares one runs-root resolution, inserts calibration after projec
         assert.deepEqual(unavailable.checks[index + 1], check('silenceCalibration', 'warn', `unavailable: ${runsRoot.value}`));
       }
     } finally {
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+});
+
+test('a supplied scan is used without touching a missing runs root', async (t) => {
+  await withTempTree('silence-supplied-', (root) => {
+    t.mock.method(fs, 'readdirSync', () => assert.fail('supplied records must not scan the root'));
+    t.mock.method(fs, 'readFileSync', () => assert.fail('supplied records must not read files'));
+    const records = {
+      records: [{ meta: successful(996000) }], unreadable: 1, statusUnreadable: 2, days: 7,
+      windowStart: now.getTime() - 7 * 24 * 60 * 60 * 1000, windowEnd: now.getTime(),
+    };
+    assert.deepEqual(row(path.join(root, 'missing'), { records }), check('silenceCalibration', 'warn',
+      `advisor.advise: 1 of 1 successful runs reached 996000 ms (longest quiet pause 996000 ms)${recalibrate}, 1 unreadable records skipped`));
+    assert.deepEqual(row(path.join(root, 'missing'), { records: { ...records, records: [], unreadable: 0 } }),
+      check('silenceCalibration', 'ok', 'no successful run with recorded pauses in the last 7 days'));
+    assert.deepEqual(row(path.join(root, 'missing'), { records: { error: 'runs root unavailable: fixture' } }),
+      check('silenceCalibration', 'warn', 'runs root unavailable: fixture'));
+  });
+});
+
+test('diagnose reads sampled metadata once and calibration reuses the shared scan', async (t) => {
+  const { host } = await installedFixture(t);
+  await withTempTree('silence-shared-scan-', async (root) => {
+    const previous = { CODEX_BRIDGE_HOME: process.env.CODEX_BRIDGE_HOME, CODEX_RUNS_ROOT: process.env.CODEX_RUNS_ROOT };
+    process.env.CODEX_BRIDGE_HOME = root;
+    process.env.CODEX_RUNS_ROOT = path.join(root, 'runs');
+    const metaFile = record(process.env.CODEX_RUNS_ROOT, recent, successful());
+    const options = {
+      host, codexProbe, currentPackage: ownPackage,
+      bridgeProbe: () => ({ available: true, value: 'fixture' }),
+      hostVersion: null, contractRecord: null, handbackWitnessRecord: null,
+      dispatcherModelRecord: null, dispatcherContractRecord: null, observations: [], now,
+    };
+    const read = fs.readFileSync;
+    let metadataReads = 0;
+    const readMock = t.mock.method(fs, 'readFileSync', (file, ...args) => {
+      if (file === metaFile) metadataReads += 1;
+      return read(file, ...args);
+    });
+    try {
+      await diagnose(options);
+      await diagnose({ ...options, silenceCalibration: true });
+      assert.equal(metadataReads, 0, 'no evidence callback means no metadata scan');
+      const result = await diagnose({ ...options, silenceCalibration: (input) => {
+        assert.equal(input.records.records.length, 1);
+        assert.equal(input.records.records[0].runDir, path.dirname(metaFile));
+        return silenceCalibrationCheck(input);
+      } });
+      assert.equal(metadataReads, 1, 'calibration must reuse the diagnose scan');
+      assert.deepEqual(result.checks.find(({ key }) => key === 'silenceCalibration'),
+        check('silenceCalibration', 'ok',
+          'advisor.advise: 0 of 1 successful runs reached 996000 ms (longest quiet pause 900000 ms)'));
+      const moveFile = path.join(root, 'state', 'runs-root.json');
+      fs.mkdirSync(path.dirname(moveFile), { recursive: true });
+      for (const moveRecord of ['{', JSON.stringify({ version: 1, retired: [
+        { root: process.env.CODEX_RUNS_ROOT, movedAt: '2026-10-14T00:00:00.000Z' },
+      ] })]) {
+        fs.writeFileSync(moveFile, moveRecord);
+        await diagnose({ ...options, silenceCalibration: () => assert.fail('unusable roots must not invoke evidence') });
+        assert.equal(metadataReads, 1, 'unusable roots must not scan metadata');
+      }
+    } finally {
+      readMock.mock.restore();
       for (const [key, value] of Object.entries(previous)) {
         if (value === undefined) delete process.env[key];
         else process.env[key] = value;

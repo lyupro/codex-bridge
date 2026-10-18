@@ -996,6 +996,7 @@ still being written) are `ok`; unavailable, empty or unrecognized logs are `warn
 Plan_80 stall recovery will see this host's logs as unknown evidence. This row never fails doctor
 or changes its exit code, and reports structural metadata without log content.
 
+The doctor evidence lines read one shared 30-day walk of run records from the resolved runs root.
 The `silenceCalibration` row reads run metadata from the resolved runs root for the last 30
 days, grouping successful runs with recorded pauses by role and phase. Plan_80 E12 requires
 this early warning because the silence threshold ships with the package: Codex or model

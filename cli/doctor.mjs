@@ -33,6 +33,7 @@ import { readHostObservations } from '../src/home/lib/host-observations.mjs';
 import { activeHostVersions } from './active-hosts.mjs';
 import { otherHostCheck, sessionHostCheck, sessionHostVersions } from './session-hosts.mjs';
 import { liveRunsCheck, projectRunsCheck, retentionCheck, runsRootCheck } from './doctor-runs.mjs';
+import { scanRunRecords } from './doctor-run-records.mjs';
 
 export { renderDoctor };
 
@@ -220,10 +221,12 @@ export async function diagnose({
     : resolution ? liveRunsCheck(resolution)
       : check('liveRuns', 'warn', `working-run count unavailable: ${runsRoot.value}`));
   checks.push(projectRuns);
+  const records = typeof silenceCalibration === 'function' && resolution && !resolution.staleOverride
+    ? scanRunRecords({ runsRoot: resolution.root, now }) : undefined;
   if (typeof silenceCalibration === 'function') {
     checks.push(!resolution || resolution.staleOverride
       ? check('silenceCalibration', 'warn', `unavailable: ${runsRoot.value}`)
-      : await silenceCalibration({ runsRoot: resolution.root, now }));
+      : await silenceCalibration({ runsRoot: resolution.root, now, records }));
   }
 
   return {
