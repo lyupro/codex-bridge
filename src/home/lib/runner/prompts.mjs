@@ -54,6 +54,26 @@ function renderArrayBounds(schema) {
   return rules.length ? `Output-schema array bounds:\n${rules.join('\n')}` : '';
 }
 
+// OW-068 / Plan_80 E21: expose string constraints from the same schema that judges the answer.
+function boundedTextRules(schema, path = '') {
+  if (schema.type === 'object') {
+    return Object.entries(schema.properties ?? {}).flatMap(([name, child]) =>
+      boundedTextRules(child, path ? `${path}.${name}` : name));
+  }
+  if (schema.type === 'array') return boundedTextRules(schema.items, `${path}[]`);
+  if (schema.type !== 'string') return [];
+
+  const rules = [];
+  if (schema.minLength > 1) rules.push(`at least ${schema.minLength} characters`);
+  if (schema.pattern !== undefined) rules.push(`must match the pattern ${schema.pattern}`);
+  return rules.length ? [`- ${path}: ${rules.join('; ')}`] : [];
+}
+
+function renderTextBounds(schema) {
+  const rules = boundedTextRules(schema);
+  return rules.length ? `Output-schema text rules:\n${rules.join('\n')}` : '';
+}
+
 const BODIES = {
   // Plan_59 D3-D5/D7/D10: independent design advice needs explicit lenses and a risk ledger.
   'codex-advisor': (opts) => {
@@ -200,6 +220,7 @@ export const INSTRUCTIONS = Object.fromEntries(
     const instructions = body(...args);
     const schema = agent === 'codex-advisor' ? advisorSchema(opts.phase) : schemaFor(agent);
     const bounds = renderArrayBounds(schema);
-    return `${instructions}\n${languageRule()}${bounds ? `\n\n${bounds}` : ''}`;
+    const textBounds = renderTextBounds(schema);
+    return `${instructions}\n${languageRule()}${bounds ? `\n\n${bounds}` : ''}${textBounds ? `\n\n${textBounds}` : ''}`;
   }]),
 );
