@@ -1,11 +1,10 @@
 /** Judges advisor evidence and independent decisions so Plan_59 D3/D4/D5/D10 failures cannot pass as advice. */
 import fs from 'node:fs';
 import path from 'node:path';
+import { answerRuleMessage } from '../answer-rules.mjs';
+import { BACKSTOPS, UNLISTED_OPTION_MIN_CHARS } from '../answer-rules/advisor.mjs';
 
-const BACKSTOPS = {
-  English: ['both options are good', 'it depends on preference', 'you know better', 'either works'],
-  Russian: ['оба варианта хороши', 'зависит от предпочтений', 'вам виднее', 'подойдёт любой'],
-};
+const reason = (key, values = {}) => answerRuleMessage('codex-advisor', key, values);
 const ADDRESS_TOKEN = /(?<![\p{L}\p{N}_./\\:~-])(?:[a-zA-Z]:)?[\p{L}\p{N}_@!$~.%+/\\-]+:\d+(?:-\d+)?(?![\p{L}\p{N}_:\d-])/gu;
 const QUOTED_ADDRESS = /`([^`\r\n]+:\d+(?:-\d+)?)`|"([^"\r\n]+:\d+(?:-\d+)?)"|'([^'\r\n]+:\d+(?:-\d+)?)'/u;
 const ADDRESS = new RegExp(`${QUOTED_ADDRESS.source}|(${ADDRESS_TOKEN.source})`, 'gu');
@@ -87,21 +86,21 @@ function isCitationInProse(address, root) {
 }
 
 function citationProblem(file, start, end, root, allowed) {
-  if (typeof file !== 'string' || !file) return 'use a repository-relative path:line or path:line-line address';
+  if (typeof file !== 'string' || !file) return { key: 'advisor-citation-path', values: {} };
   const entry = entryInRepo(root, file);
-  if (!entry?.isFile) return 'cite an existing file under repoRoot';
+  if (!entry?.isFile) return { key: 'advisor-citation-existing-file', values: {} };
   let count;
   try {
     count = lineCount(entry.absolute);
   } catch {
-    return 'cite a readable file under repoRoot';
+    return { key: 'advisor-citation-readable-file', values: {} };
   }
   if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 1 || end < start || end > count) {
-    return `use an ascending line range within this file's ${count} lines`;
+    return { key: 'advisor-citation-line-range', values: { count } };
   }
   if (!allowed.some((scope) => entry.relative === scope.relative ||
     (scope.isDirectory && (!scope.relative || entry.relative.startsWith(`${scope.relative}/`))))) {
-    return 'cite a task path or a scope missing_paths entry';
+    return { key: 'advisor-citation-allowed-path', values: {} };
   }
   return null;
 }
@@ -116,12 +115,12 @@ function checkCitations({ phase, result, task, repoRoot, scopeResult }, reasons)
     const { file, line_start: start, line_end: end } = location;
     const label = locationLabel(location);
     const problem = citationProblem(file, start, end, root, allowed);
-    if (problem) reasons.push(`D3 ${field} ${JSON.stringify(label)}: ${problem}.`);
+    if (problem) reasons.push(reason(problem.key, { field, label, ...problem.values }));
   };
   const checkAddress = (field, raw) => {
     const match = raw.match(/^(.+):(\d+)(?:-(\d+))?$/);
     if (!match) {
-      reasons.push(`D3 ${field} ${JSON.stringify(raw)}: use a repository-relative path:line or path:line-line address.`);
+      reasons.push(reason('advisor-prose-address', { field, label: raw }));
       return;
     }
     const start = Number(match[2]);
@@ -151,14 +150,14 @@ function checkCitations({ phase, result, task, repoRoot, scopeResult }, reasons)
   if (phase === 'advise') {
     for (const [index, item] of result.assumptions.entries()) {
       if (item.rating === 'VERIFIED' && item.evidence.length === 0) {
-        reasons.push(`D10 assumptions[${index}].evidence []: a VERIFIED assumption needs at least one location.`);
+        reasons.push(reason('advisor-verified-evidence', { index }));
       }
       checkEvidence(`assumptions[${index}].evidence`, item.evidence);
     }
     for (const [index, item] of result.pre_mortem.entries()) {
       const { early_check: earlyCheck } = item;
       if (earlyCheck.kind === 'inspect' && earlyCheck.evidence.length === 0) {
-        reasons.push(`D10 pre_mortem[${index}].early_check.evidence []: an inspect check needs at least one location.`);
+        reasons.push(reason('advisor-inspect-evidence', { index }));
       }
       checkEvidence(`pre_mortem[${index}].early_check.evidence`, earlyCheck.evidence);
     }
@@ -180,8 +179,8 @@ function integrityProblems(result, reasons) {
   for (const { field, value } of strings(result)) {
     const control = value.match(CONTROL)?.[0];
     const surrogate = value.match(LONE_SURROGATE)?.[0];
-    if (control) reasons.push(`integrity ${field}: remove control character ${codePoint(control)}.`);
-    else if (surrogate) reasons.push(`integrity ${field}: remove lone surrogate ${codePoint(surrogate)}.`);
+    if (control) reasons.push(reason('advisor-control-character', { field, codePoint: codePoint(control) }));
+    else if (surrogate) reasons.push(reason('advisor-lone-surrogate', { field, codePoint: codePoint(surrogate) }));
   }
 }
 
@@ -197,21 +196,21 @@ export function judgeAdvice({ phase, result, task, repoRoot, commandsRun, langua
   }
   const reasons = [];
   integrityProblems(result, reasons);
-  if (commandsRun === 0) reasons.push('D4 commandsRun 0: inspect repository evidence before answering.');
+  if (commandsRun === 0) reasons.push(reason('advisor-commands-run'));
   if (phase === 'scope') {
     if (!result.taken_on_trust.length) {
-      reasons.push('D4 taken_on_trust []: name at least one assumption taken on trust.');
+      reasons.push(reason('advisor-taken-on-trust'));
     }
     if (result.sufficient === false && !result.missing_paths.length) {
-      reasons.push('D4 missing_paths [] with sufficient false: name the paths needed for advice.');
+      reasons.push(reason('advisor-insufficient-missing-paths'));
     }
     if (result.sufficient === true && result.missing_paths.length) {
-      reasons.push(`D4 missing_paths ${JSON.stringify(result.missing_paths)} with sufficient true: resolve the scope contradiction.`);
+      reasons.push(reason('advisor-sufficient-missing-paths', { missingPaths: result.missing_paths }));
     }
     const riskIds = new Set();
     for (const [index, item] of result.predicted_risks.entries()) {
       if (riskIds.has(item.id)) {
-        reasons.push(`D10 predicted_risks[${index}].id ${JSON.stringify(item.id)}: use a unique predicted risk id.`);
+        reasons.push(reason('advisor-unique-risk-id', { index, id: item.id }));
       }
       riskIds.add(item.id);
     }
@@ -219,39 +218,39 @@ export function judgeAdvice({ phase, result, task, repoRoot, commandsRun, langua
     const ids = new Set(task.options.map(({ id }) => id));
     const chosen = result.recommendation.option_id;
     if (!ids.has(chosen) && chosen !== 'none-of-these') {
-      reasons.push(`D5 recommendation.option_id ${JSON.stringify(chosen)}: choose a task option id.`);
+      reasons.push(reason('advisor-recommendation-option-id', { optionId: chosen }));
     }
     if (chosen === 'none-of-these') {
-      if (result.unlisted_option === 'none' || [...result.unlisted_option.trim()].length < 40) {
-        reasons.push(`D10 unlisted_option ${JSON.stringify(result.unlisted_option)}: describe an unlisted option in at least 40 characters.`);
+      if (result.unlisted_option === 'none' || [...result.unlisted_option.trim()].length < UNLISTED_OPTION_MIN_CHARS) {
+        reasons.push(reason('advisor-unlisted-option-length', { unlistedOption: result.unlisted_option }));
       }
       const rejected = new Set(result.rejected.map(({ option_id }) => option_id));
       const missing = [...ids].filter((id) => !rejected.has(id));
       if (missing.length) {
-        reasons.push(`D10 rejected ${JSON.stringify(missing)}: reject every task option when recommending "none-of-these".`);
+        reasons.push(reason('advisor-reject-all-options', { missing }));
       }
     } else if (ids.has(chosen) && result.unlisted_option !== 'none') {
-      reasons.push(`D10 unlisted_option ${JSON.stringify(result.unlisted_option)}: use "none" when recommending a task option.`);
+      reasons.push(reason('advisor-listed-option-none', { unlistedOption: result.unlisted_option }));
     }
     for (const [index, item] of result.rejected.entries()) {
       if (!ids.has(item.option_id)) {
-        reasons.push(`D5 rejected[${index}].option_id ${JSON.stringify(item.option_id)}: use a task option id.`);
+        reasons.push(reason('advisor-rejected-option-id', { index, optionId: item.option_id }));
       }
       if (item.option_id === chosen) {
-        reasons.push(`D5 rejected[${index}].option_id ${JSON.stringify(chosen)}: do not reject the recommended option.`);
+        reasons.push(reason('advisor-reject-recommended-option', { index, optionId: chosen }));
       }
     }
     if (scopeResult !== undefined) {
       const riskIds = new Set(scopeResult.predicted_risks.map(({ id }) => id));
       for (const [index, item] of result.risk_outcomes.entries()) {
         if (!riskIds.has(item.risk_id)) {
-          reasons.push(`D10 risk_outcomes[${index}].risk_id ${JSON.stringify(item.risk_id)}: use a scope predicted risk id.`);
+          reasons.push(reason('advisor-risk-outcome-id', { index, riskId: item.risk_id }));
         }
       }
       for (const id of riskIds) {
         const count = result.risk_outcomes.filter(({ risk_id }) => risk_id === id).length;
         if (count !== 1) {
-          reasons.push(`D10 risk_outcomes ${JSON.stringify(id)} count ${count}: provide exactly one outcome per predicted risk.`);
+          reasons.push(reason('advisor-one-outcome-per-risk', { riskId: id, count }));
         }
       }
     }
@@ -263,7 +262,7 @@ export function judgeAdvice({ phase, result, task, repoRoot, commandsRun, langua
     for (const [phrase, pattern] of patterns) {
       const match = value.normalize('NFKC').match(pattern);
       if (match) {
-        reasons.push(`D5 ${field} ${JSON.stringify(match[0])}: replace backstop phrase ${JSON.stringify(phrase)} with a decision.`);
+        reasons.push(reason('advisor-backstop-phrase', { field, match: match[0], phrase }));
       }
     }
   }

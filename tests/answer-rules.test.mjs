@@ -1,3 +1,4 @@
+/** OW-068: every advisor answer rule is stated in its phase prompt and carries the exact judge reason. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ANSWER_RULES, answerRuleMessage, answerRuleStatements, validateAnswerRules } from '../src/home/lib/answer-rules.mjs';
