@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { EXIT } from '../../src/home/lib/runner/exit-codes.mjs';
 import { readJsonFile } from '../../src/home/lib/runner/attach.mjs';
+import { readyGrantLines } from '../../src/home/lib/runner/continuation.mjs';
 import { attaching, deadPid, fixture, order, run, running } from './attach-fixtures.mjs';
 
 const PARENT = '2026-10-03_180000_advise';
@@ -69,6 +70,7 @@ for (const [verdict, expected] of [['OK', EXIT.OK], ['LIMIT', EXIT.LIMIT], ['UNA
       `ATTACH=${f.childDir} order-id=order-1 started=2026-10-03T18:02:00.000Z`,
       'This is the answer of the previous run started at 2026-10-03T18:02:00.000Z; no new work was started.',
       `${verdict} — child verdict`,
+      ...(verdict === 'OK' ? [] : [readyGrantLines(f.runsRoot, [PARENT, CHILD])]),
     ]);
   });
 }
@@ -102,6 +104,7 @@ test('a live child releases the claim once before waiting and returns its later 
   assert.equal(lines[5], `ATTACH=${f.childDir} order-id=order-1 started=2026-10-03T18:02:00.000Z`);
   assert.equal(lines[6], 'Attached to the run already in progress since 2026-10-03T18:02:00.000Z; no new work was started, and this invocation is waiting for its verdict.');
   assert.equal(lines[7], 'LIMIT — child answered later');
+  assert.equal(lines.length, 8, 'a reply obtained by waiting must not append repair grants');
 });
 
 for (const childLive of [false, true]) {
@@ -187,7 +190,54 @@ test('a never-started child keeps the parent verdict without announcing a transi
   assert.equal(code, EXIT.FAIL);
   assert.equal(lines[2], PARENT_REPLY);
   assert.equal(lines[3], `Automatic continuation ${f.childDir} never started Codex; the verdict above is final.`);
-  assert.equal(lines.length, 4);
+  assert.equal(lines[4], readyGrantLines(f.runsRoot, [PARENT]));
+  assert.ok(lines[4].includes(`continue: ${PARENT} —`));
+  assert.ok(lines[4].includes(`retry: ${PARENT} —`));
+  assert.equal(lines.length, 5);
+});
+
+for (const [pointer, parent, notice] of [
+  ['none', { recovery: undefined }, false],
+  ['invalid', { recovery: { automatic: true, child: '../outside' } }, true],
+]) {
+  test(`a cached last-started anchor with ${pointer} successor prints its own repair grants`, async (t) => {
+    const f = setup(t, { parent, child: { state: 'aborted_pre_start' } });
+    const { code, lines } = await checkedAttach(f);
+    assert.equal(code, EXIT.FAIL);
+    assert.equal(lines[2], PARENT_REPLY);
+    if (notice) {
+      assert.equal(lines[3], `Automatic continuation record of ${f.parentDir} is unusable (child-name); the verdict above is final.`);
+    }
+    assert.equal(lines.at(-1), readyGrantLines(f.runsRoot, [PARENT]));
+    assert.ok(lines.at(-1).includes(`continue: ${PARENT} —`));
+    assert.ok(lines.at(-1).includes(`retry: ${PARENT} —`));
+    assert.equal(lines.length, notice ? 5 : 4);
+  });
+}
+
+test('cached parent FAIL and cached started child FAIL print repair grants after the child reply', async (t) => {
+  const f = setup(t, { child: { state: 'finished' }, childFiles: saved('FAIL', 'FAIL — child stalled') });
+  const { code, lines } = await checkedAttach(f);
+  assert.equal(code, EXIT.FAIL);
+  assertTransition(f, lines);
+  assert.deepEqual(lines.slice(5), [
+    `ATTACH=${f.childDir} order-id=order-1 started=2026-10-03T18:02:00.000Z`,
+    'This is the answer of the previous run started at 2026-10-03T18:02:00.000Z; no new work was started.',
+    'FAIL — child stalled',
+    readyGrantLines(f.runsRoot, [PARENT, CHILD]),
+  ]);
+  assert.ok(lines.at(-1).includes(`continue: ${CHILD} —`));
+  assert.ok(lines.at(-1).includes(`retry: ${CHILD} —`));
+});
+
+test('cached child OK prints no repair grants after either saved reply', async (t) => {
+  const f = setup(t, { child: { state: 'finished' } });
+  const { code, lines } = await checkedAttach(f);
+  assert.equal(code, EXIT.OK);
+  assertTransition(f, lines);
+  assert.equal(lines.at(-1), 'OK — child completed');
+  assert.equal(lines.length, 8);
+  assert.doesNotMatch(lines.join('\n'), /(?:continue|retry|resume):/);
 });
 
 test('automatic resumed_from ancestry does not consume a manual resume grant', async (t) => {

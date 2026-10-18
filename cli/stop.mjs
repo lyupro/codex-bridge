@@ -3,6 +3,7 @@ import path from 'node:path';
 import { stopCodex } from '../src/home/lib/runner/codex-cmd.mjs';
 import { git, worktreeSnapshot } from '../src/home/lib/runner/git-state.mjs';
 import { runLiveness } from '../src/home/lib/meta/run-liveness.mjs';
+import { recoverySuccessor } from '../src/home/lib/meta/recovery-successor.mjs';
 import {
   IDENTITY_ALIVE,
   IDENTITY_FOREIGN,
@@ -61,7 +62,13 @@ export async function stop({
   const status = readJson(path.join(runDir, 'status.json'));
   const meta = readJson(path.join(runDir, 'meta.json'));
   if (meta && typeof meta.status === 'string') {
-    return result(0, `Run ${runDir} already has a verdict (${meta.status}); no changes made.`);
+    let output = `Run ${runDir} already has a verdict (${meta.status}); no changes made.`;
+    const successor = recoverySuccessor(path.dirname(runDir), path.basename(runDir));
+    if (successor.state === 'valid') {
+      const childStatus = readJson(path.join(successor.childDir, 'status.json'));
+      output += ` It was continued automatically in ${successor.childDir} (state: ${childStatus?.state || 'unknown'}); to stop that run, use codex-bridge stop ${successor.child}.`;
+    }
+    return result(0, output);
   }
   if (!status) return result(1, `Run ${runDir} has no readable status.json; it was not changed.`);
   if (status.state !== 'running') {

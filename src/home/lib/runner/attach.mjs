@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { readJsonFileSync } from '../json-file.mjs';
 import { workerMayBeAlive } from '../meta/run-liveness.mjs';
-import { automaticChildMarker } from '../meta/pre-start.mjs';
+import { automaticChildMarker, startedRuns } from '../meta/pre-start.mjs';
 import { recoverySuccessor } from '../meta/recovery-successor.mjs';
 import { processAlive } from '../process-identity.mjs';
 import { exitCodeFor, writeFailure, chainRuns } from '../write-meta.mjs';
@@ -104,6 +104,7 @@ export async function attach({
   runsRoot, repo, slug, taskHash, orderId, chain, grantRun, retryRun, resumeRun, isContinue, noWait, beforeWait,
 } = {}) {
   const runs = chain || chainRuns(runsRoot, repo, slug, taskHash, orderId);
+  const started = startedRuns(runsRoot, runs);
   const runRecords = runs
     .map((run) => ({ run, status: readJsonFile(path.join(runsRoot, run, 'status.json')) }))
     .filter(({ status }) => status);
@@ -187,24 +188,24 @@ export async function attach({
     const runDir = path.join(runsRoot, entry.run);
     const meta = readJsonFile(path.join(runDir, 'meta.json'));
     const code = exitCodeFor(meta?.status);
-    if (!followSuccessor) return code;
-    // Plan_80 E18: the worker publishes the pointer before reply.txt, possibly during our wait.
-    const successor = recoverySuccessor(runsRoot, entry.run);
-    if (successor.state === 'none') {
-      // Plan_75 D1, 2026-10-03 TradeForge: a cached failure must name its current repair.
-      if (cached && meta?.status !== 'OK' && entry.run === runs.at(-1)) {
-        console.log(readyGrantLines(runsRoot, runs));
+    if (followSuccessor) {
+      // Plan_80 E18: the worker publishes the pointer before reply.txt, possibly during our wait.
+      const successor = recoverySuccessor(runsRoot, entry.run);
+      if (successor.state === 'invalid') {
+        console.log(`Automatic continuation record of ${runDir} is unusable (${successor.reason}); the verdict above is final.`);
+      } else if (successor.state === 'valid' && !successor.started) {
+        console.log(`Automatic continuation ${successor.childDir} never started Codex; the verdict above is final.`);
+      } else if (successor.state === 'valid') {
+        console.log(`CONTINUED=${successor.childDir} from=${entry.run}`);
+        console.log("The run above stopped and was continued automatically in the same Codex thread; the verdict below is the continuation's.");
+        return answerRun({
+          run: successor.child, status: readJsonFile(path.join(successor.childDir, 'status.json')),
+        }, false);
       }
-    } else if (successor.state === 'invalid') {
-      console.log(`Automatic continuation record of ${runDir} is unusable (${successor.reason}); the verdict above is final.`);
-    } else if (!successor.started) {
-      console.log(`Automatic continuation ${successor.childDir} never started Codex; the verdict above is final.`);
-    } else {
-      console.log(`CONTINUED=${successor.childDir} from=${entry.run}`);
-      console.log("The run above stopped and was continued automatically in the same Codex thread; the verdict below is the continuation's.");
-      return answerRun({
-        run: successor.child, status: readJsonFile(path.join(successor.childDir, 'status.json')),
-      }, false);
+    }
+    // Plan_80 E18: a never-started child must not hide its parent's cached-failure repair.
+    if (cached && meta?.status !== 'OK' && entry.run === started.at(-1)) {
+      console.log(readyGrantLines(runsRoot, started));
     }
     return code;
   }

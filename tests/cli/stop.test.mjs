@@ -149,9 +149,65 @@ test('stop leaves a finished run byte-for-byte unchanged', async (t) => {
   const result = await stop({ run: runDir, cwd: project, runsRootPath: runsRoot });
 
   assert.equal(result.exitCode, 0);
-  assert.match(result.output, /already has a verdict/);
+  assert.equal(result.output, `Run ${runDir} already has a verdict (OK); no changes made.`);
   assert.deepEqual(fs.readFileSync(path.join(runDir, 'status.json')), beforeStatus);
   assert.deepEqual(fs.readFileSync(path.join(runDir, 'meta.json')), beforeMeta);
+});
+
+for (const state of ['running', undefined]) {
+  test(`stop names a finished parent's automatic child with state ${state || 'unknown'} without signalling`, async (t) => {
+    const { project, projectRuns, runsRoot } = fixture(t);
+    const worker = liveProcess();
+    t.after(() => {
+      try {
+        worker.kill('SIGKILL');
+      } catch {}
+    });
+    assert.equal(await waitFor(() => Number.isInteger(worker.pid) && alive(worker.pid)), true);
+    const runDir = path.join(projectRuns, '2026-08-04_090000_parent');
+    const childName = '2026-08-04_090100_automatic';
+    const childDir = path.join(projectRuns, childName);
+    const identity = liveStatus(project, worker.pid);
+    writeRun(runDir, {
+      ...identity, state: 'finished', recovery: { automatic: true, child: childName },
+    }, { status: 'FAIL' });
+    writeRun(childDir, {
+      ...identity, state, resumed_from: path.basename(runDir),
+      recovery: { automatic: true, attempt: 2, parent: path.basename(runDir) },
+    });
+    fs.writeFileSync(path.join(runDir, 'reply.txt'), 'FAIL — parent stopped\n');
+    fs.writeFileSync(path.join(childDir, 'sentinel.bin'), Buffer.from([0, 255, 13, 10]));
+    const snapshot = () => [runDir, childDir].map((dir) => fs.readdirSync(dir).sort()
+      .map((name) => [name, fs.readFileSync(path.join(dir, name))]));
+    const before = snapshot();
+
+    const result = await stop({
+      run: runDir, cwd: project, runsRootPath: runsRoot,
+      commandRunner: () => assert.fail('a recorded verdict must not probe a process'),
+    });
+
+    assert.equal(result.exitCode, 0);
+    assert.equal(result.output, `Run ${runDir} already has a verdict (FAIL); no changes made.` +
+      ` It was continued automatically in ${childDir} (state: ${state || 'unknown'}); to stop that run, use codex-bridge stop ${childName}.`);
+    assert.equal(alive(worker.pid), true, 'the shared parent/child worker must not be signalled');
+    assert.deepEqual(snapshot(), before, 'every parent and child file must remain byte-identical');
+  });
+}
+
+test('stop preserves the exact recorded-verdict output for an invalid automatic pointer', async (t) => {
+  const { project, projectRuns, runsRoot } = fixture(t);
+  const runDir = path.join(projectRuns, '2026-08-04_090000_invalid');
+  writeRun(runDir, {
+    ...liveStatus(project, process.pid), state: 'finished',
+    recovery: { automatic: true, child: '../outside' },
+  }, { status: 'FAIL' });
+  const before = ['status.json', 'meta.json'].map((name) => fs.readFileSync(path.join(runDir, name)));
+
+  const result = await stop({ run: runDir, cwd: project, runsRootPath: runsRoot });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.output, `Run ${runDir} already has a verdict (FAIL); no changes made.`);
+  assert.deepEqual(['status.json', 'meta.json'].map((name) => fs.readFileSync(path.join(runDir, name))), before);
 });
 
 test('stop reports a missing folder as an actionable error', async (t) => {

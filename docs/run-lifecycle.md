@@ -16,6 +16,7 @@ Repeats select the anchor first, excluding automatic children from ordinary and 
 matching, then follow at most one recorded automatic successor after the anchor's reply is known.
 A started successor is introduced by `CONTINUED=<childDir> from=<anchor run name>` and a transition
 notice; attach then answers or waits for the child and returns the child's exit code.
+Repair lines after a cached non-OK reply name the last started run in the chain.
 
 ## First failure point: the orchestrator gate
 
@@ -396,6 +397,7 @@ closes the directory as abandoned — `meta.json` with status `FAIL` and a list 
 the tree. A run with a completed verdict is untouched, and a nonexistent directory produces a clear
 error. Killing reuses the same function as the deadline: knowledge of `cmd.exe` and its grandchild on
 Windows must not live in two places.
+Stopping a parent with a recorded verdict names its valid automatic child and sends no signal.
 
 The indication that “the run has not responded yet” is the absence of `reply.txt`, not `meta.json`.
 Artifact ordering writes `meta.json` before `reply.txt`, leaving a window where the verdict exists but
