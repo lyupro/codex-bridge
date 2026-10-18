@@ -37,6 +37,11 @@ folder never feeds two hosts:
 - `task-header.mjs` reads the orchestrator's metadata header of a task (`advice:`, `continue:`, `retry:`) for the
   runner and the producer hook alike (Plan_75 D5); it sits beside `order-schema.mjs` and `order-values.mjs` rather than under `runner/`
   because the hook needs the same answer before a runner exists.
+- `answer-rules.mjs` owns every rule able to fail a FILLED answer after the run (OW-068, Plan_80 E21): each
+  entry carries the sentence the agent's prompt states and the reason text the judge emits, so the model is told
+  every rule it is judged by. Keyed by agent (`answer-rules/<agent>.mjs`, phases in `AGENT_PHASES`); shared policy
+  data (thresholds, phrase lists) lives in the agent file and feeds both sides. A family distinct from
+  `order-rules`, which governs a task file before the run.
 - `order-rules.mjs` and `order-diagnostics.mjs` own every refusal text of the order path (Plan_79 D3):
   a rule the orchestrator controls is defined once, with the sentence `codex-bridge guidance order`
   prints and the message the refusal site builds; a refusal outside order authoring is a diagnostic in

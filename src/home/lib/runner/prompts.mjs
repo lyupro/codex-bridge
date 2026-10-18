@@ -12,6 +12,7 @@ import { SERVICE_FOLDERS } from '../meta/paths.mjs';
 import { RUN_ENV } from './run-env.mjs';
 import { advisorSchema, schemaFor } from './schemas.mjs';
 import { QUESTION_KIND } from './question-kind.mjs';
+import { answerRuleStatements } from '../answer-rules.mjs';
 
 /**
  * Package-owned continuation artifact (Plan_80 E13/A8 point 2). Sending the original task
@@ -93,7 +94,9 @@ Advise phase:
   could refute with knowledge you lack belongs in open_questions, not why.
 - independent_checks lists what you verified yourself, with evidence. Ground why in those checks
   and state confidence honestly.
-`}`;
+`}
+Rules checked after the run (a filled answer that breaks any one is rejected whole):
+${answerRuleStatements('codex-advisor', opts.phase).map((rule) => `- ${rule}`).join('\n')}`;
   },
   'codex-scout': (opts, scope, questions = []) => `Response rules:
 - You are working in read-only mode: do not try to write or edit anything.
