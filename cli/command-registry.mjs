@@ -9,6 +9,7 @@ import { sessionLogCheck } from './doctor-session-log.mjs';
 import { silenceCalibrationCheck } from './doctor-silence-calibration.mjs';
 import { silenceWatchdogShadowCheck } from './doctor-silence-watchdog-shadow.mjs';
 import { recoveryBudgetDriftCheck } from './doctor-recovery-budget-drift.mjs';
+import { recoveryEnablingGatesCheck } from './doctor-recovery-enabling-gates.mjs';
 import { probeContract } from './probe-contract.mjs';
 import { resolveProbeTarget } from './probe-target.mjs';
 import { brandStateDir } from '../src/home/lib/brand-home.mjs';
@@ -193,7 +194,7 @@ export const COMMANDS = [
           io.log(`probe: ${name} ${verdict.result} — ${verdict.detail}`);
         }
       }
-      const result = await diagnose({ host, sandbox: sandboxChecks, sessionLog: sessionLogCheck, silenceCalibration: silenceCalibrationCheck, silenceWatchdogShadow: silenceWatchdogShadowCheck, recoveryBudgetDrift: recoveryBudgetDriftCheck });
+      const result = await diagnose({ host, sandbox: sandboxChecks, sessionLog: sessionLogCheck, silenceCalibration: silenceCalibrationCheck, silenceWatchdogShadow: silenceWatchdogShadowCheck, recoveryBudgetDrift: recoveryBudgetDriftCheck, recoveryEnablingGates: recoveryEnablingGatesCheck });
       io.log(renderDoctor(result));
       // An inconclusive probe wrote nothing and measured nothing; exiting 0 would let a failed
       // measurement pass silently in a script (Plan_52 D26).

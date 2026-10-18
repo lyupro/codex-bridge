@@ -196,7 +196,7 @@ test('the check writes nothing while reading run records', async (t) => {
   });
 });
 
-test('diagnose shares one runs-root resolution, inserts three evidence rows after projectRuns, and preserves exit code', async (t) => {
+test('diagnose shares one runs-root resolution, inserts four evidence rows after projectRuns, and preserves exit code', async (t) => {
   const { host } = await installedFixture(t);
   await withTempTree('silence-diagnose-', async (root) => {
     const previous = { CODEX_BRIDGE_HOME: process.env.CODEX_BRIDGE_HOME, CODEX_RUNS_ROOT: process.env.CODEX_RUNS_ROOT };
@@ -211,9 +211,9 @@ test('diagnose shares one runs-root resolution, inserts three evidence rows afte
     };
     try {
       const baseline = await diagnose(options);
-      assert.ok(!baseline.checks.some(({ key }) => ['silenceCalibration', 'silenceWatchdogShadow', 'recoveryBudgetDrift'].includes(key)));
-      const disabled = await diagnose({ ...options, silenceCalibration: true, silenceWatchdogShadow: true, recoveryBudgetDrift: true });
-      assert.ok(!disabled.checks.some(({ key }) => ['silenceCalibration', 'silenceWatchdogShadow', 'recoveryBudgetDrift'].includes(key)));
+      assert.ok(!baseline.checks.some(({ key }) => ['silenceCalibration', 'silenceWatchdogShadow', 'recoveryBudgetDrift', 'recoveryEnablingGates'].includes(key)));
+      const disabled = await diagnose({ ...options, silenceCalibration: true, silenceWatchdogShadow: true, recoveryBudgetDrift: true, recoveryEnablingGates: true });
+      assert.ok(!disabled.checks.some(({ key }) => ['silenceCalibration', 'silenceWatchdogShadow', 'recoveryBudgetDrift', 'recoveryEnablingGates'].includes(key)));
       const moveFile = path.join(root, 'state', 'runs-root.json');
       const read = fs.readFileSync;
       let resolutions = 0;
@@ -224,6 +224,7 @@ test('diagnose shares one runs-root resolution, inserts three evidence rows afte
       let calls = 0;
       let shadowCalls = 0;
       let driftCalls = 0;
+      let gateCalls = 0;
       let sharedRecords;
       const result = await diagnose({ ...options, silenceCalibration: async (input) => {
         calls += 1;
@@ -245,17 +246,25 @@ test('diagnose shares one runs-root resolution, inserts three evidence rows afte
         assert.equal(input.runsRoot, process.env.CODEX_RUNS_ROOT);
         assert.equal(input.now, now);
         return check('recoveryBudgetDrift', 'warn', 'fixture recovery drift');
+      }, recoveryEnablingGates: async (input) => {
+        gateCalls += 1;
+        assert.strictEqual(input.records, sharedRecords);
+        assert.equal(input.runsRoot, process.env.CODEX_RUNS_ROOT);
+        assert.equal(input.now, now);
+        return check('recoveryEnablingGates', 'warn', 'fixture enabling gate');
       } });
       readMock.mock.restore();
       assert.equal(calls, 1);
       assert.equal(shadowCalls, 1);
       assert.equal(driftCalls, 1);
+      assert.equal(gateCalls, 1);
       assert.equal(resolutions, 1);
       assert.equal(result.exitCode, baseline.exitCode);
       const index = result.checks.findIndex(({ key }) => key === 'projectRuns');
       assert.deepEqual(result.checks[index + 1], check('silenceCalibration', 'warn', 'fixture calibration breach'));
       assert.deepEqual(result.checks[index + 2], check('silenceWatchdogShadow', 'warn', 'fixture false stop'));
       assert.deepEqual(result.checks[index + 3], check('recoveryBudgetDrift', 'warn', 'fixture recovery drift'));
+      assert.deepEqual(result.checks[index + 4], check('recoveryEnablingGates', 'warn', 'fixture enabling gate'));
 
       fs.mkdirSync(path.dirname(moveFile), { recursive: true });
       for (const moveRecord of ['{', JSON.stringify({ version: 1, retired: [
@@ -266,12 +275,14 @@ test('diagnose shares one runs-root resolution, inserts three evidence rows afte
           silenceCalibration: () => assert.fail('must not scan unavailable roots'),
           silenceWatchdogShadow: () => assert.fail('must not scan unavailable roots'),
           recoveryBudgetDrift: () => assert.fail('must not scan unavailable roots'),
+          recoveryEnablingGates: () => assert.fail('must not scan unavailable roots'),
         });
         const runsRoot = unavailable.checks.find(({ key }) => key === 'runsRoot');
         const index = unavailable.checks.findIndex(({ key }) => key === 'projectRuns');
         assert.deepEqual(unavailable.checks[index + 1], check('silenceCalibration', 'warn', `unavailable: ${runsRoot.value}`));
         assert.deepEqual(unavailable.checks[index + 2], check('silenceWatchdogShadow', 'warn', `unavailable: ${runsRoot.value}`));
         assert.deepEqual(unavailable.checks[index + 3], check('recoveryBudgetDrift', 'warn', `unavailable: ${runsRoot.value}`));
+        assert.deepEqual(unavailable.checks[index + 4], check('recoveryEnablingGates', 'warn', `unavailable: ${runsRoot.value}`));
       }
     } finally {
       for (const [key, value] of Object.entries(previous)) {

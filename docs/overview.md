@@ -1023,6 +1023,13 @@ unknown-version children are counted separately; unknown versions warn, and no c
 means automatic recovery was not exercised. Change a budget and its evidence together in
 `recovery-policy.mjs`, then release. This row never fails doctor or changes its exit code.
 
+The `recoveryEnablingGates` row reports manual continuations of stalled advise runs
+under Plan_80 E15 (1) and E19, counting distinct parents toward the three-trial gate.
+It records OK and other outcomes and compares elapsed time with each recovery budget;
+unknown parents or timing warn rather than count as clean evidence. Reaching the gate
+is informational: review every outcome and the shadow watchdog evidence, then decide
+O8 separately. Doctor never enables recovery, fails this row, or changes its exit code.
+
 A dead-sandbox row prints the diagnosis from `$CODEX_HOME/.sandbox/` logs and
 `setup_error.json`; an order refused for the same dead sandbox prints the same diagnosis.
 The 2026-10-10 TradeForge incident exposed only “setup refresh had errors” until the log named

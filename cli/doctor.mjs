@@ -92,6 +92,7 @@ export async function diagnose({
   silenceCalibration,
   silenceWatchdogShadow,
   recoveryBudgetDrift,
+  recoveryEnablingGates,
   bridgeProbe = probeCodexBridge,
   launcherProbe,
   currentPackage,
@@ -228,6 +229,7 @@ export async function diagnose({
     ['silenceCalibration', silenceCalibration],
     ['silenceWatchdogShadow', silenceWatchdogShadow],
     ['recoveryBudgetDrift', recoveryBudgetDrift],
+    ['recoveryEnablingGates', recoveryEnablingGates],
   ].filter(([, row]) => typeof row === 'function');
   const recordsUsable = Boolean(resolution && !resolution.staleOverride);
   const records = evidenceRows.length && recordsUsable
