@@ -16,6 +16,9 @@
  */
 import path from 'node:path';
 import { line, readJson } from './paths.mjs';
+import { answerRuleMessage } from '../answer-rules.mjs';
+
+const buildReason = (key, values = {}) => answerRuleMessage('codex-build', key, values);
 
 const FIELD = 'outcome';
 
@@ -56,10 +59,10 @@ export function outcomeGap(runDir, result) {
     // The reason comes from summary rather than a field of its own: summary is already
     // mandatory and already describes what happened, and two fields about one thing drift.
     const stated = line(result?.summary || '', 240);
-    return `the task was not done: ${stated || 'build declared fail and gave no summary'}`;
+    return buildReason('build-outcome-fail', { summary: stated });
   }
   if (declared === undefined || declared === null || declared === '') {
-    return 'result is not filled in: the response contract requires outcome "done" or "fail"';
+    return buildReason('build-outcome-missing');
   }
-  return `result declares an unknown outcome “${line(String(declared), 40)}”, expected "done" or "fail"`;
+  return buildReason('build-outcome-unknown', { value: line(String(declared), 40) });
 }

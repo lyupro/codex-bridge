@@ -1,4 +1,6 @@
 /** OW-068 / Plan_80 E21: build answer policy pairs prompt instructions with exact existing judge reasons. */
+
+// Reserved for verdicts where the work really was the wrong work, not for check artefacts.
 export const WRONG_WORK = 'wrong work was done: ';
 
 const DEFAULT = Object.freeze(['default']);

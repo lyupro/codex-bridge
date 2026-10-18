@@ -19,6 +19,14 @@ const judgedAgents = [
     ],
     check: scoutProducerProblems,
   },
+  {
+    agent: 'codex-build',
+    files: [
+      { file: 'verdict.mjs', functionNames: ['commitDuringRun', 'branchDuringRun', 'reportVersusWork'] },
+      { file: 'outcome.mjs', functionNames: ['outcomeGap'] },
+    ],
+    check: buildProducerProblems,
+  },
 ].map((judge) => ({
   ...judge,
   catalogKeys: Object.keys(ANSWER_RULES[judge.agent]),
@@ -27,7 +35,7 @@ const judgedAgents = [
     source: fs.readFileSync(new URL(`../src/home/lib/meta/${entry.file}`, import.meta.url), 'utf8'),
   })),
 }));
-const [advisor, scout] = judgedAgents;
+const [advisor, scout, build] = judgedAgents;
 const source = advisor.files[0].source;
 const catalogKeys = advisor.catalogKeys;
 
@@ -154,6 +162,59 @@ function scoutProducerProblems(files, catalogKeys) {
   return problems;
 }
 
+// E21: build-only reasons are catalog policy; snapshot refusals remain host evidence.
+function buildProducerProblems(files, catalogKeys) {
+  const problems = [];
+  const known = new Set(catalogKeys);
+  const produced = new Set();
+  const opening = /^['"`](?:commit made despite|branch moved despite|verification “|the task was not done|result is not filled in|result declares an unknown outcome|out-of-scope changes|wrong work was done|run did not change the tree)/;
+  const emitterCall = (expression) => expression[0] === 'buildReason' && expression[1] === '('
+    && /^(['"])([^'"\\]+)\1$/.test(expression[2] ?? '') && [',', ')'].includes(expression[3])
+    && closingToken(expression, 1) === expression.length - 1;
+  for (const { source, functionNames } of files) {
+    const tokens = tokensOf(source);
+    if (tokens.some((token) => opening.test(token))) problems.push('handwritten build failure reason');
+    // Include inline resolveStatus reasons, not just the four named producer functions.
+    for (let index = 0; index < tokens.length; index += 1) {
+      if (tokens[index] !== 'buildReason' || tokens[index + 1] !== '(') continue;
+      const key = /^(['"])([^'"\\]+)\1$/.exec(tokens[index + 2] ?? '')?.[2];
+      if (!key || ![',', ')'].includes(tokens[index + 3])) problems.push('build emitter requires a literal key');
+      else {
+        if (!known.has(key)) problems.push(`unknown catalog key: ${key}`);
+        produced.add(key);
+      }
+    }
+    for (const name of functionNames) {
+      const body = functionBody(tokens, name);
+      for (let index = 0; index < body.length; index += 1) {
+        if (body[index] === '=>' && body[index + 1] === '{') {
+          index = closingToken(body, index + 1);
+          continue;
+        }
+        if (body[index] !== 'return') continue;
+        const start = index + 1;
+        let end = start;
+        while (end < body.length && body[end] !== ';' && body[end] !== '}') {
+          if (['(', '[', '{'].includes(body[end])) end = closingToken(body, end);
+          end += 1;
+        }
+        const expression = body.slice(start, end);
+        const text = expression.join(' ');
+        if (['null', 'agreed ( )', 'agreed ( true )', 'snapshotRefusal ( comparison )',
+          'broken ( snapshotRefusal ( comparison ) )'].includes(text) || emitterCall(expression)) continue;
+        if (['broken', 'agreed'].includes(expression[0]) && expression[1] === '('
+          && closingToken(expression, 1) === expression.length - 1
+          && emitterCall(expression.slice(2, -1))) continue;
+        problems.push(`build return bypasses catalog: ${text}`);
+      }
+    }
+  }
+  for (const key of known) {
+    if (!produced.has(key)) problems.push(`missing producer: ${key}`);
+  }
+  return problems;
+}
+
 function mutated(before, after) {
   assert.ok(source.includes(before), `mutation anchor missing: ${before}`);
   return source.replace(before, after);
@@ -238,4 +299,71 @@ test('scout producer guard rejects a bare string in scoutCoverageGap', () => {
   const edited = mutatedScout('verdict.mjs', 'function scoutCoverageGap(orderedQuestions, result) {',
     "function scoutCoverageGap(orderedQuestions, result) { return 'thin';");
   assert.ok(scout.check(edited, scout.catalogKeys).some((problem) => problem.startsWith('scout return bypasses catalog:')));
+});
+
+function mutatedBuild(file, before, after) {
+  const entry = build.files.find((entry) => entry.file === file);
+  assert.ok(entry.source.includes(before), `mutation anchor missing: ${before}`);
+  return build.files.map((entry) => entry.file === file
+    ? { ...entry, source: entry.source.replace(before, after) } : entry);
+}
+
+test('build producer guard rejects unknown literal keys in either judge file', () => {
+  for (const [file, key] of [['verdict.mjs', 'build-commit'], ['outcome.mjs', 'build-outcome-fail']]) {
+    const edited = mutatedBuild(file, `'${key}'`, "'build-unknown'");
+    assert.ok(build.check(edited, build.catalogKeys).includes('unknown catalog key: build-unknown'));
+  }
+});
+
+test('build producer guard rejects handwritten and arbitrary returns in every producer', () => {
+  for (const { file, functionNames } of build.files) {
+    for (const name of functionNames) {
+      for (const reason of ['`commit made despite prohibition: x`', "'unlisted failure'"]) {
+        const entry = build.files.find((entry) => entry.file === file);
+        const signature = entry.source.match(new RegExp(`function ${name}\\([^)]*\\) \\{`))?.[0];
+        assert.ok(signature, `mutation signature missing: ${name}`);
+        const edited = mutatedBuild(file, signature, `${signature} return ${reason};`);
+        const problems = build.check(edited, build.catalogKeys);
+        assert.ok(problems.some((problem) => problem.startsWith('build return bypasses catalog:')));
+        if (reason.startsWith('`')) assert.ok(problems.includes('handwritten build failure reason'));
+      }
+    }
+  }
+});
+
+test('build producer guard rejects removed catalog producers, including inline reasons', () => {
+  for (const key of build.catalogKeys) {
+    const { file } = build.files.find((entry) => entry.source.includes(`'${key}'`));
+    const replacement = key === 'build-commit' ? 'build-branch-moved' : 'build-commit';
+    const edited = mutatedBuild(file, `'${key}'`, `'${replacement}'`);
+    assert.ok(build.check(edited, build.catalogKeys).includes(`missing producer: ${key}`));
+  }
+});
+
+test('build producer guard checks keys and handwritten openings outside producer functions', () => {
+  for (const file of ['verdict.mjs', 'outcome.mjs']) {
+    for (const [extra, problem] of [
+      ["buildReason('build-unknown');", 'unknown catalog key: build-unknown'],
+      ['buildReason(other.key);', 'build emitter requires a literal key'],
+      ["buildReason('build-commit' + suffix);", 'build emitter requires a literal key'],
+      ['const handwritten = `out-of-scope changes (1): x`;', 'handwritten build failure reason'],
+    ]) {
+      const edited = mutatedBuild(file, 'import path from', `${extra}\nimport path from`);
+      assert.ok(build.check(edited, build.catalogKeys).includes(problem));
+    }
+  }
+});
+
+test('build producer guard rejects every current reason opening in either file', () => {
+  const openings = ['commit made despite', 'branch moved despite', 'verification “', 'the task was not done',
+    'result is not filled in', 'result declares an unknown outcome', 'out-of-scope changes',
+    'wrong work was done', 'run did not change the tree'];
+  for (const file of ['verdict.mjs', 'outcome.mjs']) {
+    for (const opening of openings) {
+      for (const quote of ["'", '"', '`']) {
+        const edited = mutatedBuild(file, 'import path from', `const handwritten = ${quote}${opening} x${quote};\nimport path from`);
+        assert.ok(build.check(edited, build.catalogKeys).includes('handwritten build failure reason'));
+      }
+    }
+  }
 });

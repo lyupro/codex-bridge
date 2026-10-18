@@ -37,6 +37,7 @@ import { answerRuleMessage } from '../answer-rules.mjs';
 import { MIN_SUBSTANCE_CHARS, MIN_SINGLE_SUBSTANCE_CHARS } from '../answer-rules/scout.mjs';
 
 const scoutReason = (key, values = {}) => answerRuleMessage('codex-scout', key, values);
+const buildReason = (key, values = {}) => answerRuleMessage('codex-build', key, values);
 
 /**
  * Which touched paths the task never authorised. The scope exists because prose does not
@@ -63,9 +64,6 @@ export function outOfScope(touchedPaths, patterns) {
   return bad;
 }
 
-/** Reserved for verdicts where the work really was the wrong work, not for check artefacts. */
-const WRONG_WORK = 'wrong work was done: ';
-
 /**
  * Does the report describe the work that actually happened? A schema cannot answer this:
  * a well-formed report about unrelated work is indistinguishable from a well-formed
@@ -85,14 +83,11 @@ export function reportVersusWork(runDir, result, ctx) {
   // Only the run's own work is compared: a report that names nothing is honest when the sole
   // change in the tree was written by the tooling around the run.
   const touched = splitRunChanges(runDir, comparison.changed).work;
-  const show = (list) => list.slice(0, 3).join(', ');
   const agreed = (carried = false) => ({ ok: true, carried, reason: null });
 
   if (!declared.length && !touched.length) return agreed();
   if (!declared.length) {
-    return broken(
-      `${WRONG_WORK}tree changed (${touched.length}: ${show(touched)}), but the report names no changes`,
-    );
+    return broken(buildReason('build-report-names-nothing', { touched }));
   }
   if (declared.some((d) => declaredHits(d, touched))) return agreed();
 
@@ -101,9 +96,7 @@ export function reportVersusWork(runDir, result, ctx) {
   // never excusable.
   const service = declared.filter((f) => SERVICE_RE.test(f));
   if (service.length) {
-    return broken(
-      `${WRONG_WORK}report describes work in service directories (${show(service)}), not task files`,
-    );
+    return broken(buildReason('build-report-service-directories', { service }));
   }
 
   const baseline = chainBaseline(ctx?.runsRoot, ctx?.repo, ctx?.slug, ctx?.taskHash, ctx?.orderId);
@@ -115,11 +108,8 @@ export function reportVersusWork(runDir, result, ctx) {
     }
   }
 
-  return broken(
-    touched.length
-      ? `${WRONG_WORK}report names ${show(declared)}, but ${show(touched)} changed`
-      : 'run did not change the tree, and earlier runs of this task do not contain the declared files',
-  );
+  if (touched.length) return broken(buildReason('build-report-mismatch', { declared, touched }));
+  return broken(buildReason('build-report-no-change'));
 }
 
 /**
@@ -225,7 +215,7 @@ function commitDuringRun(runDir) {
   const before = readText(path.join(runDir, 'head-before.txt')).trim();
   const after = readText(path.join(runDir, 'head-after.txt')).trim();
   if (!before || !after || before === after) return null;
-  return `commit made despite prohibition: ${before.slice(0, 12)} → ${after.slice(0, 12)}`;
+  return buildReason('build-commit', { before, after });
 }
 
 /**
@@ -244,8 +234,8 @@ function branchDuringRun(runDir) {
   const before = readText(beforeFile).trim();
   const after = readText(afterFile).trim();
   if (before === after) return null;
-  if (before && !after) return `branch moved despite prohibition: ${before} → detached HEAD`;
-  return `branch moved despite prohibition: ${before || 'detached HEAD'} → ${after}`;
+  if (before && !after) return buildReason('build-branch-detached', { before });
+  return buildReason('build-branch-moved', { before, after });
 }
 
 /**
@@ -308,7 +298,7 @@ export function resolveStatus({ resultOk, exit, agent, result, runDir, events, e
   if (agent === 'codex-build' && result?.verify_passed === false) {
     return {
       status: 'FAIL',
-      reason: `verification “${line(result.verify_command || 'no command', 60)}” failed; changes remain in the tree`,
+      reason: buildReason('build-verify-failed', { command: line(result.verify_command || 'no command', 60) }),
     };
   }
   // What the executor says about its own work, after verification and ahead of scope: work
@@ -357,7 +347,7 @@ export function resolveStatus({ resultOk, exit, agent, result, runDir, events, e
       if (strays.length) {
         return {
           status: 'FAIL',
-          reason: `out-of-scope changes (${strays.length}): ${strays.slice(0, 3).join(', ')}`,
+          reason: buildReason('build-out-of-scope', { files: strays }),
         };
       }
     }
