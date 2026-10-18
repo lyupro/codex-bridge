@@ -5,6 +5,9 @@ import { readEvents } from './events.mjs';
 import { line, readJson } from './paths.mjs';
 import { resumeOrigin } from './sandbox-witness.mjs';
 import { allStartupContext } from './context-only.mjs';
+import { answerRuleMessage } from '../answer-rules.mjs';
+
+const scoutReason = (key, values = {}) => answerRuleMessage('codex-scout', key, values);
 
 export const EXECUTION_FACT_VERSION = 1;
 
@@ -19,8 +22,7 @@ export function scoutExecutionGap({ execution, questions }) {
   // before `--json` is judged by the contract of its day. Plan_60 D1 exempts only orders whose every
   // question asks about handed startup context; E14 counts the proven resume chain of the thread.
   if (execution.chain === 0 && !allStartupContext(questions)) {
-    return 'scout executed no command, so no answer rests on reading the code; '
-      + 'check stderr.log for sandbox refusals before changing the order';
+    return scoutReason('scout-commands-run');
   }
   return null;
 }

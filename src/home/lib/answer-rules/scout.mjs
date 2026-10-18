@@ -1,4 +1,10 @@
 /** OW-068 / Plan_80 E21: scout answer policy shared by prompt statements and exact rejection reasons. */
+
+// How much prose an answer must carry once coordinates and paths are subtracted. Measured
+// on the scout run of 2026-07-30 that replied with a table of `file.ts:60-79` rows: every
+// one of its six sub-answers scored under 30, while the shortest honest explanation of a
+// single mechanism in the same report scored above 120. 80 is one full sentence; 200 is
+// the single-question mode, where one question means the whole answer is the essay.
 export const MIN_SUBSTANCE_CHARS = 80;
 export const MIN_SINGLE_SUBSTANCE_CHARS = 200;
 

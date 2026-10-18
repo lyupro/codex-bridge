@@ -33,14 +33,10 @@ import { contextOnlyGap } from './context-only.mjs';
 import { readExecutionFact, scoutExecutionGap } from './execution-fact.mjs';
 import { compareSnapshots } from './snapshot-format.mjs';
 import { readSnapshot, runSnapshotChanges, snapshotRefusal } from './run-snapshots.mjs';
+import { answerRuleMessage } from '../answer-rules.mjs';
+import { MIN_SUBSTANCE_CHARS, MIN_SINGLE_SUBSTANCE_CHARS } from '../answer-rules/scout.mjs';
 
-// How much prose an answer must carry once coordinates and paths are subtracted. Measured
-// on the scout run of 2026-07-30 that replied with a table of `file.ts:60-79` rows: every
-// one of its six sub-answers scored under 30, while the shortest honest explanation of a
-// single mechanism in the same report scored above 120. 80 is one full sentence; 200 is
-// the single-question mode, where one question means the whole answer is the essay.
-const MIN_SUBSTANCE_CHARS = 80;
-const MIN_SINGLE_SUBSTANCE_CHARS = 200;
+const scoutReason = (key, values = {}) => answerRuleMessage('codex-scout', key, values);
 
 /**
  * Which touched paths the task never authorised. The scope exists because prose does not
@@ -185,8 +181,7 @@ function scoutCoverageGap(orderedQuestions, result) {
   if (!questions.length) {
     const chars = substanceLength(result?.answer);
     if (chars < MIN_SINGLE_SUBSTANCE_CHARS) {
-      return `response without analysis: ${chars} substantive characters, minimum ` +
-        `${MIN_SINGLE_SUBSTANCE_CHARS} (coordinates and paths excluded)`;
+      return scoutReason('scout-single-answer-substance', { chars });
     }
     return null;
   }
@@ -196,18 +191,18 @@ function scoutCoverageGap(orderedQuestions, result) {
     .filter((q) => !String(byId.get(q.id)?.answer || '').trim())
     .map((q) => q.id);
   if (missing.length) {
-    return `scout did not answer ${missing.length} sub-questions: ${show(missing)}`;
+    return scoutReason('scout-answer-every-question', { count: missing.length, questions: show(missing) });
   }
 
   const thin = questions
     .filter((q) => substanceLength(byId.get(q.id).answer) < MIN_SUBSTANCE_CHARS)
     .map((q) => q.id);
-  if (thin.length) return `response to ${show(thin)} contains coordinates without analysis`;
+  if (thin.length) return scoutReason('scout-answer-substance', { questions: show(thin) });
 
   const unsourced = questions
     .filter((q) => !(byId.get(q.id).evidence || []).some((e) => String(e || '').trim()))
     .map((q) => q.id);
-  if (unsourced.length) return `responses without a single code reference: ${show(unsourced)}`;
+  if (unsourced.length) return scoutReason('scout-answer-evidence', { questions: show(unsourced) });
 
   return null;
 }

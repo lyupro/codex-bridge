@@ -141,6 +141,9 @@ test('coverage still precedes startup source and coordinate checks', () => {
   const missing = verdict({ result: { ...scoutResult, answers: [] } });
   assert.equal(missing.status, 'FAIL');
   assert.equal(missing.reason, 'scout did not answer 2 sub-questions: Q1, Q2');
+  // OW-068: one missing answer is named as missing, not misreported as a thin one.
+  const oneMissing = verdict({ result: { ...scoutResult, answers: scoutResult.answers.slice(1) } });
+  assert.equal(oneMissing.reason, 'scout did not answer 1 sub-questions: Q1');
   const thin = verdict({
     result: { ...scoutResult, answers: scoutResult.answers.map((answer) => ({ ...answer, answer: 'Short.' })) },
   });

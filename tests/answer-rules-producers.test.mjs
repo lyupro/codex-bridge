@@ -1,11 +1,35 @@
-/** OW-068: every advisor failure reason is produced through the answer-rules catalog, never by hand. */
+/** OW-068 / Plan_80 E21: judged agents produce failure reasons through the prompt's catalog. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { RULES } from '../src/home/lib/answer-rules/advisor.mjs';
+import { ANSWER_RULES } from '../src/home/lib/answer-rules.mjs';
 
-const source = fs.readFileSync(new URL('../src/home/lib/meta/advice-verdict.mjs', import.meta.url), 'utf8');
-const catalogKeys = Object.keys(RULES);
+const judgedAgents = [
+  {
+    agent: 'codex-advisor',
+    files: [{ file: 'advice-verdict.mjs' }],
+    check: producerProblems,
+  },
+  {
+    agent: 'codex-scout',
+    files: [
+      { file: 'verdict.mjs', functionName: 'scoutCoverageGap' },
+      { file: 'context-only.mjs', functionName: 'contextOnlyGap' },
+      { file: 'execution-fact.mjs', functionName: 'scoutExecutionGap' },
+    ],
+    check: scoutProducerProblems,
+  },
+].map((judge) => ({
+  ...judge,
+  catalogKeys: Object.keys(ANSWER_RULES[judge.agent]),
+  files: judge.files.map((entry) => ({
+    ...entry,
+    source: fs.readFileSync(new URL(`../src/home/lib/meta/${entry.file}`, import.meta.url), 'utf8'),
+  })),
+}));
+const [advisor, scout] = judgedAgents;
+const source = advisor.files[0].source;
+const catalogKeys = advisor.catalogKeys;
 
 // OW-068 / Plan_80 E21: future failure branches must use the same catalog as the prompt.
 function producerProblems(source, catalogKeys) {
@@ -61,14 +85,86 @@ function producerProblems(source, catalogKeys) {
   return problems;
 }
 
+// E21: inspect only the named judge, ignoring braces/returns in literals, comments and callbacks.
+function tokensOf(source) {
+  const tokens = /\/\/[^\r\n]*|\/\*[\s\S]*?\*\/|'(?:\\[\s\S]|[^'\\])*'|"(?:\\[\s\S]|[^"\\])*"|`(?:\\[\s\S]|[^`\\])*`|\/(?:\\.|\[(?:\\.|[^\]\\])*\]|[^/\r\n\\])+\/[a-z]*|[A-Za-z_$][\w$]*|=>|[^\s]/g;
+  return [...source.matchAll(tokens)]
+    .filter(([token]) => !token.startsWith('//') && !token.startsWith('/*'))
+    .map(([token]) => token);
+}
+
+function closingToken(tokens, start) {
+  const close = { '(': ')', '[': ']', '{': '}' }[tokens[start]];
+  let depth = 1;
+  for (let index = start + 1; index < tokens.length; index += 1) {
+    if (tokens[index] === tokens[start]) depth += 1;
+    if (tokens[index] === close && --depth === 0) return index;
+  }
+  throw new Error(`unclosed token: ${tokens[start]}`);
+}
+
+function functionBody(tokens, name) {
+  const start = tokens.findIndex((token, index) => token === 'function' && tokens[index + 1] === name);
+  if (start < 0) throw new Error(`missing judge function: ${name}`);
+  const bodyStart = closingToken(tokens, start + 2) + 1;
+  assert.equal(tokens[bodyStart], '{');
+  return tokens.slice(bodyStart + 1, closingToken(tokens, bodyStart));
+}
+
+function scoutProducerProblems(files, catalogKeys) {
+  const problems = [];
+  const known = new Set(catalogKeys);
+  const produced = new Set();
+  const opening = /^['"`](?:scout did not answer|response to |responses without|response without analysis|responses to startup-context|scout cited|scout executed no command)/;
+  for (const { source, functionName } of files) {
+    const tokens = tokensOf(source);
+    if (tokens.some((token) => opening.test(token))) problems.push('handwritten scout failure reason');
+    for (let index = 0; index < tokens.length; index += 1) {
+      if (tokens[index] !== 'scoutReason' || tokens[index + 1] !== '(') continue;
+      const key = /^(['"])([^'"\\]+)\1$/.exec(tokens[index + 2] ?? '')?.[2];
+      if (key && !known.has(key)) problems.push(`unknown catalog key: ${key}`);
+    }
+    const body = functionBody(tokens, functionName);
+    for (let index = 0; index < body.length; index += 1) {
+      if (body[index] === '=>' && body[index + 1] === '{') {
+        index = closingToken(body, index + 1);
+        continue;
+      }
+      if (body[index] !== 'return') continue;
+      const start = index + 1;
+      let end = start;
+      while (end < body.length && body[end] !== ';' && body[end] !== '}') {
+        if (['(', '[', '{'].includes(body[end])) end = closingToken(body, end);
+        end += 1;
+      }
+      const expression = body.slice(start, end);
+      if (expression.join(' ') === 'null' || expression.join(' ') === 'execution . gap') continue;
+      const key = /^(['"])([^'"\\]+)\1$/.exec(expression[2] ?? '')?.[2];
+      if (expression[0] !== 'scoutReason' || expression[1] !== '(' || !key
+        || ![',', ')'].includes(expression[3]) || closingToken(expression, 1) !== expression.length - 1) {
+        problems.push(`scout return bypasses catalog: ${expression.join(' ')}`);
+        continue;
+      }
+      produced.add(key);
+    }
+  }
+  for (const key of known) {
+    if (!produced.has(key)) problems.push(`missing producer: ${key}`);
+  }
+  return problems;
+}
+
 function mutated(before, after) {
   assert.ok(source.includes(before), `mutation anchor missing: ${before}`);
   return source.replace(before, after);
 }
 
-test('advisor judge produces every catalog rule and every reason goes through the catalog', () => {
-  assert.deepEqual(producerProblems(source, catalogKeys), []);
-});
+for (const judge of judgedAgents) {
+  test(`${judge.agent.replace('codex-', '')} judge produces every catalog rule and every reason goes through the catalog`, () => {
+    const input = judge === advisor ? judge.files[0].source : judge.files;
+    assert.deepEqual(judge.check(input, judge.catalogKeys), []);
+  });
+}
 
 test('producer guard rejects unknown literal emitter and citation keys', () => {
   for (const key of ['advisor-commands-run', 'advisor-citation-path']) {
@@ -99,4 +195,47 @@ test('producer guard rejects a second verdict return', () => {
 test('producer guard rejects a catalog rule removed from the judge', () => {
   const edited = mutated("reasons.push(reason('advisor-commands-run'));", ';');
   assert.ok(producerProblems(edited, catalogKeys).includes('missing producer: advisor-commands-run'));
+});
+
+function mutatedScout(file, before, after) {
+  const entry = scout.files.find((entry) => entry.file === file);
+  assert.ok(entry.source.includes(before), `mutation anchor missing: ${before}`);
+  return scout.files.map((entry) => entry.file === file
+    ? { ...entry, source: entry.source.replace(before, after) } : entry);
+}
+
+test('scout producer guard rejects an unknown literal emitter key', () => {
+  const edited = mutatedScout('execution-fact.mjs', "'scout-commands-run'", "'scout-unknown'");
+  assert.ok(scout.check(edited, scout.catalogKeys).includes('unknown catalog key: scout-unknown'));
+});
+
+test('scout producer guard checks literal keys and handwritten openings outside judge functions', () => {
+  for (const [extra, problem] of [
+    ["scoutReason('scout-unknown');", 'unknown catalog key: scout-unknown'],
+    ['const handwritten = `scout cited x`;', 'handwritten scout failure reason'],
+  ]) {
+    const edited = mutatedScout('context-only.mjs', 'export function allStartupContext(questions) {',
+      `${extra}\nexport function allStartupContext(questions) {`);
+    assert.ok(scout.check(edited, scout.catalogKeys).includes(problem));
+  }
+});
+
+test('scout producer guard rejects a handwritten coordinate reason in contextOnlyGap', () => {
+  const edited = mutatedScout('context-only.mjs',
+    'export function contextOnlyGap({ questions, result, commandsExecuted }) {',
+    'export function contextOnlyGap({ questions, result, commandsExecuted }) { return `scout cited x`;');
+  const problems = scout.check(edited, scout.catalogKeys);
+  assert.ok(problems.includes('handwritten scout failure reason'));
+  assert.ok(problems.some((problem) => problem.startsWith('scout return bypasses catalog:')));
+});
+
+test('scout producer guard rejects a catalog rule removed from the judges', () => {
+  const edited = mutatedScout('execution-fact.mjs', "return scoutReason('scout-commands-run');", 'return null;');
+  assert.ok(scout.check(edited, scout.catalogKeys).includes('missing producer: scout-commands-run'));
+});
+
+test('scout producer guard rejects a bare string in scoutCoverageGap', () => {
+  const edited = mutatedScout('verdict.mjs', 'function scoutCoverageGap(orderedQuestions, result) {',
+    "function scoutCoverageGap(orderedQuestions, result) { return 'thin';");
+  assert.ok(scout.check(edited, scout.catalogKeys).some((problem) => problem.startsWith('scout return bypasses catalog:')));
 });

@@ -4,6 +4,9 @@
  * dead sandbox; a marker must never excuse invented addresses or an unsourced answer.
  */
 import { QUESTION_KIND } from '../runner/question-kind.mjs';
+import { answerRuleMessage } from '../answer-rules.mjs';
+
+const scoutReason = (key, values = {}) => answerRuleMessage('codex-scout', key, values);
 
 export function allStartupContext(questions) {
   return Array.isArray(questions) && questions.length > 0
@@ -26,7 +29,7 @@ export function contextOnlyGap({ questions, result, commandsExecuted }) {
     })
     .map((question) => question.id);
   if (unsourced.length) {
-    return `responses to startup-context questions without a startup:<source> reference: ${unsourced.join(', ')}`;
+    return scoutReason('scout-startup-reference', { questions: unsourced.join(', ') });
   }
   if (commandsExecuted !== 0) return null;
   const references = answers.flatMap((answer) => Array.isArray(answer?.evidence) ? answer.evidence : []);
@@ -36,7 +39,7 @@ export function contextOnlyGap({ questions, result, commandsExecuted }) {
     if (text.startsWith('startup:')) continue;
     const coordinate = text.match(/\S*\.[A-Za-z0-9]+:\d+/)?.[0];
     if (coordinate) {
-      return `scout cited ${coordinate.slice(0, 60)} without executing a command: an address nobody read`;
+      return scoutReason('scout-unread-coordinate', { coordinate: coordinate.slice(0, 60) });
     }
   }
   return null;
