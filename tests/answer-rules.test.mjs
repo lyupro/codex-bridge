@@ -78,6 +78,10 @@ test('each phase renders exactly its catalog statements in catalog order after i
     const expected = Object.values(rules).filter((entry) => entry.phases.includes(phase)).map((entry) => entry.rule);
     assert.deepEqual(answerRuleStatements(AGENT, phase), expected);
     assert.ok(prompt.includes(`${heading}\n${expected.map((rule) => `- ${rule}`).join('\n')}`));
+    const lastPhaseLine = phase === 'scope'
+      ? '  (facts accepted from the task without checking, never empty), together with predicted_risks.'
+      : '  and state confidence honestly.';
+    assert.ok(prompt.includes(`${lastPhaseLine}\n\n${heading}\n${expected.map((rule) => `- ${rule}`).join('\n')}\n- Write the answer, report_markdown and every text field of result.json in `));
     for (const [key, entry] of Object.entries(rules)) {
       assert.equal(prompt.includes(entry.rule), entry.phases.includes(phase), `${phase}: ${key}`);
     }
@@ -116,7 +120,7 @@ function catalog(entry, key = 'example-rule') {
 }
 
 function validEntry() {
-  return { phases: ['scope'], rule: 'Read evidence before answering.', message: () => 'reason', data: [] };
+  return { phases: ['scope'], when: 'always', rule: 'Read evidence before answering.', message: () => 'reason', data: [] };
 }
 
 test('catalog validation accepts the installed catalog and rejects invalid keys', () => {
@@ -124,7 +128,7 @@ test('catalog validation accepts the installed catalog and rejects invalid keys'
   assert.throws(() => validateAnswerRules(catalog(validEntry(), 'Bad_key')), /invalid answer rule key/);
 });
 
-test('catalog validation requires exactly its four fields', () => {
+test('catalog validation requires exactly its five fields', () => {
   const entry = validEntry();
   delete entry.message;
   assert.throws(() => validateAnswerRules(catalog(entry)), /invalid answer rule entry/);
@@ -134,6 +138,12 @@ test('catalog validation requires exactly its four fields', () => {
 test('catalog validation rejects empty or unresolved rule text', () => {
   for (const rule of ['', '  ', '{{minimum}} characters.']) {
     assert.throws(() => validateAnswerRules(catalog({ ...validEntry(), rule })), /invalid answer rule text/);
+  }
+});
+
+test('catalog validation refuses an unknown statement condition', () => {
+  for (const when of ['sometimes', undefined, '']) {
+    assert.throws(() => validateAnswerRules(catalog({ ...validEntry(), when })), /unknown answer rule condition/);
   }
 });
 
@@ -158,8 +168,8 @@ test('catalog keys must be unique across agents', () => {
 });
 
 test('catalog validation refuses an agent without a phase row', () => {
-  assert.throws(() => validateAnswerRules({ 'codex-scout': { 'example-rule': validEntry() } }),
-    /unknown answer rule agent: codex-scout/);
+  assert.throws(() => validateAnswerRules({ 'unregistered-agent': { 'example-rule': validEntry() } }),
+    /unknown answer rule agent: unregistered-agent/);
 });
 
 test('message lookup rejects unknown agents, unknown keys, missing names and extra names', () => {

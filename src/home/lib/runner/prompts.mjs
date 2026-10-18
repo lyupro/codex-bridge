@@ -12,7 +12,7 @@ import { SERVICE_FOLDERS } from '../meta/paths.mjs';
 import { RUN_ENV } from './run-env.mjs';
 import { advisorSchema, schemaFor } from './schemas.mjs';
 import { QUESTION_KIND } from './question-kind.mjs';
-import { answerRuleStatements } from '../answer-rules.mjs';
+import { ANSWER_RULES, answerRuleStatements } from '../answer-rules.mjs';
 
 /**
  * Package-owned continuation artifact (Plan_80 E13/A8 point 2). Sending the original task
@@ -114,9 +114,7 @@ Advise phase:
   could refute with knowledge you lack belongs in open_questions, not why.
 - independent_checks lists what you verified yourself, with evidence. Ground why in those checks
   and state confidence honestly.
-`}
-Rules checked after the run (a filled answer that breaks any one is rejected whole):
-${answerRuleStatements('codex-advisor', opts.phase).map((rule) => `- ${rule}`).join('\n')}`;
+`}`;
   },
   'codex-scout': (opts, scope, questions = []) => `Response rules:
 - You are working in read-only mode: do not try to write or edit anything.
@@ -218,9 +216,12 @@ export const INSTRUCTIONS = Object.fromEntries(
   Object.entries(BODIES).map(([agent, body]) => [agent, (...args) => {
     const opts = args[0] ?? {};
     const instructions = body(...args);
+    const rules = Object.hasOwn(ANSWER_RULES, agent) ? answerRuleStatements(agent, opts.phase ?? 'default', { questions: args[2] }) : [];
+    const answerRules = rules.length
+      ? `\nRules checked after the run (a filled answer that breaks any one is rejected whole):\n${rules.map((rule) => `- ${rule}`).join('\n')}` : '';
     const schema = agent === 'codex-advisor' ? advisorSchema(opts.phase) : schemaFor(agent);
     const bounds = renderArrayBounds(schema);
     const textBounds = renderTextBounds(schema);
-    return `${instructions}\n${languageRule()}${bounds ? `\n\n${bounds}` : ''}${textBounds ? `\n\n${textBounds}` : ''}`;
+    return `${instructions}${answerRules}\n${languageRule()}${bounds ? `\n\n${bounds}` : ''}${textBounds ? `\n\n${textBounds}` : ''}`;
   }]),
 );

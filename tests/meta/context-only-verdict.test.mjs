@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { collect } from '../../src/home/lib/write-meta.mjs';
 import { allStartupContext, contextOnlyGap } from '../../src/home/lib/meta/context-only.mjs';
 import { INSTRUCTIONS } from '../../src/home/lib/runner/prompts.mjs';
+import { ANSWER_RULES } from '../../src/home/lib/answer-rules.mjs';
 import { QUESTION_KIND } from '../../src/home/lib/runner/question-kind.mjs';
 import { COMPLETED_COMMAND, makeRun } from './test-fixtures.mjs';
 
@@ -117,7 +118,11 @@ test('scout instructions render the startup rule only when a question has startu
   assert.match(marked, /cite evidence as `startup:<source>`/);
   assert.match(marked, /never cite a repository `path:line` you did not read\n  with a command/);
   assert.ok(marked.includes('that fails the run.'));
-  assert.equal(marked.replace(/- A sub-question marked \[context-only\][\s\S]*?fails the run\.\n/, ''), unmarked);
+  // OW-068: the answer-rules block adds exactly one startup line to a marked order and nothing else.
+  const startupRule = `- ${ANSWER_RULES['codex-scout']['scout-startup-reference'].rule}\n`;
+  assert.equal(marked.split(startupRule).length - 1, 1);
+  assert.equal(marked.replace(/- A sub-question marked \[context-only\][\s\S]*?fails the run\.\n/, '')
+    .replace(startupRule, ''), unmarked);
   assert.ok(unmarked.includes('support every fact about the code with a `path:line` reference'));
 });
 
