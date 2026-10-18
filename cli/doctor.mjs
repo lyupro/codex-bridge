@@ -91,6 +91,7 @@ export async function diagnose({
   sessionLog,
   silenceCalibration,
   silenceWatchdogShadow,
+  recoveryBudgetDrift,
   bridgeProbe = probeCodexBridge,
   launcherProbe,
   currentPackage,
@@ -226,6 +227,7 @@ export async function diagnose({
   const evidenceRows = [
     ['silenceCalibration', silenceCalibration],
     ['silenceWatchdogShadow', silenceWatchdogShadow],
+    ['recoveryBudgetDrift', recoveryBudgetDrift],
   ].filter(([, row]) => typeof row === 'function');
   const recordsUsable = Boolean(resolution && !resolution.staleOverride);
   const records = evidenceRows.length && recordsUsable

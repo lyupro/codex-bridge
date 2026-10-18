@@ -1015,6 +1015,14 @@ off, armed, unrecorded, and unknown-version records outside the shadow cohort.
 False stops, faults, and unknown versions warn; unknown is not clean. Review every
 false-stop run before arming: doctor does not track reviews. This row never fails doctor.
 
+The `recoveryBudgetDrift` row groups automatic continuation children by role, phase,
+recorded budget, and calibration. Deadline outcomes warn that the budget needs upward
+review; at least 20 complete successful children without deadlines or incomplete records
+can support a lower budget, subject to the current package calibration. Not-started and
+unknown-version children are counted separately; unknown versions warn, and no children
+means automatic recovery was not exercised. Change a budget and its evidence together in
+`recovery-policy.mjs`, then release. This row never fails doctor or changes its exit code.
+
 A dead-sandbox row prints the diagnosis from `$CODEX_HOME/.sandbox/` logs and
 `setup_error.json`; an order refused for the same dead sandbox prints the same diagnosis.
 The 2026-10-10 TradeForge incident exposed only “setup refresh had errors” until the log named
