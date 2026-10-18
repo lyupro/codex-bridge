@@ -1,40 +1,16 @@
 /** OW-068 / Plan_80 E21: judged agents produce failure reasons through the prompt's catalog. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import { ANSWER_RULES } from '../src/home/lib/answer-rules.mjs';
+import { JUDGED_AGENTS } from './answer-rules-judges.mjs';
+import { tokensOf, closingToken, functionBody } from './source-tokens.mjs';
 
-const judgedAgents = [
-  {
-    agent: 'codex-advisor',
-    files: [{ file: 'advice-verdict.mjs' }],
-    check: producerProblems,
-  },
-  {
-    agent: 'codex-scout',
-    files: [
-      { file: 'verdict.mjs', functionName: 'scoutCoverageGap' },
-      { file: 'context-only.mjs', functionName: 'contextOnlyGap' },
-      { file: 'execution-fact.mjs', functionName: 'scoutExecutionGap' },
-    ],
-    check: scoutProducerProblems,
-  },
-  {
-    agent: 'codex-build',
-    files: [
-      { file: 'verdict.mjs', functionNames: ['commitDuringRun', 'branchDuringRun', 'reportVersusWork'] },
-      { file: 'outcome.mjs', functionNames: ['outcomeGap'] },
-    ],
-    check: buildProducerProblems,
-  },
-].map((judge) => ({
-  ...judge,
-  catalogKeys: Object.keys(ANSWER_RULES[judge.agent]),
-  files: judge.files.map((entry) => ({
-    ...entry,
-    source: fs.readFileSync(new URL(`../src/home/lib/meta/${entry.file}`, import.meta.url), 'utf8'),
-  })),
-}));
+const checks = {
+  'codex-advisor': producerProblems,
+  'codex-scout': scoutProducerProblems,
+  'codex-build': buildProducerProblems,
+};
+const judgedAgents = JUDGED_AGENTS.map((judge) => ({ ...judge, check: checks[judge.agent] }));
 const [advisor, scout, build] = judgedAgents;
 const source = advisor.files[0].source;
 const catalogKeys = advisor.catalogKeys;
@@ -91,32 +67,6 @@ function producerProblems(source, catalogKeys) {
   const returns = [...source.matchAll(/\breturn\s*\{\s*ok\s*:/g)].length;
   if (returns !== 1) problems.push(`expected one verdict return, found ${returns}`);
   return problems;
-}
-
-// E21: inspect only the named judge, ignoring braces/returns in literals, comments and callbacks.
-function tokensOf(source) {
-  const tokens = /\/\/[^\r\n]*|\/\*[\s\S]*?\*\/|'(?:\\[\s\S]|[^'\\])*'|"(?:\\[\s\S]|[^"\\])*"|`(?:\\[\s\S]|[^`\\])*`|\/(?:\\.|\[(?:\\.|[^\]\\])*\]|[^/\r\n\\])+\/[a-z]*|[A-Za-z_$][\w$]*|=>|[^\s]/g;
-  return [...source.matchAll(tokens)]
-    .filter(([token]) => !token.startsWith('//') && !token.startsWith('/*'))
-    .map(([token]) => token);
-}
-
-function closingToken(tokens, start) {
-  const close = { '(': ')', '[': ']', '{': '}' }[tokens[start]];
-  let depth = 1;
-  for (let index = start + 1; index < tokens.length; index += 1) {
-    if (tokens[index] === tokens[start]) depth += 1;
-    if (tokens[index] === close && --depth === 0) return index;
-  }
-  throw new Error(`unclosed token: ${tokens[start]}`);
-}
-
-function functionBody(tokens, name) {
-  const start = tokens.findIndex((token, index) => token === 'function' && tokens[index + 1] === name);
-  if (start < 0) throw new Error(`missing judge function: ${name}`);
-  const bodyStart = closingToken(tokens, start + 2) + 1;
-  assert.equal(tokens[bodyStart], '{');
-  return tokens.slice(bodyStart + 1, closingToken(tokens, bodyStart));
 }
 
 function scoutProducerProblems(files, catalogKeys) {
@@ -219,6 +169,11 @@ function mutated(before, after) {
   assert.ok(source.includes(before), `mutation anchor missing: ${before}`);
   return source.replace(before, after);
 }
+
+test('every catalog agent has a judge row and every judge row has a producer check', () => {
+  assert.deepEqual(JUDGED_AGENTS.map(({ agent }) => agent).sort(), Object.keys(ANSWER_RULES).sort());
+  for (const { agent } of JUDGED_AGENTS) assert.equal(typeof checks[agent], 'function');
+});
 
 for (const judge of judgedAgents) {
   test(`${judge.agent.replace('codex-', '')} judge produces every catalog rule and every reason goes through the catalog`, () => {

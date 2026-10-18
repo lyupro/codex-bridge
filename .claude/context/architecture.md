@@ -43,7 +43,9 @@ folder never feeds two hosts:
   (`always`, or `startup-context` — only to an order with a startup-context question, Plan_60 D1). One place,
   `INSTRUCTIONS` in `runner/prompts.mjs`, renders the block for every agent with entries. Shared policy
   data (thresholds, phrase lists) lives in the agent file and feeds both sides. A family distinct from
-  `order-rules`, which governs a task file before the run.
+  `order-rules`, which governs a task file before the run. One test table, `tests/answer-rules-judges.mjs`, names
+  each judged agent's producers and `resolveStatus` entries; a new `if (agent === …)` branch without a catalog row,
+  or one that takes a FAIL reason from an unregistered function, turns `tests/answer-rules-branches.test.mjs` red.
 - `order-rules.mjs` and `order-diagnostics.mjs` own every refusal text of the order path (Plan_79 D3):
   a rule the orchestrator controls is defined once, with the sentence `codex-bridge guidance order`
   prints and the message the refusal site builds; a refusal outside order authoring is a diagnostic in
