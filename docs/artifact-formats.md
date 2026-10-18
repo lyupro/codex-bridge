@@ -61,6 +61,12 @@ directory. Directories from the previous contract are recognized through `meta.j
 `session_id: null`, zero `events_bytes` and `stderr_bytes`, and `tokens_reported: false`. The numeric
 values in `meta.json`, rather than the presence of `events.jsonl`, are authoritative because age-based
 cleanup deletes transport files, which would otherwise make a paid run look as though it never started.
+Plan_80 E18 adds a third pre-start branch: an `abandoned` automatic attempt-2 child whose
+`resumed_from` matches its marker's bare parent name, with no `events.jsonl` (even empty) or
+`heartbeat` and readable `meta.json` containing the same zero-evidence fields; retention removes
+transport files but never `meta.json` or `heartbeat`.
+`recovery-successor.mjs` is the only reader of the parent-to-child `recovery` relationship,
+validating the pointer, child marker and copied identity without writing artifacts.
 
 ## The `heartbeat` file
 

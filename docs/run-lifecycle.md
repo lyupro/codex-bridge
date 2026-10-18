@@ -111,6 +111,11 @@ complete job before detaching from the launcher.
    and the rejected run remains visible in it. An `advise` continuation is additionally refused before
    folder creation unless the named run's `meta.json` records `agent: codex-advisor`, `phase: scope`,
    and `status: OK`; an `advise` retry or resume carries the original `OK` scope instead.
+   Plan_80 E18's third pre-start branch also excludes an `abandoned` automatic attempt-2 child with
+   a matching parent marker, no `events.jsonl` (even empty) or `heartbeat`, and readable zero-evidence
+   `meta.json`, so it cannot remain the chain end and block a manual `resume:` of its parent.
+   `recovery-successor.mjs` is the only reader of the parent-to-child `recovery` relationship;
+   it validates the recorded pointer and identity without inferring a child from folder order or names.
    Resume checks `resume-grant-usable` (last run, same order, finished non-OK, dead worker,
    eligible stop facts and a readable thread that has not advanced since the stop) and
    `resume-pass-identity` (same agent and phase). Unreadable or missing frozen task, schema,
