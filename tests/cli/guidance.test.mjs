@@ -208,3 +208,20 @@ test('missing installed value modules return exit 1 for either placeholder', asy
     assert.ok(result.output.endsWith('run codex-bridge update'));
   }
 });
+
+test('advisor guidance distinguishes failed-pass repairs from phase grants (Plan_80 E4)', () => {
+  // Facts, not wording: a topic that names only retry: sends the orchestrator to a fresh thread.
+  const text = fs.readFileSync(new URL('../../src/home/guidance/advisor.md', import.meta.url), 'utf8');
+  assert.match(text, /`retry: <run folder> — <reason>`[^.]*fresh thread/);
+  assert.match(text, /`resume: <run folder> — <reason>`[^.]*own Codex thread/);
+  assert.match(text, /`resume-grant-usable`/);
+  assert.match(text, /Neither `retry:` nor `resume:` authorizes the next phase/);
+});
+
+test('records guidance follows the newest resumed run and preserves the review template (Plan_80 E4)', () => {
+  const text = fs.readFileSync(new URL('../../src/home/guidance/records.md', import.meta.url), 'utf8');
+  assert.match(text, /`resumed_from`/);
+  assert.match(text, /`resume-note\.md`/);
+  assert.match(text, /newest run of the chain/);
+  assert.ok(text.includes('{{review-required-fields}}'));
+});

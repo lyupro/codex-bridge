@@ -1,7 +1,6 @@
 # codex-bridge — delegation core
 
-Installed and removed by the `codex-bridge` package; `codex-bridge update` keeps it equal to the package. Change the
-package, not this file.
+Installed, updated and removed by the `codex-bridge` package: change the package, not this file.
 
 Four dispatcher agents run work on a Codex CLI subscription: `codex-scout` (read-only research), `codex-build`
 (writes code inside its `scope`), `codex-review` (second opinion on a diff) and `codex-advisor` (design advice before
@@ -21,9 +20,9 @@ code: a `scope` phase, then `advise`).
 - `LIMIT` means the ChatGPT quota window is spent, `UNAVAILABLE` means Codex is signed out on this host. Neither is a
   task error: do not retry the same bridge.
   A refusal starting `Codex CLI readiness unconfirmed` is not `UNAVAILABLE`: do not skip the bridge; follow its second
-  line — check `codex --version` for up to ~2 minutes, then repeat the same order exactly once if it answers, otherwise
-  hand it to the next executor and name that in the summary. If the repeat gets the same refusal, hand it to the next
-  executor too; no second repeat.
+  line — check `codex --version` for up to ~2 minutes; if it answers, repeat the same order once. Otherwise, or on the
+  same refusal again, hand it to the next executor and name that in the summary.
+- A failed read-only pass: `retry:` repeats it on a fresh thread, `resume:` continues its own Codex thread.
 - `OK — scope: insufficient` from `codex-advisor` is a success: it names the paths the `advise` phase needs.
 - Stop a live run with `codex-bridge stop <run>` before `TaskStop`; `TaskStop` alone leaves the run writing.
 - A run's folder is the `ATTACH=` path in the dispatcher's reply. Earlier runs: `codex-bridge projects [<project>]

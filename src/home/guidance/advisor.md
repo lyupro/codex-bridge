@@ -10,7 +10,11 @@ Continue with `phase: advise` under the same order id. Its task-file header must
 
 `OK — scope: sufficient` means the supplied context covers the question. `OK — scope: insufficient; N paths named` with a `Missing:` line is also success: it identifies the context advise needs. It is not FAIL or LIMIT. The advise boundary includes the original paths and that scope result's `missing_paths`.
 
-Never continue a successful scope as another scope: that would consume the continuation intended for advise. A failed scope or advise pass is repeated only with a `retry:` grant naming that failed run, under the same order id. A changed question needs a new scope pass.
+Never continue a successful scope as another scope: that would consume the continuation intended for advise. Repair a failed scope or advise pass under the same order id: `retry: <run folder> — <reason>` repeats the failed pass on a fresh thread; `resume: <run folder> — <reason>` continues that pass's own Codex thread with its frozen task and inputs.
+
+Use `resume:` only when the run meets the `resume-grant-usable` rule: it is the last run of the chain, has a finished non-OK verdict with its worker stopped, is eligible by its recorded stop facts, and its Codex thread has not advanced since it stopped. A failed reply prints a ready grant line when one applies; copy that line instead of composing one.
+
+Neither `retry:` nor `resume:` authorizes the next phase; advise still needs `continue:` naming the successful scope run. A changed question needs a new scope pass.
 
 ## Task-file bodies
 

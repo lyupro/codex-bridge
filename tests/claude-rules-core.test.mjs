@@ -24,6 +24,11 @@ test('the rules core requires guidance order before every task file', () => {
   assert.match(core, /Before every task file, run `codex-bridge guidance order`/);
 });
 
+// Plan_80 E4: without this line every session reaches for retry: and rereads the whole task from zero.
+test('the rules core tells retry: from resume:', () => {
+  assert.match(core, /`retry:`[^.]*fresh thread[^.]*`resume:`[^.]*own Codex thread/);
+});
+
 test('the rules core stays under its token ceiling', () => {
   assert.ok(core.length <= CORE_CHARACTER_CEILING,
     `core.md has ${core.length} characters; the ceiling is ${CORE_CHARACTER_CEILING} (~600 tokens)`);

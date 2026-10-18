@@ -25,6 +25,10 @@ A started run records its lifecycle and output in its run folder:
 
 A failed or interrupted run may have no complete result. Read the recorded status and available evidence rather than treating a missing report as an empty successful run.
 
+## Resumed runs
+
+A resumed pass gets its own new run folder. Its `status.json` records `resumed_from` naming the parent run. A granted resume saves the task body as `resume-note.md` in the new run folder; the resumed run never reads that note and reuses the named run's frozen task and inputs. Cite and read the newest run of the chain, not the parent.
+
 ## Availability verdicts
 
 `LIMIT` means the ChatGPT quota window is exhausted, not a task defect. For a writing run, also check the runner's indication of whether the tree was touched.
