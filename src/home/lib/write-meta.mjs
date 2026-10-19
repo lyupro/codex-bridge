@@ -20,7 +20,7 @@
  * renders the lines. Importers name this file and nothing below it.
  */
 import { EXIT } from './runner/exit-codes.mjs';
-import fs from 'node:fs';
+import { writeRunJsonAtomic } from './atomic-json.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readJsonFileSync } from './json-file.mjs';
@@ -172,7 +172,8 @@ export function collect(runDir, agent, exitCode) {
     recoveryPolicy: meta.recovery_policy, resumedFrom: meta.resumed_from,
   }));
 
-  fs.writeFileSync(path.join(runDir, 'meta.json'), `${JSON.stringify(meta, null, 2)}\n`);
+  // OW-067 / Plan_81 D2: publish the whole verdict before closing status.json.
+  writeRunJsonAtomic(path.join(runDir, 'meta.json'), meta);
   // meta.json first, status.json after it: status only ever claims a verdict that is
   // already on disk.
   writeStatus(runDir, { state: 'finished', status, finished_at: meta.finished_at });

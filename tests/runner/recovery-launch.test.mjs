@@ -69,13 +69,22 @@ test('writes child status first, frozen artifacts and order next, parent link la
     const parentStatus = json(options.parentDir, 'status.json');
     const parentOrder = json(options.parentDir, 'worker.json');
     const write = fs.writeFileSync;
+    const rename = fs.renameSync;
     const writes = [];
     const recording = mock.method(fs, 'writeFileSync', (file, ...args) => {
       writes.push(String(file));
       return write(file, ...args);
     });
+    // OW-067 S2: status.json is published by renaming a flushed temporary over it.
+    const publishing = mock.method(fs, 'renameSync', (from, to) => {
+      writes.push(String(to));
+      return rename(from, to);
+    });
     let result;
-    try { result = reserveRecoveryChild(options); } finally { recording.mock.restore(); }
+    try { result = reserveRecoveryChild(options); } finally {
+      recording.mock.restore();
+      publishing.mock.restore();
+    }
     assert.equal(result.reserved, true);
     const { childDir, order } = result;
     assert.deepEqual(writes, ['status.json', 'env.json', 'task-original.md', 'schema.json',
@@ -157,8 +166,13 @@ for (const [index, [reason, arrange, details, name]] of refusals.entries()) {
       const beforeDirs = directories(root);
       const beforeStatus = fs.readFileSync(path.join(options.parentDir, 'status.json'));
       const writes = mock.method(fs, 'writeFileSync', () => { assert.fail('refusal wrote a file'); });
+      // OW-067 S2: run records are published by rename, so a refusal must not rename either.
+      const publishes = mock.method(fs, 'renameSync', () => { assert.fail('refusal published a record'); });
       let result;
-      try { result = reserveRecoveryChild(options); } finally { writes.mock.restore(); }
+      try { result = reserveRecoveryChild(options); } finally {
+        writes.mock.restore();
+        publishes.mock.restore();
+      }
       assert.equal(result.reserved, false);
       assert.equal(result.reason, reason);
       if (details) assert.deepEqual(result.details, details);

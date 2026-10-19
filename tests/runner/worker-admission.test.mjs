@@ -166,13 +166,14 @@ test('identity is written while the injected claim server still holds the order'
       servers.push(server);
       return server;
     };
-    const writeFileSync = fs.writeFileSync;
+    // OW-067 S2: status.json is published by renaming a flushed temporary over it.
+    const renameSync = fs.renameSync;
     let checked = false;
-    t.mock.method(fs, 'writeFileSync', (file, ...args) => {
-      assert.equal(file, path.join(runDir, 'status.json'));
+    t.mock.method(fs, 'renameSync', (from, to) => {
+      assert.equal(to, path.join(runDir, 'status.json'));
       assert.equal(servers[0].listening, true);
       checked = true;
-      return writeFileSync(file, ...args);
+      return renameSync(from, to);
     });
     assert.deepEqual(await admitWorker({ runDir, orderId, timing, createServer }), { admitted: true });
     assert.equal(checked, true);
@@ -191,7 +192,7 @@ test('a failed identity write propagates the error and releases the claim', sock
     const runDir = makeRun(tree);
     const before = fs.readFileSync(path.join(runDir, 'status.json'));
     const failure = new Error('identity write failed');
-    t.mock.method(fs, 'writeFileSync', () => { throw failure; });
+    t.mock.method(fs, 'renameSync', () => { throw failure; });
     await assert.rejects(admitWorker({ runDir, orderId, timing }), (error) => error === failure);
     t.mock.restoreAll();
     assert.deepEqual(fs.readFileSync(path.join(runDir, 'status.json')), before);

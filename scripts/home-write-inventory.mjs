@@ -49,7 +49,6 @@ export const HOME_WRITE_INVENTORY = Object.freeze([
   outside('src/home/lib/heartbeat.mjs', 'writeFileSync', 1, 'Heartbeat stamp inside a run folder under the runs root.'),
   outside('src/home/lib/host-version.mjs', 'open', 1, 'Read-only open of a run transcript tail with the r flag.'),
   outside('src/home/lib/load-witness.mjs', 'openSync', 1, 'Read-only open with the r flag, reading at most the shared core byte ceiling plus one sentinel byte (Plan_64 D15 / review B8); all witness state writes use the registered load-witness artifact.'),
-  outside('src/home/lib/meta/run-state.mjs', 'writeFileSync', 3, 'Writes status.json and meta.json inside run folders under the runs root.'),
   outside('src/home/lib/order-text-record.mjs', 'mkdirSync', 2, 'Plan_79 D5/D6/D9 creates the outgoing/parameter journal under CODEX_BRIDGE_TEST_TMP and, only on journal failure, its sibling fault directory outside the throwaway root.'),
   outside('src/home/lib/order-text-record.mjs', 'appendFileSync', 2, 'Plan_79 D5/D6/D9 appends outgoing/parameter violations under CODEX_BRIDGE_TEST_TMP and, only on journal failure, the same entries plus the error to a sibling fault marker.'),
   outside('src/home/lib/run-codex.mjs', 'appendFileSync', 1, 'Appends a crash diagnostic to stderr.log inside a run folder.'),
@@ -79,5 +78,4 @@ export const HOME_WRITE_INVENTORY = Object.freeze([
   outside('src/home/lib/runner/run-autocommit.mjs', 'appendFileSync', 1, 'Appends an autocommit failure line to stderr.log inside the run folder (Plan_77 B6).'),
   outside('src/home/lib/runner/worker-order.mjs', 'writeFileSync', 1, 'Writes worker.json inside a run folder.'),
   outside('src/home/lib/runner/worker.mjs', 'writeFileSync', 1, 'Writes report.md inside a run folder.'),
-  outside('src/home/lib/write-meta.mjs', 'writeFileSync', 1, 'Writes meta.json inside a run folder under the runs root.'),
 ].map((entry) => Object.freeze(entry)));

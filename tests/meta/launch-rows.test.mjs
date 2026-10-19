@@ -143,15 +143,16 @@ test('writeFailure closes status.json before reading launch facts for its reply'
   const dir = makeRun({ status: { state: 'running', retention, sandbox_probe: probe } });
   const statusPath = path.join(dir, 'status.json');
   const readFileSync = fs.readFileSync;
-  const writeFileSync = fs.writeFileSync;
+  const renameSync = fs.renameSync;
   const operations = [];
   t.mock.method(fs, 'readFileSync', function (file, ...args) {
     if (file === statusPath) operations.push('read');
     return readFileSync.call(this, file, ...args);
   });
-  t.mock.method(fs, 'writeFileSync', function (file, ...args) {
-    if (file === statusPath) operations.push('write');
-    return writeFileSync.call(this, file, ...args);
+  // OW-067 S2: status.json is published by renaming a flushed temporary over it, not written in place.
+  t.mock.method(fs, 'renameSync', function (from, to) {
+    if (to === statusPath) operations.push('write');
+    return renameSync.call(this, from, to);
   });
 
   writeFailure(dir, 'codex-build', 'runner stopped');

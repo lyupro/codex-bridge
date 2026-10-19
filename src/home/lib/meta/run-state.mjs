@@ -9,6 +9,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { writeRunJsonAtomic } from '../atomic-json.mjs';
 import { changedPaths, line, normalizePath, readJson, readText, size } from './paths.mjs';
 import { withLaunchRows } from './launch-rows.mjs';
 import { runLiveness } from './run-liveness.mjs';
@@ -27,7 +28,8 @@ import { removeFlagBaselineCopies } from '../runner/flag-baseline.mjs';
 export function writeStatus(runDir, patch) {
   const current = readJson(path.join(runDir, 'status.json')) || {};
   const next = { ...current, ...patch };
-  fs.writeFileSync(path.join(runDir, 'status.json'), `${JSON.stringify(next, null, 2)}\n`);
+  // OW-067 / Plan_81 D2: a killed writer must leave a whole record for the next reader.
+  writeRunJsonAtomic(path.join(runDir, 'status.json'), next);
   return next;
 }
 
@@ -111,7 +113,7 @@ export function markAbandoned(runsRoot, currentTree) {
         'include work made after the abandoned run and is not a definitive list of that run\'s work; ' +
         'post-run worktree state was not captured — its changes will enter the baseline of the next run';
       const { meta: failure } = writeFailure(runDir, status.agent, reason);
-      fs.writeFileSync(metaPath, `${JSON.stringify({ ...failure, reason }, null, 2)}\n`);
+      writeRunJsonAtomic(metaPath, { ...failure, reason });
       patch = { ...patch, abandoned_reason: reason, abandoned_at: failure.finished_at };
     }
     try {
@@ -218,7 +220,7 @@ export function writeFailure(runDir, agent, reason, extraLines = [], preStart = 
     session_id: null,
     env: readJson(path.join(runDir, 'env.json')),
   };
-  fs.writeFileSync(path.join(runDir, 'meta.json'), `${JSON.stringify(meta, null, 2)}\n`);
+  writeRunJsonAtomic(path.join(runDir, 'meta.json'), meta);
   writeStatus(runDir, {
     state: preStart ? 'aborted_pre_start' : 'failed',
     status: 'FAIL',
