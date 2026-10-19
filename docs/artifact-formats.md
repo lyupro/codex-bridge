@@ -1,8 +1,20 @@
 # `status.json` and `meta.json` Formats
 
-Both files are updated by fully rewriting the JSON. `status.json` shows the lifecycle;
-`meta.json` records the final verdict and accounting. On normal completion, `meta.json` is written
-before the final update to `status.json`.
+Both files are published through `writeRunJsonAtomic` (`src/home/lib/atomic-json.mjs`): JSON is serialized first,
+written to an exclusively created temporary beside the target, flushed (`fsync`) and closed, then renamed over
+the target. Readers never see a torn record on any platform: after a crash or power loss they see either the
+previous version or the new one. Linux and macOS also flush the parent folder after rename; Windows skips this
+step because Node cannot flush folders there, so a power loss may roll the last write back to the previous version.
+Readers repair a `running` status with a dead pid to `finished` when `meta.json` records a verdict, or `abandoned`
+without `meta.json`. A leftover `*.tmp` is a writer killed before rename; it is never read and is safe to delete.
+
+A rename refused with `EPERM` or `EBUSY` is attempted up to five times, with 20, 40, 80 and 160 ms pauses.
+If all attempts fail, the write fails with that error and the previous record stays untouched: the target is
+never deleted or written in place, and failure cleanup removes only the writer's own temporary.
+`tests/meta/run-record-writers.test.mjs` guards against any other way of writing these two records.
+
+`status.json` shows the lifecycle; `meta.json` records the final verdict and accounting. On normal completion,
+`meta.json` is written before the final update to `status.json`.
 
 ## `status.json`
 
@@ -365,6 +377,9 @@ A failure before normal `collect()` also creates `meta.json`, but its shape is n
 This branch has no `carried_from_earlier_run` or `environment_changes`: the required snapshots and
 result might not yet have existed. Consumers must distinguish an absent field from `false` or an
 empty list.
+
+An abandoned run (dead runner, no `meta.json`) is closed by one `meta.json` publication with the full reason,
+then one `status.json` update, with no intermediate `failed` state. The final bytes are unchanged.
 
 ## `resume-note.md`
 

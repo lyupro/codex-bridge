@@ -13,6 +13,11 @@ here. Nothing was reworded on the way out.
 - **Artifact write order**: `status.json` first, `worker.json` complete before `spawn()`,
   `meta.json` before `status.json` is closed, `reply.txt` last. `reply.txt` existing means the
   verdict is already on disk.
+- **Run records are published, never rewritten in place.** `status.json` and `meta.json` go only
+  through `writeRunJsonAtomic` (`atomic-json.mjs`: flushed temporary renamed over the target). A torn
+  record reads as "no record" and drops the run out of chains, `attach` and `markAbandoned` (OW-067,
+  Plan_81); `tests/meta/run-record-writers.test.mjs` fails on any other writer. A failed publication
+  never falls back to an in-place write or deletes the target.
 - **The worker takes its whole order from `worker.json`** and never re-reads the CLI or
   `config.json` — otherwise one run gets two different configurations. See
   `docs/worker-contract.md`.

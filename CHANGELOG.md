@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Run records (`status.json` and `meta.json`) and home state files are published whole through a flushed temporary
+  renamed over the target, with bounded retries and cleanup limited to the writer's own temporary. After a crash
+  or power loss readers see either the previous version or the new one, never a torn record. On Windows a power
+  loss may roll the last write back because Node cannot flush the parent folder; readers repair a `running` run
+  with a dead pid to `finished` when `meta.json` records a verdict, or `abandoned` without it.
+- An abandoned run with a dead runner and no `meta.json` is closed by one publication of `meta.json` with the full
+  reason, then one update of `status.json`, with no intermediate `failed` state. The final bytes are unchanged.
+- A runner crash is never answered without a recorded verdict. If recording the crash fails, the boundary reads
+  `meta.json` again and answers from a verdict that reached disk. Without one, the worker writes no `reply.txt`,
+  leaving the launcher to record its death; the launcher prints a FAIL naming the run folder. "Crashed before
+  creating the run folder" is reserved for crashes with no run folder.
+
 ## [0.6.17] - 2026-10-18
 
 ### Added
