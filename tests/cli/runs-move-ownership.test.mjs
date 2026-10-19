@@ -28,13 +28,14 @@ for (const failure of ['competitor', 'late-file', 'changed-byte', 'live-run', 'r
         t.mock.method(fs, 'renameSync', () => { throw new Error('Publish rename failed'); });
       }
       if (failure === 'record') {
-        const write = fs.writeFileSync;
-        t.mock.method(fs, 'writeFileSync', (file, ...args) => {
+        // OW-067 S1: the record publisher creates its temporary with openSync, not writeFileSync.
+        const open = fs.openSync;
+        t.mock.method(fs, 'openSync', (file, ...args) => {
           if (String(file).startsWith(resolution.stateDir)) {
             assert.ok(fs.existsSync(resolution.homeRoot), 'publish precedes record');
             throw new Error('Record write failed');
           }
-          return write(file, ...args);
+          return open(file, ...args);
         });
       }
       const result = runsMove({ resolution, liveRuns: () => {
