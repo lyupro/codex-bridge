@@ -15,6 +15,7 @@ import {
   activeRun,
   abandonedBranchDrift,
   writeFailure,
+  failureRecord,
 } from '../../src/home/lib/meta/run-state.mjs';
 import { HEARTBEAT_FILE, HEARTBEAT_STALE_MS } from '../../src/home/lib/heartbeat.mjs';
 import { makeChainRoot } from './test-fixtures.mjs';
@@ -30,13 +31,35 @@ function setHeartbeatAge(runDir, age) {
   fs.utimesSync(heartbeat, at, at);
 }
 
-test('writeFailure() leaves status.json in the failed state', () => {
+// OW-067 / Plan_81 D2: keep the old record's field order and serialized bytes during extraction.
+function expectedFailure(runDir, reason, finishedAt) {
+  return {
+    agent: 'codex-build', phase: null, project: path.basename(path.dirname(runDir)),
+    run: path.basename(runDir), finished_at: finishedAt, exit: null, status: 'FAIL', reason,
+    result_ok: false, events_bytes: 0, stderr_bytes: 0, tokens: null, tokens_reported: false,
+    model: null, sandbox: null, session_id: null, env: null,
+  };
+}
+const recordBytes = (record) => `${JSON.stringify(record, null, 2)}\n`;
+
+test('writeFailure() leaves status.json in the failed state with unchanged bytes', () => {
   const dir = makeTempTree('codex-run-');
-  const { meta } = writeFailure(dir, 'codex-build', 'boom');
+  const reason = 'x'.repeat(400);
+  const shortened = `${reason.slice(0, 297)}...`;
+  const built = failureRecord(dir, 'codex-build', reason);
+  assert.deepEqual(built, expectedFailure(dir, shortened, built.finished_at));
+  assert.equal(fs.existsSync(path.join(dir, 'meta.json')), false);
+  assert.equal(fs.existsSync(path.join(dir, 'status.json')), false);
+  const { meta, reply } = writeFailure(dir, 'codex-build', reason);
+  assert.equal(fs.readFileSync(path.join(dir, 'meta.json'), 'utf8'),
+    recordBytes(expectedFailure(dir, shortened, meta.finished_at)));
+  assert.equal(reply, `FAIL — ${shortened}\nRun: ${dir}`);
   assert.equal(meta.status, 'FAIL');
   const status = JSON.parse(fs.readFileSync(path.join(dir, 'status.json'), 'utf8'));
   assert.equal(status.state, 'failed');
   assert.equal(status.status, 'FAIL');
+  assert.equal(fs.readFileSync(path.join(dir, 'status.json'), 'utf8'),
+    recordBytes({ state: 'failed', status: 'FAIL', finished_at: meta.finished_at }));
 });
 
 test('writeFailure() can record a refusal that never started Codex', () => {
@@ -84,6 +107,79 @@ test('markAbandoned marks a dead, meta-less running run as abandoned', (t) => {
   assert.equal(fs.existsSync(copies), false);
   assert.equal(fs.readFileSync(manifest, 'utf8'), manifestText);
 });
+
+test('markAbandoned preserves golden bytes with one meta publication then one status publication', (t) => {
+  const runsRoot = makeTempTree('codex-runs-');
+  const runDir = path.join(runsRoot, 'golden');
+  fs.mkdirSync(runDir);
+  const initial = { state: 'running', pid: DEAD_PID, repo: '/repo', agent: 'codex-build' };
+  writeStatus(runDir, initial);
+  const publications = [];
+  const rename = fs.renameSync;
+  // OW-067 / Plan_81 D2: observe committed records, including any transient failed state.
+  t.mock.method(fs, 'renameSync', function (from, to) {
+    const result = rename.call(this, from, to);
+    if (path.dirname(to) === runDir) {
+      publications.push([path.basename(to), JSON.parse(fs.readFileSync(to, 'utf8')).state]);
+    }
+    return result;
+  });
+  assert.deepEqual(markAbandoned(runsRoot), [{ run: 'golden', state: 'abandoned' }]);
+  const meta = JSON.parse(fs.readFileSync(path.join(runDir, 'meta.json'), 'utf8'));
+  const reason = 'runner process is dead, meta.json was not recorded; ' +
+    'no current worktree snapshot was supplied, so no file list is available. ' +
+    'This comparison runs at the start of a later run, so its file list may include work made after ' +
+    'the abandoned run and is not a definitive list of that run\'s work; ' +
+    'post-run worktree state was not captured — its changes will enter the baseline of the next run';
+  assert.ok(reason.length > 300);
+  assert.equal(fs.readFileSync(path.join(runDir, 'meta.json'), 'utf8'),
+    recordBytes(expectedFailure(runDir, reason, meta.finished_at)));
+  assert.equal(fs.readFileSync(path.join(runDir, 'status.json'), 'utf8'), recordBytes({
+    ...initial, state: 'abandoned', status: 'FAIL', finished_at: meta.finished_at,
+    tree_after: false, abandoned_reason: reason, abandoned_at: meta.finished_at,
+  }));
+  assert.deepEqual(publications, [['meta.json', undefined], ['status.json', 'abandoned']]);
+});
+
+for (const blocked of ['meta.json', 'status.json']) {
+  test(`markAbandoned contains a failing ${blocked} publication and continues`, (t) => {
+    const runsRoot = makeTempTree('codex-runs-');
+    const runDir = path.join(runsRoot, 'a-blocked');
+    const nextDir = path.join(runsRoot, 'z-next');
+    for (const dir of [runDir, nextDir]) {
+      fs.mkdirSync(dir);
+      writeStatus(dir, { state: 'running', pid: DEAD_PID, agent: 'codex-build' });
+    }
+    const copies = path.join(runDir, 'flags-baseline');
+    fs.mkdirSync(copies);
+    fs.writeFileSync(path.join(copies, '0.bin'), 'baseline');
+    const before = fs.readFileSync(path.join(runDir, 'status.json'), 'utf8');
+    const rename = fs.renameSync;
+    let attempts = 0;
+    // OW-067 / Plan_81 D2: create the obstruction at publication so the verdict-read guard stays intact.
+    t.mock.method(fs, 'renameSync', function (from, to) {
+      if (to === path.join(runDir, blocked)) {
+        attempts += 1;
+        if (blocked === 'meta.json') fs.mkdirSync(to, { recursive: true });
+        else throw Object.assign(new Error('status publication failed'), { code: 'EIO' });
+      }
+      return rename.call(this, from, to);
+    });
+    let removals = 0;
+    const rm = fs.rmSync;
+    t.mock.method(fs, 'rmSync', function (file, ...rest) {
+      if (file === copies) removals += 1;
+      return rm.call(this, file, ...rest);
+    });
+    let changed;
+    assert.doesNotThrow(() => { changed = markAbandoned(runsRoot); });
+    assert.ok(attempts > 0, 'the fixture must reach publication');
+    assert.deepEqual(changed, [{ run: 'z-next', state: 'abandoned' }]);
+    assert.equal(fs.readFileSync(path.join(runDir, 'status.json'), 'utf8'), before);
+    assert.equal(fs.readFileSync(path.join(copies, '0.bin'), 'utf8'), 'baseline');
+    assert.equal(removals, 0);
+  });
+}
 
 test('an abandoned run says its tree was never snapshotted either', () => {
   // 2026-07-31_114736 wrote eleven files and left no state-after.txt, so the next pass of

@@ -70,53 +70,57 @@ export function markAbandoned(runsRoot, currentTree) {
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     const runDir = path.join(runsRoot, entry.name);
-    const status = readJson(path.join(runDir, 'status.json'));
-    if (!status || status.state !== 'running') continue;
-    const liveness = runLiveness({ runDir, status });
-    if (liveness.state !== 'abandoned' && liveness.state !== 'finished') continue;
-    const metaPath = path.join(runDir, 'meta.json');
-    const meta = readJson(metaPath);
-    // The judge read meta.json already; this is a second read, and a failure here must still never
-    // turn an existing verdict into an abandoned FAIL (review 2026-09-17, Plan_57 D28).
-    if (!meta && fs.existsSync(metaPath)) continue;
-    let patch = meta
-      ? { state: 'finished', status: meta.status, finished_at: meta.finished_at }
-      : {
-          state: 'abandoned',
-          // The verdict is not the only thing missing. 2026-07-31_114736 wrote eleven files
-          // and never snapshotted the tree afterwards, so the next pass of that task started
-          // from a base that already contained them and every later count lied in silence.
-          // The flag exists so that base is read as unknown rather than as clean.
-          tree_after: false,
-          abandoned_reason:
-            'runner process is dead, meta.json was not recorded; post-run worktree state was not ' +
-              'captured — its changes will enter the baseline of the next run',
-          abandoned_at: new Date().toISOString(),
-    };
-    if (!meta) {
-      const hasCurrentTree = typeof currentTree === 'string';
-      const beforePath = path.join(runDir, 'state-before.txt');
-      const hasBeforeSnapshot = fs.existsSync(beforePath);
-      const files = hasCurrentTree && hasBeforeSnapshot
-        ? changedPaths(readText(beforePath), currentTree)
-        : [];
-      const treeReason = hasCurrentTree && hasBeforeSnapshot
-        ? files.length
-          ? `the current worktree differs from state-before.txt in: ${files.join(', ')}`
-          : 'the current worktree has no files differing from state-before.txt'
-        : hasCurrentTree
-          ? 'the run has no state-before.txt, so no file list is available'
-          : 'no current worktree snapshot was supplied, so no file list is available';
-      const reason =
-        'runner process is dead, meta.json was not recorded; ' +
-        `${treeReason}. This comparison runs at the start of a later run, so its file list may ` +
-        'include work made after the abandoned run and is not a definitive list of that run\'s work; ' +
-        'post-run worktree state was not captured — its changes will enter the baseline of the next run';
-      const { meta: failure } = writeFailure(runDir, status.agent, reason);
-      writeRunJsonAtomic(metaPath, { ...failure, reason });
-      patch = { ...patch, abandoned_reason: reason, abandoned_at: failure.finished_at };
-    }
     try {
+      const status = readJson(path.join(runDir, 'status.json'));
+      if (!status || status.state !== 'running') continue;
+      const liveness = runLiveness({ runDir, status });
+      if (liveness.state !== 'abandoned' && liveness.state !== 'finished') continue;
+      const metaPath = path.join(runDir, 'meta.json');
+      const meta = readJson(metaPath);
+      // The judge read meta.json already; this is a second read, and a failure here must still never
+      // turn an existing verdict into an abandoned FAIL (review 2026-09-17, Plan_57 D28).
+      if (!meta && fs.existsSync(metaPath)) continue;
+      let patch = meta
+        ? { state: 'finished', status: meta.status, finished_at: meta.finished_at }
+        : {
+            state: 'abandoned',
+            // The verdict is not the only thing missing. 2026-07-31_114736 wrote eleven files
+            // and never snapshotted the tree afterwards, so the next pass of that task started
+            // from a base that already contained them and every later count lied in silence.
+            // The flag exists so that base is read as unknown rather than as clean.
+            tree_after: false,
+            abandoned_reason:
+              'runner process is dead, meta.json was not recorded; post-run worktree state was not ' +
+                'captured — its changes will enter the baseline of the next run',
+            abandoned_at: new Date().toISOString(),
+      };
+      if (!meta) {
+        const hasCurrentTree = typeof currentTree === 'string';
+        const beforePath = path.join(runDir, 'state-before.txt');
+        const hasBeforeSnapshot = fs.existsSync(beforePath);
+        const files = hasCurrentTree && hasBeforeSnapshot
+          ? changedPaths(readText(beforePath), currentTree)
+          : [];
+        const treeReason = hasCurrentTree && hasBeforeSnapshot
+          ? files.length
+            ? `the current worktree differs from state-before.txt in: ${files.join(', ')}`
+            : 'the current worktree has no files differing from state-before.txt'
+          : hasCurrentTree
+            ? 'the run has no state-before.txt, so no file list is available'
+            : 'no current worktree snapshot was supplied, so no file list is available';
+        const reason =
+          'runner process is dead, meta.json was not recorded; ' +
+          `${treeReason}. This comparison runs at the start of a later run, so its file list may ` +
+          'include work made after the abandoned run and is not a definitive list of that run\'s work; ' +
+          'post-run worktree state was not captured — its changes will enter the baseline of the next run';
+        // OW-067 / Plan_81 D2: publish the full verdict before closing, never an intermediate failure.
+        const failure = failureRecord(runDir, status.agent, reason);
+        writeRunJsonAtomic(metaPath, { ...failure, reason });
+        patch = {
+          state: 'abandoned', status: 'FAIL', finished_at: failure.finished_at,
+          ...patch, abandoned_reason: reason, abandoned_at: failure.finished_at,
+        };
+      }
       writeStatus(runDir, patch);
       // Plan_60 D3a: a dead worker cannot remove its start copies; keep the manifest for inspection.
       if (patch.state === 'abandoned') removeFlagBaselineCopies(runDir);
@@ -192,15 +196,9 @@ export function abandonedBranchDrift(runsRoot, repo, currentBranch) {
   return newest ? { run: newest.name, branch: newest.branch } : null;
 }
 
-/**
- * A failure that happens before Codex could produce anything — missing CLI, a crash of
- * the runner itself. It still goes through meta.json, so there is no second path by
- * which a reply could exist without an artifact backing it.
- */
-// The marker is reserved for refusals before Codex starts; Plan_23 showed that calling those
-// ordinary failures makes a no-quota folder consume the same continuation slot as paid work.
-export function writeFailure(runDir, agent, reason, extraLines = [], preStart = false) {
-  const meta = {
+// OW-067 / Plan_81 D2: building a verdict must not close status before abandonment can publish it.
+export function failureRecord(runDir, agent, reason) {
+  return {
     agent,
     phase: readJson(path.join(runDir, 'worker.json'))?.phase
       ?? readJson(path.join(runDir, 'status.json'))?.phase ?? null,
@@ -220,6 +218,17 @@ export function writeFailure(runDir, agent, reason, extraLines = [], preStart = 
     session_id: null,
     env: readJson(path.join(runDir, 'env.json')),
   };
+}
+
+/**
+ * A failure that happens before Codex could produce anything — missing CLI, a crash of
+ * the runner itself. It still goes through meta.json, so there is no second path by
+ * which a reply could exist without an artifact backing it.
+ */
+// The marker is reserved for refusals before Codex starts; Plan_23 showed that calling those
+// ordinary failures makes a no-quota folder consume the same continuation slot as paid work.
+export function writeFailure(runDir, agent, reason, extraLines = [], preStart = false) {
+  const meta = failureRecord(runDir, agent, reason);
   writeRunJsonAtomic(path.join(runDir, 'meta.json'), meta);
   writeStatus(runDir, {
     state: preStart ? 'aborted_pre_start' : 'failed',
