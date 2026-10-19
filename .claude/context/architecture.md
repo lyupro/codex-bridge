@@ -72,6 +72,10 @@ folder never feeds two hosts:
   worker.json, `project-dir`/`runs-root` place the artifacts, `conventions` pastes the rules a run is judged by into `task.md` — the
   seeded host-wide `conventions.md` and the worked repository's optional `.codex-conventions.md`,
   verbatim under one heading, because "read file X" is hope and a run is free not to.
+- `atomic-json.mjs` is the one way a JSON record is published, in the home (`writeHomeJsonAtomic`)
+  and in run folders (`writeRunJsonAtomic`): flushed temporary renamed over the target, bounded
+  `EPERM`/`EBUSY` retry, cleanup of its own temporary only. `status.json` and `meta.json` reach disk
+  only through it (OW-067, Plan_81; guard `tests/meta/run-record-writers.test.mjs`).
 - `write-meta.mjs` is the only reader of a finished run's artifacts. `meta/` splits it: `paths`
   (artifact reads and path matching), `chain` (earlier passes of the same task), `run-state`
   (`status.json` honesty, abandoned runs), `events` (the JSONL stream — the only module that knows
