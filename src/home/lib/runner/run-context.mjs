@@ -43,6 +43,11 @@ export function adoptRun(dir, agent) {
 
 export const getRun = () => ({ dir: currentRun, agent: currentAgent });
 
+// OW-067, Plan_81: a failure without a verdict may inform the launcher, never publish reply.txt.
+export function emitDiagnostic(text) {
+  if (!workerDir) console.log(text);
+}
+
 /**
  * Where the reply goes. The launcher prints it, because its stdout IS the dispatcher's
  * contract. The worker has no stdout at all — it is spawned with stdio 'ignore', since a

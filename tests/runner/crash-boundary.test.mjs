@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
-import { collect, exitCodeFor } from '../../src/home/lib/write-meta.mjs';
+import { collect, exitCodeFor, renderReply } from '../../src/home/lib/write-meta.mjs';
 import {
   adoptRun, emitReply, getRun, setRun, setWorkerDir,
 } from '../../src/home/lib/runner/run-context.mjs';
@@ -17,13 +17,26 @@ const crashMessage = `continuation\n reservation\t failed ${'x'.repeat(180)}`;
 const crashLine = `Runner crashed after the verdict was recorded: ${
   crashMessage.replace(/\s+/g, ' ').slice(0, 150)
 }`;
+const publicationMessage = `record publication\n denied\t ${'x'.repeat(180)}`;
 const read = (dir, file) => fs.readFileSync(path.join(dir, file), 'utf8');
 const readJson = (dir, file) => JSON.parse(read(dir, file));
 
-function crash({ dir, currentAgent = agent, parent, launcher = false }) {
+function crash({ dir, currentAgent = agent, parent, launcher = false, failPublication }) {
   const code = `
+    import fs from 'node:fs';
+    import { syncBuiltinESMExports } from 'node:module';
     import { installRunnerCrashBoundary } from ${JSON.stringify(runnerUrl)};
     import { adoptRun, setRun, setWorkerDir } from ${JSON.stringify(contextUrl)};
+    ${failPublication ? `
+      const renameSync = fs.renameSync;
+      fs.renameSync = (source, destination, ...args) => {
+        if (destination === ${JSON.stringify(path.join(dir, failPublication))}) {
+          throw Object.assign(new Error(${JSON.stringify(publicationMessage)}), { code: 'EIO' });
+        }
+        return renameSync(source, destination, ...args);
+      };
+      syncBuiltinESMExports();
+    ` : ''}
     installRunnerCrashBoundary();
     setWorkerDir(${JSON.stringify(launcher ? null : parent ?? dir)});
     setRun(${JSON.stringify(parent ?? dir)}, ${JSON.stringify(currentAgent)});
@@ -125,6 +138,68 @@ for (const reason of ['recorded reason', null]) {
     ].join('\n'));
   });
 }
+
+// OW-067, Plan_81 D2: reply.txt must never certify a verdict that failed publication.
+test('a worker crash before metadata publication leaves no reply and logs the failure', () => {
+  const dir = makeTempTree('crash-meta-publication-');
+  const status = JSON.stringify({ state: 'running', agent });
+  fs.writeFileSync(path.join(dir, 'status.json'), status);
+
+  const child = crash({ dir, failPublication: 'meta.json' });
+
+  assert.equal(child.status, exitCodeFor('FAIL'), child.stderr);
+  assert.equal(child.stdout, '');
+  assert.equal(fs.existsSync(path.join(dir, 'reply.txt')), false);
+  assert.equal(fs.existsSync(path.join(dir, 'meta.json')), false);
+  assert.equal(read(dir, 'status.json'), status);
+  assert.match(read(dir, 'stderr.log'), /run-codex crash: Error:/);
+  assert.ok(read(dir, 'stderr.log').includes(`run folder ${dir}; failure could not be recorded:`));
+  assert.ok(read(dir, 'stderr.log').includes(publicationMessage.replace(/\s+/g, ' ').slice(0, 150)));
+});
+
+// OW-067, Plan_81: failed status publication does not invalidate a published verdict.
+test('a worker crash after metadata publication renders the verdict despite status failure', () => {
+  const dir = makeTempTree('crash-status-publication-');
+  const status = JSON.stringify({ state: 'running', agent });
+  fs.writeFileSync(path.join(dir, 'status.json'), status);
+
+  const child = crash({ dir, failPublication: 'status.json' });
+
+  const meta = readJson(dir, 'meta.json');
+  assert.equal(meta.status, 'FAIL');
+  assert.equal(child.status, exitCodeFor(meta.status), child.stderr);
+  assert.equal(child.stdout, '');
+  assert.equal(read(dir, 'status.json'), status);
+  assert.equal(read(dir, 'reply.txt'), [
+    renderReply(dir, agent, meta), crashLine, `Log: codex-bridge read ${dir}\n`,
+  ].join('\n'));
+});
+
+test('a launcher crash without a record names the existing run folder on stdout', () => {
+  const dir = makeTempTree('crash-launcher-publication-');
+
+  const child = crash({ dir, launcher: true, failPublication: 'meta.json' });
+
+  assert.equal(child.status, exitCodeFor('FAIL'), child.stderr);
+  assert.equal(child.stdout, `FAIL — Codex runner crashed in run folder ${dir}; `
+    + `failure could not be recorded: ${publicationMessage.replace(/\s+/g, ' ').slice(0, 150)}\n`);
+  assert.doesNotMatch(child.stdout, /before creating the run folder/);
+  assert.equal(fs.existsSync(path.join(dir, 'reply.txt')), false);
+  assert.equal(fs.existsSync(path.join(dir, 'meta.json')), false);
+  assert.ok(read(dir, 'stderr.log').includes(child.stdout.trim()));
+});
+
+test('a crash without a current run folder keeps the bare launcher reply', () => {
+  const child = crash({ dir: null, launcher: true });
+
+  assert.equal(child.status, exitCodeFor('FAIL'), child.stderr);
+  assert.equal(child.stdout, [
+    `FAIL — Codex runner crashed before creating the run folder: ${
+      crashMessage.replace(/\s+/g, ' ').slice(0, 150)
+    }`,
+    'No artifacts; nothing to inspect\n',
+  ].join('\n'));
+});
 
 test('a launcher crash with a recorded verdict answers on stdout', () => {
   const { dir, meta, reply } = recordedRun(buildResult([]));

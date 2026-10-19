@@ -50,7 +50,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { writeFailure, renderReply, exitCodeFor, readJson } from './write-meta.mjs';
-import { setWorkerDir, getRun, emitReply } from './runner/run-context.mjs';
+import { setWorkerDir, getRun, emitReply, emitDiagnostic } from './runner/run-context.mjs';
 import { launcher } from './runner/launcher.mjs';
 import { worker } from './runner/worker.mjs';
 import { RunnerUsageError } from './runner/args.mjs';
@@ -82,34 +82,51 @@ const invokedDirectly =
 export function installRunnerCrashBoundary() {
   process.on('uncaughtException', (err) => {
     const { dir: currentRun, agent: currentAgent } = getRun();
+    const appendCrashLog = (text) => fs.appendFileSync(path.join(currentRun, 'stderr.log'), `\n${text}\n`);
+    const replyWithVerdict = (meta) => {
+      let reply;
+      try {
+        reply = renderReply(currentRun, currentAgent, meta);
+      } catch {
+        reply = `${meta.status} — ${typeof meta.reason === 'string'
+          ? meta.reason : 'verdict recorded in meta.json'}`;
+      }
+      emitReply([
+        reply,
+        `Runner crashed after the verdict was recorded: ${
+          String(err.message).replace(/\s+/g, ' ').slice(0, 150)
+        }`,
+        `Log: codex-bridge read ${currentRun}`,
+      ].join('\n'));
+      process.exit(exitCodeFor(meta.status));
+    };
     if (currentRun) {
       try {
-        fs.appendFileSync(path.join(currentRun, 'stderr.log'), `\nrun-codex crash: ${err.stack}\n`);
+        appendCrashLog(`run-codex crash: ${err.stack}`);
         const meta = readJson(path.join(currentRun, 'meta.json'));
         if (typeof meta?.status === 'string') {
-          let reply;
-          try {
-            reply = renderReply(currentRun, currentAgent, meta);
-          } catch {
-            reply = `${meta.status} — ${typeof meta.reason === 'string'
-              ? meta.reason : 'verdict recorded in meta.json'}`;
-          }
-          emitReply([
-            reply,
-            `Runner crashed after the verdict was recorded: ${
-              String(err.message).replace(/\s+/g, ' ').slice(0, 150)
-            }`,
-            `Log: codex-bridge read ${currentRun}`,
-          ].join('\n'));
-          process.exit(exitCodeFor(meta.status));
+          replyWithVerdict(meta);
         }
         const { reply } = writeFailure(currentRun, currentAgent, `Codex runner crashed: ${err.message}`, [
           `Log: codex-bridge read ${currentRun}`,
         ]);
         emitReply(reply);
         process.exit(EXIT.FAIL);
-      } catch {
-        // Falls through to the bare reply below: the disk itself is not cooperating.
+      } catch (recordError) {
+        // OW-067, Plan_81 D2: status publication can fail after meta.json is on disk.
+        const meta = readJson(path.join(currentRun, 'meta.json'));
+        if (typeof meta?.status === 'string') replyWithVerdict(meta);
+        const diagnostic = `FAIL — Codex runner crashed in run folder ${currentRun}; `
+          + `failure could not be recorded: ${
+            String(recordError.message).replace(/\s+/g, ' ').slice(0, 150)
+          }`;
+        try {
+          appendCrashLog(diagnostic);
+        } catch {
+          // OW-067, Plan_81: best effort only; no verdict means no worker reply.txt.
+        }
+        emitDiagnostic(diagnostic);
+        process.exit(EXIT.FAIL);
       }
     }
     emitReply(
