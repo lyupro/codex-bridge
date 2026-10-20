@@ -263,14 +263,14 @@ test('runCodex spawn error without exit keeps null exit facts', async (t) => {
 test('Plan_80 A4: every first trigger owns its time and error despite later triggers', (t) => {
   const now = Date.parse('2026-10-15T08:00:00Z');
   t.mock.timers.enable({ apis: ['Date'], now });
-  for (const trigger of ['exit', 'deadline', 'silence', 'stream-error', 'spawn-error']) {
+  for (const trigger of ['exit', 'deadline', 'stream-error', 'spawn-error']) {
     const stop = createStopObservation();
     const firstAt = new Date().toISOString();
     const error = trigger.endsWith('-error') ? new Error(`${trigger} first`) : undefined;
     if (trigger === 'exit') stop.exit(4, null);
     else stop.observe(trigger, error);
     t.mock.timers.tick(1000);
-    for (const later of ['exit', 'deadline', 'silence', 'stream-error', 'spawn-error']) {
+    for (const later of ['exit', 'deadline', 'stream-error', 'spawn-error']) {
       stop.observe(later, new Error('later error'));
     }
     const record = stop.snapshot(true, 1000);

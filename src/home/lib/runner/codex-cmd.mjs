@@ -263,7 +263,6 @@ export function runCodex(args, taskText, eventsPath, budgetMinutes, { graceMs = 
     let watchdogPoll;
     let stdioGraceTimer;
     let stoppedOnDeadline = false;
-    let stoppedBySilence = false;
     let exitCode;
     let settled = false;
     let elapsedMs = 0;
@@ -271,17 +270,10 @@ export function runCodex(args, taskText, eventsPath, budgetMinutes, { graceMs = 
     stampHeartbeat();
     heartbeatTimer = setInterval(stampHeartbeat, HEARTBEAT_INTERVAL_MS);
     if (watchdog && typeof watchdog.intervalMs === 'number' && watchdog.intervalMs > 0) {
+      // Plan_80 E25/E28: ignoring the diagnostic answer means no watchdog can stop Codex.
       watchdogPoll = setInterval(() => {
-        if (settled || exited || watchdog.check() !== 'stop') return;
-        stop.observe('silence');
-        stoppedBySilence = true;
-        const { decision: { silence_ms }, threshold_ms } = watchdog.record();
-        stderrLog.write(
-          `\nrun-codex: run stopped by the silence watchdog after ${silence_ms} ms without session activity (threshold ${threshold_ms} ms)\n`,
-        );
-        // The deadline stays armed: if this kill leaves Codex alive, it is the backstop (Plan_57 D28).
-        clearInterval(watchdogPoll);
-        stop.kill(stopCodex(child, onWindows));
+        if (settled || exited) return;
+        watchdog.check();
       }, watchdog.intervalMs);
     }
     child.stdout.on('data', appendEvents.append);
@@ -363,7 +355,7 @@ export function runCodex(args, taskText, eventsPath, budgetMinutes, { graceMs = 
       await receipts.close();
       await close(stderrLog);
       await close(eventsLog);
-      resolve({ exit, stoppedOnDeadline, stoppedBySilence, watchdog: watchdog ? watchdog.record() : null,
+      resolve({ exit, stoppedOnDeadline, watchdog: watchdog ? watchdog.record() : null,
         elapsedMs, stdioDrained, receipts: receipts.summary,
         stop: stop.snapshot(stdioDrained, elapsedMs) });
     };

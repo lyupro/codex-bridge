@@ -48,28 +48,28 @@ export function createSilenceWatchdog({
     return { referenceAt, verdict };
   }
 
-  // check() is synchronous, so the caller's timer cannot re-enter it.
+  /** Plan_80 E28: only records diagnostics and returns nothing. */
   function check() {
-    if (arming === 'off' || decision !== null || fault !== null) return 'none';
+    if (arming === 'off' || decision !== null || fault !== null) return;
     try {
       if (threadId === null) {
         threadId = readEvents(runDir).session_id;
-        if (threadId === null) return 'none';
+        if (threadId === null) return;
         startedAt = readJsonFileSync(path.join(runDir, 'status.json')).started_at;
       }
       const first = observe();
-      if (!first.verdict.stall) return 'none';
+      if (!first.verdict.stall) return;
       const second = observe();
-      if (!second.verdict.stall) return 'none';
+      if (!second.verdict.stall) return;
       decision = {
         at: first.referenceAt, silence_ms: first.verdict.silence_ms,
         confirmed_at: second.referenceAt, action: 'recorded',
       };
-      return 'none';
+      return;
     } catch (error) {
       // Plan_80 B1b1: a diagnostic reader TypeError must never fail a good run.
       fault = error?.message ?? String(error);
-      return 'none';
+      return;
     }
   }
 

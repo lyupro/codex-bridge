@@ -89,14 +89,14 @@ test('a fresh confirmation record cancels the decision and permits later checks'
   const fresh = activity({ last: CONFIRMED });
   const { watchdog, reads } = detector({ observations: [activity(), fresh, fresh],
     times: [REFERENCE, CONFIRMED, '2026-10-17T10:20:02.000Z'] });
-  assert.equal(watchdog.check(), 'none');
+  assert.equal(watchdog.check(), undefined);
   assert.equal(reads.length, 2);
   assert.equal(watchdog.record().decision, null);
   assert.equal(watchdog.record().checks, 2);
   assert.deepEqual(watchdog.record().last_observation, {
     at: CONFIRMED, state: 'observed', commands: 'none', silence_ms: 0,
   });
-  assert.equal(watchdog.check(), 'none');
+  assert.equal(watchdog.check(), undefined);
   assert.equal(reads.length, 3);
   assert.equal(watchdog.record().checks, 3);
   assert.equal(watchdog.record().last_observation.silence_ms, 1000);
@@ -111,7 +111,7 @@ for (const arming of ['shadow']) {
       version: 1, arming, threshold_ms: THRESHOLD, interval_ms: 30000,
       checks: 0, last_observation: null, decision: null, fault: null,
     });
-    assert.equal(watchdog.check(), 'none');
+    assert.equal(watchdog.check(), undefined);
     assert.deepEqual(reads, [
       { threadId: THREAD, startedAt: START, referenceAt: REFERENCE },
       { threadId: THREAD, startedAt: START, referenceAt: CONFIRMED },
@@ -123,8 +123,8 @@ for (const arming of ['shadow']) {
         action: 'recorded' }, fault: null,
     });
     const frozen = watchdog.record();
-    assert.equal(watchdog.check(), 'none');
-    assert.equal(watchdog.check(), 'none');
+    assert.equal(watchdog.check(), undefined);
+    assert.equal(watchdog.check(), undefined);
     assert.equal(reads.length, 2);
     assert.equal(ticks(), 2);
     assert.deepEqual(watchdog.record(), frozen);
@@ -135,7 +135,7 @@ test('incomplete or uncertain confirmation evidence prevents a decision', () => 
   for (const second of [activity({ state: 'incomplete' }), activity({ commands: 'in-flight' }),
     activity({ commands: 'unknown' }), activity({ last: null })]) {
     const { watchdog, reads } = detector({ observations: [activity(), second] });
-    assert.equal(watchdog.check(), 'none');
+    assert.equal(watchdog.check(), undefined);
     assert.equal(reads.length, 2);
     assert.equal(watchdog.record().decision, null);
   }
@@ -144,7 +144,7 @@ test('incomplete or uncertain confirmation evidence prevents a decision', () => 
 test('non-stall reads are counted once and preserve the latest observation', () => {
   const { watchdog, reads } = detector({ observations: [{ state: 'missing', at_reference: null }], intervalMs: 750 });
   assert.equal(watchdog.intervalMs, 750);
-  assert.equal(watchdog.check(), 'none');
+  assert.equal(watchdog.check(), undefined);
   assert.equal(reads.length, 1);
   assert.deepEqual(watchdog.record(), {
     version: 1, arming: 'shadow', threshold_ms: THRESHOLD, interval_ms: 750, checks: 1,
@@ -155,15 +155,15 @@ test('non-stall reads are counted once and preserve the latest observation', () 
 
 test('thread discovery retries without log or clock reads until the id appears', () => {
   const { watchdog, reads, runDir, ticks } = detector({ runDir: fixture({ thread: false }) });
-  assert.equal(watchdog.check(), 'none');
-  assert.equal(watchdog.check(), 'none');
+  assert.equal(watchdog.check(), undefined);
+  assert.equal(watchdog.check(), undefined);
   assert.equal(reads.length, 0);
   assert.equal(ticks(), 0);
   assert.equal(watchdog.record().checks, 0);
   assert.equal(watchdog.record().last_observation, null);
   fs.writeFileSync(path.join(runDir, 'events.jsonl'),
     `${JSON.stringify({ type: 'thread.started', thread_id: THREAD })}\n`);
-  assert.equal(watchdog.check(), 'none');
+  assert.equal(watchdog.check(), undefined);
   assert.equal(reads.length, 2);
   assert.equal(watchdog.record().decision.action, 'recorded');
 });
@@ -171,10 +171,10 @@ test('thread discovery retries without log or clock reads until the id appears',
 test('the discovered thread and start time are cached across checks', () => {
   const fresh = activity({ last: REFERENCE });
   const { watchdog, reads, runDir } = detector({ observations: [fresh, fresh] });
-  assert.equal(watchdog.check(), 'none');
+  assert.equal(watchdog.check(), undefined);
   fs.writeFileSync(path.join(runDir, 'events.jsonl'), 'invalid after discovery\n');
   fs.writeFileSync(path.join(runDir, 'status.json'), 'invalid after first read');
-  assert.equal(watchdog.check(), 'none');
+  assert.equal(watchdog.check(), undefined);
   assert.deepEqual(reads.map(({ threadId, startedAt }) => ({ threadId, startedAt })), [
     { threadId: THREAD, startedAt: START }, { threadId: THREAD, startedAt: START },
   ]);
@@ -189,8 +189,8 @@ test('off reads no files, session activity or clock and preserves the given thre
     });
     assert.equal(watchdog.arming, 'off');
     assert.equal(watchdog.intervalMs, null);
-    assert.equal(watchdog.check(), 'none');
-    assert.equal(watchdog.check(), 'none');
+    assert.equal(watchdog.check(), undefined);
+    assert.equal(watchdog.check(), undefined);
     assert.deepEqual(watchdog.record(), {
       version: 1, arming: 'off', threshold_ms: thresholdMs, interval_ms: null,
       checks: 0, last_observation: null, decision: null, fault: null,
@@ -223,12 +223,12 @@ test('Plan_80 B1b1: a reader fault is recorded once and disables further reads',
       if (reads === failOn) throw new TypeError('session reader failed');
       return activity();
     } });
-    assert.equal(watchdog.check(), 'none');
+    assert.equal(watchdog.check(), undefined);
     assert.equal(watchdog.record().fault, 'session reader failed');
     assert.equal(watchdog.record().decision, null);
     assert.equal(watchdog.record().checks, failOn - 1);
     const frozen = watchdog.record();
-    assert.equal(watchdog.check(), 'none');
+    assert.equal(watchdog.check(), undefined);
     assert.equal(reads, failOn);
     assert.deepEqual(watchdog.record(), frozen);
   }
@@ -247,10 +247,10 @@ test('an unreadable status records a fault and never retries discovery or the re
     return originalRead(file, ...args);
   });
   const { watchdog, reads, ticks } = detector({ runDir });
-  assert.equal(watchdog.check(), 'none');
+  assert.equal(watchdog.check(), undefined);
   assert.match(watchdog.record().fault, /status is unreadable/);
   const calls = readFile.mock.calls.length;
-  assert.equal(watchdog.check(), 'none');
+  assert.equal(watchdog.check(), undefined);
   assert.equal(readFile.mock.calls.length, calls);
   assert.equal(statusReads, 1);
   assert.equal(reads.length, 0);

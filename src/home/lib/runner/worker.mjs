@@ -115,7 +115,6 @@ async function runPass(runDir, cfg, deps) {
   // a grandchild kept a pipe open, the distinction the 2026-08-06 incident made necessary.
   writeStatus(runDir, {
     stopped_on_deadline: run.stoppedOnDeadline,
-    stopped_by_silence: run.stoppedBySilence,
     elapsed_ms: run.elapsedMs,
     stdio_drained: run.stdioDrained,
     stop: buildStopRecord(run, runDir, cfg.agent),

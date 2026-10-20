@@ -62,7 +62,7 @@ function fixture({ allowed = false, parentStatus = 'LIMIT', childStatus = 'OK',
       calls.push(`run:${path.basename(runDir)}`);
       runs.push({ args, task, eventsPath, budget, options });
       assert.equal(fs.existsSync(path.join(runDir, 'meta.json')), false);
-      return { exit: 1, stoppedOnDeadline: false, stoppedBySilence: false,
+      return { exit: 1, stoppedOnDeadline: false,
         elapsedMs: 17, stdioDrained: true };
     },
     collect(runDir, agent, exit) {
@@ -71,7 +71,7 @@ function fixture({ allowed = false, parentStatus = 'LIMIT', childStatus = 'OK',
       assert.equal(exit, 1);
       const status = json(runDir, 'status.json');
       assert.equal(status.stopped_on_deadline, false);
-      assert.equal(status.stopped_by_silence, false);
+      assert.equal(Object.hasOwn(status, 'stopped_by_silence'), false);
       assert.equal(status.elapsed_ms, 17);
       assert.equal(status.stdio_drained, true);
       const child = runDir === childDir;

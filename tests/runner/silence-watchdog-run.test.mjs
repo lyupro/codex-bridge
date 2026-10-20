@@ -42,9 +42,6 @@ after(() => {
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const shellQuote = (value) => `'${String(value).replaceAll("'", "'\\''")}'`;
-const alive = (pid) => {
-  try { process.kill(pid, 0); return true; } catch (error) { return error.code === 'EPERM'; }
-};
 async function waitFor(predicate) {
   const until = Date.now() + 2000;
   while (!predicate() && Date.now() < until) await wait(20);
@@ -102,37 +99,67 @@ function injectedWatchdog(arming, check) {
 
 const longRunning = "fs.writeFileSync(root + '/ready', 'ready'); setInterval(() => {}, 1000);\n";
 
-test('armed stall stops the invocation tree and preserves the watchdog record', async () => {
-  await withFakeCodex(`
-if (process.platform === 'win32') {
-  const { spawn } = await import('node:child_process');
-  const grandchild = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
-  fs.writeFileSync(root + '/grandchild.pid', String(grandchild.pid));
-}
-${longRunning}`, async (root) => {
-    const watchdog = injectedWatchdog('armed', () => fs.existsSync(path.join(root, 'ready')) ? 'stop' : 'none');
-    const run = await runCodex([], 'stall', path.join(root, 'events.jsonl'), 0.1, { watchdog });
-    assert.equal(run.stop.trigger, 'silence');
-    assert.equal(run.stoppedBySilence, true);
-    assert.equal(run.stoppedOnDeadline, false);
-    assert.equal(run.stop.tree_stop.requested, true);
-    assert.equal(run.stop.tree_stop.state, 'stopped');
+// Plan_80 E28: even a directly injected stop request has no authority over the child.
+for (const deadline of [false, true]) {
+  test(`an injected stop answer cannot kill Codex (${deadline ? 'deadline' : 'natural exit'})`, async (t) => {
+    const root = makeTempTree('silence-watchdog-guard-');
+    const child = new EventEmitter();
+    child.stdin = new PassThrough();
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    child.pid = 12345;
+    let exited = false;
+    const kills = [];
+    const finish = (code, signal = null) => {
+      exited = true;
+      child.emit('exit', code, signal);
+      child.stdout.end();
+      child.stderr.end();
+      child.emit('close', code);
+    };
+    const kill = () => {
+      kills.push(watchdog.record().checks);
+      queueMicrotask(() => finish(null, 'SIGKILL'));
+      return true;
+    };
+    child.kill = kill;
+    t.mock.method(childProcess, 'spawn', () => child);
+    t.mock.method(childProcess, 'spawnSync', () => {
+      kill();
+      return { status: 0, error: null };
+    });
+    syncBuiltinESMExports();
+    t.after(() => { t.mock.restoreAll(); syncBuiltinESMExports(); });
+    const watchdog = injectedWatchdog('armed', () => {
+      assert.equal(exited, false);
+      return 'stop';
+    });
+    const pending = runCodex([], 'injected stop', path.join(root, 'events.jsonl'),
+      deadline ? 400 / 60000 : null, { watchdog });
+    if (!deadline) {
+      await waitFor(() => watchdog.record().checks >= 4);
+      assert.equal(kills.length, 0);
+      finish(7);
+    }
+    const run = await pending;
+    assert.ok(run.watchdog.checks >= 4);
+    assert.equal(run.watchdog.decision.action, 'stop');
+    assert.equal(kills.length, deadline ? 1 : 0);
+    assert.equal(run.exit, deadline ? 1 : 7);
+    assert.equal(run.stop.exit_code, deadline ? null : 7);
+    assert.equal(run.stop.trigger, deadline ? 'deadline' : 'exit');
+    assert.equal(run.stop.tree_stop.requested, deadline);
+    assert.equal(run.stoppedOnDeadline, deadline);
+    assert.equal(Object.hasOwn(run, 'stoppedBySilence'), false);
     assert.deepEqual(run.watchdog, watchdog.record());
-    assert.match(fs.readFileSync(path.join(root, 'stderr.log'), 'utf8'),
-      /\nrun-codex: run stopped by the silence watchdog after 1200000 ms without session activity \(threshold 996000 ms\)\n/);
+    const stderr = fs.readFileSync(path.join(root, 'stderr.log'), 'utf8');
+    assert.doesNotMatch(stderr, /silence watchdog/);
+    if (deadline) assert.match(stderr, /run stopped on its deadline/);
     const checks = run.watchdog.checks;
     await wait(60);
     assert.equal(watchdog.record().checks, checks);
-    for (const file of ['codex.pid', ...(process.platform === 'win32' ? ['grandchild.pid'] : [])]) {
-      const pid = Number(fs.readFileSync(path.join(root, file), 'utf8'));
-      await waitFor(() => !alive(pid));
-    }
-    if (process.platform === 'win32') {
-      assert.equal(taskkillCalls.length, 1);
-      assert.deepEqual(taskkillCalls[0].slice(2), ['/T', '/F']);
-    }
   });
-});
+}
 
 test('shadow polling never stops a Codex that exits on its own', async () => {
   await withFakeCodex("setTimeout(() => process.exit(7), 120);\n", async (root) => {
@@ -141,7 +168,7 @@ test('shadow polling never stops a Codex that exits on its own', async () => {
     assert.equal(run.exit, 7);
     assert.equal(run.stop.trigger, 'exit');
     assert.equal(run.stop.tree_stop.requested, false);
-    assert.equal(run.stoppedBySilence, false);
+    assert.equal(Object.hasOwn(run, 'stoppedBySilence'), false);
     assert.equal(run.stoppedOnDeadline, false);
     assert.ok(run.watchdog.checks > 0);
     assert.deepEqual(run.watchdog, watchdog.record());
@@ -153,7 +180,7 @@ test('a shadow run can still be stopped by its deadline', async () => {
     const watchdog = injectedWatchdog('shadow', () => 'none');
     const run = await runCodex([], 'shadow deadline', path.join(root, 'events.jsonl'), 400 / 60000, { watchdog });
     assert.equal(run.stop.trigger, 'deadline');
-    assert.equal(run.stoppedBySilence, false);
+    assert.equal(Object.hasOwn(run, 'stoppedBySilence'), false);
     assert.equal(run.stoppedOnDeadline, true);
     assert.ok(run.watchdog.checks > 0);
     const checks = run.watchdog.checks;
@@ -167,7 +194,7 @@ test('a deadline before the first poll wins even when the watchdog would stop', 
     const watchdog = injectedWatchdog('armed', () => 'stop');
     const run = await runCodex([], 'deadline first', path.join(root, 'events.jsonl'), 1 / 60000, { watchdog });
     assert.equal(run.stop.trigger, 'deadline');
-    assert.equal(run.stoppedBySilence, false);
+    assert.equal(Object.hasOwn(run, 'stoppedBySilence'), false);
     assert.equal(run.stoppedOnDeadline, true);
     assert.equal(run.watchdog.checks, 0);
     await wait(60);
@@ -199,7 +226,7 @@ test('a Codex exit clears polling while its pipes are still draining', async (t)
   const run = await pending;
   assert.equal(run.stop.trigger, 'exit');
   assert.equal(run.stop.tree_stop.requested, false);
-  assert.equal(run.stoppedBySilence, false);
+  assert.equal(Object.hasOwn(run, 'stoppedBySilence'), false);
   assert.equal(run.stoppedOnDeadline, false);
 });
 
@@ -208,7 +235,7 @@ test('no watchdog preserves normal exit and returns a null watchdog record', asy
     const run = await runCodex([], 'no watchdog', path.join(root, 'events.jsonl'), 0.1);
     assert.equal(run.exit, 3);
     assert.equal(run.watchdog, null);
-    assert.equal(run.stoppedBySilence, false);
+    assert.equal(Object.hasOwn(run, 'stoppedBySilence'), false);
     assert.equal(run.stoppedOnDeadline, false);
     assert.equal(run.stop.trigger, 'exit');
     assert.equal(run.stop.tree_stop.requested, false);
@@ -220,7 +247,7 @@ for (const intervalMs of [null, 0, -20, '20']) {
     await withFakeCodex('process.exit(0);\n', async (root) => {
       const watchdog = { ...injectedWatchdog('off', () => assert.fail('inactive polling')), intervalMs };
       const run = await runCodex([], 'off', path.join(root, 'events.jsonl'), 0.1, { watchdog });
-      assert.equal(run.stoppedBySilence, false);
+      assert.equal(Object.hasOwn(run, 'stoppedBySilence'), false);
       assert.equal(run.watchdog.checks, 0);
       assert.deepEqual(run.watchdog, watchdog.record());
     });
