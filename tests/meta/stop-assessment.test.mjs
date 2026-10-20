@@ -94,21 +94,24 @@ for (const [name, overrides, kind, action] of cases) {
   });
 }
 
-// Plan_80 E15/O4: the watchdog trigger shares deadline classification, not its cause.
-test('silence uses every deadline classification branch and keeps its recorded cause', () => {
-  for (const [, overrides] of cases) {
-    const args = input(overrides);
-    if (args.stop?.trigger !== 'deadline') continue;
-    const expected = assessStop(args);
-    args.stop.trigger = 'silence';
-    expected.situation.cause = 'silence';
-    assert.deepEqual(assessStop(args), expected);
-  }
+// Plan_80 E28: a retired silence trigger cannot establish a deadline stall.
+test('silence trigger is unknown evidence with automatic and grant eligibility denied', () => {
+  const stop = changedStop((s) => { s.trigger = 'silence'; });
+  const result = assessStop(input({ stop }));
+  assert.equal(result.situation.kind, 'evidence-unknown');
+  assert.equal(result.situation.cause, 'silence');
+  assert.deepEqual(result.treatment, { version: 1, effect: 'diagnostic-only', action: 'inspect-evidence' });
+  assert.deepEqual(result.continuation_eligibility.automatic, {
+    allowed: false, blocking_reasons: ['recovery-policy-missing', 'process-tree-stop-unverified'],
+  });
+  assert.deepEqual(result.continuation_eligibility.grant, {
+    allowed: false, policy_version: 1, blocking_reasons: ['process-tree-stop-unverified'],
+  });
 });
 
 const enabledPolicy = { enabled: true, brake: { value: 'on' }, budget_ms: 1102000 };
 const cleanInput = (overrides = {}) => input({
-  stop: changedStop((s) => { s.trigger = 'silence'; s.tree_stop = { state: 'stopped' }; }),
+  stop: changedStop((s) => { s.tree_stop = { state: 'stopped' }; }),
   silencePolicy: { threshold_ms: 996000 }, recoveryPolicy: enabledPolicy, resumedFrom: null, ...overrides,
 });
 
@@ -130,7 +133,7 @@ test('only silent-stall-candidate can be automatically eligible with a clean ena
     'recent-activity'].sort());
   const result = assessStop(cleanInput());
   assert.equal(result.situation.kind, 'silent-stall-candidate');
-  assert.equal(result.situation.cause, 'silence');
+  assert.equal(result.situation.cause, 'deadline');
   assert.equal(result.situation.silence_ms, 1200000);
   assert.equal(result.situation.threshold_ms, 996000);
   assert.deepEqual(result.continuation_eligibility.automatic, { allowed: true, blocking_reasons: [] });

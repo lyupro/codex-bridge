@@ -96,7 +96,7 @@ for (const agent of ['codex-advisor', 'codex-build']) {
 
 test('collect assesses the frozen policy and denies a second automatic recovery attempt', () => {
   const stop = {
-    version: 2, trigger: 'silence', stopped_at: '2026-10-15T08:20:00.000Z',
+    version: 2, trigger: 'deadline', stopped_at: '2026-10-15T08:20:00.000Z',
     tree_stop: { state: 'stopped' }, result_file: { state: 'missing' },
     session: { state: 'observed', at_reference: {
       last_record_at: '2026-10-15T08:00:00.000Z',
@@ -114,7 +114,7 @@ test('collect assesses the frozen policy and denies a second automatic recovery 
     const second = collect(dir, 'codex-advisor', 1);
     assert.equal(first.meta.status, 'FAIL');
     assert.equal(first.meta.situation.kind, 'silent-stall-candidate');
-    assert.equal(first.meta.situation.cause, 'silence');
+    assert.equal(first.meta.situation.cause, 'deadline');
     assert.deepEqual(first.meta.recovery_policy, recoveryPolicy);
     assert.equal(first.meta.resumed_from, resumedFrom);
     assert.deepEqual(first.meta.continuation_eligibility, {

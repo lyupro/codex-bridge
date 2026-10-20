@@ -23,7 +23,7 @@ import { chainBaseline } from './chain.mjs';
 import { splitRunChanges } from './environment.mjs';
 import { readEvents } from './events.mjs';
 import { outcomeGap } from './outcome.mjs';
-import { deadlineReason, silenceStopReason } from './deadline.mjs';
+import { deadlineReason } from './deadline.mjs';
 import { startupGap } from './startup.mjs';
 import { transportGap } from './transport.mjs';
 import { sandboxWitnessGap } from './sandbox-witness.mjs';
@@ -261,8 +261,8 @@ export function resolveStatus({ resultOk, exit, agent, result, runDir, events, e
     const branched = branchDuringRun(runDir);
     if (branched) return { status: 'FAIL', reason: branched };
   }
-  const deadline = deadlineReason(runDir) ?? silenceStopReason(runDir);
-  if (deadline) return { status: 'FAIL', reason: deadline };
+  const deadlineStopReason = deadlineReason(runDir);
+  if (deadlineStopReason) return { status: 'FAIL', reason: deadlineStopReason };
   // Damaged transport evidence is not archived transport evidence. Checked before LIMIT, since
   // the fallback it guards is what LIMIT would otherwise use.
   const transport = transportGap(runDir, eventData);

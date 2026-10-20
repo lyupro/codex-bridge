@@ -46,7 +46,8 @@ export function assessStop({ status, resultOk, agentWrites, threadId, stop, sile
   else if (cause === 'spawn-error' || cause === 'stream-error') kind = 'runner-error';
   else if (cause === 'exit') kind = 'process-exit-no-result';
   else if (commands.state === 'in-flight') kind = 'command-in-flight';
-  else if (cause === 'deadline' || cause === 'silence') {
+  // Plan_80 E28: silence never armed a real stop; only deadlines establish this cause.
+  else if (cause === 'deadline') {
     if (commands.state !== 'none' || silence.ms === null) kind = 'evidence-unknown';
     else if (threshold === null) kind = 'silence-unclassified';
     else kind = silence.ms >= threshold ? 'silent-stall-candidate' : 'recent-activity';

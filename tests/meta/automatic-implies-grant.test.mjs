@@ -7,7 +7,7 @@ function facts({ status, resultOk, agentWrites, threadId, stopPresent, sessionSt
   return {
     status, resultOk, agentWrites, threadId,
     stop: stopPresent ? {
-      version: 2, trigger: 'silence', stopped_at: '2026-10-16T09:30:00.000Z',
+      version: 2, trigger: 'deadline', stopped_at: '2026-10-16T09:30:00.000Z',
       tree_stop: { state: treeState },
       session: {
         state: sessionState, last_record_at: '2026-10-16T09:25:00.000Z',
