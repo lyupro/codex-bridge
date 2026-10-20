@@ -1,8 +1,13 @@
-/** Reports shadow watchdog outcomes before arming under Plan_80 E16 (4) and E19. */
+/**
+ * Reports shadow watchdog outcomes as diagnostics: Plan_80 E25 retired silence
+ * stopping. Only faults, unknown versions and armed records warn; an armed record
+ * indicates an older or foreign package armed stopping after E25.
+ */
 import { check } from './doctor-format.mjs';
 import { scanRunRecords } from './doctor-run-records.mjs';
 
-const REVIEW = '; review every false-stop run before arming, inspect watchdog faults and unknown record versions; doctor does not track which false stops were reviewed';
+const REVIEW = '; inspect watchdog faults, unknown record versions and armed records';
+const DIAGNOSTIC = '; diagnostic only: silence never stops a run (Plan_80 E25)';
 
 function bucket(meta) {
   const stop = meta.stop;
@@ -65,8 +70,9 @@ export function silenceWatchdogShadowCheck({ runsRoot, now = Date.now(), days = 
   }).join('; ') : `no shadow watchdog record in the last ${scan.days} days`;
   value += `; outside the shadow cohort: off ${outside.off}, armed ${outside.armed}, not recorded ${outside['not-recorded']}, unknown version ${outside['unknown-version']}`;
   if (scan.unreadable) value += `, ${scan.unreadable} unreadable records skipped`;
-  const warn = outside['unknown-version'] > 0
-    || [...groups.values()].some((group) => group['false-stop'] > 0 || group.fault > 0);
+  const warn = outside['unknown-version'] > 0 || outside.armed > 0
+    || [...groups.values()].some((group) => group.fault > 0);
   if (warn) value += REVIEW;
+  if (groups.size) value += DIAGNOSTIC;
   return check('silenceWatchdogShadow', warn ? 'warn' : 'ok', value);
 }

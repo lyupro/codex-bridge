@@ -1,4 +1,4 @@
-/** Guards Plan_80 E12: package calibration drift must warn before a healthy run is called stalled. */
+/** Guards Plan_80 E25: successful pass pauses are diagnostic and never authorize silence stopping. */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -13,7 +13,7 @@ import { withTempTree } from '../temp-tree.mjs';
 const now = new Date('2026-10-15T12:00:00');
 const recent = '2026-10-14_100000';
 const empty = 'no successful run with recorded pauses in the last 30 days';
-const recalibrate = '; recalibrate: measure the longest quiet pause of successful runs from Codex session logs and change the threshold together with its evidence in silence-policy.mjs, then release';
+const diagnostic = '; diagnostic only: silence never stops a run (Plan_80 E25)';
 
 function successful(gap = 900000, policy = {}) {
   return {
@@ -72,11 +72,11 @@ test('successful advise below its threshold reports zero of one and the longest 
 });
 
 for (const gap of [996000, 1000000]) {
-  test(`successful advise at ${gap} ms warns at or above its frozen threshold`, async () => {
+  test(`successful advise at ${gap} ms is diagnostic at or above its frozen threshold`, async () => {
     await withTempTree('silence-breach-', (root) => {
       record(root, recent, successful(gap));
-      assert.deepEqual(row(root), check('silenceCalibration', 'warn',
-        `advisor.advise: 1 of 1 successful runs reached 996000 ms (longest quiet pause ${gap} ms)${recalibrate}`));
+      assert.deepEqual(row(root), check('silenceCalibration', 'ok',
+        `advisor.advise: 1 of 1 successful runs reached 996000 ms (longest quiet pause ${gap} ms)${diagnostic}`));
     });
   });
 }
@@ -133,11 +133,11 @@ test('an unparseable meta.json is counted as skipped, a missing one (live or aba
 test('a meta.json with a byte-order mark is read like the rest of the package reads JSON', async () => {
   await withTempTree('silence-bom-', (root) => {
     record(root, recent, `﻿${JSON.stringify(successful(996000))}`);
-    assert.equal(row(root).status, 'warn');
+    assert.equal(row(root).status, 'ok');
   });
 });
 
-test('unreadable meta.json is skipped and appended after the recalibration advice', async (t) => {
+test('unreadable meta.json is skipped and appended after the diagnostic suffix', async (t) => {
   await withTempTree('silence-denied-record-', (root) => {
     record(root, recent, successful(996000));
     const denied = record(root, `${recent}-denied`, successful());
@@ -146,8 +146,8 @@ test('unreadable meta.json is skipped and appended after the recalibration advic
       if (file === denied) throw Object.assign(new Error('EACCES: record denied'), { code: 'EACCES' });
       return read(file, ...args);
     });
-    assert.deepEqual(row(root), check('silenceCalibration', 'warn',
-      `advisor.advise: 1 of 1 successful runs reached 996000 ms (longest quiet pause 996000 ms)${recalibrate}, 1 unreadable records skipped`));
+    assert.deepEqual(row(root), check('silenceCalibration', 'ok',
+      `advisor.advise: 1 of 1 successful runs reached 996000 ms (longest quiet pause 996000 ms)${diagnostic}, 1 unreadable records skipped`));
   });
 });
 
@@ -156,9 +156,9 @@ test('advisor.advise and scout.default groups have stable order, counts, and max
     record(root, recent, successful(100, { role: 'scout', phase: 'default', threshold_ms: 200 }), 'a-scout');
     record(root, recent, successful(996000), 'z-advisor');
     record(root, `${recent}-second`, successful(900000), 'z-advisor');
-    assert.deepEqual(row(root), check('silenceCalibration', 'warn',
+    assert.deepEqual(row(root), check('silenceCalibration', 'ok',
       'advisor.advise: 1 of 2 successful runs reached 996000 ms (longest quiet pause 996000 ms); '
-      + `scout.default: 0 of 1 successful runs reached 200 ms (longest quiet pause 100 ms)${recalibrate}`));
+      + `scout.default: 0 of 1 successful runs reached 200 ms (longest quiet pause 100 ms)${diagnostic}`));
   });
 });
 
@@ -166,8 +166,8 @@ test('each successful run is compared with its own frozen threshold within the s
   await withTempTree('silence-frozen-', (root) => {
     record(root, recent, successful(100, { threshold_ms: 100 }));
     record(root, `${recent}-second`, successful(200, { threshold_ms: 300 }));
-    assert.deepEqual(row(root), check('silenceCalibration', 'warn',
-      `advisor.advise: 1 of 2 successful runs reached 100/300 ms (longest quiet pause 200 ms)${recalibrate}`));
+    assert.deepEqual(row(root), check('silenceCalibration', 'ok',
+      `advisor.advise: 1 of 2 successful runs reached 100/300 ms (longest quiet pause 200 ms)${diagnostic}`));
   });
 });
 
@@ -301,8 +301,8 @@ test('a supplied scan is used without touching a missing runs root', async (t) =
       records: [{ meta: successful(996000) }], unreadable: 1, statusUnreadable: 2, days: 7,
       windowStart: now.getTime() - 7 * 24 * 60 * 60 * 1000, windowEnd: now.getTime(),
     };
-    assert.deepEqual(row(path.join(root, 'missing'), { records }), check('silenceCalibration', 'warn',
-      `advisor.advise: 1 of 1 successful runs reached 996000 ms (longest quiet pause 996000 ms)${recalibrate}, 1 unreadable records skipped`));
+    assert.deepEqual(row(path.join(root, 'missing'), { records }), check('silenceCalibration', 'ok',
+      `advisor.advise: 1 of 1 successful runs reached 996000 ms (longest quiet pause 996000 ms)${diagnostic}, 1 unreadable records skipped`));
     assert.deepEqual(row(path.join(root, 'missing'), { records: { ...records, records: [], unreadable: 0 } }),
       check('silenceCalibration', 'ok', 'no successful run with recorded pauses in the last 7 days'));
     assert.deepEqual(row(path.join(root, 'missing'), { records: { error: 'runs root unavailable: fixture' } }),
@@ -376,3 +376,20 @@ test('diagnose reads sampled metadata once and both evidence callbacks reuse the
     }
   });
 });
+
+for (const [name, resumed, pass, whole, expected] of [
+  ['continuation without a pass pause is skipped', 'parent', undefined, 2000000, empty + ', 1 continuation runs without a pass-window pause skipped'],
+  ['continuation with a nonnumeric pass pause is skipped', 'parent', '100', 2000000, empty + ', 1 continuation runs without a pass-window pause skipped'],
+  ['continuation uses its pass pause', 'parent', 100, 2000000, 'advisor.advise: 0 of 1 successful runs reached 996000 ms (longest quiet pause 100 ms)'],
+  ['fresh run prefers its pass pause', undefined, 996000, 100, 'advisor.advise: 1 of 1 successful runs reached 996000 ms (longest quiet pause 996000 ms)' + diagnostic],
+  ['null resumed_from permits whole-thread fallback', null, undefined, 996000, 'advisor.advise: 1 of 1 successful runs reached 996000 ms (longest quiet pause 996000 ms)' + diagnostic],
+  ['fresh run falls back for a nonnumeric pass pause', undefined, '100', 996000, 'advisor.advise: 1 of 1 successful runs reached 996000 ms (longest quiet pause 996000 ms)' + diagnostic],
+]) {
+  test(name, () => {
+    const meta = successful(whole);
+    if (resumed !== undefined) meta.resumed_from = resumed;
+    if (pass !== undefined) meta.stop.session.pass_longest_quiet_gap_ms = pass;
+    assert.deepEqual(silenceCalibrationCheck({ records: { records: [{ meta }], days: 30, unreadable: 1 } }),
+      check('silenceCalibration', 'ok', expected + ', 1 unreadable records skipped'));
+  });
+}
