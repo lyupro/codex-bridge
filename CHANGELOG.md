@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.6.19] - 2026-10-20
+
+### Added
+
+- `npm run check:open-work` fails when one plan gives two decisions the same id; each whole
+  plan is scanned, because later decisions are appended outside the decision section (Plan_80 E29).
+
 ### Changed
 
 - The refusal for a foreign-family `CLAUDE_CODE_SUBAGENT_MODEL` explains that its source is unknown,
