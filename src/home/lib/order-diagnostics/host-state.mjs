@@ -185,7 +185,10 @@ export const DIAGNOSTICS = Object.freeze({
     message: ({ model, pinFamily, hostVersion }) =>
       `Order gate denied the Agent call because CLAUDE_CODE_SUBAGENT_MODEL=${JSON.stringify(model)} `
       + `overrides the installed dispatcher pin ${pinFamily} on host ${hostVersion}. `
-      + `Unset CLAUDE_CODE_SUBAGENT_MODEL or set it to the pinned family ${pinFamily}.`,
+      + 'This hook reads the environment of the running Claude Code session and cannot tell where the value was set. '
+      + 'A running session may keep a key that was removed from settings.json env after it started. '
+      + `Remove CLAUDE_CODE_SUBAGENT_MODEL, or set it to the pinned family ${pinFamily}, wherever it is still set, then fully exit and restart each affected Claude Code session; unsetting it in a hook, subagent or shell command does not reach the session. `
+      + 'If it returns after a restart, look in the settings env blocks, the terminal or IDE that launched Claude Code, and the operating-system environment.',
   }),
   'dispatcher-pin-file-readable': Object.freeze({
     data: Object.freeze(['file', 'problem', 'cli', 'root']),

@@ -74,7 +74,10 @@ test('host environment producer preserves the quoted model, pin, version and suc
   assert.equal(text,
     'Order gate denied the Agent call because CLAUDE_CODE_SUBAGENT_MODEL="sonnet" ' +
     'overrides the installed dispatcher pin opus on host 2.1.257. ' +
-    'Unset CLAUDE_CODE_SUBAGENT_MODEL or set it to the pinned family opus. ' +
+    'This hook reads the environment of the running Claude Code session and cannot tell where the value was set. ' +
+    'A running session may keep a key that was removed from settings.json env after it started. ' +
+    'Remove CLAUDE_CODE_SUBAGENT_MODEL, or set it to the pinned family opus, wherever it is still set, then fully exit and restart each affected Claude Code session; unsetting it in a hook, subagent or shell command does not reach the session. ' +
+    'If it returns after a restart, look in the settings env blocks, the terminal or IDE that launched Claude Code, and the operating-system environment. ' +
     'The run folder was not created; quota was not spent.');
   assert.equal(checkOutgoingRefusal(text, 'case'), text);
   assert.equal(envModelProblem({ env, hostVersion: '2.1.257', pinFamily: 'sonnet' }), null);

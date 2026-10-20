@@ -55,7 +55,12 @@ test('a refusal names the env value, pin, host and remedy only for different par
   const problem = envModelProblem({ env, hostVersion: '2.1.250', pinFamily: 'haiku' });
   assert.match(problem, /CLAUDE_CODE_SUBAGENT_MODEL="claude-opus-5-5"/);
   assert.match(problem, /pin haiku on host 2\.1\.250/);
-  assert.match(problem, /Unset CLAUDE_CODE_SUBAGENT_MODEL or set it to the pinned family haiku/);
+  assert.match(problem, /This hook reads the environment of the running Claude Code session and cannot tell where the value was set\./);
+  assert.match(problem, /A running session may keep a key that was removed from settings\.json env after it started\./);
+  assert.match(problem, /Remove CLAUDE_CODE_SUBAGENT_MODEL, or set it to the pinned family haiku, wherever it is still set, then fully exit and restart each affected Claude Code session/);
+  assert.match(problem, /unsetting it in a hook, subagent or shell command does not reach the session\./);
+  assert.match(problem, /If it returns after a restart, look in the settings env blocks, the terminal or IDE that launched Claude Code, and the operating-system environment\./);
+  assert.doesNotMatch(problem, /Unset CLAUDE_CODE_SUBAGENT_MODEL/);
   assert.equal(envModelProblem({ env, hostVersion: '2.1.250', pinFamily: 'opus' }), null);
   assert.equal(envModelProblem({ env, hostVersion: '2.1.250', pinFamily: null }), null);
   assert.equal(envModelProblem({ env, hostVersion: '2.1.251', pinFamily: 'haiku' }), null);

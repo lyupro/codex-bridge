@@ -789,6 +789,11 @@ version proves that the environment overrides frontmatter: before 2.1.251, or wi
 `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1` from 2.1.257. A matching family passes; unknown host versions,
 unparseable environment families or an undetermined installed pin do not justify refusal and are
 left to the stop observation. A known refusal happens before the dispatcher spends Claude quota.
+The refusal cannot tell where the value came from: a running Claude Code session can keep a key
+removed from `settings.json` env until it is restarted, while an added key reaches open sessions
+(observed on host 2.1.304).
+The remedy is to remove the key wherever it is still set and fully exit and restart each affected
+Claude Code session.
 
 Another hook can rewrite the call after this gate has seen it, and the host can choose a model
 the gate did not request. After an observed leak, the gate warns on every later call of that

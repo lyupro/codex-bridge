@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- The refusal for a foreign-family `CLAUDE_CODE_SUBAGENT_MODEL` explains that its source is unknown,
+  directs removal or a pinned-family value wherever it is still set, and requires a full restart of
+  each affected Claude Code session. A running session keeps a key removed from `settings.json` env;
+  the old remedy sent an agent looking in the operating-system environment instead.
+
 ## [0.6.18] - 2026-10-20
 
 ### Fixed
