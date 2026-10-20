@@ -118,10 +118,11 @@ export function readSessionActivity({ threadId, startedAt, referenceAt, codexHom
   const result = {
     state: 'not-observed', reason: null, file: null, last_record_at: null,
     last_record_kind: null, records: 0, unknown_kinds: [], sampled_at: now().toISOString(),
-    longest_gap_ms: null, longest_quiet_gap_ms: null, at_reference: null,
+    longest_gap_ms: null, longest_quiet_gap_ms: null, pass_longest_quiet_gap_ms: null, at_reference: null,
     sandbox_witness: { state: 'not-observed', policy: null, at: null },
   };
   const wholeCommands = commandEvidence();
+  const passCommands = commandEvidence();
   const referenceCommands = commandEvidence();
   const referenceValid = validTime(referenceAt);
   const reference = {
@@ -129,6 +130,8 @@ export function readSessionActivity({ threadId, startedAt, referenceAt, codexHom
     last_record_kind: null, records: 0, commands: null,
   };
   let quietGap = null;
+  let passQuietGap = null;
+  let passLastRecordTime = null;
   let sandboxWitness = null;
   const finish = (overrides = {}) => {
     Object.assign(result, overrides);
@@ -136,6 +139,7 @@ export function readSessionActivity({ threadId, startedAt, referenceAt, codexHom
       ? sandboxWitness ?? { state: 'absent', policy: null, at: null }
       : { state: 'not-observed', policy: null, at: null };
     if (wholeCommands.snapshot(result.state).state !== 'unknown') result.longest_quiet_gap_ms = quietGap;
+    if (passCommands.snapshot(result.state).state !== 'unknown') result.pass_longest_quiet_gap_ms = passQuietGap;
     if (referenceAt !== undefined) {
       reference.commands = referenceValid ? referenceCommands.snapshot(result.state) :
         { state: 'unknown', reason: 'reference time invalid', pending: [] };
@@ -209,6 +213,14 @@ export function readSessionActivity({ threadId, startedAt, referenceAt, codexHom
       if (!wholeCommands.open) quietGap = quietGap === null ? gap : Math.max(quietGap, gap);
     }
     wholeCommands.accept(record);
+    // Plan_80 E25(3): 2026-10-20 continuations inherited parent pauses of 2532874 and 1185138 ms.
+    if (Date.parse(record.timestamp) >= start.getTime()) {
+      const time = Date.parse(record.timestamp);
+      const gap = time - (passLastRecordTime ?? start.getTime());
+      if (!passCommands.open) passQuietGap = passQuietGap === null ? gap : Math.max(passQuietGap, gap);
+      passCommands.accept(record);
+      passLastRecordTime = time;
+    }
     result.records += 1;
     result.last_record_at = record.timestamp;
     result.last_record_kind = ['event_msg', 'response_item'].includes(record.type) &&

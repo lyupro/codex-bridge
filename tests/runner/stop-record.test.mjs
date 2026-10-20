@@ -36,7 +36,7 @@ test('missing result is observed without adding a file write', () => {
     // No events.jsonl, so no thread id: the session log was not looked for.
     session: { state: 'not-observed', reason: null, file: null, last_record_at: null,
       last_record_kind: null, records: 0, unknown_kinds: [],
-      longest_gap_ms: null, longest_quiet_gap_ms: null,
+      longest_gap_ms: null, longest_quiet_gap_ms: null, pass_longest_quiet_gap_ms: null,
       sandbox_witness: { state: 'not-observed', policy: null, at: null },
       at_reference: { as_of: run.stop.stopped_at, last_record_at: null, last_record_kind: null,
         records: 0, commands: { state: 'unknown', reason: 'session not-observed', pending: [] } } },

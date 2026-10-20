@@ -41,7 +41,7 @@ function read(home, options = {}) {
   assert.equal(result.sampled_at, SAMPLED);
   assert.deepEqual(Object.keys(result).sort(), [
     'state', 'reason', 'file', 'last_record_at', 'last_record_kind', 'records', 'unknown_kinds', 'sampled_at',
-    'longest_gap_ms', 'longest_quiet_gap_ms', 'at_reference', 'sandbox_witness',
+    'longest_gap_ms', 'longest_quiet_gap_ms', 'pass_longest_quiet_gap_ms', 'at_reference', 'sandbox_witness',
   ].sort());
   return result;
 }
@@ -53,11 +53,11 @@ test('healthy activity counts reasoning and the final token_count; it never uses
     const { file, fullPath, folder } = fixture(home, content);
     fs.utimesSync(fullPath, new Date(SAMPLED), new Date(SAMPLED));
     const before = fs.statSync(fullPath).mtimeMs;
-    const result = read(home);
+    const result = read(home, { startedAt: FIRST });
     assert.deepEqual(result, {
       state: 'observed', reason: null, file, last_record_at: LAST,
       last_record_kind: 'event_msg/token_count', records: 3, unknown_kinds: [], sampled_at: SAMPLED,
-      longest_gap_ms: 120000, longest_quiet_gap_ms: 120000, at_reference: null,
+      longest_gap_ms: 120000, longest_quiet_gap_ms: 120000, pass_longest_quiet_gap_ms: 120000, at_reference: null,
       sandbox_witness: { state: 'absent', policy: null, at: null },
     });
     assert.notEqual(result.last_record_at, result.sampled_at);
@@ -325,6 +325,61 @@ test('discovery failures and read TypeErrors are unreadable, not silence or thro
         assert.equal(result.last_record_at, null);
         assert.equal(result.last_record_kind, null);
       } finally { spy.mock.restore(); }
+    }
+  });
+});
+
+test('continuation quiet gaps cover only the pass, including the initial interval', async () => {
+  await withTempTree('session-log-', (home) => {
+    const startedAt = '2026-01-01T11:00:00.000Z';
+    const at = (seconds) => new Date(Date.parse(startedAt) + seconds * 1000).toISOString();
+    const call = (id, name, seconds) => record('response_item',
+      { type: 'function_call', call_id: id, name }, at(seconds));
+    const output = (id, seconds) => record('response_item',
+      { type: 'function_call_output', call_id: id }, at(seconds));
+    const parent = [meta(), record('event_msg', {}, LAST)];
+    const cases = [
+      { name: 'first pass record bounds the initial interval',
+        records: [record('event_msg', {}, at(40)), record('event_msg', {}, at(50))],
+        whole: 3520000, quiet: 3520000, pass: 40000 },
+      { name: 'a single pass record includes the initial interval',
+        records: [record('event_msg', {}, at(40))], whole: 3520000, quiet: 3520000, pass: 40000 },
+      { name: 'consecutive pass records are considered in file order',
+        records: [record('event_msg', {}, at(10)), record('event_msg', {}, at(50)),
+          record('event_msg', {}, at(20)), record('event_msg', {}, at(70))],
+        whole: 3490000, quiet: 3490000, pass: 50000 },
+      { name: 'an open parent exec does not block pass silence',
+        parent: [...parent, call('parent', 'exec', -3000)],
+        records: [record('event_msg', {}, at(40)), record('event_msg', {}, at(50))],
+        whole: 3040000, quiet: 480000, pass: 40000 },
+      { name: 'unknown parent evidence does not invalidate pass evidence',
+        parent: [...parent, call('parent', 'wait', -3000)],
+        records: [record('event_msg', {}, at(40))], whole: 3040000, quiet: null, pass: 40000 },
+      { name: 'an open pass call excludes its interval but closing resumes quiet gaps',
+        records: [call('pass', 'exec', 10), output('pass', 100), record('event_msg', {}, at(130))],
+        whole: 3490000, quiet: 3490000, pass: 30000 },
+      { name: 'a pass call exactly at startedAt leaves a zero initial quiet interval',
+        records: [call('pass', 'exec', 0), record('event_msg', {}, at(100))],
+        whole: 3480000, quiet: 3480000, pass: 0 },
+      { name: 'no record in the pass leaves the metric null',
+        records: [], whole: 120000, quiet: 120000, pass: null },
+      { name: 'unknown pass evidence suppresses an earlier quiet interval',
+        records: [record('event_msg', {}, at(40)), output('orphan', 50)],
+        whole: 3520000, quiet: null, pass: null },
+      { name: 'incomplete sessions cannot supply pass quiet evidence',
+        records: [record('event_msg', {}, at(40))], tail: '{',
+        whole: 3520000, quiet: null, pass: null },
+      { name: 'invalid parent records are still validated', parent: [{ ...meta(), ordinal: null }],
+        records: [record('event_msg', {}, at(40))], state: 'unrecognized',
+        whole: null, quiet: null, pass: null },
+    ];
+    for (const example of cases) {
+      fixture(home, jsonl([...(example.parent ?? parent), ...example.records]) + (example.tail ?? ''));
+      const result = read(home, { startedAt });
+      assert.equal(result.state, example.state ?? (example.tail ? 'incomplete' : 'observed'), example.name);
+      assert.equal(result.longest_gap_ms, example.whole, example.name);
+      assert.equal(result.longest_quiet_gap_ms, example.quiet, example.name);
+      assert.equal(result.pass_longest_quiet_gap_ms, example.pass, example.name);
     }
   });
 });
