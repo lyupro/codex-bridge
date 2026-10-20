@@ -13,7 +13,7 @@ const parentName = '2026-10-13_100000';
 const recent = '2026-10-14_100000';
 const empty = 'no manual resume trial of a stalled advise run in the last 30 days; enabling gate 0/3';
 const inspect = '; inspect continuations whose parent or timing record could not be read';
-const reached = ': gate reached — review every outcome and the shadow watchdog evidence, then decide O8 separately; doctor never enables recovery';
+const reached = ': gate reached — review every outcome, then decide automatic recovery separately; doctor never enables recovery';
 
 function record(run, meta, status = null, project = 'project') {
   return { project, run, runDir: path.join(runsRoot, project, run), meta, status };

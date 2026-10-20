@@ -12,6 +12,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   directs removal or a pinned-family value wherever it is still set, and requires a full restart of
   each affected Claude Code session. A running session keeps a key removed from `settings.json` env;
   the old remedy sent an agent looking in the operating-system environment instead.
+- Silence-based stopping is permanently retired for every role and phase (Plan_80 E25).
+  The watchdog only records in `shadow` or is `off`, with reason `stopping-retired`;
+  the record shape is kept and the runtime refuses `armed`. Stalled passes reach their
+  deadline and can be continued with `resume:`.
+- Doctor's `silenceCalibration` and `silenceWatchdogShadow` rows are diagnostic only:
+  threshold breaches and false stops are `ok`; warnings are limited to scan errors,
+  faults, unknown versions, or armed records.
+
+### Fixed
+
+- Continuation pauses are measured inside their own pass window using
+  `pass_longest_quiet_gap_ms`, rather than across the shared parent thread. The two
+  continuations previously reporting 2532874 ms and 1185138 ms now report about 52 s
+  and 51 s, respectively (Plan_80 E25).
 
 ## [0.6.18] - 2026-10-20
 

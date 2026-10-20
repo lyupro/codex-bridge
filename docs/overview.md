@@ -1003,22 +1003,26 @@ or changes its exit code, and reports structural metadata without log content.
 
 The doctor evidence lines read one shared 30-day walk of run records from the resolved runs root.
 The `silenceCalibration` row reads run metadata from the resolved runs root for the last 30
-days, grouping successful runs with recorded pauses by role and phase. Plan_80 E12 requires
-this early warning because the silence threshold ships with the package: Codex or model
-changes can make healthy runs pause longer before a stall verdict exposes calibration drift.
-A successful run whose longest quiet pause reaches or exceeds its own frozen
-`silence_policy.threshold_ms` produces `warn`, with counts, the longest pause, and instructions
-to remeasure Codex session logs and release a threshold change together with its evidence in
-`silence-policy.mjs`. No breaches (including no eligible runs) are `ok`; unreadable metadata
-records are counted as skipped. An unavailable runs root is `warn`. This check writes nothing,
+days, grouping successful runs with recorded pauses by role and phase. Under Plan_80 E25
+this row is diagnostic only: silence never stops a run in any role or phase. It reports
+counts and the longest pause against each run's frozen `silence_policy.threshold_ms`;
+threshold breaches (including healthy long thinking) and no eligible runs are `ok`.
+Continuations share their parent's Codex thread, so their pause is read from
+`pass_longest_quiet_gap_ms`, measured inside the continuation's own pass window rather
+than across the thread; an older continuation record without that field is skipped and counted
+in the row, and a fresh pass falls back to `longest_quiet_gap_ms`, which covers the same window.
+Unreadable metadata records are counted as skipped; only scan
+errors, including an unavailable runs root, produce `warn`. This check writes nothing,
 never fails doctor, and does not change its exit code.
 
 The `silenceWatchdogShadow` row counts shadow watchdog decisions on successful runs
 (false stops), deadline outcomes (true stops), and other outcomes by role and phase,
 alongside observations without decisions, unobserved runs, and faults. It also shows
 off, armed, unrecorded, and unknown-version records outside the shadow cohort.
-False stops, faults, and unknown versions warn; unknown is not clean. Review every
-false-stop run before arming: doctor does not track reviews. This row never fails doctor.
+Under Plan_80 E25 this row is diagnostic only: false stops are `ok`; only scan errors,
+faults, unknown versions, or armed records produce `warn`. Silence-based stopping is
+permanently retired; the watchdog only records (`shadow`) or is `off`, and the runtime
+refuses `armed`. This row never fails doctor or changes its exit code.
 
 The `recoveryBudgetDrift` row groups automatic continuation children by role, phase,
 recorded budget, and calibration. Deadline outcomes warn that the budget needs upward
@@ -1032,8 +1036,8 @@ The `recoveryEnablingGates` row reports manual continuations of stalled advise r
 under Plan_80 E15 (1) and E19, counting distinct parents toward the three-trial gate.
 It records OK and other outcomes and compares elapsed time with each recovery budget;
 unknown parents or timing warn rather than count as clean evidence. Reaching the gate
-is informational: review every outcome and the shadow watchdog evidence, then decide
-O8 separately. Doctor never enables recovery, fails this row, or changes its exit code.
+is informational: review every outcome, then decide automatic recovery separately.
+Doctor never enables recovery, fails this row, or changes its exit code.
 
 A dead-sandbox row prints the diagnosis from `$CODEX_HOME/.sandbox/` logs and
 `setup_error.json`; an order refused for the same dead sandbox prints the same diagnosis.

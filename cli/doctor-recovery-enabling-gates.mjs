@@ -6,7 +6,7 @@ import { automaticChildMarker } from '../src/home/lib/meta/pre-start.mjs';
 import { resumeOrigin } from '../src/home/lib/meta/sandbox-witness.mjs';
 import { readJsonFileSync } from '../src/home/lib/json-file.mjs';
 
-// Plan_80 E15 (1) requires three distinct stalled parents continued by hand before reviewing O8.
+// Plan_80 E15 (1) requires three distinct stalled parents continued by hand after their deadlines before reviewing automatic recovery.
 const ENABLING_TRIALS = 3;
 
 export function recoveryEnablingGatesCheck({ runsRoot, now = Date.now(), days = 30, records }) {
@@ -59,7 +59,7 @@ export function recoveryEnablingGatesCheck({ runsRoot, now = Date.now(), days = 
       + ` — OK ${ok}, other outcome ${trials - ok}; timing: within budget ${within}, over budget ${over}, unknown ${timingUnknown}`
       + `; enabling gate ${Math.min(count, ENABLING_TRIALS)}/${ENABLING_TRIALS}`
       + (count >= ENABLING_TRIALS
-        ? ': gate reached — review every outcome and the shadow watchdog evidence, then decide O8 separately; doctor never enables recovery'
+        ? ': gate reached — review every outcome, then decide automatic recovery separately; doctor never enables recovery'
         : `: ${ENABLING_TRIALS - count} more needed`);
   if (parentUnknown) value += `; parent unknown ${parentUnknown}`;
   if (scan.unreadable) value += `, ${scan.unreadable} unreadable records skipped`;

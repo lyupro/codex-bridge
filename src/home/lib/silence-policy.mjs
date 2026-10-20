@@ -1,9 +1,9 @@
 /**
- * The calibrated silence policy that a run is judged by, with its evidence.
+ * The calibrated silence threshold only labels shadow diagnostics; silence never stops
+ * a run in any role or phase (Plan_80 E25).
  * Plan_80 S2 and E12 keep the measurement beside the package-owned registry default:
  * a number without its evidence gets changed to a rounder one, and a seeded config key
- * never reaches installed hosts. Each run records this policy before the worker starts;
- * this release only records it and makes no silence-based decisions.
+ * never reaches installed hosts. Each run records this policy before the worker starts.
  */
 import { AGENTS } from './agents.mjs';
 

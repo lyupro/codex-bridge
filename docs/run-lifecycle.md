@@ -520,18 +520,20 @@ the ordinary single-attempt path.
 
 ### Silence watchdog
 
-Plan_80 E16/O3b wires the watchdog using arming frozen at launch in
-`worker.json#recovery_policy.watchdog.arming` and the frozen
-`silence_policy.threshold_ms`. Only Codex session-log activity decides a stall;
-two consecutive reads must confirm command-free silence at or above the threshold.
+Plan_80 E25 permanently retires silence-based stopping for every role and phase:
+Codex encrypts its reasoning, so long thinking and a stall look the same. The watchdog
+only records (`shadow`) or is `off`; the runtime refuses `armed`. Arming is frozen at launch
+in `worker.json#recovery_policy.watchdog.arming`, and the frozen
+`silence_policy.threshold_ms` labels shadow diagnostics. Only Codex session-log activity
+is used; two consecutive reads must confirm command-free silence at or above the threshold.
 Stdout, heartbeat and file times are not activity signals. `shadow` records observations
-and a confirmed decision in `stop.watchdog`, and never stops Codex. `armed` requests a
-process-tree stop with trigger `silence`; the first stop cause wins, including an earlier
-deadline or exit. Polling stops on deadline, exit and settlement. The host brake `off`
-freezes arming to `off`, preserving the old behavior without polling; older orders
-without these policy fields also use `off`. Reader failures record `fault` and disable
-further reads without ending the run. The watchdog starts no continuation and does not
-change verdict or reply logic.
+and a confirmed diagnostic decision in `stop.watchdog`, and never stops Codex. A stalled
+pass ends on its deadline and is continued with `resume:`. The first stop cause wins,
+including an earlier deadline or exit. Polling stops on deadline, exit and settlement.
+The host brake `off` freezes arming to `off`, preserving the old behavior without polling;
+older orders without these policy fields also use `off`. Reader failures record `fault`
+and disable further reads without ending the run. The watchdog starts no continuation
+and does not change verdict or reply logic.
 
 ## Crashes and abandoned runs
 
