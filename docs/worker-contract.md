@@ -107,6 +107,7 @@ two healthy advise passes stayed quiet about 17 minutes, and encrypted Codex rea
 makes healthy thinking indistinguishable from stalls. The runtime refuses `armed`.
 The worker passes the detector to `runCodex`; it confirms a stall with a second session-log read and makes
 at most one decision per run. The frozen arming never starts a continuation.
+The runner never reads the watchdog's answer (Plan_80 E28).
 
 ## What the worker reads
 

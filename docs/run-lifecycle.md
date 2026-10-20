@@ -478,7 +478,7 @@ pass occurred.”
    process tree, the killing is recorded as `stopped_on_deadline` in `status.json`, and the worker closes
    the directory with a normal verdict. What Codex has already said survives because it is streamed to
    disk rather than accumulated in memory.
-4. Immediately after `runCodex()` returns, the worker appends `stopped_on_deadline`, `stopped_by_silence`, and `elapsed_ms` to
+4. Immediately after `runCodex()` returns, the worker appends `stopped_on_deadline` and `elapsed_ms` to
    `status.json` — before `collect()` computes the verdict. The log line remains for people, but the
    verdict uses these fields: `status.json` is outside the repository covered by `workspace-write`, so
    Codex cannot forge it.
@@ -530,6 +530,8 @@ Stdout, heartbeat and file times are not activity signals. `shadow` records obse
 and a confirmed diagnostic decision in `stop.watchdog`, and never stops Codex. A stalled
 pass ends on its deadline and is continued with `resume:`. The first stop cause wins,
 including an earlier deadline or exit. Polling stops on deadline, exit and settlement.
+The runner ignores the watchdog's answer, and `check()` returns nothing, so no watchdog,
+including an injected one, can stop Codex (Plan_80 E28).
 The host brake `off` freezes arming to `off`, preserving the old behavior without polling;
 older orders without these policy fields also use `off`. Reader failures record `fault`
 and disable further reads without ending the run. The watchdog starts no continuation

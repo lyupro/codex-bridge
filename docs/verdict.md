@@ -19,17 +19,14 @@ the first matching branch determines the status. The order is therefore part of 
    move — otherwise entering detached HEAD on the same commit would pass silently. An empty value here
    means detached HEAD, while a missing file means no snapshot; only complete pairs are compared, and
    half a pair never accuses a run.
-4. **The run was killed at its deadline or by the silence watchdog.** The runner that killed Codex
-   writes `stopped_on_deadline` or `stopped_by_silence: true` to `status.json`; these are runner-owned
-   facts, not log text (Plan_15). Both produce `FAIL`. A deadline reason names the elapsed time; a silence
-   stop says `run stopped by the silence watchdog after <silence> ms without session activity (threshold
-   <threshold> ms)`, using `stop.watchdog.decision.silence_ms` and `stop.watchdog.threshold_ms`. Each
-   non-finite or absent number independently omits its part (`after ... ms` or the threshold parenthesis).
-   When both flags are recorded, the deadline wins: it is the backstop if the silence stop left Codex
-   alive. Both stops share this rank (Plan_80 E15/O4b), above `LIMIT` and the empty-result check, because
+4. **The run was killed at its deadline.** The runner that killed Codex writes
+   `stopped_on_deadline: true` to `status.json`; this is a runner-owned fact, not log text
+   (Plan_15). It produces `FAIL`, with a reason naming the elapsed time. This check ranks
+   above `LIMIT` and the empty-result check, because
    a killed run almost always arrives with an empty result and would otherwise fall into those branches
-   — which is how the false `LIMIT` on 2026-08-05 arose. They rank below the commit and branch
+   — which is how the false `LIMIT` on 2026-08-05 arose. It ranks below the commit and branch
    prohibitions: a violated contract matters more than the cause of death.
+   Silence never stops a run or shapes a verdict (Plan_80 E25/E28).
 5. **Transport artifacts contradict one another.** Two impossible combinations produce `FAIL`. First,
    `worker.json#args` contains `--json` but `events.jsonl` is absent from disk — the run promised an event
    stream and did not leave it, so evidence was lost after the run. Second, `status.json` has a

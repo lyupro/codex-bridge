@@ -332,8 +332,7 @@ is omitted for `evidence-unknown`, `silence-unclassified`, and `silent-stall-can
 Any other kind left with no blocker gets `stall-not-established`, so automatic eligibility
 means `silent-stall-candidate` with an empty blocker list.
 Plan_80 S3 and two live `resume:` acceptances verified the read-only resume contract;
-there is no resume-contract blocker. The `silence` stop trigger is classified exactly like
-`deadline`, while `situation.cause` retains `silence`. These assessments start no continuation
+there is no resume-contract blocker. These assessments start no continuation
 and change no verdict text; the ready line remains an instruction for the orchestrator.
 
 When reconciling the builder's report, the runner considers accumulated changes from the state

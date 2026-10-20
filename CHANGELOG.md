@@ -20,6 +20,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   threshold breaches and false stops are `ok`; warnings are limited to scan errors,
   faults, unknown versions, or armed records.
 
+### Removed
+
+- The dead silence stop path — the runner's kill branch, `status.json#stopped_by_silence`,
+  the `silence` stop trigger and cause, and the silence verdict reason — is removed;
+  the watchdog's `check()` returns nothing and the runner never reads it (Plan_80 E28).
+
 ### Fixed
 
 - Continuation pauses are measured inside their own pass window using
