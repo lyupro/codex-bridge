@@ -9,8 +9,11 @@ import { withTempTree } from './temp-tree.mjs';
 import { validateOpenWork } from '../scripts/open-work/check.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+// Plan_80 E29: fixtures copy every module in the gate folder so a new module cannot be forgotten.
 const sources = new Map([
-  'scripts/open-work/register.mjs', 'scripts/open-work/check.mjs', 'scripts/open-work/live-thresholds.mjs',
+  ...fs.readdirSync(path.join(root, 'scripts/open-work'), { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.mjs'))
+    .map((entry) => `scripts/open-work/${entry.name}`).sort(),
   'cli/invoked-directly.mjs',
 ].map((relative) => [relative, fs.readFileSync(path.join(root, relative), 'utf8')]));
 const indexPath = 'docs/checklists/operator-checklists.md';

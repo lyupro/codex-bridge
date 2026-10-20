@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { isInvokedDirectly } from '../../cli/invoked-directly.mjs';
 import { readRegister } from './register.mjs';
 import { checkLiveThresholds } from './live-thresholds.mjs';
+import { checkDecisionIds } from './decision-ids.mjs';
 
 const REGISTER = 'docs/plans/open-work.md';
 const INDEX = 'docs/checklists/operator-checklists.md';
@@ -54,7 +55,7 @@ function homePaths(value) {
 export function validateOpenWork(root, { strict = false } = {}) {
   if (typeof root !== 'string' || !root) throw new TypeError('A repository root is required');
   root = path.resolve(root);
-  const violations = [];
+  const violations = checkDecisionIds(root);
   const notices = [];
   const report = (file, line, problem) => violations.push(`${file}:${line}: ${problem}`);
   const present = WORKROOM.map((directory) => {
