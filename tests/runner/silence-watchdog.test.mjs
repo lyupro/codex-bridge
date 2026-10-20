@@ -102,7 +102,7 @@ test('a fresh confirmation record cancels the decision and permits later checks'
   assert.equal(watchdog.record().last_observation.silence_ms, 1000);
 });
 
-for (const arming of ['shadow', 'armed']) {
+for (const arming of ['shadow']) {
   test(`${arming} confirms a stall exactly once and records both reference times`, () => {
     const { watchdog, reads, ticks } = detector({ arming });
     assert.equal(watchdog.arming, arming);
@@ -111,7 +111,7 @@ for (const arming of ['shadow', 'armed']) {
       version: 1, arming, threshold_ms: THRESHOLD, interval_ms: 30000,
       checks: 0, last_observation: null, decision: null, fault: null,
     });
-    assert.equal(watchdog.check(), arming === 'armed' ? 'stop' : 'none');
+    assert.equal(watchdog.check(), 'none');
     assert.deepEqual(reads, [
       { threadId: THREAD, startedAt: START, referenceAt: REFERENCE },
       { threadId: THREAD, startedAt: START, referenceAt: CONFIRMED },
@@ -120,7 +120,7 @@ for (const arming of ['shadow', 'armed']) {
       version: 1, arming, threshold_ms: THRESHOLD, interval_ms: 30000, checks: 2,
       last_observation: { at: CONFIRMED, state: 'observed', commands: 'none', silence_ms: 1201000 },
       decision: { at: REFERENCE, silence_ms: 1200000, confirmed_at: CONFIRMED,
-        action: arming === 'shadow' ? 'recorded' : 'stop' }, fault: null,
+        action: 'recorded' }, fault: null,
     });
     const frozen = watchdog.record();
     assert.equal(watchdog.check(), 'none');
@@ -198,11 +198,17 @@ test('off reads no files, session activity or clock and preserves the given thre
   }
 });
 
+test('Plan_80 E25: armed is refused because silence-based stopping is retired', () => {
+  assert.throws(() => createSilenceWatchdog({ arming: 'armed', thresholdMs: THRESHOLD }),
+    /Plan_80 E25: silence-based stopping is retired/);
+});
+
 test('invalid arming values and non-positive or non-integer active thresholds fail loudly', () => {
   for (const arming of [undefined, null, 'SHADOW', 'invalid', false]) {
-    assert.throws(() => createSilenceWatchdog({ arming, thresholdMs: THRESHOLD }), /arming/);
+    assert.throws(() => createSilenceWatchdog({ arming, thresholdMs: THRESHOLD }),
+      /arming: expected off or shadow; Plan_80 E25: silence-based stopping is retired/);
   }
-  for (const arming of ['shadow', 'armed']) {
+  for (const arming of ['shadow']) {
     for (const thresholdMs of [undefined, null, 0, -1, 0.5, '996000', NaN, Infinity]) {
       assert.throws(() => createSilenceWatchdog({ arming, thresholdMs }), /positive integer/);
     }
@@ -212,7 +218,7 @@ test('invalid arming values and non-positive or non-integer active thresholds fa
 test('Plan_80 B1b1: a reader fault is recorded once and disables further reads', () => {
   for (const failOn of [1, 2]) {
     let reads = 0;
-    const { watchdog } = detector({ arming: 'armed', read: () => {
+    const { watchdog } = detector({ arming: 'shadow', read: () => {
       reads++;
       if (reads === failOn) throw new TypeError('session reader failed');
       return activity();

@@ -1,8 +1,8 @@
 /**
  * Decides from the Codex session log whether a running Codex is stalled and
  * records what the watchdog saw. Plan_80 S1/S2 stalls go silent for 19-23 minutes
- * after minute 2-6; E12 calibrates the threshold, and E16 requires shadow before
- * arming the live detector.
+ * after minute 2-6; E12 calibrates the threshold, and E25 retires silence-based
+ * stopping while preserving shadow diagnostics.
  */
 import path from 'node:path';
 import { readSessionActivity, silenceAgeMs } from '../codex-session-log.mjs';
@@ -22,8 +22,8 @@ export function stallVerdict({ activity, referenceAt, thresholdMs }) {
 export function createSilenceWatchdog({
   runDir, arming, thresholdMs, intervalMs = 30000, now = () => new Date(), read = readSessionActivity,
 }) {
-  if (!['off', 'shadow', 'armed'].includes(arming)) {
-    throw new Error('Invalid silence watchdog arming: expected off, shadow or armed');
+  if (!['off', 'shadow'].includes(arming)) {
+    throw new Error('Invalid silence watchdog arming: expected off or shadow; Plan_80 E25: silence-based stopping is retired');
   }
   if (arming !== 'off' && (!Number.isInteger(thresholdMs) || thresholdMs <= 0)) {
     throw new Error('Silence watchdog thresholdMs: expected a positive integer');
@@ -63,9 +63,9 @@ export function createSilenceWatchdog({
       if (!second.verdict.stall) return 'none';
       decision = {
         at: first.referenceAt, silence_ms: first.verdict.silence_ms,
-        confirmed_at: second.referenceAt, action: arming === 'shadow' ? 'recorded' : 'stop',
+        confirmed_at: second.referenceAt, action: 'recorded',
       };
-      return arming === 'armed' ? 'stop' : 'none';
+      return 'none';
     } catch (error) {
       // Plan_80 B1b1: a diagnostic reader TypeError must never fail a good run.
       fault = error?.message ?? String(error);

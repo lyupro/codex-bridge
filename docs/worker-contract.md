@@ -67,7 +67,7 @@ The file is created after all task/schema/snapshot artifacts and before the work
 | `phase` | always | The resolved run phase. It travels with the job so the recorded run and its verdict retain the phase the launcher selected. |
 | `budget_minutes` | always | Run time limit in minutes, resolved once from the configured budget map by `(role, phase)` and frozen into this order. `budgets.mjs` normalizes the role's phase map; the worker uses this value and never rereads the config. When it expires, the worker kills Codex and writes the verdict itself. |
 | `silence_policy` | always | Versioned policy and calibration evidence resolved from the package-owned agent registry before spawn (Plan_80 S2/E12). Copied verbatim into `meta.json`; the worker reads `threshold_ms` for the silence watchdog, without changing verdict or reply logic. A `null` threshold means not calibrated. See [artifact formats](artifact-formats.md#silence-policy). |
-| `recovery_policy` | always | Recovery policy resolved by the launcher before worker spawn (Plan_80 E15/O2a): `version`, `role`, `phase`, `budget_ms` (positive milliseconds or `null` when uncalibrated), `enabled` (the package switch), `calibration` (evidence record or `null`), `brake` (`key`, `value`, `source`), and `watchdog` (below). Copied verbatim into `meta.json`; the worker reads `watchdog.arming` for the silence watchdog, without changing verdict or reply logic. |
+| `recovery_policy` | always | Recovery policy resolved by the launcher before worker spawn (Plan_80 E15/O2a): `version`, `role`, `phase`, `budget_ms` (positive milliseconds or `null` when uncalibrated), `enabled` (the package switch), `calibration` (evidence record or `null`), `brake` (`key`, `value`, `source`), and `watchdog` (below). Since Plan_80 E25, watchdog `arming` is only `off` or `shadow`, the shadow reason is `stopping-retired`, and `armed_switch` is always `false`, retained only for record compatibility. Copied verbatim into `meta.json`; the worker reads `watchdog.arming` for the silence watchdog, without changing verdict or reply logic. |
 | `scope_new` | always (an empty list if the flag was absent) | Paths from `--scope-new`: files that do not exist at startup and that the run creates. Only for `codex-build`. They are recorded so that months later it remains clear which missing paths were declared intentionally rather than accepted by mistake. |
 | `profile` | always | The worker that was ordered: `model` (empty when nothing is pinned and Codex chooses), `model_source` (`config` or `codex default`), `effort`, and `effort_source` (`request`, `config`, or `fallback`). Recorded apart from `args` because an absent `-m` says nothing on its own — a run that was never given the operator's configured model looked exactly like a run for which none was configured, which is how a pinned profile went unnoticed for three releases (2026-08-26). `meta.json` and the dispatcher reply both read it from here. |
 | `args` | always | Full argv for the Codex command, including the sandbox, output schema, and result path. |
@@ -91,19 +91,20 @@ includes `id`, `measured_on`, `window`, `codex_version`, `sample_runs`, `measure
 
 Plan_80 E16 freezes `recovery_policy.watchdog` before worker spawn using the same
 `silence_policy` object carried by the order. Its shape is
-`{ version: 1, arming, reason, armed_switch }`, where `armed_switch` is the boolean
-package switch for `<role>.<phase>` (absent keys mean `false`), even when `arming` is `off`.
-The switch is separate from automatic recovery's `enabled`; neither can enable the other.
+`{ version: 1, arming, reason, armed_switch }`. Since Plan_80 E25, `arming` is only
+`off` or `shadow`, the shadow reason is `stopping-retired`, and `armed_switch` is
+always `false`, kept only for record compatibility. Automatic recovery's `enabled`
+is separate from these diagnostic states.
 
 | Arming | Reason | Meaning |
 | --- | --- | --- |
 | `off` | `no-threshold` | `silence_policy.threshold_ms` is `null`; this takes precedence over the brake. |
-| `off` | `host-brake` | A threshold exists, but `brake.value` is `off`; the brake disables the watchdog even if its package switch is true. |
-| `shadow` | `package-switch-off` | A threshold exists, the brake is on, and the package switch is false. The detector records a confirmed stall without stopping Codex. |
-| `armed` | `package-switch` | A threshold exists, the brake is on, and the package switch is true. A confirmed stall requests a stop. |
+| `off` | `host-brake` | A threshold exists, but `brake.value` is `off`; the brake disables the watchdog. |
+| `shadow` | `stopping-retired` | A threshold exists and the brake is on. The detector records a confirmed stall without stopping Codex. |
 
-The shipped `advisor.advise` switch is `false`: the live detector is unproven and
-the calibrated threshold leaves only 141 s over the longest healthy pause.
+Plan_80 E25 permanently retires silence-based stopping for every role and phase:
+two healthy advise passes stayed quiet about 17 minutes, and encrypted Codex reasoning
+makes healthy thinking indistinguishable from stalls. The runtime refuses `armed`.
 The worker passes the detector to `runCodex`; it confirms a stall with a second session-log read and makes
 at most one decision per run. The frozen arming never starts a continuation.
 
@@ -116,7 +117,7 @@ The current implementation reads the following fields:
 - `args` — to start Codex;
 - `order_id` — to admit each attempt under the exact-order claim;
 - `silence_policy.threshold_ms` — the frozen silence threshold (`null` for older orders);
-- `recovery_policy.watchdog.arming` — the frozen `off`, `shadow`, or `armed` state (`off` for older orders);
+- `recovery_policy.watchdog.arming` — the frozen `off` or `shadow` state since Plan_80 E25 (`off` for older orders);
 - `is_git_repo` — to decide whether to read HEAD after build;
 - `budget_minutes` — the time limit after which Codex is killed together with its entire process
   tree (on Windows this is `taskkill /T /F`: the direct child there is `cmd.exe`, while Codex is

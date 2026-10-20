@@ -1,12 +1,9 @@
 /**
- * Resolves how a run's silence watchdog is armed — off, shadow or armed — frozen per run.
- * Plan_80 E16: the live detector is unproven and the margin over the longest
- * healthy pause is only 141 s, so it starts in shadow. This package switch is
- * separate from automatic recovery.
+ * Resolves the run's frozen diagnostic silence watchdog policy.
+ * Plan_80 E25 retires stopping: two healthy passes stayed quiet about 17 minutes,
+ * and encrypted Codex reasoning makes healthy thinking indistinguishable from stalls.
  */
-export const SILENCE_WATCHDOG_ARMED = Object.freeze({ 'advisor.advise': false });
-
-export function resolveWatchdogArming({ silencePolicy, brake, armed = SILENCE_WATCHDOG_ARMED } = {}) {
+export function resolveWatchdogArming({ silencePolicy, brake } = {}) {
   if (!silencePolicy || typeof silencePolicy !== 'object' || Array.isArray(silencePolicy)) {
     throw new Error('Missing or malformed silencePolicy: expected an object');
   }
@@ -25,16 +22,8 @@ export function resolveWatchdogArming({ silencePolicy, brake, armed = SILENCE_WA
   if (brake.value !== 'on' && brake.value !== 'off') {
     throw new Error('Missing or malformed brake.value: expected on or off');
   }
-  if (!armed || typeof armed !== 'object' || Array.isArray(armed)) {
-    throw new Error('Malformed silence watchdog switches: expected an object');
-  }
-  const key = `${silencePolicy.role}.${silencePolicy.phase}`;
-  const armedSwitch = Object.hasOwn(armed, key) ? armed[key] : false;
-  if (typeof armedSwitch !== 'boolean') {
-    throw new Error(`Silence watchdog switch for ${key}: expected true or false`);
-  }
   const [arming, reason] = threshold === null ? ['off', 'no-threshold'] :
     brake.value === 'off' ? ['off', 'host-brake'] :
-      armedSwitch ? ['armed', 'package-switch'] : ['shadow', 'package-switch-off'];
-  return { version: 1, arming, reason, armed_switch: armedSwitch };
+      ['shadow', 'stopping-retired'];
+  return { version: 1, arming, reason, armed_switch: false };
 }

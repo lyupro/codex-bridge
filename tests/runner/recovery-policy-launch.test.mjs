@@ -119,7 +119,7 @@ test('advise launch freezes the measured recovery policy and default host brake'
   assert.equal(policy.calibration.id, 'plan80-s4-2026-10-15');
   assert.deepEqual(policy.brake, { key: BRAKE_KEY, value: 'on', source: 'default' });
   assert.deepEqual(policy.watchdog, {
-    version: 1, arming: 'shadow', reason: 'package-switch-off', armed_switch: false,
+    version: 1, arming: 'shadow', reason: 'stopping-retired', armed_switch: false,
   });
 });
 
