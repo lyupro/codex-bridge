@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- The `adviseDeadline` doctor row groups advise deadline stops by recorded budget and warns
+  after three healthy slow passes on the current budget in 30 days, suggesting the 45-minute
+  fallback without failing doctor or changing its exit code (Plan_80 E32, E35).
+
 ### Changed
 
 - The default `advise` budget of `codex-advisor` is now 35 minutes instead of 25, because healthy

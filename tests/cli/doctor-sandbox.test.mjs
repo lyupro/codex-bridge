@@ -250,8 +250,8 @@ test('doctor command passes sandboxChecks to diagnose', async () => {
   const source = await fs.readFile(new URL('../../cli/command-registry.mjs', import.meta.url), 'utf8');
   assert.match(source, /import\s*\{\s*sandboxChecks\s*\}\s*from\s*['"]\.\/doctor-sandbox\.mjs['"]/);
   const doctor = source.slice(source.indexOf("name: 'doctor'"), source.indexOf("name: 'run'"));
-  // Plan_80 E11/E12/E19: live log and shared evidence checks are injected beside the sandbox probe.
-  assert.match(doctor, /diagnose\(\{\s*host,\s*sandbox:\s*sandboxChecks,\s*sessionLog:\s*sessionLogCheck,\s*silenceCalibration:\s*silenceCalibrationCheck,\s*silenceWatchdogShadow:\s*silenceWatchdogShadowCheck,\s*recoveryBudgetDrift:\s*recoveryBudgetDriftCheck,\s*recoveryEnablingGates:\s*recoveryEnablingGatesCheck\s*\}\)/);
+  // Plan_80 E11/E12/E19/E32: live log and shared evidence checks are injected beside the sandbox probe.
+  assert.match(doctor, /diagnose\(\{\s*host,\s*sandbox:\s*sandboxChecks,\s*sessionLog:\s*sessionLogCheck,\s*silenceCalibration:\s*silenceCalibrationCheck,\s*silenceWatchdogShadow:\s*silenceWatchdogShadowCheck,\s*recoveryBudgetDrift:\s*recoveryBudgetDriftCheck,\s*recoveryEnablingGates:\s*recoveryEnablingGatesCheck,\s*adviseDeadline:\s*adviseDeadlineCheck\s*\}\)/);
 });
 
 test('Codex version timeout is bounded and reported even if stderr is present', (t) => {

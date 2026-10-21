@@ -1039,6 +1039,14 @@ unknown parents or timing warn rather than count as clean evidence. Reaching the
 is informational: review every outcome, then decide automatic recovery separately.
 Doctor never enables recovery, fails this row, or changes its exit code.
 
+The `adviseDeadline` row counts failed `codex-advisor` advise passes stopped by the deadline
+in the last 30 days, grouped by their recorded `worker.json#budget_minutes` allocation;
+missing or unreadable budgets are counted as unknown. It warns from three `recent-activity`
+passes on the current effective advise budget and suggests the 45-minute fallback in
+`src/home/lib/agents.mjs`, then a release (Plan_80 E32, E35). `silent-stall-candidate`
+passes and earlier budgets never warn: stalled passes are continued with `resume:`.
+This row never fails doctor or changes its exit code.
+
 A dead-sandbox row prints the diagnosis from `$CODEX_HOME/.sandbox/` logs and
 `setup_error.json`; an order refused for the same dead sandbox prints the same diagnosis.
 The 2026-10-10 TradeForge incident exposed only “setup refresh had errors” until the log named
