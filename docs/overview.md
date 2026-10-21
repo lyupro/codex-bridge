@@ -123,7 +123,7 @@ codex-bridge run --agent codex-review --task-file "/abs/path/to/review-task.md"
 ### Design advice before a build
 
 `codex-advisor` runs in two phases. The 10-minute `scope` phase checks whether the supplied paths
-cover the question and records missing paths and predicted risks. The 25-minute `advise` phase is
+cover the question and records missing paths and predicted risks. The 35-minute `advise` phase is
 available only with a `continue:` grant in the header after an `OK` scope run for the same order; it can continue an
 insufficient-but-valid scope result too. The task file has `## Question` for the design question,
 `## Options` with at least two unbiased `- id: description` lines with unique ids and no preference
@@ -566,14 +566,15 @@ multi-agent tools are unavailable to the executor. Otherwise their edits would e
 snapshot as work by the run itself, bypassing the scope check by which it is judged.
 
 `budgets` sets run time limits in minutes by role: `scout` 15, `build` 25, `review` 20, and
-`advisor` with `scope` 10 and `advise` 25. Single-phase roles accept a positive number; `advisor`
+`advisor` with `scope` 10 and `advise` 35. Single-phase roles accept a positive number; `advisor`
 requires a phase map, and partial maps override only the named phases while retaining the defaults.
 A bare number for `advisor` is refused. An empty field is a configuration error, not an absent
 value. When the limit expires, worker kills Codex together with its entire process tree, records the kill in `status.json` through the `stopped_on_deadline` field (the verdict
 judges the field written by the runner, not text to which Codex also writes), and closes the
 directory with a normal verdict—`FAIL` with a deadline reason. The limit makes “for hours”
 impossible by construction: its reference point is the project's longest legitimate run, which
-took about twenty minutes.
+took about twenty minutes. The advise phase has 35 minutes because healthy advise passes ran up
+to about 25 minutes (Plan_80 E32).
 
 ```json
 {
@@ -581,7 +582,7 @@ took about twenty minutes.
     "scout": 15,
     "build": 25,
     "review": 20,
-    "advisor": { "scope": 10, "advise": 25 }
+    "advisor": { "scope": 10, "advise": 35 }
   }
 }
 ```

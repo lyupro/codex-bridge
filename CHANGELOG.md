@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- The default `advise` budget of `codex-advisor` is now 35 minutes instead of 25, because healthy
+  slow advise passes were killed by the 25-minute deadline and had to be resumed by hand
+  (Plan_80 E32); a host that pins `budgets.advisor.advise` in its config keeps its value.
+
 ## [0.6.19] - 2026-10-20
 
 ### Added

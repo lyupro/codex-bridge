@@ -163,7 +163,7 @@ test('advise continues the scope order with its own schema and budget', () => {
   assert.notEqual(second.dir, first.dir);
   assert.deepEqual(second.schema, advisorSchema('advise'));
   assert.equal(second.worker.phase, 'advise');
-  assert.equal(second.worker.budget_minutes, 25);
+  assert.equal(second.worker.budget_minutes, 35);
   assert.equal(second.status.order_id, first.status.order_id);
   assert.equal(second.status.continued_from, path.basename(first.dir));
   assert.match(second.task, /Advise phase:/);

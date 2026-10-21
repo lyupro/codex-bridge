@@ -12,7 +12,7 @@ The agent registry defines these budgets:
 | codex-build | — | 25 |
 | codex-review | — | 20 |
 | codex-advisor | scope | 10 |
-| codex-advisor | advise | 25 |
+| codex-advisor | advise | 35 |
 
 Advisor phases have separate deadlines; scope and advise are not one combined writing budget. The deadline is enforced by the runner, not an estimate to extend while work is in progress.
 

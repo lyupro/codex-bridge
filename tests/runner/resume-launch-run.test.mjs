@@ -162,7 +162,7 @@ test('advise resume launches frozen bytes, profile, repository cwd and the full 
   assert.deepEqual(resumed.worker.profile, advise.worker.profile);
   assert.equal(resumed.worker.args[resumed.worker.args.indexOf('-m') + 1], advise.worker.profile.model);
   assert.ok(resumed.worker.args.includes(`model_reasoning_effort=${advise.worker.profile.effort}`));
-  assert.equal(resumed.worker.budget_minutes, 25);
+  assert.equal(resumed.worker.budget_minutes, 35);
   assert.deepEqual(resumed.worker.silence_policy, advise.worker.silence_policy);
   assert.equal(JSON.parse(resumed.read('env.json')).models.advisor.effort, 'low');
   assert.equal(resumed.worker.repo, tree.repo);

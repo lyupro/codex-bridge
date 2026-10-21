@@ -12,7 +12,8 @@ export const AGENTS = {
   'codex-build': { role: 'build', budget: 25, silenceThresholdMs: null, recoveryBudgetMs: null, writes: true, result: 'result.json' },
   'codex-review': { role: 'review', budget: 20, silenceThresholdMs: null, recoveryBudgetMs: null, writes: false, result: 'review.json' },
   // Plan_59: design advice needs a bounded scope pass before the continued decision pass.
-  'codex-advisor': { role: 'advisor', budget: { scope: 10, advise: 25 }, silenceThresholdMs: { scope: null, advise: 996000 }, recoveryBudgetMs: { scope: null, advise: 1102000 }, writes: false, result: 'result.json' },
+  // The advise budget is 35 minutes because healthy advise passes ran up to 24.6 minutes and stayed silent up to ~23 minutes (Plan_80 E32).
+  'codex-advisor': { role: 'advisor', budget: { scope: 10, advise: 35 }, silenceThresholdMs: { scope: null, advise: 996000 }, recoveryBudgetMs: { scope: null, advise: 1102000 }, writes: false, result: 'result.json' },
 };
 
 export const agentRole = (agent) => AGENTS[agent]?.role;
