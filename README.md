@@ -127,7 +127,7 @@ codex-bridge update
 ## Limitations
 
 - **Runs are not isolated from one another.** They share one worktree; guards prevent concurrent writers instead of creating sandboxes.
-- **A build run has a 25-minute deadline.** Work and artifacts survive a timeout, but the run may need an explicit continuation.
+- **A writing run has a hard deadline; `codex-bridge guidance budget` shows its value on this host.** Work and artifacts survive a timeout, but the run may need an explicit continuation.
 - **A dispatcher verdict is not the work outcome.** Judge completion from the worktree and tests as well as the recorded verdict.
 
 Transport files from runs at least **30 days** old are pruned automatically when a new run starts. Configuration can change or disable that retention policy; reports, accounting, and worktree snapshots are retained.

@@ -122,13 +122,14 @@ codex-bridge run --agent codex-review --task-file "/abs/path/to/review-task.md"
 
 ### Design advice before a build
 
-`codex-advisor` runs in two phases. The 10-minute `scope` phase checks whether the supplied paths
-cover the question and records missing paths and predicted risks. The 35-minute `advise` phase is
+`codex-advisor` runs in two phases. The `scope` phase checks whether the supplied paths
+cover the question and records missing paths and predicted risks. The `advise` phase is
 available only with a `continue:` grant in the header after an `OK` scope run for the same order; it can continue an
 insufficient-but-valid scope result too. The task file has `## Question` for the design question,
 `## Options` with at least two unbiased `- id: description` lines with unique ids and no preference
 markers, and `## Paths` with repository-relative paths. Every `path:line` citation must point to
 an existing line, and its path must be listed under `## Paths` or in phase 1's `missing_paths`.
+For the deadlines in force on this host, run `codex-bridge guidance budget`.
 
 The scope reply reports `OK` with sufficient or insufficient scope and, for a sufficient scope,
 directs the next pass to use `phase: advise` with a `continue:` header grant. It includes `Missing:` when needed, `Predicted risks:`,
@@ -565,17 +566,17 @@ A delegated run does not create subagents: the runner passes `-c agents.enabled=
 multi-agent tools are unavailable to the executor. Otherwise their edits would enter the tree
 snapshot as work by the run itself, bypassing the scope check by which it is judged.
 
-`budgets` sets run time limits in minutes by role: `scout` 15, `build` 25, `review` 20, and
-`advisor` with `scope` 10 and `advise` 35. Single-phase roles accept a positive number; `advisor`
+`budgets` sets run time limits in minutes by role. Single-phase roles accept a positive number; `advisor`
 requires a phase map, and partial maps override only the named phases while retaining the defaults.
 A bare number for `advisor` is refused. An empty field is a configuration error, not an absent
 value. When the limit expires, worker kills Codex together with its entire process tree, records the kill in `status.json` through the `stopped_on_deadline` field (the verdict
 judges the field written by the runner, not text to which Codex also writes), and closes the
 directory with a normal verdict—`FAIL` with a deadline reason. The limit makes “for hours”
-impossible by construction: its reference point is the project's longest legitimate run, which
-took about twenty minutes. The advise phase has 35 minutes because healthy advise passes ran up
-to about 25 minutes (Plan_80 E32).
+impossible by construction. In past runs, the project's longest legitimate run took about twenty
+minutes, and healthy advise passes ran up to about 25 minutes (Plan_80 E32).
 
+These are the package defaults; `codex-bridge guidance budget` prints the values in force on this host with their source (package or host config).
+<!-- budget-defaults:begin -->
 ```json
 {
   "budgets": {
@@ -586,6 +587,7 @@ to about 25 minutes (Plan_80 E32).
   }
 }
 ```
+<!-- budget-defaults:end -->
 
 `answerLanguage` is the language in which the run responds: `answer`, `report_markdown`, and text
 fields in `result.json`. The default is `English`, regardless of the task language; the key is set
@@ -1042,7 +1044,7 @@ Doctor never enables recovery, fails this row, or changes its exit code.
 The `adviseDeadline` row counts failed `codex-advisor` advise passes stopped by the deadline
 in the last 30 days, grouped by their recorded `worker.json#budget_minutes` allocation;
 missing or unreadable budgets are counted as unknown. It warns from three `recent-activity`
-passes on the current effective advise budget and suggests the 45-minute fallback in
+passes on the current effective advise budget and suggests raising the advise budget in
 `src/home/lib/agents.mjs`, then a release (Plan_80 E32, E35). `silent-stall-candidate`
 passes and earlier budgets never warn: stalled passes are continued with `resume:`.
 This row never fails doctor or changes its exit code.
