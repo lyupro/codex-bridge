@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { renderGuidance } from '../../cli/guidance-render.mjs';
+import { AGENTS } from '../../src/home/lib/agents.mjs';
 import { ORDER_RULES } from '../../src/home/lib/order-rules.mjs';
 import { SHELL_UNSAFE_SEQUENCES } from '../../src/home/lib/shell-unsafe.mjs';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
@@ -20,6 +21,22 @@ function writeModule(root, file, source) {
   const target = path.join(root, 'lib', file);
   fs.mkdirSync(path.dirname(target), { recursive: true });
   fs.writeFileSync(target, source);
+}
+
+function budgetFixture(t, extra = {}) {
+  const root = homeFixture(t);
+  for (const file of ['run-config.mjs', 'config-validate.mjs', 'budgets.mjs', 'brand-home.mjs']) {
+    let source = fs.readFileSync(new URL(`../../src/home/lib/${file}`, import.meta.url), 'utf8');
+    // Plan_80 E39: keep the real reader and validator against the isolated installed registry.
+    for (const dependency of ['json-file.mjs', 'config-edit.mjs']) {
+      source = source.replace(`'./${dependency}'`,
+        JSON.stringify(new URL(`../../src/home/lib/${dependency}`, import.meta.url).href));
+    }
+    writeModule(root, file, source);
+  }
+  const registry = { ...AGENTS, ...extra };
+  writeModule(root, 'agents.mjs', `export const AGENTS = ${JSON.stringify(registry)};`);
+  return { root, registry, configPath: path.join(path.dirname(root), 'isolated-config.json') };
 }
 
 async function assertRenderFailure(text, root, topic, placeholder, reason) {
@@ -181,4 +198,73 @@ test('missing order rule exports fail instead of supplying a default registry', 
   writeModule(root, 'order-rules.mjs', 'export const unrelated = {};');
   await assertRenderFailure('{{order-rules:all}}', root, 'order',
     '{{order-rules:all}}', /undefined|null/);
+});
+
+test('budget rows follow the installed registry and effective host phase sources', async (t) => {
+  const { root, configPath } = budgetFixture(t, {
+    'installed-extra-agent': { role: 'unrelated-role', budget: { prepare: 4, finish: 9 } },
+    'installed-single-phase': { role: 'named-role', budget: { only: 6 } },
+  });
+  fs.writeFileSync(configPath, JSON.stringify({ budgets: {
+    scout: AGENTS['codex-scout'].budget, build: 7.5, review: {}, advisor: { advise: 12 },
+    'unrelated-role': { prepare: 3 },
+  } }));
+  const output = await renderGuidance('{{agent-budgets}}', { root, topic: 'budget', configPath });
+  assert.equal(output, [
+    `Budgets the runner enforces on this host. \`host config\` values come from ${configPath}.`,
+    '', '| Agent | Phase | Minutes | Source |', '| --- | --- | --- | --- |',
+    `| codex-scout | \u2014 | ${AGENTS['codex-scout'].budget} | host config |`,
+    '| codex-build | \u2014 | 7.5 | host config |',
+    `| codex-review | \u2014 | ${AGENTS['codex-review'].budget} | package |`,
+    `| codex-advisor | scope | ${AGENTS['codex-advisor'].budget.scope} | package |`,
+    '| codex-advisor | advise | 12 | host config |',
+    '| installed-extra-agent | prepare | 3 | host config |',
+    '| installed-extra-agent | finish | 9 | package |',
+    '| installed-single-phase | \u2014 | 6 | package |',
+  ].join('\n'));
+  assert.equal(await renderGuidance('{{agent-budgets}}\n{{agent-budgets}}',
+    { root, topic: 'budget', configPath }), `${output}\n${output}`);
+});
+
+test('a missing config renders every package budget from the installed registry', async (t) => {
+  const { root, registry, configPath } = budgetFixture(t, {
+    'extra-budget-agent': { role: 'extra-budget-role', budget: 8 },
+  });
+  const output = await renderGuidance('{{agent-budgets}}', { root, topic: 'budget', configPath });
+  const rows = [];
+  for (const [agent, { budget }] of Object.entries(registry)) {
+    const phases = typeof budget === 'number' ? { default: budget } : budget;
+    for (const [phase, minutes] of Object.entries(phases)) {
+      rows.push(`| ${agent} | ${Object.keys(phases).length === 1 ? '\u2014' : phase} | ${minutes} | package |`);
+    }
+  }
+  assert.deepEqual(output.split('\n').slice(4), rows);
+  assert.doesNotMatch(output, /\| host config \|/);
+});
+
+test('broken configs fail with budget topic and placeholder context instead of defaults', async (t) => {
+  for (const content of ['{"budgets":', '{"budgets":{"advisor":7}}']) {
+    const { root, configPath } = budgetFixture(t);
+    fs.writeFileSync(configPath, content);
+    await assert.rejects(renderGuidance('{{agent-budgets}}', { root, topic: 'budget', configPath }),
+      (error) => {
+        assert.match(error.message, /topic "budget"/);
+        assert.ok(error.message.includes('placeholder "{{agent-budgets}}"'));
+        assert.match(error.message, /cannot be parsed as JSON|must be a phase map/);
+        assert.doesNotMatch(error.message, /\| package \|/);
+        return true;
+      });
+  }
+});
+
+test('budget rendering requires configPath instead of using the real host config', async (t) => {
+  await assertRenderFailure('{{agent-budgets}}', homeFixture(t), 'budget',
+    '{{agent-budgets}}', /configPath is required/);
+});
+
+test('budget guidance owns no handwritten budget values', () => {
+  const text = fs.readFileSync(new URL('../../src/home/guidance/budget.md', import.meta.url), 'utf8');
+  assert.ok(text.includes('{{agent-budgets}}'));
+  assert.doesNotMatch(text, /\| Agent \||\d+(?:\.\d+)?\s*minutes/);
+  assert.match(text, /within the same build budget shown above/);
 });

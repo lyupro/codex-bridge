@@ -10,7 +10,7 @@ function renderError(topic, placeholder, message) {
   return new Error(`Cannot render guidance topic "${topic}" placeholder "${placeholder}": ${message}`);
 }
 
-export async function renderGuidance(text, { root, topic }) {
+export async function renderGuidance(text, { root, topic, configPath }) {
   const values = new Map();
   for (const [placeholder, name] of text.matchAll(/\{\{([^{}]*)\}\}/g)) {
     if (values.has(placeholder)) continue;
@@ -23,6 +23,20 @@ export async function renderGuidance(text, { root, topic }) {
         const { SCHEMAS } = await import(pathToFileURL(path.join(root, 'lib', 'runner', 'schemas.mjs')).href);
         const review = SCHEMAS['codex-review'];
         values.set(placeholder, `Top-level fields: ${codeList(review.required)}; finding fields: ${codeList(review.properties.findings.items.required)}`);
+      } else if (name === 'agent-budgets') {
+        if (!configPath) throw new Error('configPath is required');
+        const { AGENTS } = await import(pathToFileURL(path.join(root, 'lib', 'agents.mjs')).href);
+        const { readRunConfig } = await import(pathToFileURL(path.join(root, 'lib', 'run-config.mjs')).href);
+        const { config, budgetSources } = readRunConfig(configPath, { provenance: true });
+        const rows = Object.entries(AGENTS).flatMap(([agent, { role }]) => {
+          const phases = Object.entries(config.budgets[role]);
+          return phases.map(([phase, minutes]) =>
+            `| ${agent} | ${phases.length === 1 ? '—' : phase} | ${minutes} | ${budgetSources[role].has(phase) ? 'host config' : 'package'} |`);
+        });
+        values.set(placeholder, [
+          `Budgets the runner enforces on this host. \`host config\` values come from ${configPath}.`,
+          '', '| Agent | Phase | Minutes | Source |', '| --- | --- | --- | --- |', ...rows,
+        ].join('\n'));
       } else if (name.startsWith('order-rules:')) {
         const ruleTopic = name.slice('order-rules:'.length);
         if (ruleTopic !== 'all' && !Object.hasOwn(GUIDANCE_TOPICS, ruleTopic)) {

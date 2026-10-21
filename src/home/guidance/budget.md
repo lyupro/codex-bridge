@@ -4,21 +4,13 @@ Slice each order before launch so its work and verification fit the agent's hard
 
 ## Budgets
 
-The agent registry defines these budgets:
-
-| Agent | Phase | Minutes |
-| --- | --- | --- |
-| codex-scout | — | 15 |
-| codex-build | — | 25 |
-| codex-review | — | 20 |
-| codex-advisor | scope | 10 |
-| codex-advisor | advise | 35 |
+{{agent-budgets}}
 
 Advisor phases have separate deadlines; scope and advise are not one combined writing budget. The deadline is enforced by the runner, not an estimate to extend while work is in progress.
 
 ## Slice a writing run
 
-Keep a build order to one layer and a few writing files, normally 1–3 plus their targeted tests. Split cross-layer changes into separately verifiable orders before launch. Account for reading, implementation and verification within the same 25 minutes.
+Keep a build order to one layer and a few writing files, normally 1–3 plus their targeted tests. Split cross-layer changes into separately verifiable orders before launch. Account for reading, implementation and verification within the same build budget shown above.
 
 The task file must say:
 

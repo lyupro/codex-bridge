@@ -23,7 +23,7 @@ export async function guidance(argv, { env = process.env, homedir } = {}) {
   }
 
   // The 2026-08-26 seeded-config incident forbids reading installed files from the clone.
-  const { root } = resolveBrandHome({ homedir, env });
+  const { root, configPath } = resolveBrandHome({ homedir, env });
   const file = path.join(root, 'guidance', `${topic}.md`);
   let text;
   try {
@@ -34,7 +34,7 @@ export async function guidance(argv, { env = process.env, homedir } = {}) {
       output: `Cannot read guidance file ${file}: ${error.message}\nrun codex-bridge update`,
     };
   }
-  return renderGuidance(text, { root, topic }).then(
+  return renderGuidance(text, { root, topic, configPath }).then(
     (output) => ({ exitCode: 0, output }),
     (error) => ({ exitCode: 1, output: `${error.message}\nrun codex-bridge update` }),
   );

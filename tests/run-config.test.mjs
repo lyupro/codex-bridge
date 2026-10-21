@@ -120,6 +120,50 @@ test('budgets default per role and merge when only one role is written', () => {
   });
 });
 
+test('detailed reads preserve the config and name only explicit host budget phases', (t) => {
+  const file = tempFile(JSON.stringify({ hooks: true, budgets: {
+    build: 7.5, scout: DEFAULTS.budgets.scout.default, advisor: { advise: 12 }, review: {},
+  } }));
+  const expected = readRunConfig(file);
+  const readFileSync = fs.readFileSync;
+  let reads = 0;
+  t.mock.method(fs, 'readFileSync', (target, ...args) => {
+    if (target === file) reads++;
+    return readFileSync(target, ...args);
+  });
+  const { config, budgetSources } = readRunConfig(file, { provenance: true });
+  assert.equal(reads, 1);
+  assert.deepEqual(config, expected);
+  assert.equal(Object.hasOwn(expected, 'config'), false);
+  assert.equal(Object.hasOwn(expected, 'budgetSources'), false);
+  assert.deepEqual(budgetSources, {
+    scout: new Set(['default']), build: new Set(['default']),
+    review: new Set(), advisor: new Set(['advise']),
+  });
+  assert.equal(config.budgets.advisor.scope, DEFAULTS.budgets.advisor.scope);
+  assert.deepEqual(readRunConfig(file, { provenance: false }), expected);
+});
+
+test('detailed reads name no phases for absent budgets, empty maps or a missing file', () => {
+  for (const content of [undefined, '{}', '{"budgets":{}}', '{"budgets":{"advisor":{}}}']) {
+    const { config, budgetSources } = readRunConfig(tempFile(content), { provenance: true });
+    assert.deepEqual(config, DEFAULTS);
+    assert.deepEqual(budgetSources,
+      Object.fromEntries(Object.keys(DEFAULTS.budgets).map((role) => [role, new Set()])));
+  }
+});
+
+test('detailed reads preserve read, parse and validation errors', () => {
+  const unreadable = tempFile();
+  fs.mkdirSync(unreadable);
+  for (const file of [unreadable, tempFile('{"hooks": tru'), tempFile('{"budgets":{"build":0}}')]) {
+    let expected;
+    assert.throws(() => readRunConfig(file), (error) => { expected = error.message; return true; });
+    assert.throws(() => readRunConfig(file, { provenance: true }),
+      (error) => { assert.equal(error.message, expected); return true; });
+  }
+});
+
 test('budgets reject every invalid shape with an actionable message', () => {
   assert.throws(() => readRunConfig(tempFile('{"budgets": null}')), /budgets.*must be an object/);
   assert.throws(() => readRunConfig(tempFile('{"budgets": []}')), /budgets.*must be an object/);
@@ -259,8 +303,8 @@ test('run-config no longer exports a whole-object writer', async () => {
   assert.equal(Object.hasOwn(exports, 'writeRunConfig'), false);
 });
 
-test('the shipped config keeps both switches off', () => {
-  const config = readRunConfig();
+test('the default config call keeps both switches off', () => {
+  const config = readRunConfig(tempFile());
   assert.equal(config.hooks, false);
   assert.equal(config.plugins, false);
 });

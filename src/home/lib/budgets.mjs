@@ -9,6 +9,14 @@
  */
 import { AGENTS } from './agents.mjs';
 
+// Plan_80 E39 preserves explicit host intent; D2 keeps scalar-to-default interpretation here.
+export function explicitBudgetPhases(overrides, registry = AGENTS) {
+  return Object.fromEntries(Object.values(registry).map(({ role }) => {
+    const budget = overrides[role];
+    return [role, new Set(typeof budget === 'number' ? ['default'] : Object.keys(budget ?? {}))];
+  }));
+}
+
 export function resolveBudgets(file, overrides = {}, registry = AGENTS) {
   const roles = Object.values(registry).map(({ role }) => role);
   if (!overrides || typeof overrides !== 'object' || Array.isArray(overrides)) {

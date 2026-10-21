@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { AGENTS } from '../src/home/lib/agents.mjs';
-import { resolveBudgets } from '../src/home/lib/budgets.mjs';
+import { explicitBudgetPhases, resolveBudgets } from '../src/home/lib/budgets.mjs';
 import { validateRunConfig } from '../src/home/lib/config-validate.mjs';
 
 const FILE = 'operator/config.json';
@@ -26,6 +26,26 @@ test('numbers normalize to default and phase maps retain their declared minutes'
   assert.deepEqual(resolved, { single: { default: 12 }, phased: { scope: 5, advise: 15 } });
   resolved.phased.scope = 99;
   assert.deepEqual(registry['test-phased'].budget, { scope: 5, advise: 15 });
+});
+
+for (const [name, overrides, expected] of [
+  ['scalar names default', { single: 9 }, { single: new Set(['default']), phased: new Set() }],
+  ['partial map names only its keys', { phased: { advise: 9 } },
+    { single: new Set(), phased: new Set(['advise']) }],
+  ['empty map names no phases', { phased: {} }, { single: new Set(), phased: new Set() }],
+  ['absent roles name no phases', {}, { single: new Set(), phased: new Set() }],
+  ['values equal to defaults remain explicit', { single: 12, phased: { scope: 5, advise: 15 } },
+    { single: new Set(['default']), phased: new Set(['scope', 'advise']) }],
+]) {
+  test(`explicit budget phases: ${name}`, () => {
+    resolveBudgets(FILE, overrides, registry);
+    assert.deepEqual(explicitBudgetPhases(overrides, registry), expected);
+  });
+}
+
+test('explicit budget phases include every registered role when overrides are absent', () => {
+  assert.deepEqual(explicitBudgetPhases({}),
+    Object.fromEntries(Object.values(AGENTS).map(({ role }) => [role, new Set()])));
 });
 
 test('partial phase overrides retain the other phases and roles', () => {

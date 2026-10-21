@@ -193,11 +193,12 @@ test('unresolved installed templates return exit 1 with the update remedy', asyn
   assert.ok(result.output.endsWith('run codex-bridge update'));
 });
 
-test('missing installed value modules return exit 1 for either placeholder', async (t) => {
+test('missing installed value modules return exit 1 for each placeholder', async (t) => {
   const { home, env } = homeFixture(t);
   fs.mkdirSync(path.join(home, 'guidance'));
   for (const [topic, placeholder] of [
     ['order', '{{shell-unsafe-sequences}}'], ['records', '{{review-required-fields}}'],
+    ['budget', '{{agent-budgets}}'],
   ]) {
     fs.writeFileSync(path.join(home, 'guidance', `${topic}.md`), placeholder);
     const result = await guidance([topic], { env });
@@ -224,4 +225,35 @@ test('records guidance follows the newest resumed run and preserves the review t
   assert.match(text, /`resume-note\.md`/);
   assert.match(text, /newest run of the chain/);
   assert.ok(text.includes('{{review-required-fields}}'));
+});
+
+test('budget guidance passes the resolved config path for overridden and default homes', async (t) => {
+  for (const overridden of [true, false]) {
+    const { home } = homeFixture(t);
+    const root = overridden ? home : path.join(home, '.lyupro', '.codex-bridge');
+    const configPath = path.join(root, 'config.json');
+    fs.mkdirSync(path.join(root, 'guidance'), { recursive: true });
+    fs.mkdirSync(path.join(root, 'lib'));
+    fs.writeFileSync(path.join(root, 'guidance', 'budget.md'), '{{agent-budgets}}');
+    fs.writeFileSync(configPath, JSON.stringify({ minutes: 6.25 }));
+    fs.writeFileSync(path.join(root, 'lib', 'agents.mjs'),
+      'export const AGENTS = { "installed-budget-agent": { role: "custom-role" } };');
+    fs.writeFileSync(path.join(root, 'lib', 'run-config.mjs'), `
+      import assert from 'node:assert/strict';
+      import fs from 'node:fs';
+      export function readRunConfig(file, options) {
+        assert.equal(file, ${JSON.stringify(configPath)});
+        assert.deepEqual(options, { provenance: true });
+        return {
+          config: { budgets: { 'custom-role': { default: JSON.parse(fs.readFileSync(file, 'utf8')).minutes } } },
+          budgetSources: { 'custom-role': new Set(['default']) },
+        };
+      }
+    `);
+    const result = await guidance(['budget'],
+      { env: overridden ? { CODEX_BRIDGE_HOME: root } : {}, homedir: home });
+    assert.equal(result.exitCode, 0, result.output);
+    assert.ok(result.output.includes(`values come from ${configPath}.`));
+    assert.ok(result.output.includes('| installed-budget-agent | \u2014 | 6.25 | host config |'));
+  }
 });

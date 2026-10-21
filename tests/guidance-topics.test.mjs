@@ -10,7 +10,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { COMMANDS } from '../cli/command-registry.mjs';
 import { GUIDANCE_TOPICS } from '../cli/guidance-topics.mjs';
 import { renderGuidance } from '../cli/guidance-render.mjs';
@@ -49,7 +49,9 @@ for (const topic of topics) {
   test(`${topic} renders from an installed home without placeholders`, async (t) => {
     const home = installedHome(t);
     const text = fs.readFileSync(path.join(home, 'guidance', `${topic}.md`), 'utf8');
-    assert.doesNotMatch(await renderGuidance(text, { root: home, topic }), /{{/);
+    assert.doesNotMatch(await renderGuidance(text, {
+      root: home, topic, configPath: path.join(home, 'config.json'),
+    }), /{{/);
   });
 
   test(`${topic} never names a run-store root`, () => {
@@ -62,6 +64,24 @@ for (const topic of topics) {
     }
   });
 }
+
+test('budget guidance reflects the edited config in the installed home', async (t) => {
+  const home = installedHome(t);
+  const configPath = path.join(home, 'config.json');
+  const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  const { AGENTS } = await import(pathToFileURL(path.join(home, 'lib', 'agents.mjs')).href);
+  const [agent, { budget }] = Object.entries(AGENTS).find(([, { role }]) => role === 'advisor');
+  const advise = budget.advise + 1;
+  config.budgets = { ...config.budgets, advisor: { ...config.budgets?.advisor, advise } };
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', 'utf8');
+
+  const source = fs.readFileSync(path.join(home, 'guidance', 'budget.md'), 'utf8');
+  const text = await renderGuidance(source, { root: home, topic: 'budget', configPath });
+  const lines = text.split('\n');
+  assert.ok(lines.includes(`| ${agent} | advise | ${advise} | host config |`));
+  assert.ok(lines.includes(`| ${agent} | scope | ${budget.scope} | package |`));
+  assert.ok(lines.includes(`Budgets the runner enforces on this host. \`host config\` values come from ${configPath}.`));
+});
 
 test('order renders the shell list in the source array order', async (t) => {
   const text = await renderGuidance(readTopic('order'), { root: installedHome(t), topic: 'order' });

@@ -21,6 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { BRAND_CONFIG_PATH, BRAND_HOME } from './brand-home.mjs';
 import { readJsonFileSync } from './json-file.mjs';
 import { editRunConfig } from './config-edit.mjs';
+import { explicitBudgetPhases } from './budgets.mjs';
 import { DEFAULTS, ROLES, SWITCH_KEYS, LIST_KEYS, OBJECT_KEYS, validateRunConfig } from './config-validate.mjs';
 export { DEFAULTS, DEFAULT_ENVIRONMENT_PATHS } from './config-validate.mjs';
 
@@ -48,7 +49,7 @@ export function retentionNotice(config) {
   };
 }
 
-export function readRunConfig(file = CONFIG_PATH) {
+export function readRunConfig(file = CONFIG_PATH, { provenance = false } = {}) {
   let parsed;
   try {
     parsed = readJsonFileSync(file);
@@ -56,7 +57,12 @@ export function readRunConfig(file = CONFIG_PATH) {
     // Only a missing file means "no config". Every error code used to mean that, so a config the
     // run could not open (EACCES, EISDIR, EPERM) ran every role on default models with nobody told
     // (Plan_69 stage 0) — the one reader of an operator file that treated failure as absence.
-    if (err.code === 'ENOENT') return { ...DEFAULTS };
+    if (err.code === 'ENOENT') {
+      const config = { ...DEFAULTS };
+      return provenance
+        ? { config, budgetSources: explicitBudgetPhases({}) }
+        : config;
+    }
     if (err.code) {
       throw new Error(
         `${file} cannot be read (${err.code}). Fix its permissions or type, or delete it — without it, ` +
@@ -68,7 +74,11 @@ export function readRunConfig(file = CONFIG_PATH) {
         'the default mode applies: hooks and plugins are disabled.',
     );
   }
-  return validateRunConfig(file, parsed);
+  const config = validateRunConfig(file, parsed);
+  if (!provenance) return config;
+  // Plan_80 E39: explicit host intent survives merging, even when its value equals the default.
+  const budgetSources = explicitBudgetPhases(parsed.budgets ?? {});
+  return { config, budgetSources };
 }
 
 /** Flags for `codex exec`: a switch that is off becomes an explicit --disable. */
