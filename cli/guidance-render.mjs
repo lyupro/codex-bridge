@@ -27,7 +27,14 @@ export async function renderGuidance(text, { root, topic, configPath }) {
         if (!configPath) throw new Error('configPath is required');
         const { AGENTS } = await import(pathToFileURL(path.join(root, 'lib', 'agents.mjs')).href);
         const { readRunConfig } = await import(pathToFileURL(path.join(root, 'lib', 'run-config.mjs')).href);
-        const { config, budgetSources } = readRunConfig(configPath, { provenance: true });
+        let runConfig;
+        try {
+          runConfig = readRunConfig(configPath, { provenance: true });
+        } catch (error) {
+          // Plan_80 E39: the seeded host config is never rewritten by update.
+          throw Object.assign(renderError(topic, placeholder, error.message), { hostConfig: true });
+        }
+        const { config, budgetSources } = runConfig;
         const rows = Object.entries(AGENTS).flatMap(([agent, { role }]) => {
           const phases = Object.entries(config.budgets[role]);
           return phases.map(([phase, minutes]) =>
@@ -58,6 +65,7 @@ export async function renderGuidance(text, { root, topic, configPath }) {
         throw new Error('unknown placeholder');
       }
     } catch (error) {
+      if (error.hostConfig === true) throw error;
       throw renderError(topic, placeholder, error.message);
     }
   }

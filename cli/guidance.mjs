@@ -36,6 +36,9 @@ export async function guidance(argv, { env = process.env, homedir } = {}) {
   }
   return renderGuidance(text, { root, topic, configPath }).then(
     (output) => ({ exitCode: 0, output }),
-    (error) => ({ exitCode: 1, output: `${error.message}\nrun codex-bridge update` }),
+    (error) => ({
+      exitCode: 1,
+      output: error.hostConfig === true ? error.message : `${error.message}\nrun codex-bridge update`,
+    }),
   );
 }

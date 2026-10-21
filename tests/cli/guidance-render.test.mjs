@@ -248,13 +248,28 @@ test('broken configs fail with budget topic and placeholder context instead of d
     fs.writeFileSync(configPath, content);
     await assert.rejects(renderGuidance('{{agent-budgets}}', { root, topic: 'budget', configPath }),
       (error) => {
-        assert.match(error.message, /topic "budget"/);
-        assert.ok(error.message.includes('placeholder "{{agent-budgets}}"'));
+        assert.equal(Object.hasOwn(error, 'hostConfig'), true);
+        assert.equal(error.hostConfig, true);
+        assert.ok(error.message.startsWith('Cannot render guidance topic "budget" placeholder "{{agent-budgets}}": '));
+        assert.ok(error.message.includes(configPath));
         assert.match(error.message, /cannot be parsed as JSON|must be a phase map/);
         assert.doesNotMatch(error.message, /\| package \|/);
         return true;
       });
   }
+});
+
+test('a missing installed agent module is not a host config failure', async (t) => {
+  const root = homeFixture(t);
+  const configPath = path.join(root, 'config.json');
+  await assert.rejects(renderGuidance('{{agent-budgets}}', { root, topic: 'budget', configPath }),
+    (error) => {
+      assert.equal(Object.hasOwn(error, 'hostConfig'), false);
+      assert.equal(error.hostConfig, undefined);
+      assert.match(error.message, /Cannot find module/);
+      assert.ok(error.message.includes('placeholder "{{agent-budgets}}"'));
+      return true;
+    });
 });
 
 test('budget rendering requires configPath instead of using the real host config', async (t) => {

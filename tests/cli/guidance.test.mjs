@@ -227,6 +227,29 @@ test('records guidance follows the newest resumed run and preserves the review t
   assert.ok(text.includes('{{review-required-fields}}'));
 });
 
+test('invalid host config names the file without recommending update', async (t) => {
+  const { home, env } = homeFixture(t);
+  const configPath = path.join(home, 'config.json');
+  fs.mkdirSync(path.join(home, 'guidance'));
+  fs.mkdirSync(path.join(home, 'lib'));
+  fs.writeFileSync(path.join(home, 'guidance', 'budget.md'), '{{agent-budgets}}');
+  fs.writeFileSync(configPath, '{"budgets":');
+  for (const file of ['agents.mjs', 'run-config.mjs', 'config-validate.mjs', 'budgets.mjs', 'brand-home.mjs']) {
+    let source = fs.readFileSync(new URL('../../src/home/lib/' + file, import.meta.url), 'utf8');
+    for (const dependency of ['json-file.mjs', 'config-edit.mjs']) {
+      source = source.replace("'./" + dependency + "'",
+        JSON.stringify(new URL('../../src/home/lib/' + dependency, import.meta.url).href));
+    }
+    fs.writeFileSync(path.join(home, 'lib', file), source);
+  }
+  const result = await guidance(['budget'], { env });
+  assert.equal(result.exitCode, 1);
+  assert.ok(result.output.includes(configPath));
+  assert.match(result.output, /cannot be parsed as JSON/);
+  assert.match(result.output, /Fix or delete the file/);
+  assert.doesNotMatch(result.output, /run codex-bridge update/);
+});
+
 test('budget guidance passes the resolved config path for overridden and default homes', async (t) => {
   for (const overridden of [true, false]) {
     const { home } = homeFixture(t);
