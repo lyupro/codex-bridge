@@ -1,5 +1,6 @@
 /** Plan_80 E13 O5: a resume repeats the frozen pass without spending another continuation. */
 import { test } from 'node:test';
+import { orderDiagnosticMessage } from '../../src/home/lib/order-diagnostics.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -17,7 +18,6 @@ const STOP = '2026-10-03T18:01:00.000Z';
 const THREAD = 'resume-pass-gate-thread';
 const REASON = 'finish the stopped pass';
 const TASK = '## Options\n- keep: Keep the boundary.\n- split: Split the boundary.\n## Paths\n- source.mjs\n';
-const NO_QUOTA = /The run folder was not created; quota was not spent\.$/;
 
 function fixture() {
   const root = makeTempTree('resume-pass-gate-');
@@ -94,12 +94,16 @@ async function gate(tree, kind, name, options = {}, taskText = TASK) {
   }
 }
 
-function refusal(message, exitCode = 2) {
+function refusal(message, exitCode = 2, variant = 'grant-decision') {
   return (error) => {
     assert.equal(error.exitCode, exitCode);
     if (typeof message === 'string') assert.ok(error.message.startsWith(message), error.message);
     else assert.match(error.message, message);
-    assert.match(error.message, NO_QUOTA);
+    const lines = error.message.split(/\r?\n/);
+    const row = orderDiagnosticMessage('next-action', { variant });
+    assert.deepEqual(lines.filter((line) => line.startsWith('Action: ')), [row]);
+    assert.equal(lines.at(-1), row);
+    assert.match(lines.at(-2), /The run folder was not created; quota was not spent\.$/);
     return true;
   };
 }
@@ -272,7 +276,7 @@ test('a resume grant for another repository refuses before attaching to its repe
   console.log = (...parts) => lines.push(parts.join(' '));
   try {
     await assert.rejects(gate(tree, 'resume', A), (error) => {
-      refusal(/a grant cannot move an order to another repository/)(error);
+      refusal(/a grant cannot move an order to another repository/, 2, 'usage')(error);
       assert.ok(error.message.includes(`the named run ${JSON.stringify(A)} was recorded for repository ${JSON.stringify(runRepo)}`));
       assert.ok(error.message.includes(`but this task file belongs to ${JSON.stringify(tree.repoRoot)}`));
       assert.match(error.message, /run the order from a task file in the run's repository or use a new order id/);

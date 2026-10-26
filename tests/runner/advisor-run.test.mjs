@@ -222,7 +222,8 @@ test('advise refuses for free when the continued run is not an OK scope run', ()
   assert.equal(output.status, 1, output.stdout || output.error?.message);
   assert.equal(output.stdout, '');
   assert.match(output.stderr, /phase must be 'scope'/);
-  assert.match(output.stderr, /The run folder was not created; quota was not spent\.\s*$/);
+  assert.match(output.stderr.trimEnd().split(/\r?\n/).at(-2), /The run folder was not created; quota was not spent\.$/);
+  assertAction(output, 'grant-decision');
   assert.deepEqual(fs.readdirSync(tree.runs), before);
 });
 

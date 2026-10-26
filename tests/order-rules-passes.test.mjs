@@ -237,11 +237,11 @@ test('pass gates preserve scope and retry refusals, repeated names and successfu
   assert.equal(empty.continuationGrant, null);
   assert.equal(empty.advisorTask, null);
   await assert.rejects(passGate({ ...input, opts: { ...input.opts, agent: 'codex-advisor', phase: 'scope', continue: true } }),
-    usage(messages[0][2] + ' ' + suffix));
+    usage(messages[0][2] + ' ' + suffix + '\n' + orderDiagnosticMessage('next-action', { variant: 'grant-decision' })));
   writeRun(root, { repo: root, slug: 'task', order_id: 'o', state: 'finished', agent: 'codex-advisor', phase: 'scope' },
     { status: 'FAIL', reason: 'capacity' });
   await assert.rejects(passGate({ ...input, opts: { ...input.opts, continue: true },
-    header: { grant: { kind: 'retry', run: 'B', reason: 'capacity' } } }), usage(messages[1][2] + ' ' + suffix));
+    header: { grant: { kind: 'retry', run: 'B', reason: 'capacity' } } }), usage(messages[1][2] + ' ' + suffix + '\n' + orderDiagnosticMessage('next-action', { variant: 'grant-decision' })));
   for (const slug of ['task', 'renamed']) {
     const lead = slug === 'task' ? 'runs for task “task” already exist in this repository' :
       'this task already ran in this repository under the name “task”';
@@ -250,7 +250,7 @@ test('pass gates preserve scope and retry refusals, repeated names and successfu
       'A repeat run is allowed, but the orchestrator decides, not the runner: it read the ' +
       'previous response and knows whether work remains. Add `continue:` if you are finishing ' +
       'the same task; changing `slug:` with the same task text does not stop it being a repeat. ' +
-      'Ready grant line: continue: B — capacity. Ready retry line: retry: B — capacity (repeats that pass under order o). ' + suffix));
+      'Ready grant line: continue: B — capacity. Ready retry line: retry: B — capacity (repeats that pass under order o). ' + suffix + '\n' + orderDiagnosticMessage('next-action', { variant: 'grant-decision' })));
   }
   assert.equal(preflightRefusal({ agent: 'codex-build', projectRunsRoot: root, repoRoot: root }), null);
   assert.equal(preflightRefusal({ agent: 'codex-advisor', projectRunsRoot: root, repoRoot: root }), null);

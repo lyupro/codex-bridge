@@ -36,7 +36,7 @@ export async function passGate({ opts, taskText, header, projectRunsRoot, repoRo
   if (opts.agent === 'codex-advisor' && opts.phase === 'scope' && opts.continue && grant?.kind !== 'retry' && grant?.kind !== 'resume') {
     die([orderRuleMessage('advisor-scope-continuation', {
       phaseLabel: orderInputName('phase'), continueLabel: orderInputName('continue'),
-    }), orderDiagnosticMessage('run-not-created')].join(' '));
+    }), orderDiagnosticMessage('run-not-created')].join(' '), { action: 'grant-decision' });
   }
   let continuationGrant = grant?.kind === 'continue' ? grant : null;
   const retryOf = grant?.kind === 'retry' ? grant.run : null;
@@ -51,7 +51,7 @@ export async function passGate({ opts, taskText, header, projectRunsRoot, repoRo
         normalizeRepoPath(namedStatus.repo) !== normalizeRepoPath(repoRoot)) {
       die([orderRuleMessage('repository-source', {
         violation: 'grant-mismatch', run: grant.run, runRepo: namedStatus.repo, taskFileRoot: repoRoot,
-      }), orderDiagnosticMessage('run-not-created')].join(' '));
+      }), orderDiagnosticMessage('run-not-created')].join(' '), { action: 'usage' });
     }
   }
   const attachExistingRun = () => attach({
@@ -70,11 +70,11 @@ export async function passGate({ opts, taskText, header, projectRunsRoot, repoRo
   // attach() after this gate. Repeated continuation calls attach first because their grant is spent.
   if (grant?.kind === 'resume') {
     const resumeError = resumeRefusal(projectRunsRoot, startedChain, opts.orderId, grant, { agent: opts.agent, phase: opts.phase });
-    if (resumeError) die(resumeError);
+    if (resumeError) die(resumeError, { action: 'grant-decision' });
     const frozen = readResumeInputs(path.join(projectRunsRoot, grant.run));
     if (!frozen.ok) die([orderRuleMessage('resume-grant-usable', {
       violation: 'inputs-unusable', run: grant.run, reasons: frozen.reasons,
-    }), orderDiagnosticMessage('run-not-created')].join(' '));
+    }), orderDiagnosticMessage('run-not-created')].join(' '), { action: 'grant-decision' });
     resumeInputs = frozen.inputs;
     const namedStatus = readJson(path.join(projectRunsRoot, grant.run, 'status.json'));
     // Plan_80 E13: a resume replays the named pass against its recorded continuation base.
@@ -82,14 +82,14 @@ export async function passGate({ opts, taskText, header, projectRunsRoot, repoRo
       ? { run: namedStatus.continued_from, reason: grant.reason } : null;
   } else if (grant?.kind === 'retry') {
     const retryError = retryRefusal(projectRunsRoot, startedChain, opts.continue, opts.orderId, grant);
-    if (retryError) die(retryError);
+    if (retryError) die(retryError, { action: 'grant-decision' });
     const namedStatus = readJson(path.join(projectRunsRoot, grant.run, 'status.json'));
     // A run written before phases existed has none; for every agent but the advisor that is 'default'.
     const phaseOf = (value) => String(value ?? '').trim() || 'default';
     if (namedStatus.agent !== opts.agent || phaseOf(namedStatus.phase) !== phaseOf(opts.phase)) {
       die([orderRuleMessage('retry-pass-identity', {
         agent: namedStatus.agent, phase: namedStatus.phase,
-      }), orderDiagnosticMessage('run-not-created')].join(' '));
+      }), orderDiagnosticMessage('run-not-created')].join(' '), { action: 'grant-decision' });
     }
     // Plan_75 D4, TradeForge capacity incident: retry advise against its original successful scope.
     continuationGrant = String(namedStatus.continued_from ?? '').trim()
@@ -102,12 +102,12 @@ export async function passGate({ opts, taskText, header, projectRunsRoot, repoRo
       opts.orderId,
       continuationGrant,
     );
-    if (continuationError) die(continuationError);
+    if (continuationError) die(continuationError, { action: 'grant-decision' });
   }
   // Plan_59 D14: the grant is valid by now; an advise pass may continue only an OK scope run.
   const scopeRun = continuationGrant &&
     scopeRunRefusal({ agent: opts.agent, phase: opts.phase, runsRoot: projectRunsRoot, grantRun: continuationGrant.run });
-  if (scopeRun) die(scopeRun, EXIT.FAIL);
+  if (scopeRun) die(scopeRun, { action: 'grant-decision', exit: EXIT.FAIL });
   // Plan_59 D22: the advise snapshot is read before the folder exists, so a broken scope result refuses for free.
   const advisorTask = !resumedFrom && opts.agent === 'codex-advisor' ? advisorTaskOrRefuse({ taskText, phase: opts.phase, runsRoot: projectRunsRoot, grantRun: continuationGrant?.run }) : null;
 
@@ -126,7 +126,7 @@ export async function passGate({ opts, taskText, header, projectRunsRoot, repoRo
       continueLabel: orderInputName('continue'), slugLabel: orderInputName('slug'),
       slug: renamed ? lastSlug : opts.slug, count: startedChain.length, latest: path.join(projectRunsRoot, last),
       hints: readyGrantLines(projectRunsRoot, startedChain),
-    }), orderDiagnosticMessage('run-not-created')].join(' '));
+    }), orderDiagnosticMessage('run-not-created')].join(' '), { action: 'grant-decision' });
   }
 
   return { taskHash, chain, startedChain, continuationGrant, advisorTask, retryOf, resumedFrom, resumeInputs };

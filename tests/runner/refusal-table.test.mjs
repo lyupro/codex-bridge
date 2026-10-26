@@ -73,7 +73,7 @@ const REFUSALS = [
     name: 'a refused continuation',
     side: 'before',
     file: 'pass-gate.mjs',
-    marker: 'if (continuationError) die(continuationError)',
+    marker: "if (continuationError) die(continuationError, { action: 'grant-decision' })",
     why: 'the chain, not the tree, is what refuses; no folder may join the chain',
   },
   {
@@ -88,7 +88,7 @@ const REFUSALS = [
     name: 'a refused resume',
     side: 'before',
     file: 'pass-gate.mjs',
-    marker: 'if (resumeError) die(resumeError)',
+    marker: "if (resumeError) die(resumeError, { action: 'grant-decision' })",
     why: 'Plan_80 E13: a resume needs a finished, eligible, stopped run of its own order whose thread has not advanced',
   },
   {
@@ -102,7 +102,7 @@ const REFUSALS = [
     name: 'a refused retry',
     side: 'before',
     file: 'pass-gate.mjs',
-    marker: 'if (retryError) die(retryError)',
+    marker: "if (retryError) die(retryError, { action: 'grant-decision' })",
     why: 'Plan_75 D1: a same-pass retry needs a finished failed run of its own order',
   },
   {

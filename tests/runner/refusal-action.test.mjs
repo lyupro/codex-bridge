@@ -91,18 +91,18 @@ test('die requires an action in object form before printing', (t) => {
   assert.equal(printed.mock.callCount(), 0);
 });
 
-test('die numeric and omitted forms retain their exit codes and add no Action row', (t) => {
+test('die explicit action forms retain their exit codes and add one Action row', (t) => {
   const printed = t.mock.method(console, 'error', () => {});
   const message = orderDiagnosticMessage('agent-required');
   for (const exit of [EXIT.FAIL, EXIT.USAGE, EXIT.OK, undefined]) {
-    assert.throws(() => die(message, exit), (error) => {
+    assert.throws(() => die(message, { action: 'usage', exit }), (error) => {
       assert.ok(error instanceof RunnerUsageError);
-      assert.equal(error.message, message);
+      assert.equal(error.message, `${message}\n${action}`);
       assert.equal(error.exitCode, exit ?? EXIT.USAGE);
-      assert.doesNotMatch(error.message, /^Action: /m);
+      assert.deepEqual(error.message.split('\n').filter((line) => line.startsWith('Action: ')), [action]);
       return true;
     });
-    assert.deepEqual(printed.mock.calls.at(-1).arguments, [`run-codex: ${message}`]);
+    assert.deepEqual(printed.mock.calls.at(-1).arguments, [`run-codex: ${message}\n${action}`]);
   }
   assert.equal(printed.mock.callCount(), 4);
 });
@@ -118,11 +118,11 @@ test('die rejects conflicting rows and unknown variants before printing', (t) =>
   assert.equal(printed.mock.callCount(), 0);
 });
 
-test('die with no second argument preserves the legacy message and default exit', (t) => {
+test('die with an action preserves the default usage exit', (t) => {
   const printed = t.mock.method(console, 'error', () => {});
   const message = orderDiagnosticMessage('agent-required');
-  assert.throws(() => die(message), { name: 'Error', message, exitCode: EXIT.USAGE });
-  assert.deepEqual(printed.mock.calls[0].arguments, [`run-codex: ${message}`]);
+  assert.throws(() => die(message, { action: 'usage' }), { name: 'Error', message: `${message}\n${action}`, exitCode: EXIT.USAGE });
+  assert.deepEqual(printed.mock.calls[0].arguments, [`run-codex: ${message}\n${action}`]);
 });
 
 // OW-075 A3b: exercise the actual launcher call sites, including the free unsupported-platform race.

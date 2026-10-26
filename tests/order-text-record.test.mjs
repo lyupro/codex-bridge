@@ -6,6 +6,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { makeTempTree } from './temp-tree.mjs';
+import { orderDiagnosticMessage } from '../src/home/lib/order-diagnostics.mjs';
 import { inspectOutgoingRefusals } from '../scripts/run-tests.mjs';
 import { ORDER_TEXT_FAULT_EXIT, orderTextFaultDirectory } from '../src/home/lib/order-text-record.mjs';
 
@@ -41,7 +42,7 @@ if (fixture) {
     const { die, RunnerUsageError } = await import(args);
     const { recordOrderText } = await import(recorder);
     const message = fixture === 'registered' ? recordOrderText('registered refusal') : 'handwritten refusal';
-    assert.throws(() => die(message), RunnerUsageError);
+    assert.throws(() => die(message, { action: 'usage' }), RunnerUsageError);
   });
 } else {
   const passes = [
@@ -146,22 +147,23 @@ if (fixture) {
   });
 
   test('die journals before the expected refusal is caught, preserving text and exit code', () => {
+    const message = 'handwritten\n' + orderDiagnosticMessage('next-action', { variant: 'usage' });
     const { entries, result } = runCase(`
       const { die, RunnerUsageError } = await import(${JSON.stringify(args)});
-      assert.throws(() => die('handwritten', 1), (error) =>
-        error instanceof RunnerUsageError && error.message === 'handwritten' && error.exitCode === 1);
+      assert.throws(() => die('handwritten', { action: 'usage', exit: 1 }), (error) =>
+        error instanceof RunnerUsageError && error.message === ${JSON.stringify(message)} && error.exitCode === 1);
     `);
-    assert.equal(result.stderr, 'run-codex: handwritten\n');
+    assert.equal(result.stderr, `run-codex: ${message}\n`);
     assert.equal(entries.length, 1);
     assert.equal(entries[0].transport, 'die');
-    assert.equal(entries[0].message, 'handwritten');
+    assert.equal(entries[0].message, message);
   });
 
   test('refusal capture includes both callers of die and restores the host frame limit', () => {
     const { entries } = runCase(`
       const { die, RunnerUsageError } = await import(${JSON.stringify(args)});
       Error.stackTraceLimit = 1;
-      function refusalCaller() { die('handwritten'); }
+      function refusalCaller() { die('handwritten', { action: 'usage' }); }
       function admissionCaller() { refusalCaller(); }
       assert.throws(admissionCaller, RunnerUsageError);
       assert.equal(Error.stackTraceLimit, 1);
@@ -356,7 +358,7 @@ if (fixture) {
         const lines = result.stderr.split('\n').filter((line) => line.startsWith('run-tests: refusal text outside the registry: '));
         assert.equal(lines.length, 1);
         const entry = JSON.parse(lines[0].slice('run-tests: refusal text outside the registry: '.length));
-        assert.equal(entry.message, 'handwritten refusal');
+        assert.equal(entry.message, 'handwritten refusal\n' + orderDiagnosticMessage('next-action', { variant: 'usage' }));
         assert.equal(entry.transport, 'die');
       } else {
         assert.doesNotMatch(result.stderr, /refusal text outside the registry/);

@@ -1,5 +1,6 @@
 /** Plan_75 D1: the 2026-10-03 TradeForge capacity failure needs one grant for the same pass. */
 import { test } from 'node:test';
+import { orderDiagnosticMessage } from '../../src/home/lib/order-diagnostics.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -66,7 +67,11 @@ for (const mismatched of [true, false]) {
           assert.ok(error.message.includes(`but this task file belongs to ${JSON.stringify(repoRoot)}`));
           assert.match(error.message, /a grant cannot move an order to another repository/);
           assert.match(error.message, /run the order from a task file in the run's repository or use a new order id/);
-          noQuota(error.message);
+          const lines = error.message.split(/\r?\n/);
+          const row = orderDiagnosticMessage('next-action', { variant: 'usage' });
+          assert.deepEqual(lines.filter((line) => line.startsWith('Action: ')), [row]);
+          assert.equal(lines.at(-1), row);
+          assert.match(lines.at(-2), /The run folder was not created; quota was not spent\.$/);
           return true;
         });
         assert.deepEqual(lines, []);

@@ -1,5 +1,6 @@
 /** Plan_75 D1/D4: the 2026-10-03 TradeForge capacity failure must repeat its own pass. */
 import { test } from 'node:test';
+import { orderDiagnosticMessage } from '../../src/home/lib/order-diagnostics.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -13,7 +14,6 @@ const S = '2026-10-03_180000_scope';
 const A = '2026-10-03_180100_advise';
 const R = '2026-10-03_180200_retry';
 const TASK = '## Options\n- keep: Keep the boundary.\n- split: Split the boundary.\n## Paths\n- source.mjs\n';
-const NO_QUOTA = /The run folder was not created; quota was not spent\.$/;
 
 function fixture() {
   const root = makeTempTree('retry-launch-');
@@ -72,7 +72,11 @@ function refusal(message) {
   return (error) => {
     assert.equal(error.exitCode, 2);
     assert.match(error.message, message);
-    assert.match(error.message, NO_QUOTA);
+    const lines = error.message.split(/\r?\n/);
+    const row = orderDiagnosticMessage('next-action', { variant: 'grant-decision' });
+    assert.deepEqual(lines.filter((line) => line.startsWith('Action: ')), [row]);
+    assert.equal(lines.at(-1), row);
+    assert.match(lines.at(-2), /The run folder was not created; quota was not spent\.$/);
     return true;
   };
 }

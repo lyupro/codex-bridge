@@ -1,5 +1,6 @@
 /** Plan_80 E13 guard 3: resume chains preserve the pass count and the advise scope base. */
 import { test } from 'node:test';
+import { orderDiagnosticMessage } from '../../src/home/lib/order-diagnostics.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -80,7 +81,11 @@ function refuses(violation, name) {
     assert.ok(error.message.startsWith(orderRuleMessage('resume-grant-usable', {
       violation, run: name,
     })), error.message);
-    assert.match(error.message, /The run folder was not created; quota was not spent\.$/);
+    const lines = error.message.split(/\r?\n/);
+    const row = orderDiagnosticMessage('next-action', { variant: 'grant-decision' });
+    assert.deepEqual(lines.filter((line) => line.startsWith('Action: ')), [row]);
+    assert.equal(lines.at(-1), row);
+    assert.match(lines.at(-2), /The run folder was not created; quota was not spent\.$/);
     return true;
   };
 }
@@ -120,7 +125,11 @@ test('scope OK -> advise FAIL -> resume FAIL -> resume OK keeps two spent passes
     const spent = [S, A].map((name) => path.join(tree.projectRunsRoot, name)).join(', ');
     assert.ok(error.message.includes(`already spent its allowed continuation on ${spent}.`), error.message);
     assert.match(error.message, /^`continue:` is refused:/);
-    assert.match(error.message, /The run folder was not created; quota was not spent\.$/);
+    const lines = error.message.split(/\r?\n/);
+    const row = orderDiagnosticMessage('next-action', { variant: 'grant-decision' });
+    assert.deepEqual(lines.filter((line) => line.startsWith('Action: ')), [row]);
+    assert.equal(lines.at(-1), row);
+    assert.match(lines.at(-2), /The run folder was not created; quota was not spent\.$/);
     return true;
   });
   assert.deepEqual(fs.readdirSync(tree.projectRunsRoot), [S, A, R1, R2]);

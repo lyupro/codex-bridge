@@ -236,7 +236,7 @@ test('parameter and outgoing violations from a formerly pending caller are both 
     const pending = 'tests/fixtures/pending-caller.mjs';
     const directory = path.join(process.env.D6_ROOT, 'order-text-violations');
     const pendingCaller = vm.runInThisContext(
-      '(build, die) => { build("location", "unrecorded parameter"); die("unrecorded outgoing"); }',
+      '(build, die) => { build("location", "unrecorded parameter"); die("unrecorded outgoing", { action: "usage" }); }',
       { filename: 'file:///C:/fixture/' + pending });
     assert.throws(() => pendingCaller(orderRefusalAt, die), RunnerUsageError);
     const output = [];

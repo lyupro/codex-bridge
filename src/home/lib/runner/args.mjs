@@ -38,17 +38,15 @@ export function withActionRow(text, variant) {
   return body ? `${body}\n${expected}` : expected;
 }
 
-export function die(message, how = EXIT.USAGE) {
-  let exitCode = how;
-  if (typeof how === 'object' && how !== null) {
-    const { action, exit = EXIT.USAGE } = how;
-    if (action === undefined) throw new Error(orderDiagnosticMessage('next-action-variant-required'));
-    message = withActionRow(message, action);
-    exitCode = exit;
+export function die(message, how) {
+  if (typeof how !== 'object' || how === null || how.action === undefined) {
+    throw new Error(orderDiagnosticMessage('next-action-variant-required'));
   }
+  const { action, exit = EXIT.USAGE } = how;
+  message = withActionRow(message, action);
   checkOutgoingRefusal(message, 'die');
   console.error(`run-codex: ${message}`);
-  throw new RunnerUsageError(message, exitCode);
+  throw new RunnerUsageError(message, exit);
 }
 
 function resumeBodyRefusal(parsed) {
