@@ -147,6 +147,8 @@ const refusals = [
     ['recovery-budget-missing', (o) => patch(o.parentDir, 'worker.json', { recovery_policy: { budget_ms } })]),
   ['inputs-unusable', (o) => fs.writeFileSync(path.join(o.parentDir, 'schema.json'), '{'),
     { reasons: ['artifact-malformed:schema.json'] }],
+  ['inputs-unusable', (o) => patch(o.parentDir, 'worker.json', { repo: path.join(o.parentDir, 'other-repo') }),
+    { reasons: ['repo-mismatch'] }],
   ['thread-not-fresh', (o) => { o.readSession = () => ({ state: 'missing', reason: 'test' }); },
     { violation: 'thread-unreadable', values: { state: 'missing', reason: 'test' } }],
   ['thread-not-fresh', (o) => { o.readSession = () => ({ state: 'observed', last_record_at: RESERVED_AT }); },

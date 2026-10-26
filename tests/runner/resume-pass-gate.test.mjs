@@ -257,3 +257,30 @@ test('a repeated resume grant attaches before the named run becomes a not-last r
   assert.equal(lines[2], 'OK — resumed pass finished');
   assert.deepEqual(fs.readdirSync(tree.projectRunsRoot), [S, A, R]);
 });
+
+
+test('a resume grant for another repository refuses before attaching to its repeated run', async () => {
+  const tree = fixture();
+  const runRepo = path.join(tree.repoRoot, 'other-repo');
+  run(tree, A, { phase: 'advise', repo: runRepo }, {});
+  run(tree, R, { phase: 'advise', resumed_from: A }, { status: 'OK' }, {
+    'reply.txt': 'OK - must not attach\n',
+  });
+  tree.beforeWait = () => assert.fail('must not wait for another repository');
+  const lines = [];
+  const original = console.log;
+  console.log = (...parts) => lines.push(parts.join(' '));
+  try {
+    await assert.rejects(gate(tree, 'resume', A), (error) => {
+      refusal(/a grant cannot move an order to another repository/)(error);
+      assert.ok(error.message.includes(`the named run ${JSON.stringify(A)} was recorded for repository ${JSON.stringify(runRepo)}`));
+      assert.ok(error.message.includes(`but this task file belongs to ${JSON.stringify(tree.repoRoot)}`));
+      assert.match(error.message, /run the order from a task file in the run's repository or use a new order id/);
+      return true;
+    });
+  } finally {
+    console.log = original;
+  }
+  assert.deepEqual(lines, []);
+  assert.deepEqual(fs.readdirSync(tree.projectRunsRoot), [A, R]);
+});

@@ -12,6 +12,7 @@ import { die } from './args.mjs';
 import { EXIT } from './exit-codes.mjs';
 import { attach } from './attach.mjs';
 import { readResumeInputs } from './resume-inputs.mjs';
+import { normalizeRepoPath } from './project-dir.mjs';
 import { continuationRefusal, retryRefusal, resumeRefusal, readyGrantLines } from './continuation.mjs';
 import { advisorTaskOrRefuse } from './advise-carry.mjs';
 import { scopeRunRefusal } from './preflight.mjs';
@@ -43,6 +44,16 @@ export async function passGate({ opts, taskText, header, projectRunsRoot, repoRo
   let resumeInputs = null;
   const chain = chainRuns(projectRunsRoot, repoRoot, opts.slug, taskHash, opts.orderId, grant?.run);
   const startedChain = startedRuns(projectRunsRoot, chain);
+  // OW-073: the attach shortcut must not hand back another repository's verdict.
+  if (grant) {
+    const namedStatus = readJson(path.join(projectRunsRoot, grant.run, 'status.json'));
+    if (typeof namedStatus?.repo === 'string' && namedStatus.repo.trim() &&
+        normalizeRepoPath(namedStatus.repo) !== normalizeRepoPath(repoRoot)) {
+      die([orderRuleMessage('repository-source', {
+        violation: 'grant-mismatch', run: grant.run, runRepo: namedStatus.repo, taskFileRoot: repoRoot,
+      }), orderDiagnosticMessage('run-not-created')].join(' '));
+    }
+  }
   const attachExistingRun = () => attach({
     runsRoot: projectRunsRoot, repo: repoRoot, slug: opts.slug, taskHash, orderId: opts.orderId, chain,
     grantRun: continuationGrant?.run, isContinue: opts.continue, noWait: opts.noWait,

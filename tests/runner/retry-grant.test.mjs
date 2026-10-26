@@ -11,6 +11,7 @@ import {
 } from '../../src/home/lib/order-schema.mjs';
 import { splitGrantValue } from '../../src/home/lib/order-values.mjs';
 import { parseTaskHeader } from '../../src/home/lib/task-header.mjs';
+import { passGate } from '../../src/home/lib/runner/pass-gate.mjs';
 import {
   continuationRefusal, retryRefusal, readyGrantLines,
 } from '../../src/home/lib/runner/continuation.mjs';
@@ -37,6 +38,49 @@ const grant = (kind, runName) => parseTaskHeader(orderTaskText({
 const dead = () => false;
 const unexpectedLiveness = () => assert.fail('an earlier retry gate must refuse before liveness');
 const noQuota = (message) => assert.match(message, /The run folder was not created; quota was not spent\.$/);
+
+for (const mismatched of [true, false]) {
+  test(`retry grant ${mismatched ? 'refuses another repository before attach' : 'still attaches for the same repository'}`, async (t) => {
+    const root = fixture(t);
+    const repoRoot = path.join(root, 'repo');
+    const runRepo = mismatched ? path.join(root, 'other-repo') : repoRoot;
+    const identity = { ...finished, repo: repoRoot, slug: 'retry-order', agent: 'codex-scout', phase: 'default' };
+    run(root, 'A', { ...identity, repo: runRepo, started_at: '2026-10-03T18:00:00.000Z' }, { status: 'FAIL' });
+    const repeated = run(root, 'R', {
+      ...identity, retry_of: 'A', started_at: '2026-10-03T18:01:00.000Z',
+    }, { status: 'OK' });
+    fs.writeFileSync(path.join(repeated, 'reply.txt'), 'OK - retry finished\n');
+    const lines = [];
+    const original = console.log;
+    console.log = (...parts) => lines.push(parts.join(' '));
+    try {
+      const result = passGate({
+        opts: { agent: identity.agent, phase: identity.phase, slug: identity.slug, orderId: 'o', continue: true },
+        header: { grant: grant('retry', 'A') }, taskText: 'Repeat the failed pass.',
+        projectRunsRoot: root, repoRoot, beforeWait: () => assert.fail('must not wait'),
+      });
+      if (mismatched) {
+        await assert.rejects(result, (error) => {
+          assert.equal(error.exitCode, 2);
+          assert.ok(error.message.includes(`the named run "A" was recorded for repository ${JSON.stringify(runRepo)}`));
+          assert.ok(error.message.includes(`but this task file belongs to ${JSON.stringify(repoRoot)}`));
+          assert.match(error.message, /a grant cannot move an order to another repository/);
+          assert.match(error.message, /run the order from a task file in the run's repository or use a new order id/);
+          noQuota(error.message);
+          return true;
+        });
+        assert.deepEqual(lines, []);
+      } else {
+        assert.deepEqual(await result, { exitCode: 0 });
+        assert.ok(lines.some((line) => line.startsWith(`ATTACH=${repeated}`)));
+        assert.equal(lines.at(-1), 'OK - retry finished');
+      }
+    } finally {
+      console.log = original;
+    }
+    assert.deepEqual(fs.readdirSync(root).sort(), ['A', 'R']);
+  });
+}
 
 test('retry input has the continuation shape and is inside every list with continue, right after it', () => {
   assert.deepEqual(Object.keys(RETRY_ORDER_INPUT), Object.keys(CONTINUATION_ORDER_INPUT));

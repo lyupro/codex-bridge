@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parseJsonText, readJsonFileSync } from '../json-file.mjs';
 import { readEvents } from '../meta/events.mjs';
+import { normalizeRepoPath } from './project-dir.mjs';
 
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const nonEmpty = (value) => typeof value === 'string' && value.trim().length > 0;
@@ -27,6 +28,10 @@ export function readResumeInputs(runDir) {
   try {
     const worker = readJsonFileSync(path.join(runDir, 'worker.json'));
     profile = worker?.profile;
+    // OW-073: frozen replay (resume and automatic recovery) must not mix a task from
+    // one repository with a worker order for another.
+    if (nonEmpty(worker?.repo) && nonEmpty(status?.repo) &&
+        normalizeRepoPath(worker.repo) !== normalizeRepoPath(status.repo)) reasons.push('repo-mismatch');
     if (!isObject(profile)) reasons.push('profile-missing');
   } catch {
     reasons.push('worker-order-unreadable');

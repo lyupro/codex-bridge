@@ -110,6 +110,37 @@ test('a grant alone starts continuation without a separate flag', (t) => {
   assert.equal(status.order_id, ORDER_ID);
 });
 
+test('a continuation grant for another repository refuses before attaching or launching', (t) => {
+  const root = fixture(t);
+  const repo = path.join(root, 'repo');
+  const runRepo = path.join(root, 'other-repo');
+  const runsRoot = path.join(root, 'runs');
+  fs.mkdirSync(path.join(repo, 'src'), { recursive: true });
+  fs.writeFileSync(path.join(repo, 'src', 'existing.mjs'), 'export default 1;\n');
+  const project = resolveProjectRunsDir(runsRoot, repo).dir;
+  createPriorRun(project, runRepo);
+  const repeated = path.join(project, '2026-08-10_230535_continued');
+  fs.mkdirSync(repeated);
+  fs.writeFileSync(path.join(repeated, 'status.json'), JSON.stringify({
+    state: 'finished', agent: AGENT, repo, slug: SLUG, order_id: ORDER_ID,
+    continued_from: LAST_RUN, started_at: '2026-08-10T23:05:35.000Z',
+  }));
+  fs.writeFileSync(path.join(repeated, 'meta.json'), '{"status":"OK"}\n');
+  fs.writeFileSync(path.join(repeated, 'reply.txt'), 'OK - must not attach\n');
+  const before = runFolders(project);
+  const { argv } = invocation(repo, root, { kind: 'continue', run: LAST_RUN, reason: GRANT_REASON });
+  const output = mockedRunner(argv, undefined, runsRoot, repo, true);
+
+  assert.equal(output.status, 2, output.stderr);
+  assert.equal(output.stdout, '');
+  assert.ok(output.stderr.includes(`the named run ${JSON.stringify(LAST_RUN)} was recorded for repository ${JSON.stringify(runRepo)}`));
+  assert.ok(output.stderr.includes(`but this task file belongs to ${JSON.stringify(repo)}`));
+  assert.match(output.stderr, /a grant cannot move an order to another repository/);
+  assert.match(output.stderr, /run the order from a task file in the run's repository or use a new order id/);
+  assert.match(output.stderr, /The run folder was not created; quota was not spent\.$/m);
+  assert.deepEqual(runFolders(project), before);
+});
+
 // Plan_75 D5: the old grant-after-prose layout must refuse before spending quota.
 test('a grant after prose is refused for free as misplaced metadata and names its line', (t) => {
   const root = fixture(t);

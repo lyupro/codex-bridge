@@ -56,6 +56,33 @@ function snapshot(root) {
   });
 }
 
+test('worker repository accepts platform-equivalent case and separators', async () => {
+  await withTempTree('resume-inputs-', (root) => {
+    const { runDir } = fixture(root);
+    const repo = process.platform === 'win32' ? 'c:\\FROZEN\\REPO\\' : 'C:/frozen/repo/';
+    writeJson(runDir, 'worker.json', { profile, repo });
+    assert.equal(readResumeInputs(runDir).ok, true);
+  });
+});
+
+test('worker repository differing from status refuses frozen replay', async () => {
+  await withTempTree('resume-inputs-', (root) => {
+    const { runDir } = fixture(root);
+    writeJson(runDir, 'worker.json', { profile, repo: 'C:/another/repo' });
+    expectReasons(runDir, ['repo-mismatch']);
+  });
+});
+
+for (const repo of [undefined, '', '   ']) {
+  test(`worker without a non-empty repository adds no reason (${String(repo)})`, async () => {
+    await withTempTree('resume-inputs-', (root) => {
+      const { runDir } = fixture(root);
+      writeJson(runDir, 'worker.json', { profile, repo });
+      assert.equal(readResumeInputs(runDir).ok, true);
+    });
+  });
+}
+
 // Plan_80 E13/O3: replay includes the frozen prompt and scope, never today's reconstructed order.
 test('complete advisor advise run returns every frozen field and exact original bytes', async () => {
   await withTempTree('resume-inputs-', (root) => {

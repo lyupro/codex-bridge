@@ -75,11 +75,11 @@ export const RULES = Object.freeze({
     },
   }),
   'repository-source': Object.freeze({
-    data: Object.freeze(['violation', 'taskFile', 'taskFileRoot', 'labelRepo', 'error', 'context', 'label']),
+    data: Object.freeze(['violation', 'taskFile', 'taskFileRoot', 'labelRepo', 'error', 'context', 'label', 'run', 'runRepo']),
     topic: 'order',
     rule: 'The repository is the git worktree that owns the task file; a repository label must name that same ' +
       'worktree, and stdin or a task file outside git requires the label.',
-    message: ({ violation, taskFile, taskFileRoot, labelRepo, error, context, label }) => {
+    message: ({ violation, taskFile, taskFileRoot, labelRepo, error, context, label, run, runRepo }) => {
       let reason;
       if (violation === 'mismatch') {
         reason = `task file worktree ${JSON.stringify(taskFileRoot)} does not match repository label ` +
@@ -88,6 +88,10 @@ export const RULES = Object.freeze({
         reason = `${JSON.stringify(taskFile ?? 'stdin')} requires a repository label; add repository: <absolute path>.`;
       } else if (violation === 'discovery-failed') {
         reason = `repository discovery failed: ${JSON.stringify(error)}.`;
+      } else if (violation === 'grant-mismatch') {
+        reason = `the named run ${JSON.stringify(run)} was recorded for repository ${JSON.stringify(runRepo)}, ` +
+          `but this task file belongs to ${JSON.stringify(taskFileRoot)}; a grant cannot move an order to another ` +
+          "repository — run the order from a task file in the run's repository or use a new order id.";
       } else {
         throw new Error(`unknown repository-source violation: ${violation}`);
       }
