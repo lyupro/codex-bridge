@@ -76,7 +76,7 @@ test('the order gate denies unsafe header values and passes clean header values'
   const taskFile = path.join(root, 'task-plan-42.md');
   const call = `task file: ${taskFile}`;
   const header = 'order id: plan-42-build\n';
-  await fs.writeFile(taskFile, `${header}scope: src/**;tests/**\n\n# Task\nVerify the order.\n`);
+  await fs.writeFile(taskFile, `${header}repository: ${root}\nscope: src/**;tests/**\n\n# Task\nVerify the order.\n`);
   const denied = runGate(root, call);
   assert.equal(denied.status, 0, denied.stderr);
   const decision = JSON.parse(denied.stdout).hookSpecificOutput;
@@ -85,7 +85,7 @@ test('the order gate denies unsafe header values and passes clean header values'
   assert.match(decision.permissionDecisionReason, /";"/);
   assert.match(decision.permissionDecisionReason, /put free text in the task file/);
 
-  await fs.writeFile(taskFile, `${header}scope: src/**,tests/**\n\n# Task\nVerify the order.\n`);
+  await fs.writeFile(taskFile, `${header}repository: ${root}\nscope: src/**,tests/**\n\n# Task\nVerify the order.\n`);
   const passed = runGate(root, call);
   assert.equal(passed.status, 0);
   assert.equal(passed.stdout, '');

@@ -63,6 +63,13 @@ const REFUSALS = [
     why: 'the repository has to be returned to its branch first, by the operator',
   },
   {
+    name: 'a grant naming another repository run',
+    side: 'before',
+    file: 'pass-gate.mjs',
+    marker: "violation: 'grant-mismatch'",
+    why: "OW-073: a grant naming another repository's run must refuse before attach can return that run's verdict",
+  },
+  {
     name: 'a refused continuation',
     side: 'before',
     file: 'pass-gate.mjs',
