@@ -45,6 +45,14 @@ here. Nothing was reworded on the way out.
   into `~/.claude`, a foreign repository, left thousands of uncommitted files there, and a
   session-close gate listed each one; `src/claude/commands/usage.md` had kept its own copy of the root
   rule and would have counted the old folder after the move.
+- **An order's repository has one resolver, `resolveOrderRepository()`** in
+  `src/home/lib/runner/order-repository.mjs` (OW-073). The git worktree that owns the task file
+  decides; `repository:` is optional and must name that same worktree; a task file outside git or
+  stdin needs the label. Task input, grants and the order gate all ask it; neither the dispatcher
+  shell's cwd nor the hook's `input.cwd` chooses a target. Why: `order-options.mjs` fell back to
+  the shell's cwd, so a stray `cd` sent read-only roles into a foreign repository (VaultForge
+  2026-09-25, TradeForge 2026-10-25) and could let a build edit one.
+  `tests/order-target-cwd-guard.test.mjs` fails on a new cwd read in the order path.
 - **Model ids live only in `config.json`.** No model literal belongs in `.mjs` code.
 - **A dispatcher's model is compared by family against the installed contract, never against an id table**
   (Plan_67 D5, D10). `src/home/lib/model-family.mjs` parses the family from the id's structure, so a new model release
@@ -76,10 +84,12 @@ here. Nothing was reworded on the way out.
   anything else that has to recognise a call read it from there. Two independent lists drift
   silently — exactly how the installer and test hook lists had already drifted before Plan_19.
 - **Windows paths are compared normalized** (forward slashes, no trailing slash, case-insensitive)
-  and symlinks are deliberately not resolved: `realpath` returns `\\?\` and UNC forms. The single
-  exception is `cli/invoked-directly.mjs`, which resolves both sides: there the question is whether
+  and symlinks are deliberately not resolved: `realpath` returns `\\?\` and UNC forms. Two
+  exceptions. `cli/invoked-directly.mjs` resolves both sides: there the question is whether
   two paths are the same file, not what a path is, and comparing them as written let `npm i -g .`
-  silence every guard.
+  silence every guard. The order-repository resolver resolves the task file's own symlink with
+  `fs.realpathSync` (the JS implementation, never `.native`): the question is which worktree owns
+  the file; the roots it finds are then compared normalized.
 - **The shipped agents start a run through `codex-bridge run`, on ONE line, and never by path.** A
   host matches permission rules against the beginning of the final command line, so an interpreter,
   an absolute path or a line continuation makes the call unmatchable and every delegation stops on a
