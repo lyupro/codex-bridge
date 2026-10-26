@@ -145,6 +145,7 @@ test('failed replies report events and stderr sizes plus the read command', () =
   assert.equal(reply, [
     'FAIL — panic: failed before result',
     'Artifacts: events.jsonl 0 B · stderr.log 28 B · result.json empty or missing · exit=1',
+    'Action: the run left no usable result; read the log and git status before deciding; repeat only through a grant this reply offers or the operator approves, never take over the task yourself',
     'Worktree: no new changes',
     'Situation: evidence-unknown · silence=unknown · threshold=unconfigured · command=unknown',
     'Continuation: automatic blocked (recovery-policy-missing, writer-role-not-approved, thread-unavailable, session-evidence-not-observed, command-evidence-unknown, threshold-unconfigured, process-tree-stop-unverified) · grant blocked (writer-role-not-approved, stop-record-missing, thread-unavailable, session-evidence-not-observed, process-tree-stop-unverified)',

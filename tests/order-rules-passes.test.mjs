@@ -215,7 +215,9 @@ test('pending advisor, signed-out and retired-path producers are forwarded uncha
   }), {
     unavailable: true,
     text: 'UNAVAILABLE — Codex is not available (signed out); hand the task to the next executor, do not retry\n' +
-      'Signal: Not logged in\nOperator check: codex --version; codex login status (sign in with codex login)\n' + suffix,
+      'Signal: Not logged in\n' +
+      'Action: Codex is signed out on this host; do not retry this bridge, hand the order to the next executor and ask the operator to run codex login\n' +
+      'Operator check: codex --version; codex login status (sign in with codex login)\n' + suffix,
   });
   const advice = path.join(resolution.retired[0].root, 'B');
   const { retiredPathRefusal } = await import('../src/home/lib/runner/runs-root.mjs');

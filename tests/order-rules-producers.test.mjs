@@ -62,6 +62,7 @@ test('UNAVAILABLE rows retain exact handoff wording and signal formatting in the
   assert.deepEqual(rows, [
     'UNAVAILABLE — Codex is not available (signed out); hand the task to the next executor, do not retry',
     'Signal: codex login status: Not logged in',
+    'Action: Codex is signed out on this host; do not retry this bridge, hand the order to the next executor and ask the operator to run codex login',
     'Operator check: codex --version; codex login status (sign in with codex login)',
   ]);
   assert.equal(unavailableRows()[1], 'Signal: ');

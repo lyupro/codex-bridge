@@ -24,6 +24,7 @@ test('UNAVAILABLE rows give the shared refusal signal and operator check', () =>
     'UNAVAILABLE — Codex is not available (signed out); ' +
       'hand the task to the next executor, do not retry',
     'Signal: codex login status: Not logged in',
+    'Action: Codex is signed out on this host; do not retry this bridge, hand the order to the next executor and ask the operator to run codex login',
     'Operator check: codex --version; codex login status (sign in with codex login)',
   ]);
 });
@@ -51,7 +52,7 @@ test('post-start UNAVAILABLE appends the log and mirrors LIMIT worktree rows for
   const meta = { reason: 'Codex missing' };
   for (const agent of ['codex-build', 'codex-scout', 'codex-review', 'codex-advisor']) {
     const ctx = { agent, runDir: 'tests/meta' };
-    const suffix = limitReply(ctx, meta).slice(2);
+    const suffix = limitReply(ctx, meta).slice(3);
     assert.deepEqual(unavailableReply(ctx, meta), [...unavailableRows(meta.reason), ...suffix]);
     assert.equal(suffix.some((row) => row.startsWith('Worktree: ')), agent === 'codex-build');
     assert.equal(suffix.at(-1), 'Log: codex-bridge read tests/meta');

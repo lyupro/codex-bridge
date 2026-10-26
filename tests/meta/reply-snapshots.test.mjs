@@ -81,6 +81,7 @@ test('LIMIT reply snapshot', () => {
   snapshot('codex-build', { events: [{ type: 'error', message: 'quota exhausted' }] }, 1, 'LIMIT',
     'LIMIT — ChatGPT quota exhausted, work not completed\n'
     + 'Signal: quota exhausted\n'
+    + 'Action: the ChatGPT quota window is spent; do not retry or resume through this bridge, hand the order to the next executor; for a build, check the Worktree row first\n'
     + 'Worktree: no new changes\n'
     + 'Log: codex-bridge read <run>');
 });
@@ -90,6 +91,7 @@ test('UNAVAILABLE reply snapshot', () => {
     'unexpected status 401 Unauthorized: Missing bearer or basic authentication in header' } }] }, 1, 'UNAVAILABLE',
     'UNAVAILABLE — Codex is not available (signed out); hand the task to the next executor, do not retry\n'
     + 'Signal: unexpected status 401 Unauthorized: Missing bearer or basic authentication in header\n'
+    + 'Action: Codex is signed out on this host; do not retry this bridge, hand the order to the next executor and ask the operator to run codex login\n'
     + 'Operator check: codex --version; codex login status (sign in with codex login)\n'
     + 'Worktree: no new changes\n'
     + 'Log: codex-bridge read <run>');
@@ -99,6 +101,7 @@ test('FAIL with a usable result reply snapshot', () => {
   snapshot('codex-build', { result: buildResult([], { verify_passed: false }) }, 0, 'FAIL',
     'FAIL — verification “npm test” failed; changes remain in the tree\n'
     + 'Artifacts: events.jsonl 252 B · stderr.log 0 B · result.json filled · exit=0\n'
+    + 'Action: the run returned a result that did not pass; read the report and git status before deciding; a repeat of this pass needs your retry: grant, the next pass your continue: grant\n'
     + 'Worktree: no new changes\n'
     + 'Log: codex-bridge read <run>');
 });
@@ -107,6 +110,7 @@ test('FAIL without a result reply snapshot', () => {
   snapshot('codex-build', { stderr: 'panic: failed before result\n' }, 1, 'FAIL',
     'FAIL — panic: failed before result\n'
     + 'Artifacts: events.jsonl 252 B · stderr.log 28 B · result.json empty or missing · exit=1\n'
+    + 'Action: the run left no usable result; read the log and git status before deciding; repeat only through a grant this reply offers or the operator approves, never take over the task yourself\n'
     + 'Worktree: no new changes\n'
     + 'Situation: evidence-unknown · silence=unknown · threshold=unconfigured · command=unknown\n'
     + 'Continuation: automatic blocked (recovery-policy-missing, writer-role-not-approved, session-evidence-not-observed, command-evidence-unknown, threshold-unconfigured, process-tree-stop-unverified) · grant blocked (writer-role-not-approved, stop-record-missing, session-evidence-not-observed, process-tree-stop-unverified)\n'

@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { orderDiagnosticMessage } from '../../src/home/lib/order-diagnostics.mjs';
 import { codexAvailabilityRefusal } from '../../src/home/lib/runner/preflight.mjs';
 
 const quotaRow = 'The run folder was not created; quota was not spent.';
@@ -16,10 +17,11 @@ for (const state of ['logged-out']) {
     const refusal = await codexAvailabilityRefusal({ probe: async () => ({ state, detail }) });
     assert.equal(refusal.unavailable, true);
     const rows = refusal.text.split('\n');
-    assert.equal(rows.length, 4);
+    assert.equal(rows.length, 5);
     assert.ok(rows[0].startsWith('UNAVAILABLE — '));
     assert.equal(rows[1], `Signal: ${detail}`);
-    assert.equal(rows[2], 'Operator check: codex --version; codex login status (sign in with codex login)');
+    assert.equal(rows[2], orderDiagnosticMessage('next-action', { variant: 'unavailable' }));
+    assert.equal(rows[3], 'Operator check: codex --version; codex login status (sign in with codex login)');
     assert.equal(rows.at(-1), quotaRow);
   });
 }

@@ -147,7 +147,7 @@ test('a present situation requires its stored assessments instead of supplying s
   assert.throws(() => stopRows({ situation: storedMeta().situation }), TypeError);
 });
 
-test('an archived FAIL reply without assessments stays byte-for-byte unchanged', () => {
+test('an archived FAIL reply without assessments adds only its Action row', () => {
   const dir = makeRun();
   const rows = failReply({ runDir: dir, agent: 'codex-build', resultPath: path.join(dir, 'result.json') }, {
     reason: 'result is empty, exit=1', events_bytes: 0, stderr_bytes: 0, result_ok: false, exit: 1,
@@ -155,6 +155,7 @@ test('an archived FAIL reply without assessments stays byte-for-byte unchanged',
   assert.equal(rows.join('\n'), [
     'FAIL — result is empty, exit=1',
     'Artifacts: events.jsonl 0 B · stderr.log 0 B · result.json empty or missing · exit=1',
+    'Action: the run left no usable result; read the log and git status before deciding; repeat only through a grant this reply offers or the operator approves, never take over the task yourself',
     'Worktree: no new changes',
     `Log: codex-bridge read ${dir}`,
   ].join('\n'));
@@ -169,6 +170,7 @@ test('a usable-result FAIL does not access or render stop assessments', () => {
   assert.deepEqual(failReply({ runDir: dir, agent: 'codex-advisor', resultPath: path.join(dir, 'result.json') }, meta), [
     'FAIL — verification failed',
     'Artifacts: events.jsonl 0 B · stderr.log 0 B · result.json filled · exit=1',
+    'Action: the run returned a result that did not pass; read the report and git status before deciding; a repeat of this pass needs your retry: grant, the next pass your continue: grant',
     `Log: codex-bridge read ${dir}`,
   ]);
 });
@@ -185,6 +187,7 @@ for (const agent of ['codex-build', 'codex-advisor']) {
     assert.equal(reply, [
       'FAIL — panic: failed before result',
       'Artifacts: events.jsonl 0 B · stderr.log 28 B · result.json empty or missing · exit=1',
+      'Action: the run left no usable result; read the log and git status before deciding; repeat only through a grant this reply offers or the operator approves, never take over the task yourself',
       ...(agent === 'codex-build' ? ['Worktree: no new changes'] : []),
       'Situation: evidence-unknown · silence=unknown · threshold=unconfigured · command=unknown',
       continuation,

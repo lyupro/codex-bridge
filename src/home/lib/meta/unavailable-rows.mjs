@@ -6,6 +6,7 @@ export function unavailableRows(signal) {
   return [
     orderDiagnosticMessage('codex-unavailable-handoff', { variant: 'handoff' }),
     orderDiagnosticMessage('codex-unavailable-handoff', { variant: 'signal', signal: line(signal, 170) }),
+    orderDiagnosticMessage('next-action', { variant: 'unavailable' }),
     orderDiagnosticMessage('codex-unavailable-handoff', { variant: 'operator-check' }),
   ];
 }

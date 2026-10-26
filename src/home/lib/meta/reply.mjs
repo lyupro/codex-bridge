@@ -197,6 +197,7 @@ export function failReply(ctx, meta) {
   return [
     `FAIL — ${line(meta.reason, 170)}`,
     `Artifacts: events.jsonl ${meta.events_bytes} B · stderr.log ${meta.stderr_bytes} B · ${path.basename(ctx.resultPath)} ${meta.result_ok ? 'filled' : 'empty or missing'} · exit=${meta.exit}`,
+    orderDiagnosticMessage('next-action', { variant: meta.result_ok ? 'fail-result' : 'fail-no-result' }),
     // A failed build says what it left behind, exactly as a LIMIT does. "The work was not
     // done" is not "the tree is clean": a run can write half a change and then declare fail,
     // and the orchestrator has to know whether there is something to revert before it decides
@@ -228,6 +229,7 @@ export function limitReply(ctx, meta) {
   const rows = [
     'LIMIT — ChatGPT quota exhausted, work not completed',
     `Signal: ${line(meta.reason, 170)}`,
+    orderDiagnosticMessage('next-action', { variant: 'limit' }),
   ];
   if (ctx.agent === 'codex-build') {
     const { work: touched } = runChanges(ctx.runDir);

@@ -54,7 +54,7 @@ test('capacity reuses the LIMIT worktree row and cuts the signal', () => {
   assert.equal(rows[1], limitReply(ctx, meta)[1]);
   assert.ok(rows[1].length <= 'Signal: '.length + 170);
   assert.equal(rows[3], 'Worktree: no new changes');
-  assert.equal(rows[3], limitReply(ctx, meta)[2]);
+  assert.equal(rows[3], limitReply(ctx, meta)[3]);
   assert.equal(rows.at(-1), `Log: codex-bridge read ${dir}`);
   assertNoContinuation(rows);
 });
