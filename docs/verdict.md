@@ -277,6 +277,9 @@ it is addressed to the orchestrator, never an instruction to the dispatcher.
 The row is third in post-run replies, second in a runner-recorded failure (`writeFailure()`, right
 after its `FAIL — ` headline), and last in pre-start refusals. If a refusal producer supplies
 a matching row, `withActionRow()` moves it to the last position rather than duplicating it.
+Order-gate hook refusals are pre-start refusals too and carry the same last Action row
+(`usage` for every current hook refusal). Tool-guard hooks (`dispatcher-gate`, `worktree-lock`,
+`stop-guard`, and `prune-guard`) restrict tool use rather than order outcomes and are outside this contract.
 A rule-specific repair inside a refusal sentence is labelled `Fix:`. The Action row neither grants
 recovery nor overrides a ready grant line. An unknown run status fails loudly through
 `run-status-known` instead of rendering as `FAIL`.
@@ -285,7 +288,8 @@ External text, including Codex errors and model summaries, never starts a row: e
 with its own fixed label (`OK — `, `FAIL — `, `Signal: `, `Counter: `, `> ` and so on), and the
 external text inside it is flattened to one line by `line()` (`src/home/lib/meta/paths.mjs`), so it
 cannot form a standalone Action row. The guards are
-`tests/meta/action-coverage.test.mjs`, `tests/runner/die-action-guard.test.mjs`, and
+`tests/meta/action-coverage.test.mjs`, `tests/runner/die-action-guard.test.mjs` (also covering
+the order-gate hook's `deny` calls and exactly one deny emitter), and
 `tests/meta/action-literal-guard.test.mjs`.
 
 `LIMIT` does not mean partial success. For build, the short response separately reports in a `Worktree:`

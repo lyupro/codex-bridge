@@ -27,6 +27,7 @@ and the header of that file must carry `order id:` (and full `scope:` for `codex
 `codex-advisor`). A missing value or obvious placeholder (`TODO`,
 `<label>`, and so on) is rejected here, before either the subagent or Codex starts and before quota is
 spent. A real label and scope allow the call to continue.
+A gate refusal ends with the same Action row as the runner's refusal for the same cause.
 
 This is a producer-side check: the agent prompt also receives this list from the same table during
 installation, but the gate protects the caller before control passes to the dispatcher. Only an `allow`

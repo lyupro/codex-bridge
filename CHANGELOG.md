@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- Order-gate refusals lacked the Action row required by the 0.6.22 rules core, so every free
+  hook refusal sent the orchestrator to the operator. Each now ends with the `usage` row;
+  refusals inside diagnostic catches can no longer be swallowed, and a static guard covers
+  the hook's `deny` calls (OW-077).
+
 ## [0.6.22] - 2026-10-26
 
 ### Changed
