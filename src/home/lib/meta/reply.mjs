@@ -3,7 +3,7 @@
  *
  * AGENTS adds reply strategies to the shared agent registry: for each one it describes how
  * to tell the result file is filled in and which reply strategy below renders it.
- * FAIL, LIMIT and UNAVAILABLE bypass the per-agent strategy — a run that
+ * FAIL, LIMIT, UNAVAILABLE and CAPACITY bypass the per-agent strategy — a run that
  * produced nothing has nothing agent-specific left to say.
  *
  * The lines built here ARE the reply. Agents forward this text verbatim instead of
@@ -30,7 +30,7 @@ const readCommand = (runDir) => `codex-bridge read ${runDir}`;
 
 function stripVerdict(value) {
   // Run 2026-10-01_114244_plan72-r3q-live-probe-20261001 repeated OK because the model prefixed its summary.
-  return String(value ?? '').replace(/^(?:OK|FAIL|LIMIT|UNAVAILABLE)(?: — | - |: )/, '');
+  return String(value ?? '').replace(/^(?:OK|FAIL|LIMIT|UNAVAILABLE|CAPACITY)(?: — | - |: )/, '');
 }
 
 export const AGENTS = {
@@ -227,6 +227,24 @@ export function limitReply(ctx, meta) {
   const rows = [
     'LIMIT — ChatGPT quota exhausted, work not completed',
     `Signal: ${line(meta.reason, 170)}`,
+  ];
+  if (ctx.agent === 'codex-build') {
+    const { work: touched } = runChanges(ctx.runDir);
+    rows.push(
+      `Worktree: ${touched.length ? `has unfinished changes (${touched.length}), see git-after.txt` : 'no new changes'}`,
+    );
+  }
+  rows.push(`Log: ${readCommand(ctx.runDir)}`);
+  return rows;
+}
+
+// OW-074: a ready resume: continued the overloaded model's thread and lost the work again.
+// Keep grants in prose: retry: starts a fresh run that reads the role's current model.
+export function capacityReply(ctx, meta) {
+  const rows = [
+    'CAPACITY — selected model is at capacity; work not completed',
+    `Signal: ${line(meta.reason, 170)}`,
+    "Action: wait or change this role's model (/codex-bridge:model), then repeat the order once with a retry: grant; a second CAPACITY goes to the next executor",
   ];
   if (ctx.agent === 'codex-build') {
     const { work: touched } = runChanges(ctx.runDir);

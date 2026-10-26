@@ -31,7 +31,7 @@ import { readExecutionFact } from './meta/execution-fact.mjs';
 import { writeStatus } from './meta/run-state.mjs';
 import { resolveStatus } from './meta/verdict.mjs';
 import { assessStop } from './meta/stop-assessment.mjs';
-import { AGENTS, failReply, limitReply, unavailableReply, withProfileRow } from './meta/reply.mjs';
+import { AGENTS, capacityReply, failReply, limitReply, unavailableReply, withProfileRow } from './meta/reply.mjs';
 import { withLaunchRows } from './meta/launch-rows.mjs';
 
 function readRunnerVersion() {
@@ -209,7 +209,9 @@ export function renderReply(runDir, agent, meta) {
             ? limitReply(ctx, meta)
             : status === 'UNAVAILABLE'
               ? unavailableReply(ctx, meta)
-              : failReply(ctx, meta),
+              : status === 'CAPACITY'
+                ? capacityReply(ctx, meta)
+                : failReply(ctx, meta),
         runDir,
       ),
       meta,
