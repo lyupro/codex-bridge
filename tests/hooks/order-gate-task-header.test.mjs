@@ -5,7 +5,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { taskFingerprint } from '../../src/home/lib/meta/chain.mjs';
 import { parseTaskDocument } from '../../src/home/lib/runner/task-file.mjs';
-import { createStoredRun, fixture, payload, runGate, validPrompt, writeTaskFile } from './order-gate-fixtures.mjs';
+import { createStoredRun, decodeDenial, fixture, payload, runGate, validPrompt, writeTaskFile } from './order-gate-fixtures.mjs';
 
 // Plan_75 D5: the producer must hash the same header-free body as the runner.
 test('an order id may repeat the same parsed task with an advice header', async (t) => {
@@ -37,7 +37,7 @@ test('a pre-scheme owner is denied honestly when the same body has a different o
   const run = await createStoredRun(root, repo, 'pre-header-run', {
     order_id: 'old-order', task_hash: oldHash, slug: 'pre-header-run', started_at: '2026-08-15T09:01:00.000Z',
   });
-  const decision = JSON.parse(runGate(root, payload('codex-review', validPrompt(taskFile), 'Agent', repo)).stdout).hookSpecificOutput;
+  const decision = decodeDenial(runGate(root, payload('codex-review', validPrompt(taskFile), 'Agent', repo)).stdout);
   assert.equal(decision.permissionDecision, 'deny');
   assert.match(decision.permissionDecisionReason, /recorded before the task header \(hash scheme 2\), so its task cannot be compared/);
   assert.ok(decision.permissionDecisionReason.includes(`codex-bridge read "${run}"`));
@@ -49,8 +49,8 @@ test('a misplaced grant is denied before the fail-open runs-folder check', async
   const root = await fixture(t);
   const taskFile = await writeTaskFile(root, 'order id: misplaced-order',
     'Requested task\ncontinue: prior-run — finish the remaining tests\n');
-  const decision = JSON.parse(runGate(root,
-    payload('codex-review', validPrompt(taskFile), 'Agent', path.join(root, 'project'))).stdout).hookSpecificOutput;
+  const decision = decodeDenial(runGate(root,
+    payload('codex-review', validPrompt(taskFile), 'Agent', path.join(root, 'project'))).stdout);
   assert.equal(decision.permissionDecision, 'deny');
   assert.match(decision.permissionDecisionReason, /line 4: misplaced continue metadata/);
   assert.match(decision.permissionDecisionReason, /move it into the header at the top of the file/);

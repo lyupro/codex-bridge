@@ -1,12 +1,25 @@
 /** Shared fixtures for the order-gate hook tests: a temp project, stored runs, and one gate invocation. */
 import fs from 'node:fs/promises';
+import assert from 'node:assert/strict';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
+import { orderDiagnosticMessage } from '../../src/home/lib/order-diagnostics.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const GATE = path.join(ROOT, 'src', 'home', 'hooks', 'order-gate.mjs');
+
+export function decodeDenial(stdout) {
+  const decision = JSON.parse(stdout).hookSpecificOutput;
+  assert.equal(decision.permissionDecision, 'deny');
+  const row = orderDiagnosticMessage('next-action', { variant: 'usage' });
+  const lines = decision.permissionDecisionReason.split('\n');
+  assert.equal(lines.at(-1), row);
+  const label = row.slice(0, row.indexOf(':') + 1);
+  assert.equal(lines.slice(0, -1).some((line) => line.startsWith(label)), false);
+  return decision;
+}
 
 export function runGate(root, input, env = {}) {
   return spawnSync(process.execPath, [GATE], {

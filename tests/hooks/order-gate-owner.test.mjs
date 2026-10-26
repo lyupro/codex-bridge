@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { taskFingerprint } from '../../src/home/lib/meta/chain.mjs';
-import { createStoredRun, fixture, gitRepositories, payload, runGate, validPrompt, writeTaskFile } from './order-gate-fixtures.mjs';
+import { createStoredRun, decodeDenial, fixture, gitRepositories, payload, runGate, validPrompt, writeTaskFile } from './order-gate-fixtures.mjs';
 
 test('a conditional continuation grant is not an order-gate requirement', async (t) => {
   const root = await fixture(t);
@@ -31,7 +31,7 @@ test('an order id owned by a different task is denied before dispatch', async (t
   });
 
   const result = runGate(root, payload('codex-review', validPrompt(taskFile), 'Agent', repo));
-  const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+  const reason = decodeDenial(result.stdout).permissionDecisionReason;
   assert.match(reason, /plan-43-step-3/);
   assert.match(reason, new RegExp(run.replaceAll('\\', '\\\\')));
   assert.match(reason, /plan43-run-two/);
@@ -78,7 +78,7 @@ test('valid retry and continue grants pass a different-hash owner to the runner;
     assert.equal(result.stdout, '', extra);
   }
   const taskFile = await writeTaskFile(root, 'order id: retry-order\ncontinue: failed-run — next pass\nretry: failed-run — same pass again', 'Repeated task\n');
-  const decision = JSON.parse(runGate(root, payload('codex-review', validPrompt(taskFile), 'Agent', repo)).stdout).hookSpecificOutput;
+  const decision = decodeDenial(runGate(root, payload('codex-review', validPrompt(taskFile), 'Agent', repo)).stdout);
   assert.equal(decision.permissionDecision, 'deny');
   assert.match(decision.permissionDecisionReason, /continue.*retry|retry.*continue/);
 });
@@ -93,7 +93,7 @@ test('continue none in the call or header cannot disarm the different-task owner
     order_id: 'guarded-order', task_hash: taskFingerprint('Another task'), task_hash_scheme: 2,
     slug: 'owner-run', started_at: '2026-08-15T09:04:00.000Z',
   });
-  const decisionFor = (prompt) => JSON.parse(runGate(root, payload('codex-review', prompt, 'Agent', repo)).stdout).hookSpecificOutput;
+  const decisionFor = (prompt) => decodeDenial(runGate(root, payload('codex-review', prompt, 'Agent', repo)).stdout);
   const call = decisionFor(`${validPrompt(taskFile)}\ncontinue: none`);
   assert.equal(call.permissionDecision, 'deny');
   assert.match(call.permissionDecisionReason, /moved to the task-file header/);
@@ -122,7 +122,7 @@ test('a valid header grant cannot skip missing required order labels (OW-054)', 
     ['codex-advisor', 'order id: grant-order\nretry: prior-run — repeat the pass', 'phase'],
   ]) {
     const taskFile = await writeTaskFile(root, header, 'Current task\n');
-    const decision = JSON.parse(runGate(root, payload(agent, validPrompt(taskFile))).stdout).hookSpecificOutput;
+    const decision = decodeDenial(runGate(root, payload(agent, validPrompt(taskFile))).stdout);
     assert.equal(decision.permissionDecision, 'deny', agent);
     assert.ok(decision.permissionDecisionReason.includes(`missing required header label "${label}:"`), agent);
     assert.match(decision.permissionDecisionReason, /The run folder was not created; quota was not spent\./);
@@ -148,7 +148,7 @@ test('owner conflicts use repository A from the task file, never repository B fr
   const ownerA = await createStoredRun(root, repoA, 'a-owner', owner);
   const inA = runGate(root, input);
   assert.equal(inA.status, 0, inA.stderr);
-  const decision = JSON.parse(inA.stdout).hookSpecificOutput;
+  const decision = decodeDenial(inA.stdout);
   assert.equal(decision.permissionDecision, 'deny');
   assert.match(decision.permissionDecisionReason, /with a different task/);
   assert.ok(decision.permissionDecisionReason.includes(ownerA));
@@ -164,7 +164,7 @@ test('a repository B label on a task in A is denied before any continuation gran
       `order id: wrong-repository\nrepository: ${repoB}${grant}`, 'Requested task\n');
     const result = runGate(root, payload('codex-review', validPrompt(taskFile), 'Agent', repoB));
     assert.equal(result.status, 0, result.stderr);
-    const decision = JSON.parse(result.stdout).hookSpecificOutput;
+    const decision = decodeDenial(result.stdout);
     assert.equal(decision.permissionDecision, 'deny');
     assert.match(decision.permissionDecisionReason, /task file worktree .* does not match repository label/);
     assert.ok(decision.permissionDecisionReason.includes(JSON.stringify(repoA)));

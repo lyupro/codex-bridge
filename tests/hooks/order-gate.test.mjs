@@ -6,14 +6,14 @@ import path from 'node:path';
 import { AGENTS } from '../../src/home/lib/agents.mjs';
 import { HOOK_DEFINITIONS, SUBAGENT_TOOLS } from '../../src/home/lib/hook-definitions.mjs';
 import { taskFingerprint } from '../../src/home/lib/meta/chain.mjs';
-import { createStoredRun, fixture, payload, runGate, validPrompt, writeTaskFile } from './order-gate-fixtures.mjs';
+import { createStoredRun, decodeDenial, fixture, payload, runGate, validPrompt, writeTaskFile } from './order-gate-fixtures.mjs';
 
 test('missing header order id and scope are denied with actionable details', async (t) => {
   const root = await fixture(t);
   const taskFile = await writeTaskFile(root, 'advice: mechanical', 'Requested task\n');
   const result = runGate(root, payload('codex-build', validPrompt(taskFile)));
   assert.equal(result.status, 0);
-  const decision = JSON.parse(result.stdout).hookSpecificOutput;
+  const decision = decodeDenial(result.stdout);
   assert.equal(decision.hookEventName, 'PreToolUse');
   assert.equal(decision.permissionDecision, 'deny');
   assert.equal(decision.permissionDecisionReason.split('\n')[0], 'missing required header label "order id:"; example: order id: plan-13-build-20260804');
@@ -34,7 +34,7 @@ test('advisor requires a phase at the order gate and accepts scope as a concrete
   const prompt = validPrompt(taskFile);
   const missing = runGate(root, payload('codex-advisor', prompt));
   assert.equal(missing.status, 0);
-  const decision = JSON.parse(missing.stdout).hookSpecificOutput;
+  const decision = decodeDenial(missing.stdout);
   assert.equal(decision.permissionDecision, 'deny');
   assert.match(decision.permissionDecisionReason, /missing required header label "phase:"/);
   assert.match(decision.permissionDecisionReason, /phase: scope/);
@@ -54,7 +54,7 @@ test('every registered subagent tool name reaches the gate', async (t) => {
   for (const toolName of SUBAGENT_TOOLS) {
     const result = runGate(root, payload('codex-build', '', toolName));
     assert.equal(result.status, 0);
-    const decision = JSON.parse(result.stdout).hookSpecificOutput;
+    const decision = decodeDenial(result.stdout);
     assert.equal(decision.permissionDecision, 'deny', `${toolName} must reach the gate`);
   }
 });
@@ -72,7 +72,7 @@ test('placeholder values are denied as missing inputs', async (t) => {
   const root = await fixture(t);
   const taskFile = await writeTaskFile(root, 'order id: <order id from the orchestrator>\nscope: TODO', 'Requested task\n');
   const result = runGate(root, payload('codex-build', validPrompt(taskFile)));
-  const decision = JSON.parse(result.stdout).hookSpecificOutput;
+  const decision = decodeDenial(result.stdout);
   assert.equal(decision.permissionDecision, 'deny');
   assert.match(decision.permissionDecisionReason, /order id/);
   assert.match(decision.permissionDecisionReason, /scope/);
@@ -82,7 +82,7 @@ test('placeholder values are denied as missing inputs', async (t) => {
 test('a relative task file is denied before the dispatcher starts', async (t) => {
   const root = await fixture(t);
   const result = runGate(root, payload('codex-review', 'task file: task.md'));
-  const decision = JSON.parse(result.stdout).hookSpecificOutput;
+  const decision = decodeDenial(result.stdout);
   assert.equal(decision.permissionDecision, 'deny');
   assert.match(decision.permissionDecisionReason, /task file/);
   assert.match(decision.permissionDecisionReason, /absolute path/);
@@ -94,7 +94,7 @@ test('scope prose and its bullet are refused as call lines, with task file still
     'codex-build',
     'scope (you may create/modify ONLY these):\n- assets/vault/.claude/lib/sessions.py (new)',
   ));
-  const decision = JSON.parse(result.stdout).hookSpecificOutput;
+  const decision = decodeDenial(result.stdout);
   const reason = decision.permissionDecisionReason;
   assert.equal(decision.permissionDecision, 'deny');
   assert.match(reason, /line 1: `scope \(you may create\/modify ONLY these\):` — not a `label: value` line/);
@@ -116,7 +116,7 @@ test('non-registry and former order call lines are denied', async (t) => {
   ]) {
     const result = runGate(root, payload('codex-build', `${prompt}\n${line}`));
     assert.equal(result.status, 0, line);
-    const decision = JSON.parse(result.stdout).hookSpecificOutput;
+    const decision = decodeDenial(result.stdout);
     assert.equal(decision.permissionDecision, 'deny', line);
     assert.match(decision.permissionDecisionReason, expected, line);
   }
@@ -131,7 +131,7 @@ test('changeset is accepted for review and refused for scout', async (t) => {
   assert.equal(review.stdout, '');
   const scout = runGate(root, payload('codex-scout', prompt));
   assert.equal(scout.status, 0);
-  const decision = JSON.parse(scout.stdout).hookSpecificOutput;
+  const decision = decodeDenial(scout.stdout);
   assert.equal(decision.permissionDecision, 'deny');
   assert.match(decision.permissionDecisionReason, /label "changeset" is not accepted by codex-scout/);
 });
@@ -154,7 +154,7 @@ test('every agent accepts shared optional labels and only build accepts scope ne
     if (type === 'codex-build') {
       assert.equal(scopeNew.stdout, '', type);
     } else {
-      const decision = JSON.parse(scopeNew.stdout).hookSpecificOutput;
+      const decision = decodeDenial(scopeNew.stdout);
       assert.equal(decision.permissionDecision, 'deny', type);
       assert.match(decision.permissionDecisionReason, /label "scope new" is not accepted by/);
     }
@@ -183,7 +183,7 @@ test('unreadable task files are denied while absent runs directories pass silent
   const missingTask = path.join(root, 'missing-task.md');
   const unreadableTask = runGate(root, payload('codex-review', validPrompt(missingTask), 'Agent', repo));
   assert.equal(unreadableTask.status, 0, unreadableTask.stderr);
-  const unreadableDecision = JSON.parse(unreadableTask.stdout).hookSpecificOutput;
+  const unreadableDecision = decodeDenial(unreadableTask.stdout);
   assert.equal(unreadableDecision.permissionDecision, 'deny');
   assert.match(unreadableDecision.permissionDecisionReason, /task file from --task-file could not be read:/);
   assert.ok(unreadableDecision.permissionDecisionReason.includes(missingTask));
@@ -200,7 +200,7 @@ test('a task outside git requires an explicit repository label even with a conti
     const taskFile = await writeTaskFile(root, `order id: outside-git${grant}`, 'Requested task\n');
     const result = runGate(root, payload('codex-review', validPrompt(taskFile), 'Agent', root));
     assert.equal(result.status, 0, result.stderr);
-    const decision = JSON.parse(result.stdout).hookSpecificOutput;
+    const decision = decodeDenial(result.stdout);
     assert.equal(decision.permissionDecision, 'deny');
     assert.ok(decision.permissionDecisionReason.includes(JSON.stringify(taskFile)));
     assert.match(decision.permissionDecisionReason, /requires a repository label; add repository: <absolute path>/);
@@ -224,7 +224,7 @@ test('invalid repository paths keep repository-path refusals before a continuati
       `order id: invalid-repository\nrepository: ${label}\ncontinue: prior-run — finish the tests`, 'Requested task\n');
     const result = runGate(root, payload('codex-review', validPrompt(taskFile)));
     assert.equal(result.status, 0, result.stderr);
-    const decision = JSON.parse(result.stdout).hookSpecificOutput;
+    const decision = decodeDenial(result.stdout);
     assert.equal(decision.permissionDecision, 'deny');
     assert.match(decision.permissionDecisionReason, wording);
     assert.doesNotMatch(decision.permissionDecisionReason, /repository discovery failed/);
@@ -262,7 +262,7 @@ test('a folder without status.json does not disarm the collision check', async (
   await fs.mkdir(path.join(root, 'runs', 'project', 'half-written-run'), { recursive: true });
 
   const result = runGate(root, payload('codex-review', validPrompt(taskFile), 'Agent', repo));
-  const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+  const reason = decodeDenial(result.stdout).permissionDecisionReason;
   assert.match(reason, new RegExp(run.replaceAll('\\', '\\\\')));
 });
 
@@ -301,7 +301,7 @@ test('a dispatcher launched as a teammate is refused before it starts', async (t
     });
     const result = runGate(root, input);
     assert.equal(result.status, 0);
-    const output = JSON.parse(result.stdout).hookSpecificOutput;
+    const output = decodeDenial(result.stdout);
     assert.equal(output.permissionDecision, 'deny', field);
     assert.match(output.permissionDecisionReason, new RegExp(`passes \`${field}\``));
   }

@@ -24,6 +24,7 @@ import { parseDispatcherCall, renderCallRefusal } from '../lib/dispatcher-call.m
 import { orderFromHeader, renderOrderProblems } from '../lib/order-schema.mjs';
 import { SUBAGENT_TOOLS } from '../lib/hook-definitions.mjs';
 import { taskFingerprint } from '../lib/meta/chain.mjs';
+import { withActionRow } from '../lib/runner/args.mjs';
 import { conflictingOrderOwner, orderOwnerConflictText } from '../lib/runner/order-owner.mjs';
 import { repositoryRefusal, resolveOrderRepository } from '../lib/runner/order-repository.mjs';
 import { resolveProjectRunsDir } from '../lib/runner/project-dir.mjs';
@@ -51,7 +52,11 @@ const pass = () => {
   }
   process.exit(0);
 };
-const deny = (reason) => {
+const deny = (reason, how) => {
+  if (typeof how !== 'object' || how === null || how.action === undefined) {
+    throw new Error(orderDiagnosticMessage('next-action-variant-required'));
+  }
+  reason = withActionRow(reason, how.action);
   checkOutgoingRefusal(reason, 'deny');
   if (systemMessage) checkOutgoingRefusal(systemMessage, 'system-message');
   process.stdout.write(JSON.stringify({
@@ -85,16 +90,17 @@ if (!GUARDED.has(toolInput.subagent_type)) pass();
 const agentType = toolInput.subagent_type;
 if (Object.hasOwn(toolInput, 'model')) {
   deny([orderRuleMessage('agent-call-model', { agentType }),
-    orderDiagnosticMessage('run-not-created')].join(' '));
+    orderDiagnosticMessage('run-not-created')].join(' '), { action: 'usage' });
 }
+let problem;
 try {
   const hostVersion = await transcriptHostVersion(input.transcript_path).catch(() => null);
   const pin = readDispatcherPin({ brandRoot: BRAND_HOME.root, agentType });
-  const problem = envModelProblem({ env: process.env, hostVersion, pinFamily: pin.family });
-  if (problem) deny(problem);
+  problem = envModelProblem({ env: process.env, hostVersion, pinFamily: pin.family });
 } catch {
   // D6 (b): uncertain host/env evidence is diagnostic only; the stop observer still checks it.
 }
+if (problem) deny(problem, { action: 'usage' });
 try {
   const latch = modelLatch({ ledger: readDispatcherModel({ stateDir: BRAND_STATE_DIR }), agentType });
   if (latch.active) {
@@ -117,12 +123,12 @@ if (typeof toolInput.prompt !== 'string') pass();
 const teammateField = ['name', 'team_name']
   .find((key) => typeof toolInput[key] === 'string' && toolInput[key].trim());
 if (teammateField) {
-  deny(orderRuleMessage('agent-call-teammate', { field: teammateField, agentType: toolInput.subagent_type }));
+  deny(orderRuleMessage('agent-call-teammate', { field: teammateField, agentType: toolInput.subagent_type }), { action: 'usage' });
 }
 
 // Plan_76 D1: exact registry labels prevent the scope-new and repository-prose incident of 2026-10-04.
 const call = parseDispatcherCall(toolInput.subagent_type, toolInput.prompt);
-if (call.problems.length) deny(renderCallRefusal(toolInput.subagent_type, call.problems));
+if (call.problems.length) deny(renderCallRefusal(toolInput.subagent_type, call.problems), { action: 'usage' });
 
 const readStatus = (file) => {
   try {
@@ -139,27 +145,27 @@ try {
   rawTask = fs.readFileSync(taskFile, 'utf8');
 } catch (err) {
   // OW-073, advisor r3: a recognized call must not slip past the repository check.
-  deny(orderDiagnosticMessage('task-file-readable', { message: err.message }));
+  deny(orderDiagnosticMessage('task-file-readable', { message: err.message }), { action: 'usage' });
 }
 // Plan_75 D5, 2026-10-03 20:42: malformed metadata must not disappear into the disk-state guard.
 const parsed = parseTaskHeader(rawTask);
 const headerRefusal = taskHeaderRefusal(parsed);
-if (headerRefusal) deny(headerRefusal);
+if (headerRefusal) deny(headerRefusal, { action: 'usage' });
 const { order, problems } = orderFromHeader(toolInput.subagent_type, parsed);
 if (problems.length) {
-  deny([renderOrderProblems(toolInput.subagent_type, problems), orderDiagnosticMessage('run-not-created')].join('\n'));
+  deny([renderOrderProblems(toolInput.subagent_type, problems), orderDiagnosticMessage('run-not-created')].join('\n'), { action: 'usage' });
 }
 const orderId = order.get('order id');
 const label = order.has('repository') ? order.get('repository') : undefined;
 if (order.has('repository')) {
   const reason = repositoryRefusal(label);
-  if (reason) deny(reason);
+  if (reason) deny(reason, { action: 'usage' });
 }
 // OW-073: a grant cannot authorize a task whose repository disagrees with its label.
 const repository = resolveOrderRepository({ taskFile, label });
 if (!repository.ok) {
   if (repository.violation === 'repository-label-invalid') {
-    deny(repositoryRefusal(repository.values.label));
+    deny(repositoryRefusal(repository.values.label), { action: 'usage' });
   }
   const violations = {
     'repository-mismatch': 'mismatch',
@@ -168,7 +174,7 @@ if (!repository.ok) {
   };
   deny([orderRuleMessage('repository-source', {
     ...repository.values, violation: violations[repository.violation],
-  }), orderDiagnosticMessage('run-not-created')].join('\n'));
+  }), orderDiagnosticMessage('run-not-created')].join('\n'), { action: 'usage' });
 }
 // Plan_63 D9 / OW-054: only a validated header grant reaches the runner's grant rules.
 if (parsed.grant) pass();
@@ -180,6 +186,8 @@ try {
   pass();
 }
 
+let owner;
+let ownerDir;
 try {
   // OW-073: owner history belongs to the resolved task repository, regardless of the hook cwd.
   const projectRunsDir = resolveProjectRunsDir(runsRoot(), repository.repo, { create: false }).dir;
@@ -190,13 +198,14 @@ try {
     .filter((entry) => entry.isDirectory())
     .map((entry) => ({ run: entry.name, status: readStatus(path.join(projectRunsDir, entry.name, 'status.json')) }))
     .filter(({ status }) => status);
-  const owner = conflictingOrderOwner(runs, orderId, taskHash);
-  if (owner) {
-    const ownerDir = path.join(projectRunsDir, owner.run);
-    deny(orderOwnerConflictText(owner, ownerDir, orderId));
+  const conflict = conflictingOrderOwner(runs, orderId, taskHash);
+  if (conflict) {
+    ownerDir = path.join(projectRunsDir, conflict.run);
+    owner = conflict;
   }
 } catch {
   // The 2026-08-15 collision guard is diagnostic: uncertain disk state must not block real work.
 }
+if (owner) deny(orderOwnerConflictText(owner, ownerDir, orderId), { action: 'usage' });
 
 pass();

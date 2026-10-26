@@ -139,7 +139,8 @@ test('hook deny preserves its JSON bytes and exit code', () => {
     hookEventName: 'PreToolUse', permissionDecision: 'deny',
     permissionDecisionReason:
       "Order gate denied the Agent call because it passes `model`: a dispatcher's model is set in one place, " +
-      'its installed agent file. Call codex-build without model. The run folder was not created; quota was not spent.',
+      'its installed agent file. Call codex-build without model. The run folder was not created; quota was not spent.\n' +
+      orderDiagnosticMessage('next-action', { variant: 'usage' }),
   } }));
 });
 
@@ -218,23 +219,32 @@ test('handwritten call reason journals a parameter violation before the output i
 
 test('handwritten text sent through the hook deny journals its outgoing transport', () => {
   const gate = new URL('../src/home/hooks/order-gate.mjs', import.meta.url).href;
+  const args = new URL('../src/home/lib/runner/args.mjs', import.meta.url).href;
+  const diagnostics = new URL('../src/home/lib/order-diagnostics.mjs', import.meta.url).href;
   const entries = runProbe(`
+    import { withActionRow } from ${JSON.stringify(args)};
+    import { orderDiagnosticMessage } from ${JSON.stringify(diagnostics)};
     const source = fs.readFileSync(new URL(${JSON.stringify(gate)}), 'utf8');
     const definition = source.slice(source.indexOf('const deny ='), source.indexOf('let input;'));
     let written;
     let status;
     const deny = vm.runInNewContext(definition + 'deny;', {
-      systemMessage: undefined, checkOutgoingRefusal,
+      systemMessage: undefined, checkOutgoingRefusal, withActionRow, orderDiagnosticMessage,
       process: { stdout: { write: (text) => { written = text; } }, exit: (code) => { status = code; } },
     }, { filename: ${JSON.stringify(gate)} });
-    deny('handwritten outgoing');
+    deny('handwritten outgoing', { action: 'usage' });
     assert.equal(status, 0);
-    assert.equal(JSON.parse(written).hookSpecificOutput.permissionDecisionReason, 'handwritten outgoing');
+    assert.equal(JSON.parse(written).hookSpecificOutput.permissionDecisionReason,
+      'handwritten outgoing\\n' + orderDiagnosticMessage('next-action', { variant: 'usage' }));
+    assert.throws(() => deny('x'), { message: orderDiagnosticMessage('next-action-variant-required') });
+    for (const how of [null, 'usage', {}]) {
+      assert.throws(() => deny('x', how), { message: orderDiagnosticMessage('next-action-variant-required') });
+    }
   `);
   assert.equal(entries.length, 1);
   assert.equal(entries[0].kind, 'outgoing');
   assert.equal(entries[0].transport, 'deny');
-  assert.equal(entries[0].message, 'handwritten outgoing');
+  assert.equal(entries[0].message, 'handwritten outgoing\n' + orderDiagnosticMessage('next-action', { variant: 'usage' }));
   assert.notEqual(entries[0].pid, process.pid);
   assert.match(entries[0].stack, /checkOutgoingRefusal/);
 });

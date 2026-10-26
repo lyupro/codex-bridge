@@ -3,10 +3,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import vm from 'node:vm';
 import { spawnSync } from 'node:child_process';
 import { modelObservation, recordDispatcherModel } from '../../src/home/lib/dispatcher-model.mjs';
 import { readDispatcherPin } from '../../src/home/lib/dispatcher-pin.mjs';
-import { createStoredRun, fixture, payload, runGate, validPrompt, writeTaskFile } from './order-gate-fixtures.mjs';
+import { orderDiagnosticMessage } from '../../src/home/lib/order-diagnostics.mjs';
+import { createStoredRun, decodeDenial, fixture, payload, runGate, validPrompt, writeTaskFile } from './order-gate-fixtures.mjs';
 
 const brandRoot = (root) => path.join(root, '.lyupro', '.codex-bridge');
 const stateDir = (root) => path.join(brandRoot(root), 'state');
@@ -23,6 +25,7 @@ async function observe(root, models, hostVersion = '2.1.257', agentType = 'codex
 function output(root, input, env) {
   const result = runGate(root, JSON.stringify(input), env);
   assert.equal(result.status, 0, result.stderr);
+  if (result.stdout && JSON.parse(result.stdout).hookSpecificOutput) decodeDenial(result.stdout);
   return result.stdout ? JSON.parse(result.stdout) : null;
 }
 
@@ -50,6 +53,30 @@ async function installPin(root) {
   assert.equal(pin.family, 'haiku', JSON.stringify(pin));
 }
 
+// OW-077 B1: diagnostic uncertainty may pass, but a broken refusal formatter must escape.
+test('diagnostic catches cannot swallow refusal formatter errors', async () => {
+  const source = await fs.readFile(new URL('../../src/home/hooks/order-gate.mjs', import.meta.url), 'utf8');
+  const definition = source.slice(source.indexOf('const deny ='), source.indexOf('let input;'));
+  const failure = new Error('refusal formatter failed');
+  const blocks = [
+    source.slice(source.indexOf('let problem;'), source.indexOf('try {\n  const latch')),
+    source.slice(source.indexOf('let owner;'), source.lastIndexOf('\npass();')),
+  ];
+  for (const block of blocks) {
+    await assert.rejects(vm.runInNewContext(`(async () => { ${definition}\n${block} })()`, {
+      withActionRow: () => { throw failure; }, orderDiagnosticMessage,
+      checkOutgoingRefusal: () => assert.fail('formatter must run before the outgoing check'),
+      systemMessage: undefined, process: { env: {} }, input: {}, agentType: 'codex-build',
+      transcriptHostVersion: async () => null, readDispatcherPin: () => ({ family: 'haiku' }),
+      BRAND_HOME: { root: 'home' }, envModelProblem: () => 'environment refusal',
+      resolveProjectRunsDir: () => ({ dir: 'runs' }), runsRoot: () => 'runs', repository: { repo: 'repo' },
+      fs: { readdirSync: () => [] }, path, readStatus: () => null,
+      conflictingOrderOwner: () => ({ run: 'owner' }), orderId: 'order', taskHash: 'hash',
+      orderOwnerConflictText: () => 'owner refusal',
+    }), (error) => error === failure);
+  }
+});
+
 test('every explicit model value is refused before missing or malformed prompt checks', async (t) => {
   const root = await fixture(t);
   for (const model of ['haiku', 'inherit', '', null, false, 0, {}]) {
@@ -61,7 +88,8 @@ test('every explicit model value is refused before missing or malformed prompt c
       assert.equal(result.hookSpecificOutput.permissionDecisionReason,
         "Order gate denied the Agent call because it passes `model`: a dispatcher's model is set in one place, "
         + 'its installed agent file. Call codex-build without model. '
-        + 'The run folder was not created; quota was not spent.');
+        + 'The run folder was not created; quota was not spent.\n'
+        + orderDiagnosticMessage('next-action', { variant: 'usage' }));
     }
   }
   await assert.rejects(fs.access(path.join(root, 'runs')), { code: 'ENOENT' });
@@ -158,6 +186,7 @@ test('handwritten systemMessage journals its outgoing transport on pass and deny
     import vm from 'node:vm';
     import { checkOutgoingRefusal } from ${JSON.stringify(new URL('order-text-record.mjs', lib).href)};
     import { orderDiagnosticMessage } from ${JSON.stringify(new URL('order-diagnostics.mjs', lib).href)};
+    import { withActionRow } from ${JSON.stringify(new URL('runner/args.mjs', lib).href)};
     const source = fs.readFileSync(new URL(${JSON.stringify(gate)}), 'utf8');
     const definition = source.slice(source.indexOf('const pass ='), source.indexOf('let input;'));
     const reason = orderDiagnosticMessage('run-not-created');
@@ -165,15 +194,15 @@ test('handwritten systemMessage journals its outgoing transport on pass and deny
       let written;
       let status;
       const emit = vm.runInNewContext(definition + transport + ';', {
-        systemMessage: 'handwritten system message', checkOutgoingRefusal,
+        systemMessage: 'handwritten system message', checkOutgoingRefusal, withActionRow, orderDiagnosticMessage,
         process: { stdout: { write: (text) => { written = text; } }, exit: (code) => { status = code; } },
       }, { filename: ${JSON.stringify(gate)} });
-      emit(reason);
+      emit(reason, { action: 'usage' });
       assert.equal(status, 0);
       assert.equal(written, JSON.stringify({
         systemMessage: 'handwritten system message',
         ...(transport === 'deny' ? { hookSpecificOutput: {
-          hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason,
+          hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: withActionRow(reason, 'usage'),
         } } : {}),
       }));
     }
