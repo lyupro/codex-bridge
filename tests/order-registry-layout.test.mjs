@@ -81,7 +81,9 @@ test('every diagnostic file owns its named category and is wired in without dupl
     const category = file.slice(0, -'.mjs'.length);
     assert.ok(DIAGNOSTIC_CATEGORIES.includes(category), `${file} must be named after a category`);
     const module = await import(pathToFileURL(path.join(directory, file)).href);
-    assert.deepEqual(Object.keys(module), ['DIAGNOSTICS'], file);
+    // OW-075 A5 exposes the variant list from the same owner as the rendered texts.
+    assert.deepEqual(Object.keys(module), category === 'next-action'
+      ? ['DIAGNOSTICS', 'NEXT_ACTION_VARIANTS'] : ['DIAGNOSTICS'], file);
     assert.ok(Object.isFrozen(module.DIAGNOSTICS), file);
     assert.ok(Object.keys(module.DIAGNOSTICS).length > 0, `${file} must not be empty`);
     for (const [key, entry] of Object.entries(module.DIAGNOSTICS)) {

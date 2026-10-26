@@ -20,6 +20,7 @@
  * renders the lines. Importers name this file and nothing below it.
  */
 import { EXIT } from './runner/exit-codes.mjs';
+import { orderDiagnosticMessage } from './order-diagnostics.mjs';
 import { writeRunJsonAtomic } from './atomic-json.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -191,6 +192,10 @@ export function renderReply(runDir, agent, meta) {
   const resultPath = path.join(runDir, cfg.result);
   const result = readJson(resultPath);
   const status = meta.status;
+  // OW-075 A5: a new status must never silently inherit FAIL's reply or next action.
+  if (!['OK', 'FAIL', 'LIMIT', 'UNAVAILABLE', 'CAPACITY'].includes(status)) {
+    throw new Error(orderDiagnosticMessage('run-status-known', { status }));
+  }
 
   const ctx = {
     runDir,
@@ -224,9 +229,19 @@ export function renderReply(runDir, agent, meta) {
  * Exit code numbers live in runner/exit-codes.mjs.
  * USAGE is the launcher's argument error and never comes from here.
  */
-export const exitCodeFor = (status) =>
-  (status === 'OK' ? EXIT.OK : status === 'LIMIT' ? EXIT.LIMIT :
-    status === 'UNAVAILABLE' ? EXIT.UNAVAILABLE : status === 'CAPACITY' ? EXIT.CAPACITY : EXIT.FAIL);
+export function exitCodeFor(status) {
+  switch (status) {
+    case 'OK': return EXIT.OK;
+    case 'FAIL': return EXIT.FAIL;
+    case 'LIMIT': return EXIT.LIMIT;
+    case 'UNAVAILABLE': return EXIT.UNAVAILABLE;
+    case 'CAPACITY': return EXIT.CAPACITY;
+    // attach.mjs can have no recorded meta; absence is not an unknown status.
+    case undefined:
+    case null: return EXIT.FAIL;
+    default: throw new Error(orderDiagnosticMessage('run-status-known', { status }));
+  }
+}
 
 const invokedDirectly =
   process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));

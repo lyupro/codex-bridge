@@ -11,10 +11,10 @@ test('Plan_60 D2: status exit codes distinguish executor handoff from quota limi
     ['FAIL', 1],
     ['LIMIT', 3],
     ['UNAVAILABLE', 5],
-    ['unknown', 1],
   ]) {
     assert.equal(exitCodeFor(status), expected, status);
   }
+  assert.throws(() => exitCodeFor('unknown'), { message: 'unknown run status "unknown"' });
 });
 
 test('UNAVAILABLE rows give the shared refusal signal and operator check', () => {

@@ -111,4 +111,5 @@ export const expectedData = {
   'next-action': ['variant'],
   'next-action-row-conflict': [],
   'next-action-variant-required': [],
+  'run-status-known': ['status'],
 };

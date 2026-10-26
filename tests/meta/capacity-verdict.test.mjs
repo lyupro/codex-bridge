@@ -50,6 +50,6 @@ test('quota takes priority on a capacity turn failure that also says quota', () 
   assert.equal(collect(dir, 'codex-build', 1).meta.status, 'LIMIT');
 });
 
-test('an unknown status still uses the FAIL runner code', () => {
-  assert.equal(exitCodeFor('UNKNOWN'), EXIT.FAIL);
+test('an unknown status is a programming error instead of a FAIL runner code', () => {
+  assert.throws(() => exitCodeFor('UNKNOWN'), { message: 'unknown run status "UNKNOWN"' });
 });

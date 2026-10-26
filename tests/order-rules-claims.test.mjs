@@ -93,6 +93,7 @@ const diagnosticMessages = [
     'Action: the runner failed before the work started; show this output to the operator and hand the order to the next executor; do not repeat it unchanged'],
   ['next-action-row-conflict', {}, 'internal', 'refusal carries a conflicting Action row'],
   ['next-action-variant-required', {}, 'internal', 'die() needs a next-action variant'],
+  ['run-status-known', { status: 'BOGUS' }, 'internal', 'unknown run status "BOGUS"'],
 ];
 
 for (const [key, cases] of [['order-launch-exclusive', claimMessages], ['order-id-owner', ownerMessages]]) {

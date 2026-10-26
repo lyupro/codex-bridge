@@ -1,5 +1,10 @@
 /** Plan_79 D4: owns diagnostics for internal order contracts. */
 export const DIAGNOSTICS = Object.freeze({
+  'run-status-known': Object.freeze({
+    data: Object.freeze(['status']),
+    category: 'internal',
+    message: ({ status }) => `unknown run status "${status}"`,
+  }),
   'next-action-row-conflict': Object.freeze({
     data: Object.freeze([]),
     category: 'internal',
