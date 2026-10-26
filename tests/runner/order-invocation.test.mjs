@@ -10,7 +10,10 @@ import {
 } from '../../src/home/lib/order-schema.mjs';
 import { parseTaskHeader } from '../../src/home/lib/task-header.mjs';
 import { parseArgs, RunnerUsageError } from '../../src/home/lib/runner/args.mjs';
+import { orderDiagnosticMessage } from '../../src/home/lib/order-diagnostics.mjs';
 import { orderInvocation, orderTaskText } from './order-invocation.mjs';
+
+const usageAction = orderDiagnosticMessage('next-action', { variant: 'usage' });
 
 function fixture(t) {
   const dir = makeTempTree('order-invocation-');
@@ -47,6 +50,8 @@ function usageRefusal(argv, pattern) {
     assert.ok(error instanceof RunnerUsageError);
     assert.equal(error.exitCode, 2);
     assert.match(error.message, pattern);
+    assert.equal(error.message.split('\n').at(-1), usageAction);
+    assert.deepEqual(error.message.split('\n').filter((line) => line.startsWith('Action: ')), [usageAction]);
     return true;
   });
 }
@@ -136,13 +141,13 @@ test('every old order flag and every unknown flag refuses with header help for a
       assert.throws(() => parseArgs(argv), (error) => {
         assert.equal(error.exitCode, 2);
         assert.equal(error.message, `unknown flag --${flag}: codex-bridge run takes only --agent, --task-file and --no-wait; `
-          + 'the order belongs in the task-file header\n' + renderOrderHeaderHelp('codex-build'));
+          + 'the order belongs in the task-file header\n' + renderOrderHeaderHelp('codex-build') + '\n' + usageAction);
         return true;
       });
     }
   }
   usageRefusal(['--agent', 'unknown-agent', '--unknown'], /unknown flag --unknown/);
-  usageRefusal(['--unknown'], /the order belongs in the task-file header$/);
+  usageRefusal(['--unknown'], /the order belongs in the task-file header\nAction: [^\n]+$/);
 });
 
 test('transport arguments retain required values, strict no-wait spellings, and shell safety', (t) => {
@@ -237,7 +242,7 @@ test('header problems print one per line followed by help and keep required orde
   }));
   assert.equal(result.status, 2);
   assert.match(result.stderr, /missing required header label "order id:"[^\n]*\nmissing required header label "scope:"/);
-  assert.ok(result.stderr.trimEnd().endsWith(renderOrderHeaderHelp('codex-build')));
+  assert.ok(result.stderr.trimEnd().endsWith(`${renderOrderHeaderHelp('codex-build')}\n${usageAction}`));
   const commaScope = orderFromHeader('codex-build', parseTaskHeader('order id: plan-63\nscope: , ,\nscope new: new.mjs'));
   assert.equal(commaScope.problems.length, 1);
   assert.match(commaScope.problems[0].reason, /`scope:` is required for codex-build/);
@@ -247,7 +252,7 @@ test('header problems print one per line followed by help and keep required orde
   }
   const invalidGrant = settle(['--agent', 'codex-review'], 'order id: plan-63\ncontinue: none\n\n## Task\nInspect.');
   assert.equal(invalidGrant.status, 2);
-  assert.ok(invalidGrant.stderr.trimEnd().endsWith(renderOrderHeaderHelp('codex-review')));
+  assert.ok(invalidGrant.stderr.trimEnd().endsWith(`${renderOrderHeaderHelp('codex-review')}\n${usageAction}`));
 });
 
 test('scout questions remain required and advisor advise without a grant remains refused', (t) => {

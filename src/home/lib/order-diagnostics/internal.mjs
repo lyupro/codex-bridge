@@ -1,5 +1,15 @@
 /** Plan_79 D4: owns diagnostics for internal order contracts. */
 export const DIAGNOSTICS = Object.freeze({
+  'next-action-row-conflict': Object.freeze({
+    data: Object.freeze([]),
+    category: 'internal',
+    message: () => 'refusal carries a conflicting Action row',
+  }),
+  'next-action-variant-required': Object.freeze({
+    data: Object.freeze([]),
+    category: 'internal',
+    message: () => 'die() needs a next-action variant',
+  }),
   'dispatcher-agent-known': Object.freeze({
     data: Object.freeze(['agent']),
     category: 'internal',

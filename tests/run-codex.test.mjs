@@ -16,6 +16,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { runsPrefixInside, worktreeSnapshot } from '../src/home/lib/run-codex.mjs';
 import { codexArgs } from '../src/home/lib/runner/codex-args.mjs';
+import { orderDiagnosticMessage } from '../src/home/lib/order-diagnostics.mjs';
 import { loadRunEnv } from '../src/home/lib/runner/run-env.mjs';
 import { runsRoot } from '../src/home/lib/runner/runs-root.mjs';
 import { makeTempTree } from './temp-tree.mjs';
@@ -124,7 +125,8 @@ test('the header refuses a whitespace-containing effort with its label and exit 
   const { code, stderr } = headerArgsInChild({ 'order id': 'ord-1', effort: 'two words' });
   assert.equal(code, 2, stderr);
   assert.equal(stderr.trim(),
-    'run-codex: `effort:` must be a non-empty single word with no whitespace; got "two words"');
+    'run-codex: `effort:` must be a non-empty single word with no whitespace; got "two words"\n'
+      + orderDiagnosticMessage('next-action', { variant: 'usage' }));
 });
 
 test('the header refuses an unusable slug and shell-unsafe effort before starting', () => {

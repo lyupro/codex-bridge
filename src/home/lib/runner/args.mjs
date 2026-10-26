@@ -27,7 +27,25 @@ export class RunnerUsageError extends Error {
   }
 }
 
-export function die(message, exitCode = EXIT.USAGE) {
+export function withActionRow(text, variant) {
+  const expected = orderDiagnosticMessage('next-action', { variant });
+  const lines = text.split(/\r?\n/);
+  const rows = lines.filter((line) => line.startsWith('Action: '));
+  if (rows.length > 1 || (rows.length === 1 && rows[0] !== expected)) {
+    throw new Error(orderDiagnosticMessage('next-action-row-conflict'));
+  }
+  const body = lines.filter((line) => !line.startsWith('Action: ')).join('\n').replace(/\n+$/, '');
+  return body ? `${body}\n${expected}` : expected;
+}
+
+export function die(message, how = EXIT.USAGE) {
+  let exitCode = how;
+  if (typeof how === 'object' && how !== null) {
+    const { action, exit = EXIT.USAGE } = how;
+    if (action === undefined) throw new Error(orderDiagnosticMessage('next-action-variant-required'));
+    message = withActionRow(message, action);
+    exitCode = exit;
+  }
   checkOutgoingRefusal(message, 'die');
   console.error(`run-codex: ${message}`);
   throw new RunnerUsageError(message, exitCode);
@@ -40,7 +58,7 @@ function resumeBodyRefusal(parsed) {
 }
 
 export function readTaskDocument(opts) {
-  const refuse = (message) => die([message, renderOrderHeaderHelp(opts.agent)].filter(Boolean).join('\n'));
+  const refuse = (message) => die([message, renderOrderHeaderHelp(opts.agent)].filter(Boolean).join('\n'), { action: 'usage' });
   const stdinText = process.stdin.isTTY ? '' : fs.readFileSync(0, 'utf8');
   if (opts['task-file'] !== undefined) {
     if (stdinText.trim()) {
@@ -108,18 +126,18 @@ export function parseArgs(argv) {
   const opts = {};
   for (let i = 0; i < argv.length; i += 1) {
     const key = argv[i];
-    if (!key.startsWith('--')) die(orderDiagnosticMessage('unexpected-argument', { value: key }));
+    if (!key.startsWith('--')) die(orderDiagnosticMessage('unexpected-argument', { value: key }), { action: 'usage' });
     const name = key.slice(2);
     if (!['agent', 'task-file', 'no-wait'].includes(name)) {
       const agent = opts.agent ?? argv[argv.indexOf('--agent') + 1];
       const help = Object.hasOwn(AGENTS, agent) ? renderOrderHeaderHelp(agent) : '';
-      die(orderDiagnosticMessage('unknown-flag', { name, help }));
+      die(orderDiagnosticMessage('unknown-flag', { name, help }), { action: 'usage' });
     }
     const value = argv[i + 1];
     if (BOOLEAN_FLAGS.has(name)) {
       if (value !== undefined && !value.startsWith('--')) {
         if (!BOOLEAN_YES.test(value) && !BOOLEAN_NO.test(value)) {
-          die(orderDiagnosticMessage('boolean-flag-value', { name, value }));
+          die(orderDiagnosticMessage('boolean-flag-value', { name, value }), { action: 'usage' });
         }
         opts[name] = BOOLEAN_YES.test(value);
         i += 1;
@@ -129,7 +147,7 @@ export function parseArgs(argv) {
       continue;
     }
     // A flag name where a value belongs means the value was left out.
-    if (value === undefined || value.startsWith('--')) die(orderDiagnosticMessage('missing-flag-value', { key }));
+    if (value === undefined || value.startsWith('--')) die(orderDiagnosticMessage('missing-flag-value', { key }), { action: 'usage' });
     opts[name] = value;
     i += 1;
   }
@@ -137,11 +155,11 @@ export function parseArgs(argv) {
     if (opts[name] === undefined) continue;
     const sequence = firstShellUnsafeSequence(opts[name]);
     if (sequence !== null) {
-      die(orderDiagnosticMessage('flag-shell-safety', { name, sequence }));
+      die(orderDiagnosticMessage('flag-shell-safety', { name, sequence }), { action: 'usage' });
     }
   }
-  if (!opts.agent) die(orderDiagnosticMessage('agent-required'));
-  if (!AGENTS[opts.agent]) die(orderDiagnosticMessage('agent-known', { agent: opts.agent }));
+  if (!opts.agent) die(orderDiagnosticMessage('agent-required'), { action: 'usage' });
+  if (!AGENTS[opts.agent]) die(orderDiagnosticMessage('agent-known', { agent: opts.agent }), { action: 'usage' });
   opts.noWait = Boolean(opts['no-wait']);
   return opts;
 }

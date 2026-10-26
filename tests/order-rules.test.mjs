@@ -82,6 +82,7 @@ test('registry maps and entries are frozen and have exactly their contracted fie
     'install-record-owners-problem-known',
     'dispatcher-model-latch',
     'next-action',
+    'next-action-row-conflict', 'next-action-variant-required',
   ].sort());
   assert.equal(ORDER_DIAGNOSTICS['no-wait-grant-conflict'].category, 'cli-flags');
 });

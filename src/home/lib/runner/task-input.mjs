@@ -16,17 +16,17 @@ export function settleTaskInput(opts) {
   const { task, header, questions: fileQuestions, verify: fileVerify } = readTaskDocument(opts);
   const { order, problems } = orderFromHeader(opts.agent, header);
   if (problems.length) {
-    die(renderOrderProblems(opts.agent, problems));
+    die(renderOrderProblems(opts.agent, problems), { action: 'usage' });
   }
   const normalized = orderOptions(opts.agent, order);
   if (normalized.problems.length) {
-    die(normalized.problems.map(({ label, reason }) => orderLabelReason(orderInputName(label), reason)).join('\n'));
+    die(normalized.problems.map(({ label, reason }) => orderLabelReason(orderInputName(label), reason)).join('\n'), { action: 'usage' });
   }
   const repositoryReason = order.has('repository') ? repositoryRefusal(order.get('repository')) : null;
   if (repositoryReason) {
     die(orderRuleMessage('repository-path', {
       context: 'task-input', label: orderInputName('repository'), reason: repositoryReason,
-    }));
+    }), { action: 'usage' });
   }
   const repository = resolveOrderRepository({
     taskFile: opts['task-file'] ?? null,
@@ -37,7 +37,7 @@ export function settleTaskInput(opts) {
       die(orderRuleMessage('repository-path', {
         context: 'task-input', label: orderInputName('repository'),
         reason: repositoryRefusal(repository.values.label),
-      }));
+      }), { action: 'usage' });
     }
     const violations = {
       'repository-mismatch': 'mismatch',
@@ -47,7 +47,7 @@ export function settleTaskInput(opts) {
     die(orderRuleMessage('repository-source', {
       ...repository.values, violation: violations[repository.violation],
       context: 'task-input', label: orderInputName('repository'),
-    }));
+    }), { action: 'usage' });
   }
   Object.assign(opts, normalized.options);
   opts.repo = repository.repo;
@@ -57,16 +57,16 @@ export function settleTaskInput(opts) {
   // Still before the run folder exists and before a token of someone else's quota is touched,
   // which is where every refusal of this kind belongs.
   if (opts.agent === 'codex-scout' && header.grant?.kind !== 'resume' && !opts.questions?.length) {
-    die(orderRuleMessage('scout-questions', { violation: 'missing' }));
+    die(orderRuleMessage('scout-questions', { violation: 'missing' }), { action: 'usage' });
   }
   if (opts.agent === 'codex-scout' && header.grant?.kind !== 'resume') {
     const refusal = questionKindRefusal(opts.questions);
     if (refusal) {
-      die(orderRuleMessage('question-context-marker', { context: 'task-input', refusal }));
+      die(orderRuleMessage('question-context-marker', { context: 'task-input', refusal }), { action: 'usage' });
     }
   }
   if (opts.noWait && opts.continue) {
-    die(orderDiagnosticMessage('no-wait-grant-conflict', { grant: orderInputName(header.grant.kind) }));
+    die(orderDiagnosticMessage('no-wait-grant-conflict', { grant: orderInputName(header.grant.kind) }), { action: 'usage' });
   }
   return { task, header };
 }

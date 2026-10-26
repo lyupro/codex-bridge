@@ -73,6 +73,22 @@ const diagnosticMessages = [
     'system error: access denied'],
   ['next-action', { variant: 'capacity' }, 'next-action',
     "Action: wait or change this role's model (/codex-bridge:model), then repeat the same order once with a retry: grant; never resume: this run; a second CAPACITY for the same order goes to the next executor"],
+  ['next-action', { variant: 'grant-decision' }, 'next-action',
+    "Action: nothing was started and no quota was spent; the grant does not fit the run it names: read that run's outcome, then call again with the grant or new order id the refusal names; never change the task to get past it"],
+  ['next-action', { variant: 'run-in-progress' }, 'next-action',
+    'Action: nothing was started and no quota was spent; another run holds this order or writes in this tree: wait for it (repeating the same order attaches to a run of that order), then call again; never stop it without the operator'],
+  ['next-action', { variant: 'runs-root-retired' }, 'next-action',
+    'Action: nothing was started and no quota was spent; the runs root setting points at a retired location: show this to the operator to fix CODEX_RUNS_ROOT, then repeat the same order'],
+  ['next-action', { variant: 'repository-detached' }, 'next-action',
+    'Action: nothing was started and no quota was spent; the repository is not on the branch an abandoned run expects: show this to the operator and repair the branch only with their approval, then repeat the same order'],
+  ['next-action', { variant: 'sandbox-dead' }, 'next-action',
+    'Action: nothing was started and no quota was spent; the Codex sandbox cannot start on this host: show this output to the operator, do not change the order, and hand it to the next executor if it cannot wait'],
+  ['next-action', { variant: 'advisor-scope-result' }, 'next-action',
+    'Action: nothing was started and no quota was spent; the scope run named in continue: has no usable result: repeat that scope with retry: or under a new order id, then call advise again'],
+  ['next-action', { variant: 'runner-fault' }, 'next-action',
+    'Action: the runner failed before the work started; show this output to the operator and hand the order to the next executor; do not repeat it unchanged'],
+  ['next-action-row-conflict', {}, 'internal', 'refusal carries a conflicting Action row'],
+  ['next-action-variant-required', {}, 'internal', 'die() needs a next-action variant'],
 ];
 
 for (const [key, cases] of [['order-launch-exclusive', claimMessages], ['order-id-owner', ownerMessages]]) {

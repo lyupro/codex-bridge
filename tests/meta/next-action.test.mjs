@@ -11,6 +11,13 @@ const variants = [
   ['fail-result', 'the run returned a result that did not pass; read the report and git status before deciding; a repeat of this pass needs your retry: grant, the next pass your continue: grant'],
   ['fail-no-result', 'the run left no usable result; read the log and git status before deciding; repeat only through a grant this reply offers or the operator approves, never take over the task yourself'],
   ['usage', 'nothing was started and no quota was spent; fix the task file or the call as the refusal says, then call again'],
+  ['grant-decision', "nothing was started and no quota was spent; the grant does not fit the run it names: read that run's outcome, then call again with the grant or new order id the refusal names; never change the task to get past it"],
+  ['run-in-progress', 'nothing was started and no quota was spent; another run holds this order or writes in this tree: wait for it (repeating the same order attaches to a run of that order), then call again; never stop it without the operator'],
+  ['runs-root-retired', 'nothing was started and no quota was spent; the runs root setting points at a retired location: show this to the operator to fix CODEX_RUNS_ROOT, then repeat the same order'],
+  ['repository-detached', 'nothing was started and no quota was spent; the repository is not on the branch an abandoned run expects: show this to the operator and repair the branch only with their approval, then repeat the same order'],
+  ['sandbox-dead', 'nothing was started and no quota was spent; the Codex sandbox cannot start on this host: show this output to the operator, do not change the order, and hand it to the next executor if it cannot wait'],
+  ['advisor-scope-result', 'nothing was started and no quota was spent; the scope run named in continue: has no usable result: repeat that scope with retry: or under a new order id, then call advise again'],
+  ['runner-fault', 'the runner failed before the work started; show this output to the operator and hand the order to the next executor; do not repeat it unchanged'],
   ['readiness-unconfirmed', 'check codex --version for up to about 2 minutes; when it answers, repeat the same order exactly once; otherwise, or on the same refusal again, hand the order to the next executor and name that in the summary'],
   ['availability-unconfirmed', 'show this output to the operator (codex --version, and codex login if authorization is rejected); do not treat it as signed out and do not change the order'],
 ];

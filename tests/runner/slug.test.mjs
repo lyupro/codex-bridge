@@ -8,6 +8,7 @@ import { chainRuns, taskFingerprint } from '../../src/home/lib/meta/chain.mjs';
 import { makeRunDir, runDirPath } from '../../src/home/lib/runner/launcher.mjs';
 import { makeChainRoot, CHAIN_REPO } from '../meta/test-fixtures.mjs';
 import { orderInvocation } from './order-invocation.mjs';
+import { orderDiagnosticMessage } from '../../src/home/lib/order-diagnostics.mjs';
 
 const ARGS_MODULE = new URL('../../src/home/lib/runner/args.mjs', import.meta.url).href;
 const TASK_INPUT = new URL('../../src/home/lib/runner/task-input.mjs', import.meta.url).href;
@@ -85,5 +86,6 @@ catch (err) { process.exitCode = err.exitCode || 1; }
   });
   assert.equal(output.status, 2, output.stderr);
   assert.equal(output.stderr.trim(),
-    'run-codex: `order id:` produces an unusable run folder name after sanitization: "..." must contain a letter or digit.');
+    'run-codex: `order id:` produces an unusable run folder name after sanitization: "..." must contain a letter or digit.\n'
+      + orderDiagnosticMessage('next-action', { variant: 'usage' }));
 });

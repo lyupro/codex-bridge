@@ -109,4 +109,6 @@ export const expectedData = {
   'install-record-owners-problem-known': ['problem'],
   'dispatcher-model-latch': ['agentType', 'models', 'pinFamily', 'hostVersion', 'at'],
   'next-action': ['variant'],
+  'next-action-row-conflict': [],
+  'next-action-variant-required': [],
 };
