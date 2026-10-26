@@ -21,8 +21,14 @@ export function sourceFiles(directory) {
 
 // Keep strings opaque while removing comments: text mentioning an API is not a call/import.
 export function tokensWithoutComments(source) {
-  const tokens = source.match(/(["'`])(?:\\[\s\S]|(?!\1)[^\\])*?\1|\/\/[^\r\n]*|\/\*[\s\S]*?\*\/|[A-Za-z_$][\w$]*|\.\.\.|===|!==|==|!=|=>|\?\.|[^\s]/g) || [];
-  return tokens.filter((token) => !token.startsWith('//') && !token.startsWith('/*'));
+  return tokensWithOffsetsWithoutComments(source).map(({ text }) => text);
+}
+
+// Offsets let guards identify the exact source spelling without counting comments or strings.
+export function tokensWithOffsetsWithoutComments(source) {
+  const matches = source.matchAll(/(["'`])(?:\\[\s\S]|(?!\1)[^\\])*?\1|\/\/[^\r\n]*|\/\*[\s\S]*?\*\/|[A-Za-z_$][\w$]*|\.\.\.|===|!==|==|!=|=>|\?\.|[^\s]/g);
+  return Array.from(matches, (match) => ({ text: match[0], index: match.index }))
+    .filter(({ text }) => !text.startsWith('//') && !text.startsWith('/*'));
 }
 
 export function expressionEnd(tokens, start) {
