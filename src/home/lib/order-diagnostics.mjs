@@ -4,13 +4,14 @@ import { DIAGNOSTICS as FILESYSTEM_ACCESS_DIAGNOSTICS } from './order-diagnostic
 import { DIAGNOSTICS as HOST_STATE_DIAGNOSTICS } from './order-diagnostics/host-state.mjs';
 import { DIAGNOSTICS as RUN_STATE_DIAGNOSTICS } from './order-diagnostics/run-state.mjs';
 import { DIAGNOSTICS as INTERNAL_DIAGNOSTICS } from './order-diagnostics/internal.mjs';
+import { DIAGNOSTICS as NEXT_ACTION_DIAGNOSTICS } from './order-diagnostics/next-action.mjs';
 import { recordOrderText, checkOrderTextParameters } from './order-text-record.mjs';
 
 export const DIAGNOSTIC_CATEGORIES = Object.freeze([
-  'cli-flags', 'filesystem', 'host-state', 'run-state', 'internal',
+  'cli-flags', 'filesystem', 'host-state', 'run-state', 'internal', 'next-action',
 ]);
 
-const categories = [CLI_FLAGS_DIAGNOSTICS, FILESYSTEM_ACCESS_DIAGNOSTICS, HOST_STATE_DIAGNOSTICS, RUN_STATE_DIAGNOSTICS, INTERNAL_DIAGNOSTICS];
+const categories = [CLI_FLAGS_DIAGNOSTICS, FILESYSTEM_ACCESS_DIAGNOSTICS, HOST_STATE_DIAGNOSTICS, RUN_STATE_DIAGNOSTICS, INTERNAL_DIAGNOSTICS, NEXT_ACTION_DIAGNOSTICS];
 const keys = new Set();
 for (const diagnostics of categories) {
   for (const key of Object.keys(diagnostics)) {

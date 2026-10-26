@@ -43,6 +43,9 @@ test('entry points preserve their exports and fixed registry order', () => {
   assert.deepEqual(Object.keys(diagnosticRegistry), [
     'DIAGNOSTIC_CATEGORIES', 'ORDER_DIAGNOSTICS', 'orderDiagnosticMessage', 'validateOrderDiagnostics',
   ]);
+  assert.deepEqual(DIAGNOSTIC_CATEGORIES, [
+    'cli-flags', 'filesystem', 'host-state', 'run-state', 'internal', 'next-action',
+  ]);
   assert.ok(ruleKeys.length > 0);
   assert.ok(Object.keys(ORDER_DIAGNOSTICS).length > 0);
   assert.ok(Object.isFrozen(ORDER_RULES));

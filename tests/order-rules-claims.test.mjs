@@ -71,6 +71,8 @@ const diagnosticMessages = [
   ['codex-availability-detail', { variant: 'logged-out' }, 'host-state', 'codex login status: Not logged in'],
   ['codex-availability-detail', { variant: 'message', message: 'system error: access denied' }, 'host-state',
     'system error: access denied'],
+  ['next-action', { variant: 'capacity' }, 'next-action',
+    "Action: wait or change this role's model (/codex-bridge:model), then repeat the same order once with a retry: grant; never resume: this run; a second CAPACITY for the same order goes to the next executor"],
 ];
 
 for (const [key, cases] of [['order-launch-exclusive', claimMessages], ['order-id-owner', ownerMessages]]) {
@@ -107,6 +109,7 @@ test('claim, owner and diagnostic selectors reject absent or unknown values with
     [orderRuleMessage, 'order-launch-exclusive', 'variant'], [orderRuleMessage, 'order-id-owner', 'violation'],
     [orderDiagnosticMessage, 'order-claim-input-valid', 'violation'],
     [orderDiagnosticMessage, 'codex-availability-detail', 'variant'],
+    [orderDiagnosticMessage, 'next-action', 'variant'],
   ]) {
     for (const value of [undefined, 'unknown', 'toString', '__proto__']) {
       assert.throws(() => builder(key, { [selector]: value }), {

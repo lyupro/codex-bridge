@@ -16,6 +16,7 @@ import { changedPaths, line, readText } from './paths.mjs';
 import { splitRunChanges } from './environment.mjs';
 import { scoutCoverage } from './verdict.mjs';
 import { orderInputName } from '../order-schema.mjs';
+import { orderDiagnosticMessage } from '../order-diagnostics.mjs';
 import { unavailableRows } from './unavailable-rows.mjs';
 import { stopRows } from './stop-rows.mjs';
 
@@ -244,7 +245,7 @@ export function capacityReply(ctx, meta) {
   const rows = [
     'CAPACITY — selected model is at capacity; work not completed',
     `Signal: ${line(meta.reason, 170)}`,
-    "Action: wait or change this role's model (/codex-bridge:model), then repeat the same order once with a retry: grant; never resume: this run; a second CAPACITY for the same order goes to the next executor",
+    orderDiagnosticMessage('next-action', { variant: 'capacity' }),
   ];
   if (ctx.agent === 'codex-build') {
     const { work: touched } = runChanges(ctx.runDir);

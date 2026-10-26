@@ -81,6 +81,7 @@ test('registry maps and entries are frozen and have exactly their contracted fie
     'install-record-owners-readable',
     'install-record-owners-problem-known',
     'dispatcher-model-latch',
+    'next-action',
   ].sort());
   assert.equal(ORDER_DIAGNOSTICS['no-wait-grant-conflict'].category, 'cli-flags');
 });
@@ -104,7 +105,7 @@ test('rule topics exist in GUIDANCE_TOPICS and rule text is non-empty without pl
 test('diagnostic categories are closed and frozen', () => {
   assert.ok(Object.isFrozen(DIAGNOSTIC_CATEGORIES));
   assert.deepEqual(DIAGNOSTIC_CATEGORIES, [
-    'cli-flags', 'filesystem', 'host-state', 'run-state', 'internal',
+    'cli-flags', 'filesystem', 'host-state', 'run-state', 'internal', 'next-action',
   ]);
   for (const entry of Object.values(ORDER_DIAGNOSTICS)) {
     assert.ok(DIAGNOSTIC_CATEGORIES.includes(entry.category));
