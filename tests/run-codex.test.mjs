@@ -62,7 +62,7 @@ process.stdout.write('imported');`;
 function headerArgsInChild(order, { grant, agent = 'codex-scout', launch = false } = {}) {
   const root = makeTempTree('header-args-');
   const { argv } = orderInvocation({
-    agent, order, grant, advice: agent === 'codex-build' ? 'mechanical' : undefined, questions: ['Describe the current implementation.'], dir: root,
+    agent, order: { repository: root, ...order }, grant, advice: agent === 'codex-build' ? 'mechanical' : undefined, questions: ['Describe the current implementation.'], dir: root,
   });
   const taskInput = new URL('../src/home/lib/runner/task-input.mjs', import.meta.url).href;
   const launcher = new URL('../src/home/lib/runner/launcher.mjs', import.meta.url).href;

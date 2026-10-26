@@ -1,7 +1,6 @@
 /** Direct normalisation coverage for the channel extraction required by Plan_63 D5. */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import path from 'node:path';
 import { orderOptions } from '../../src/home/lib/runner/order-options.mjs';
 import { chainRuns } from '../../src/home/lib/meta/chain.mjs';
 import { makeChainRoot, CHAIN_REPO } from '../meta/test-fixtures.mjs';
@@ -79,14 +78,20 @@ test('changeset defaults to uncommitted and preserves explicit values', () => {
   }
 });
 
-test('repository uses the supplied cwd when absent or empty and resolves explicit paths', () => {
-  const cwd = path.resolve('order-options-cwd');
-  for (const repository of [undefined, '', path.join(cwd, 'repo'), 'relative-repo']) {
-    const entries = [['order id', 'ord-1']];
-    if (repository !== undefined) entries.push(['repository', repository]);
-    assert.equal(normalise(entries, { cwd }).options.repo, path.resolve(repository || cwd));
+test('OW-073: orderOptions never sets repo regardless of repository or process.cwd()', () => {
+  const originalCwd = process.cwd;
+  try {
+    for (const cwd of ['C:/dispatcher-A', 'C:/dispatcher-B']) {
+      process.cwd = () => cwd;
+      for (const repository of [undefined, '', 'C:/explicit-repo', 'relative-repo']) {
+        const entries = [['order id', 'ord-1']];
+        if (repository !== undefined) entries.push(['repository', repository]);
+        assert.equal(Object.hasOwn(normalise(entries).options, 'repo'), false);
+      }
+    }
+  } finally {
+    process.cwd = originalCwd;
   }
-  assert.equal(normalise([['order id', 'ord-1']]).options.repo, process.cwd());
 });
 
 test('scope and scope new merge in declaration order without empty patterns', () => {
@@ -102,7 +107,7 @@ test('scope and scope new merge in declaration order without empty patterns', ()
 test('absent effort and phase create no options and an explicit phase is untouched', () => {
   const { options } = normalise([['order id', 'ord-1']]);
   assert.deepEqual(Object.keys(options).sort(),
-    ['changeset', 'orderId', 'repo', 'scopeNewPatterns', 'scopePatterns', 'slug']);
+    ['changeset', 'orderId', 'scopeNewPatterns', 'scopePatterns', 'slug']);
   assert.deepEqual(options.scopePatterns, []);
   assert.deepEqual(options.scopeNewPatterns, []);
   for (const phase of ['', '  phase one  ']) {

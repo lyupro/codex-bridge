@@ -1,8 +1,7 @@
 /** Normalises one order's values into runner options, whatever channel carried them (Plan_63 D5). */
-import path from 'node:path';
 import { orderRuleMessage } from '../order-rules.mjs';
 
-export function orderOptions(agentType, order, { cwd = process.cwd() } = {}) {
+export function orderOptions(agentType, order) {
   const options = { orderId: (order.get('order id') ?? '').trim() };
   const problems = [];
   // Left unset when absent: the role's configured profile fills the gap, and a default here would always win.
@@ -14,7 +13,7 @@ export function orderOptions(agentType, order, { cwd = process.cwd() } = {}) {
         reason: orderRuleMessage('effort-value', { value: options.effort }) });
     }
   }
-  options.repo = path.resolve(order.get('repository') || cwd);
+  // OW-073: only the task-file repository resolver may choose the target repository.
   options.slug = (order.get('slug') || options.orderId).replace(/[^A-Za-z0-9._-]+/g, '-');
   // Plan_29 incident: a generic slug let an honest order inherit a days-old chain.
   if (!/[A-Za-z0-9]/.test(options.slug)) {

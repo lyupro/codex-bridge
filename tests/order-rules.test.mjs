@@ -13,7 +13,7 @@ test('registry maps and entries are frozen and have exactly their contracted fie
   assert.ok(Object.isFrozen(ORDER_RULES));
   assert.ok(Object.isFrozen(ORDER_DIAGNOSTICS));
   assert.deepEqual(Object.keys(ORDER_RULES).sort(), [
-    'effort-value', 'question-context-marker', 'repository-path', 'run-slug', 'scout-questions', 'verify-line',
+    'effort-value', 'question-context-marker', 'repository-path', 'repository-source', 'run-slug', 'scout-questions', 'verify-line',
     'task-body-required', 'task-file-path',
     'order-header-label-shape', 'unknown-header-label', 'duplicate-order-label', 'grant-label-exclusive',
     'advice-value-shape', 'grant-value-shape', 'header-metadata-placement',

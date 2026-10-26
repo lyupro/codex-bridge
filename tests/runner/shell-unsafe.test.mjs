@@ -38,7 +38,7 @@ function run({ root, repo }, argv) {
 function headerOptions(context, changeset, launch = false) {
   const { argv } = orderInvocation({
     agent: 'codex-review',
-    order: { 'order id': 'plan-56-changeset', ...(changeset === undefined ? {} : { changeset }) },
+    order: { repository: context.repo, 'order id': 'plan-56-changeset', ...(changeset === undefined ? {} : { changeset }) },
     dir: context.root,
   });
   const argsModule = new URL('../../src/home/lib/runner/args.mjs', import.meta.url).href;

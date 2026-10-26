@@ -74,6 +74,30 @@ export const RULES = Object.freeze({
       throw new Error(`unknown repository-path violation: ${violation}`);
     },
   }),
+  'repository-source': Object.freeze({
+    data: Object.freeze(['violation', 'taskFile', 'taskFileRoot', 'labelRepo', 'error', 'context', 'label']),
+    topic: 'order',
+    rule: 'The repository is the git worktree that owns the task file; a repository label must name that same ' +
+      'worktree, and stdin or a task file outside git requires the label.',
+    message: ({ violation, taskFile, taskFileRoot, labelRepo, error, context, label }) => {
+      let reason;
+      if (violation === 'mismatch') {
+        reason = `task file worktree ${JSON.stringify(taskFileRoot)} does not match repository label ` +
+          `${JSON.stringify(labelRepo)}; fix the label or move the task file.`;
+      } else if (violation === 'label-required') {
+        reason = `${JSON.stringify(taskFile ?? 'stdin')} requires a repository label; add repository: <absolute path>.`;
+      } else if (violation === 'discovery-failed') {
+        reason = `repository discovery failed: ${JSON.stringify(error)}.`;
+      } else {
+        throw new Error(`unknown repository-source violation: ${violation}`);
+      }
+      if (context === 'task-input') {
+        return `${label} ${reason}\nThe run folder was not created; quota was not spent.`;
+      }
+      if (context !== undefined) throw new Error(`unknown repository-source context: ${context}`);
+      return reason;
+    },
+  }),
   'agent-accepted-labels': Object.freeze({
     data: Object.freeze(['label', 'agent']),
     topic: 'order',

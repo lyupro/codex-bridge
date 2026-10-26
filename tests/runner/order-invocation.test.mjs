@@ -33,7 +33,7 @@ function settle(argv, input, launch = false) {
         await launcher(argv);
       } else {
         const opts = parseArgs(argv);
-        const document = settleTaskInput(opts, { cwd: process.cwd() });
+        const document = settleTaskInput(opts);
         console.log(JSON.stringify({ opts, ...document }));
       }
     } catch (error) { process.exitCode = error.exitCode ?? 1; }
@@ -195,9 +195,10 @@ test('the same order settles from a task file and stdin with only document quest
   assert.match(both.stderr, /both stdin and --task-file/);
 });
 
-test('header grants alone set continuation and refuse no-wait for both grant kinds', () => {
+test('header grants alone set continuation and refuse no-wait for both grant kinds', (t) => {
+  const repository = fixture(t);
   for (const kind of ['continue', 'retry']) {
-    const text = orderTaskText({ order: { 'order id': 'plan-63' },
+    const text = orderTaskText({ order: { repository, 'order id': 'plan-63' },
       grant: { kind, run: 'prior', reason: 'finish it' } });
     const allowed = settle(['--agent', 'codex-review'], text);
     assert.equal(allowed.status, 0, allowed.stderr);
@@ -209,7 +210,8 @@ test('header grants alone set continuation and refuse no-wait for both grant kin
   }
 });
 
-test('header and normalization problems refuse before phase resolution in the launcher', () => {
+test('header and normalization problems refuse before phase resolution in the launcher', (t) => {
+  const repository = fixture(t);
   // Plan_63 D8: a bad header/options must win over an undeclared phase before any paid probe.
   for (const [order, pattern] of [
     [{ phase: 'undeclared-phase' }, /missing required header label "order id:"/],
@@ -221,7 +223,7 @@ test('header and normalization problems refuse before phase resolution in the la
     assert.doesNotMatch(result.stderr, /undeclared `phase:`/);
   }
   const result = settle(['--agent', 'codex-advisor', '--no-wait'], orderTaskText({
-    order: { 'order id': 'plan-63', phase: 'undeclared-phase' },
+    order: { repository, 'order id': 'plan-63', phase: 'undeclared-phase' },
     grant: { kind: 'retry', run: 'prior', reason: 'finish it' },
   }), true);
   assert.equal(result.status, 2, result.stderr);
@@ -248,12 +250,13 @@ test('header problems print one per line followed by help and keep required orde
   assert.ok(invalidGrant.stderr.trimEnd().endsWith(renderOrderHeaderHelp('codex-review')));
 });
 
-test('scout questions remain required and advisor advise without a grant remains refused', () => {
-  const scout = settle(['--agent', 'codex-scout'], orderTaskText({ order: { 'order id': 'plan-63' } }));
+test('scout questions remain required and advisor advise without a grant remains refused', (t) => {
+  const repository = fixture(t);
+  const scout = settle(['--agent', 'codex-scout'], orderTaskText({ order: { repository, 'order id': 'plan-63' } }));
   assert.equal(scout.status, 2);
   assert.match(scout.stderr, /a sub-question is required/);
   const advisor = settle(['--agent', 'codex-advisor'], orderTaskText({
-    order: { 'order id': 'plan-63', phase: 'advise' },
+    order: { repository, 'order id': 'plan-63', phase: 'advise' },
   }), true);
   assert.equal(advisor.status, 2, advisor.stderr);
   assert.match(advisor.stderr, /requires a `continue:` grant naming the scope run/);

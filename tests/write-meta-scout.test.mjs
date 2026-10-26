@@ -71,7 +71,7 @@ test('parsing arguments no longer decides whether a scout has its questions', ()
 test('the Questions section builds questions.json entries in the given order', () => {
   const root = makeTempTree('scout-questions-');
   const { argv } = orderInvocation({
-    agent: 'codex-scout', order: { 'order id': 'ord-1' }, dir: root,
+    agent: 'codex-scout', order: { repository: root, 'order id': 'ord-1' }, dir: root,
     questions: ['First wording is preserved.', 'Second wording is preserved exactly.'],
   });
   const { code, opts, stderr } = parseArgsInChild(argv, true);

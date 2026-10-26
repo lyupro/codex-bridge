@@ -10,6 +10,7 @@ import { die, readTaskDocument } from './args.mjs';
 import { questionKindRefusal } from './question-kind.mjs';
 import { orderFromHeader, orderInputName, renderOrderProblems } from '../order-schema.mjs';
 import { orderOptions } from './order-options.mjs';
+import { resolveOrderRepository } from './order-repository.mjs';
 import { orderRuleMessage, orderLabelReason } from '../order-rules.mjs';
 import { orderDiagnosticMessage } from '../order-diagnostics.mjs';
 
@@ -36,13 +37,13 @@ export function repositoryRefusal(value) {
   return isDirectory ? null : orderRuleMessage('repository-path', { violation: 'not-directory', value });
 }
 
-export function settleTaskInput(opts, { cwd = process.cwd() } = {}) {
+export function settleTaskInput(opts) {
   const { task, header, questions: fileQuestions, verify: fileVerify } = readTaskDocument(opts);
   const { order, problems } = orderFromHeader(opts.agent, header);
   if (problems.length) {
     die(renderOrderProblems(opts.agent, problems));
   }
-  const normalized = orderOptions(opts.agent, order, { cwd });
+  const normalized = orderOptions(opts.agent, order);
   if (normalized.problems.length) {
     die(normalized.problems.map(({ label, reason }) => orderLabelReason(orderInputName(label), reason)).join('\n'));
   }
@@ -52,7 +53,29 @@ export function settleTaskInput(opts, { cwd = process.cwd() } = {}) {
       context: 'task-input', label: orderInputName('repository'), reason: repositoryReason,
     }));
   }
+  const repository = resolveOrderRepository({
+    taskFile: opts['task-file'] ?? null,
+    label: order.has('repository') ? order.get('repository') : undefined,
+  });
+  if (!repository.ok) {
+    if (repository.violation === 'repository-label-invalid') {
+      die(orderRuleMessage('repository-path', {
+        context: 'task-input', label: orderInputName('repository'),
+        reason: repositoryRefusal(repository.values.label),
+      }));
+    }
+    const violations = {
+      'repository-mismatch': 'mismatch',
+      'repository-label-required': 'label-required',
+      'repository-discovery-failed': 'discovery-failed',
+    };
+    die(orderRuleMessage('repository-source', {
+      ...repository.values, violation: violations[repository.violation],
+      context: 'task-input', label: orderInputName('repository'),
+    }));
+  }
   Object.assign(opts, normalized.options);
+  opts.repo = repository.repo;
   opts.continue = Boolean(header.grant);
   opts.questions = fileQuestions.length ? fileQuestions : undefined;
   opts.verify = fileVerify;
