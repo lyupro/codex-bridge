@@ -1,5 +1,6 @@
 /** Parses dispatcher replies into guard facts. */
-const STATUSES = ['OK', 'FAIL', 'LIMIT', 'UNAVAILABLE'];
+// OW-074: every status the runner can write must be here, or replies claiming it escape the mismatch check.
+const STATUSES = ['OK', 'FAIL', 'LIMIT', 'UNAVAILABLE', 'CAPACITY'];
 
 /**
  * Either line names the run folder. `RUN=` is printed by the call that starts a run, `ATTACH=`
