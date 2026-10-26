@@ -29,11 +29,16 @@ export function lastRunOutcome(runsRootPath, chain) {
 export function readyGrantLines(runsRootPath, chain, grantReason) {
   const last = lastRunOutcome(runsRootPath, chain);
   if (!last) return orderRuleMessage('ready-grant-line', { variant: 'none' });
+  const orderId = String(last.orderId ?? '').trim();
+  if (last.verdict === 'CAPACITY') {
+    return orderRuleMessage('ready-grant-line', {
+      variant: orderId ? 'capacity' : 'none', run: last.run, orderId,
+    });
+  }
   const reason = String(grantReason ?? last.reason).trim() || last.reason;
   const continuation = orderRuleMessage('ready-grant-line', { variant: 'continue', run: last.run, reason });
   // Plan_75 D1: the TradeForge failed advise spent its continuation, so show the same-pass repair.
   // A run without order_id cannot be retried (retryRefusal step d), so it gets no retry line.
-  const orderId = String(last.orderId ?? '').trim();
   if (!last.verdict || last.verdict === 'OK' || !orderId) return continuation;
   return [continuation, orderRuleMessage('ready-grant-line', {
     variant: 'retry', run: last.run, reason: last.reason, orderId,

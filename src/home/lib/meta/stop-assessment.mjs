@@ -16,6 +16,8 @@ export function grantBlockers({ status, resultOk, agentWrites, threadId, stop })
   if (resultOk) blockers.push('result-present');
   if (status === 'LIMIT') blockers.push('limit');
   else if (status === 'UNAVAILABLE') blockers.push('unavailable');
+  // OW-074: a resume would continue the overloaded model's thread.
+  else if (status === 'CAPACITY') blockers.push('capacity');
   if (stop?.trigger === 'spawn-error' || stop?.trigger === 'stream-error') blockers.push('runner-error');
   if (agentWrites) blockers.push('writer-role-not-approved');
   if (!stop) blockers.push('stop-record-missing');
@@ -42,6 +44,7 @@ export function assessStop({ status, resultOk, agentWrites, threadId, stop, sile
   if (resultOk) kind = 'result-present';
   else if (status === 'LIMIT') kind = 'limit';
   else if (status === 'UNAVAILABLE') kind = 'unavailable';
+  else if (status === 'CAPACITY') kind = 'capacity';
   else if (!stop) kind = 'evidence-unknown';
   else if (cause === 'spawn-error' || cause === 'stream-error') kind = 'runner-error';
   else if (cause === 'exit') kind = 'process-exit-no-result';
@@ -80,6 +83,7 @@ export function assessStop({ status, resultOk, agentWrites, threadId, stop, sile
   if (resultOk) factual.push('result-present');
   if (status === 'LIMIT') factual.push('limit');
   else if (status === 'UNAVAILABLE') factual.push('unavailable');
+  else if (status === 'CAPACITY') factual.push('capacity');
   if (agentWrites) factual.push('writer-role-not-approved');
   if (!threadId) factual.push('thread-unavailable');
   if (sessionState !== 'observed') factual.push(`session-evidence-${sessionState ?? 'not-observed'}`);
@@ -100,6 +104,7 @@ export function assessStop({ status, resultOk, agentWrites, threadId, stop, sile
     'result-present': 'retain-stop-facts',
     limit: 'retain-stop-facts',
     unavailable: 'retain-stop-facts',
+    capacity: 'retain-stop-facts',
     'silent-stall-candidate': 'retain-stop-facts',
     'recent-activity': 'retain-stop-facts',
     'process-exit-no-result': 'inspect-exit-and-drain',

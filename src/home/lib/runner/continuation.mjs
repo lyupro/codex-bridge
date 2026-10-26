@@ -118,6 +118,12 @@ export function retryRefusal(runsRootPath, chain, isContinue, orderId, grant, li
   if (meta.status === 'OK') {
     return refuse('ended-ok', {});
   }
+  if (meta.status === 'CAPACITY') {
+    const previousDirectory = namedRunDirectory(runsRootPath, status?.retry_of);
+    if (previousDirectory && readJson(path.join(previousDirectory, 'meta.json'))?.status === 'CAPACITY') {
+      return refuse('capacity-repeated', {});
+    }
+  }
   return null;
 }
 

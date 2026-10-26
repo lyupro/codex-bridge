@@ -60,7 +60,7 @@ export const RULES = Object.freeze({
     data: Object.freeze(['violation', 'run', 'runsRoot', 'previousOrder', 'orderId', 'labelName', 'successor']),
     topic: 'order',
     rule: 'Grant retry to a bare existing last run of the task chain under its own recorded order id, ' +
-      'only after a non-OK finished verdict and after its worker has stopped; retry repeats that pass, ' +
+      'only after a non-OK finished verdict and after its worker has stopped and not after a second consecutive CAPACITY; retry repeats that pass, ' +
       'while continue grants the next pass.',
     message: ({ violation, run, runsRoot, previousOrder, orderId, labelName, successor }) => {
       if (violation === 'missing-folder') {
@@ -84,6 +84,10 @@ export const RULES = Object.freeze({
       if (violation === 'ended-ok') {
         return `Retry is refused: run ${run} ended OK. A retry repeats a failed pass; use continue: for the next pass.`;
       }
+      if (violation === 'capacity-repeated') {
+        return `Retry is refused: run ${run} is the second CAPACITY of this order in a row; ` +
+          'hand the order to the next executor, and to repeat it later use a new order id.';
+      }
       throw new Error(`unknown retry-grant-usable violation: ${violation}`);
     },
   }),
@@ -94,6 +98,10 @@ export const RULES = Object.freeze({
       'with that failed pass\'s recorded reason and order id; without a run there is no ready grant.',
     message: ({ variant, run, reason, orderId }) => {
       if (variant === 'none') return 'Ready grant line: none (there is no run to continue).';
+      if (variant === 'capacity') {
+        return "Ready grant line: none after CAPACITY: wait or change this role's model, " +
+          `then grant retry for ${run} once under order ${orderId}; a second CAPACITY goes to the next executor.`;
+      }
       if (variant === 'continue') return `Ready grant line: continue: ${run} — ${reason}.`;
       if (variant === 'retry') {
         return `Ready retry line: retry: ${run} — ${reason} (repeats that pass under order ${orderId}).`;
