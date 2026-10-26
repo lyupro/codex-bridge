@@ -304,7 +304,11 @@ childProcess.spawn = (command, args = [], options) => {
   assert.equal(output.status, 5, output.stderr);
   assert.match(output.stdout.split(/\r?\n/)[0], /^UNAVAILABLE \u2014 /);
   assert.match(output.stdout, /Signal: codex login status: Not logged in/);
-  assert.match(output.stdout, /The run folder was not created; quota was not spent\.\s*$/);
+  const rows = output.stdout.trimEnd().split(/\r?\n/);
+  const action = orderDiagnosticMessage('next-action', { variant: 'unavailable' });
+  assert.deepEqual(rows.filter((row) => row.startsWith('Action:')), [action]);
+  assert.equal(rows.at(-1), action);
+  assert.equal(rows.at(-2), 'The run folder was not created; quota was not spent.');
   assert.equal(output.stderr, '');
   assert.deepEqual(fs.readdirSync(project, { withFileTypes: true })
     .filter((entry) => entry.isDirectory()), []);

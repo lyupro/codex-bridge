@@ -12,6 +12,13 @@ import { buildResult, COMPLETED_COMMAND, makeRun } from '../meta/test-fixtures.m
 
 import { orderDiagnosticMessage } from '../../src/home/lib/order-diagnostics.mjs';
 
+function assertRunnerFault(text) {
+  const rows = text.trimEnd().split(/\r?\n/);
+  const action = orderDiagnosticMessage('next-action', { variant: 'runner-fault' });
+  assert.deepEqual(rows.filter((row) => row.startsWith('Action:')), [action]);
+  assert.equal(rows.at(-1), action);
+}
+
 const runnerUrl = new URL('../../src/home/lib/run-codex.mjs', import.meta.url).href;
 const contextUrl = new URL('../../src/home/lib/runner/run-context.mjs', import.meta.url).href;
 const agent = 'codex-build';
@@ -162,6 +169,7 @@ test('a worker crash before metadata publication leaves no reply and logs the fa
   assert.match(read(dir, 'stderr.log'), /run-codex crash: Error:/);
   assert.ok(read(dir, 'stderr.log').includes(`run folder ${dir}; failure could not be recorded:`));
   assert.ok(read(dir, 'stderr.log').includes(publicationMessage.replace(/\s+/g, ' ').slice(0, 150)));
+  assertRunnerFault(read(dir, 'stderr.log'));
 });
 
 // OW-067, Plan_81: failed status publication does not invalidate a published verdict.
@@ -189,7 +197,9 @@ test('a launcher crash without a record names the existing run folder on stdout'
 
   assert.equal(child.status, exitCodeFor('FAIL'), child.stderr);
   assert.equal(child.stdout, `FAIL — Codex runner crashed in run folder ${dir}; `
-    + `failure could not be recorded: ${publicationMessage.replace(/\s+/g, ' ').slice(0, 150)}\n`);
+    + `failure could not be recorded: ${publicationMessage.replace(/\s+/g, ' ').slice(0, 150)}\n`
+    + orderDiagnosticMessage('next-action', { variant: 'runner-fault' }) + '\n');
+  assertRunnerFault(child.stdout);
   assert.doesNotMatch(child.stdout, /before creating the run folder/);
   assert.equal(fs.existsSync(path.join(dir, 'reply.txt')), false);
   assert.equal(fs.existsSync(path.join(dir, 'meta.json')), false);
@@ -204,8 +214,10 @@ test('a crash without a current run folder keeps the bare launcher reply', () =>
     `FAIL — Codex runner crashed before creating the run folder: ${
       crashMessage.replace(/\s+/g, ' ').slice(0, 150)
     }`,
-    'No artifacts; nothing to inspect\n',
+    'No artifacts; nothing to inspect',
+    orderDiagnosticMessage('next-action', { variant: 'runner-fault' }) + '\n',
   ].join('\n'));
+  assertRunnerFault(child.stdout);
 });
 
 test('a launcher crash with a recorded verdict answers on stdout', () => {

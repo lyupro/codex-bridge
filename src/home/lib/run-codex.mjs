@@ -53,7 +53,7 @@ import { writeFailure, renderReply, exitCodeFor, readJson } from './write-meta.m
 import { setWorkerDir, getRun, emitReply, emitDiagnostic } from './runner/run-context.mjs';
 import { launcher } from './runner/launcher.mjs';
 import { worker } from './runner/worker.mjs';
-import { RunnerUsageError } from './runner/args.mjs';
+import { RunnerUsageError, withActionRow } from './runner/args.mjs';
 import { EXIT } from './runner/exit-codes.mjs';
 
 export { parseArgs } from './runner/args.mjs';
@@ -116,10 +116,10 @@ export function installRunnerCrashBoundary() {
         // OW-067, Plan_81 D2: status publication can fail after meta.json is on disk.
         const meta = readJson(path.join(currentRun, 'meta.json'));
         if (typeof meta?.status === 'string') replyWithVerdict(meta);
-        const diagnostic = `FAIL — Codex runner crashed in run folder ${currentRun}; `
+        const diagnostic = withActionRow(`FAIL — Codex runner crashed in run folder ${currentRun}; `
           + `failure could not be recorded: ${
             String(recordError.message).replace(/\s+/g, ' ').slice(0, 150)
-          }`;
+          }`, 'runner-fault');
         try {
           appendCrashLog(diagnostic);
         } catch {
@@ -130,12 +130,12 @@ export function installRunnerCrashBoundary() {
       }
     }
     emitReply(
-      [
+      withActionRow([
         `FAIL — Codex runner crashed before creating the run folder: ${
           String(err.message).replace(/\s+/g, ' ').slice(0, 150)
         }`,
         'No artifacts; nothing to inspect',
-      ].join('\n'),
+      ].join('\n'), 'runner-fault'),
     );
     process.exit(EXIT.FAIL);
   });

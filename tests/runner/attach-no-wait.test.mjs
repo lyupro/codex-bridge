@@ -12,6 +12,14 @@ import fs from 'node:fs';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { attaching, fixture, order, run, running } from './attach-fixtures.mjs';
+import { orderDiagnosticMessage } from '../../src/home/lib/order-diagnostics.mjs';
+
+function assertFinalAction(lines, variant) {
+  const rows = lines.join('\n').split('\n');
+  const action = orderDiagnosticMessage('next-action', { variant });
+  assert.deepEqual(rows.filter((row) => row.startsWith('Action:')), [action]);
+  assert.equal(rows.at(-1), action);
+}
 
 test('--no-wait prints a ready reply with the existing provenance and status code', async (t) => {
   const runsRoot = fixture(t);
@@ -46,8 +54,8 @@ test('--no-wait reports a live run immediately with call outcome 4', async (t) =
   assert.equal(lines[0], `ATTACH=${dir} order-id=order-1 started=${startedAt}`);
   // The elapsed value is matched by shape, not to the second: pinning it to a one-second window
   // made the case fail whenever the identity probe took longer than that under a loaded suite.
-  assert.match(lines[1], /Run is still in progress; elapsed 1m \d{1,2}s\./);
-  assert.match(lines[1], /Repeat the same command without --no-wait later to wait for its verdict/);
+  assert.match(lines[1].split('\n')[0], /^Run is still in progress; elapsed 1m \d{1,2}s\.$/);
+  assertFinalAction(lines, 'pending');
 });
 
 test('--no-wait reports a missing order with call outcome 4', async (t) => {
@@ -57,6 +65,8 @@ test('--no-wait reports a missing order with call outcome 4', async (t) => {
   const { code, lines } = await attaching(order(runsRoot, repo, { noWait: true }));
 
   assert.equal(code, 4);
-  assert.deepEqual(lines, ['No run exists for order id "order-1"; --no-wait never starts a new run.']);
+  assert.deepEqual(lines, ['No run exists for order id "order-1"; --no-wait never starts a new run.\n'
+    + orderDiagnosticMessage('next-action', { variant: 'pending-no-run' })]);
+  assertFinalAction(lines, 'pending-no-run');
   assert.deepEqual(fs.readdirSync(runsRoot), []);
 });

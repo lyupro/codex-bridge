@@ -85,7 +85,11 @@ test('a live child with noWait is pending under the child directory without rele
   assert.equal(releases, 0);
   assertTransition(f, lines);
   assert.equal(lines[5], `ATTACH=${f.childDir} order-id=order-1 started=2026-10-03T18:02:00.000Z`);
-  assert.match(lines[6], /^Run is still in progress; elapsed .+ Repeat the same command without --no-wait later to wait for its verdict\.$/);
+  assert.match(lines[6].split('\n')[0], /^Run is still in progress; elapsed .+\.$/);
+  const rows = lines.join('\n').split('\n');
+  const action = orderDiagnosticMessage('next-action', { variant: 'pending' });
+  assert.deepEqual(rows.filter((row) => row.startsWith('Action:')), [action]);
+  assert.equal(rows.at(-1), action);
   assert.equal(lines.length, 7);
 });
 
@@ -170,16 +174,25 @@ test('a dead child without a verdict gets its own failure, leaving the parent un
   assert.equal(fs.existsSync(path.join(f.childDir, 'reply.txt')), false);
 });
 
-test('a dead child with a verdict preserves it without inventing a saved reply', async (t) => {
+for (const [status, result_ok, variant] of [
+  ['CAPACITY', false, 'capacity'], ['LIMIT', false, 'limit'],
+  ['UNAVAILABLE', false, 'unavailable'], ['FAIL', true, 'fail-result'],
+  ['FAIL', false, 'fail-no-result'], ['OK', true, null],
+]) {
+test(`a dead child with ${status} (${variant}) preserves its verdict and Action placement`, async (t) => {
   const f = setup(t, { child: { pid: deadPid() },
-    childFiles: { 'meta.json': JSON.stringify({ status: 'UNAVAILABLE', reason: 'service unavailable' }) } });
+    childFiles: { 'meta.json': JSON.stringify({ status, result_ok, reason: 'recorded verdict' }) } });
   const before = snapshot(f.childDir);
   const { code, lines } = await checkedAttach(f);
-  assert.equal(code, EXIT.UNAVAILABLE);
+  assert.equal(code, EXIT[status]);
   assertTransition(f, lines);
-  assert.equal(lines[5], `UNAVAILABLE — service unavailable\nRun: ${f.childDir}`);
+  const action = variant ? orderDiagnosticMessage('next-action', { variant }) : null;
+  const rows = lines[5].split('\n');
+  assert.deepEqual(rows, [`${status} — recorded verdict`, ...(action ? [action] : []), `Run: ${f.childDir}`]);
+  assert.deepEqual(rows.filter((row) => row.startsWith('Action:')), action ? [action] : []);
   assert.deepEqual(snapshot(f.childDir), before);
 });
+}
 
 test('an invalid child marker prints the unusable record and keeps the parent verdict', async (t) => {
   const f = setup(t, { child: { resumed_from: 'another-parent', recovery: { automatic: true, attempt: 2, parent: 'another-parent' } } });

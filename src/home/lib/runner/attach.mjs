@@ -10,6 +10,9 @@ import { processAlive } from '../process-identity.mjs';
 import { exitCodeFor, writeFailure, chainRuns } from '../write-meta.mjs';
 import { readyGrantLines, sameRun } from './continuation.mjs';
 import { conflictingOrderOwner, orderOwnerConflictText, runsForOrder } from './order-owner.mjs';
+import { withActionRow } from './args.mjs';
+import { postRunActionVariant } from '../meta/reply.mjs';
+import { orderDiagnosticMessage } from '../order-diagnostics.mjs';
 
 // The attach call is the only process that waits for a worker it did not spawn. Keeping that
 // wait here leaves the launcher free to return before a caller's time ceiling kills it.
@@ -45,7 +48,7 @@ function elapsedSince(startedAt) {
 function announcePending(runDir, orderId, startedAt) {
   console.log(`ATTACH=${runDir} order-id=${orderId} started=${startedAt}`);
   console.log(
-    `Run is still in progress; elapsed ${elapsedSince(startedAt)}. Repeat the same command without --no-wait later to wait for its verdict.`,
+    withActionRow(`Run is still in progress; elapsed ${elapsedSince(startedAt)}.`, 'pending'),
   );
 }
 
@@ -123,7 +126,7 @@ export async function attach({
   const owner = isContinue ? null : conflictingOrderOwner(runRecords, orderId, taskHash);
   if (owner) {
     const ownerDir = path.join(runsRoot, owner.run);
-    console.log(orderOwnerConflictText(owner, ownerDir, orderId));
+    console.log(withActionRow(orderOwnerConflictText(owner, ownerDir, orderId), 'usage'));
     return EXIT.USAGE;
   }
 
@@ -146,7 +149,7 @@ export async function attach({
   }
   if (!candidate) {
     if (!noWait) return null;
-    console.log(`No run exists for order id ${JSON.stringify(String(orderId ?? ''))}; --no-wait never starts a new run.`);
+    console.log(withActionRow(`No run exists for order id ${JSON.stringify(String(orderId ?? ''))}; --no-wait never starts a new run.`, 'pending-no-run'));
     return EXIT.PENDING;
   }
 
@@ -215,9 +218,11 @@ export async function attach({
     // excluded above; assigning an abandoned verdict is pass 2 of Plan_11 and remains separate.
     const meta = readJsonFile(path.join(runDir, 'meta.json'));
     if (meta) {
+      const variant = postRunActionVariant(meta);
       console.log(
         [
           `${meta.status} — ${meta.reason || 'verdict recorded, worker process response not saved'}`,
+          ...(variant ? [orderDiagnosticMessage('next-action', { variant })] : []),
           `Run: ${runDir}`,
         ].join('\n'),
       );

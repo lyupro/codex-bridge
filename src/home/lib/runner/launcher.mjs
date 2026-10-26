@@ -23,7 +23,7 @@ import { EXIT } from './exit-codes.mjs';
 import { passGate } from './pass-gate.mjs';
 import { setRun } from './run-context.mjs';
 import { loadRunEnv, RUN_ENV, CLEAN_ENV, RECOVERY_BRAKE } from './run-env.mjs';
-import { parseArgs, die } from './args.mjs';
+import { parseArgs, die, withActionRow } from './args.mjs';
 import { settleTaskInput } from './task-input.mjs';
 import { questionsFromTexts, QUESTION_KIND } from './question-kind.mjs';
 import { adviseSection } from './advise-carry.mjs';
@@ -155,7 +155,7 @@ export async function launcher(argv = process.argv.slice(2)) {
     // Plan_60 D2: a signed-out Codex answers UNAVAILABLE (exit 5) before the paid sandbox probe;
     // a PATH miss, after one retry, is the free readiness-unconfirmed refusal (exit 1, Plan_78 D5).
     const availability = await codexAvailabilityRefusal();
-    if (availability?.unavailable) { process.stdout.write(`${availability.text}\n`); return EXIT.UNAVAILABLE; }
+    if (availability?.unavailable) { process.stdout.write(`${withActionRow(availability.text, 'unavailable')}\n`); return EXIT.UNAVAILABLE; }
     if (availability) die(availability.text, { action: availability.action, exit: EXIT.FAIL });
     // Review 2026-09-17: probe before the busy check so it sees writers that registered while the slow
     // probe waited; the dead refusal stays before retention to preserve old run artifacts.

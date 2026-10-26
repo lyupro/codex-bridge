@@ -9,6 +9,7 @@ import { makeTempTree } from '../temp-tree.mjs';
 import { launcherProcessMocks } from './launcher-mocks.mjs';
 import { orderInvocation } from './order-invocation.mjs';
 import { validScope } from '../meta/advisor-fixtures.mjs';
+import { orderDiagnosticMessage } from '../../src/home/lib/order-diagnostics.mjs';
 
 const LAUNCHER = new URL('../../src/home/lib/runner/launcher.mjs', import.meta.url).href;
 const TASK = '## Options\n- keep: Keep the boundary.\n- split: Split the boundary.\n## Paths\n- source.mjs\n';
@@ -151,8 +152,13 @@ test('invalid host brake refuses before any run folder is created', () => {
   const tree = fixture();
   const output = launch(tree, { brake: 'maybe' });
   assert.equal(output.error, undefined);
-  assert.notEqual(output.status, 0);
+  assert.equal(output.status, 1);
   assert.match(output.stdout, /FAIL — [^\r\n]*CODEX_BRIDGE_AUTO_RECOVERY[^\r\n]*env[^\r\n]*"maybe"[^\r\n]*on or off\r?\nRun was not started; quota was not spent/);
+  const rows = output.stdout.trimEnd().split(/\r?\n/);
+  const action = orderDiagnosticMessage('next-action', { variant: 'runner-fault' });
+  assert.deepEqual(rows.filter((row) => row.startsWith('Action:')), [action]);
+  assert.equal(rows.at(-1), action);
+  assert.equal(rows.at(-2), 'Run was not started; quota was not spent');
   assert.equal(output.stdout.includes('RUN='), false);
   assert.equal(output.stdout.includes('STARTED'), false);
   assert.equal(fs.existsSync(tree.runs), false);

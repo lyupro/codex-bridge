@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { continuationRefusal } from '../../src/home/lib/runner/continuation.mjs';
 import { chainRuns } from '../../src/home/lib/meta/chain.mjs';
+import { orderDiagnosticMessage } from '../../src/home/lib/order-diagnostics.mjs';
 import { orderOwnerConflictText } from '../../src/home/lib/runner/order-owner.mjs';
 import { parseTaskHeader } from '../../src/home/lib/task-header.mjs';
 import { orderTaskText } from './order-invocation.mjs';
@@ -116,7 +117,11 @@ for (const scheme of [undefined, 2]) {
     const dir = run(runsRoot, name, status, { 'reply.txt': 'OK — run2 verdict\n', 'meta.json': JSON.stringify({ status: 'OK' }) });
     const { code, lines } = await attaching(order(runsRoot, repo, { slug: 'plan42-run3', taskHash: 'run3-hash' }));
     assert.equal(code, 2);
-    assert.equal(lines[0], orderOwnerConflictText({ run: name, status }, dir, 'order-1'));
+    const action = orderDiagnosticMessage('next-action', { variant: 'usage' });
+    assert.equal(lines[0], orderOwnerConflictText({ run: name, status }, dir, 'order-1') + '\n' + action);
+    const rows = lines.join('\n').split('\n');
+    assert.deepEqual(rows.filter((row) => row.startsWith('Action:')), [action]);
+    assert.equal(rows.at(-1), action);
     assert.deepEqual(fs.readdirSync(runsRoot), [name]);
   });
 }

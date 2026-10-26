@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { orderDiagnosticMessage } from '../../src/home/lib/order-diagnostics.mjs';
 import { collect } from '../../src/home/lib/write-meta.mjs';
-import { failReply, limitReply, unavailableReply } from '../../src/home/lib/meta/reply.mjs';
+import { failReply, limitReply, unavailableReply, postRunActionVariant } from '../../src/home/lib/meta/reply.mjs';
 import { unavailableRows } from '../../src/home/lib/meta/unavailable-rows.mjs';
 import { buildResult, COMPLETED_COMMAND, makeRun } from './test-fixtures.mjs';
 
@@ -12,6 +12,17 @@ function assertAction(rows, variant) {
   const expected = orderDiagnosticMessage('next-action', { variant });
   assert.deepEqual(rows.filter((row) => row.startsWith('Action:')), [expected]);
   assert.equal(rows[2], expected);
+}
+
+for (const [status, result_ok, variant] of [
+  ['CAPACITY', false, 'capacity'], ['LIMIT', false, 'limit'],
+  ['UNAVAILABLE', false, 'unavailable'], ['OK', true, null],
+  ...[undefined, null, 0, '', false, true, 1, 'filled'].map((value) =>
+    ['FAIL', value, value ? 'fail-result' : 'fail-no-result']),
+]) {
+  test(`post-run Action variant for ${status} with result_ok=${JSON.stringify(result_ok)}`, () => {
+    assert.equal(postRunActionVariant({ status, result_ok }), variant);
+  });
 }
 
 for (const agent of ['codex-build', 'codex-scout', 'codex-review', 'codex-advisor']) {

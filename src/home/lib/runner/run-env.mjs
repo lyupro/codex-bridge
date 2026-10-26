@@ -15,6 +15,7 @@
 import { readRunConfig, disableFlags } from '../run-config.mjs';
 import { resolveRecoveryBrake } from '../recovery-policy.mjs';
 import { EXIT } from './exit-codes.mjs';
+import { withActionRow } from './args.mjs';
 
 /**
  * The switches as read (they go to env.json) and the flags they turn into (they go to
@@ -36,7 +37,7 @@ export function loadRunEnv() {
     CLEAN_ENV = disableFlags(RUN_ENV);
     RECOVERY_BRAKE = resolveRecoveryBrake();
   } catch (err) {
-    console.log(`FAIL — ${err.message}\nRun was not started; quota was not spent`);
+    console.log(withActionRow(`FAIL — ${err.message}\nRun was not started; quota was not spent`, 'runner-fault'));
     process.exit(EXIT.FAIL);
   }
 }

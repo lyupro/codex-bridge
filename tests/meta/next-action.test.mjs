@@ -5,6 +5,8 @@ import { orderDiagnosticMessage } from '../../src/home/lib/order-diagnostics.mjs
 import { capacityReply } from '../../src/home/lib/meta/reply.mjs';
 
 const variants = [
+  ['pending', 'the run is still working and nothing new was started; repeat the same call without --no-wait to wait for its verdict; never start the order again under another id'],
+  ['pending-no-run', 'no run exists for this order and --no-wait never starts one; call again without --no-wait to start it'],
   ['capacity', "wait or change this role's model (/codex-bridge:model), then repeat the same order once with a retry: grant; never resume: this run; a second CAPACITY for the same order goes to the next executor"],
   ['limit', 'the ChatGPT quota window is spent; do not retry or resume through this bridge, hand the order to the next executor; for a build, check the Worktree row first'],
   ['unavailable', 'Codex is signed out on this host; do not retry this bridge, hand the order to the next executor and ask the operator to run codex login'],

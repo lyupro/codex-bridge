@@ -193,6 +193,16 @@ export function withProfileRow(rows, meta) {
   return at === -1 ? [...rows, row] : [...rows.slice(0, at), row, ...rows.slice(at)];
 }
 
+export function postRunActionVariant(meta) {
+  switch (meta.status) {
+    case 'CAPACITY': return 'capacity';
+    case 'LIMIT': return 'limit';
+    case 'UNAVAILABLE': return 'unavailable';
+    case 'FAIL': return meta.result_ok ? 'fail-result' : 'fail-no-result';
+    default: return null;
+  }
+}
+
 export function failReply(ctx, meta) {
   return [
     `FAIL — ${line(meta.reason, 170)}`,

@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { withTempTree } from './temp-tree.mjs';
+import { orderDiagnosticMessage } from '../src/home/lib/order-diagnostics.mjs';
 
 const RUN_ENV = new URL('../src/home/lib/runner/run-env.mjs', import.meta.url).href;
 const CODEX_ARGS = new URL('../src/home/lib/runner/codex-args.mjs', import.meta.url).href;
@@ -40,3 +41,28 @@ test('the operator home profile reaches the assembled Codex command', async () =
     assert.ok(args.includes(`model_reasoning_effort=${effort}`));
   });
 });
+
+for (const [label, content, message] of [
+  ['malformed JSON', '{', /cannot be parsed as JSON/],
+  ['invalid setting', '{"hooks":"on"}', /true or false/],
+]) {
+  test(`loadRunEnv refuses ${label} with one final runner-fault Action`, async () => {
+    await withTempTree('run-env-refusal-', async (home) => {
+      fs.writeFileSync(path.join(home, 'config.json'), content);
+      const source = `import { loadRunEnv } from ${JSON.stringify(RUN_ENV)}; loadRunEnv();`;
+      const result = spawnSync(process.execPath, ['--input-type=module', '-e', source], {
+        encoding: 'utf8', env: { ...process.env, CODEX_BRIDGE_HOME: home },
+      });
+      assert.equal(result.status, 1, result.stderr || result.stdout);
+      assert.equal(result.stderr, '');
+      const rows = result.stdout.trimEnd().split(/\r?\n/);
+      assert.match(rows[0], /^FAIL — /);
+      assert.match(rows[0], message);
+      assert.equal(rows[1], 'Run was not started; quota was not spent');
+      const action = orderDiagnosticMessage('next-action', { variant: 'runner-fault' });
+      assert.deepEqual(rows.filter((row) => row.startsWith('Action:')), [action]);
+      assert.equal(rows.at(-1), action);
+      assert.equal(rows.length, 3);
+    });
+  });
+}
