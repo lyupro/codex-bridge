@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- An order's repository comes from the task file's git worktree, not the dispatcher shell's directory;
+  an optional `repository:` label must name an absolute existing directory with the same git root
+  (a subdirectory is allowed). Symlinked task files are resolved, ignored and untracked files count,
+  linked worktrees stay distinct, and inherited `GIT_*` variables are ignored (OW-073).
+  Rule `repository-source` refuses a conflicting label as `mismatch` with both roots, a missing
+  required label as `label-required`, and git discovery errors as `discovery-failed`.
+  Grants (`continue:`, `retry:`, `resume:`) keep their repository: `grant-mismatch` refuses a named
+  run recorded for another repository before attach. Resume and automatic recovery reject frozen
+  inputs whose `worker.json#repo` differs from `status.json#repo`: both answer `inputs-unusable`
+  with the reason `repo-mismatch`. The PreToolUse order gate checks the same resolver before its grant
+  pass and dispatch, reads owner history from the resolved repository instead of the hook's cwd,
+  and denies a recognized call whose task file cannot be read. These refusals spend no quota.
+
+### Changed
+
+- **Breaking:** A task file outside git (for example in a session scratchpad) now requires
+  `repository:`; a direct runner call piping the task on stdin also requires it. The label must name
+  an absolute existing directory; a non-git directory is still accepted as is (OW-073).
+
 ## [0.6.20] - 2026-10-21
 
 ### Added

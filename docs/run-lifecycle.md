@@ -45,7 +45,8 @@ complete job before detaching from the launcher.
    value counts as a missing value. The task-file path must be absolute and use forward slashes;
    `$`, doubled backslashes (`\\`) and a final backslash (`\`) are refused because the shell would
    rewrite them inside the command's double quotes.
-3. The launcher reads `--task-file` and rejects an empty task; stdin is not an input channel.
+3. Dispatchers always pass `--task-file`; the launcher reads it and rejects an empty task.
+   A direct runner call may instead pipe the task on stdin, which requires a `repository:` header.
    It parses the header and validates the order: `order id:` for all agents, `scope:` for build,
    and `phase:` (`scope` or `advise`) for advisor are required. The orchestrator supplies the job
    label and scout subquestions under `## Questions` in the task body; the runner does not invent
@@ -64,8 +65,22 @@ complete job before detaching from the launcher.
    an absolute path to an existing advisor run directory whose `meta.json` says agent `codex-advisor`,
    phase `advise` and status `OK` — a scope pass or a failed advice authorizes nothing.
    These task-contract refusals happen before the run folder exists and spend no quota.
-4. The repository root is determined through git; header `repository:` is used for a non-git directory
-   and defaults to the current directory when omitted.
+4. `src/home/lib/runner/order-repository.mjs` resolves the repository to the git working-tree root
+   that owns the task file, resolving a symlinked task file first. Ignored and untracked task files
+   count, linked worktrees are distinct, and inherited `GIT_*` variables are ignored. Neither the
+   dispatcher shell's cwd nor the hook's cwd chooses the target.
+   Optional header `repository:` must name an absolute existing directory under the unchanged
+   OW-061 rules; its git root must be that same worktree, so a subdirectory is allowed. A disagreement
+   is a free refusal under rule `repository-source`, violation `mismatch`, naming both roots.
+   A task file outside git or a task piped on stdin requires `repository:`; omission is the free
+   refusal `label-required`. A non-git directory named by the label is accepted as is. A git discovery
+   error is refused as `discovery-failed`, never treated as outside git.
+   Grants (`continue:`, `retry:`, `resume:`) keep the order in its repository: a named run recorded for
+   another repository is refused before attach as `grant-mismatch`. Resume and automatic recovery
+   refuse frozen inputs whose `worker.json#repo` differs from `status.json#repo`: both answer
+   `inputs-unusable` with the reason `repo-mismatch`.
+   The PreToolUse order gate applies the same resolver before its grant pass, reads owner history
+   from the resolved repository, and denies a recognized call whose task file cannot be read.
    <!-- service-folders:begin -->
    Immediately afterward, `validateScope()` checks scope patterns against repository contents and
    rejects a pattern that cannot match: an absolute or drive path, backslashes, `..`, a pattern inside

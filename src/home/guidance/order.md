@@ -22,7 +22,7 @@ Under `resume:`, the task body is a plain note for the record, saved as written 
 Questions, Options, Paths and Verify headings in that body are refused before start; a changed task needs `retry:` or a new order id.
 For advisor, pass `scope` first, then `advise` with a `continue:` grant naming the scope run of the same order.
 
-`repository` is the repository path; `slug` names this pass without replacing the order id.
+The task file's git worktree determines the repository; optional `repository` must name an absolute existing directory whose git root is that same worktree. The label is required for a task file outside git or a task piped on stdin; `slug` names this pass without replacing the order id.
 The runner checks accepted `effort` values. `changeset` is `uncommitted`, `base:<branch>` or `commit:<sha>`.
 Forbidden shell sequences are {{shell-unsafe-sequences}}.
 `phase: scope` and `effort: none` are real values, not placeholders.

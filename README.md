@@ -98,6 +98,8 @@ If a session answers `Agent type 'codex-build' not found`, a run can still be st
 
 The task file starts with the order header, a blank line, and the task text:
 
+The `repository:` label is optional for a task file inside git and, when present, must name an absolute existing directory whose git root is the task file's own worktree.
+
 ```text
 order id: order-42
 repository: /abs/path/to/repository

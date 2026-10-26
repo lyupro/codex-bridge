@@ -85,6 +85,8 @@ before any probe, run folder or quota. For example:
 
 Implementation:
 
+The `repository:` label is optional for a task file inside git and, when present, must name an absolute existing directory whose git root is the task file's own worktree.
+
 ```markdown
 order id: order-42
 repository: /abs/path/to/repository
@@ -160,7 +162,10 @@ codex-bridge run --agent codex-advisor --task-file "/abs/path/to/advisor-task.md
 
 `--agent` and `--task-file` are required. In the header, `order id:` is required for every agent,
 `scope:` for `codex-build`, and `phase:` (`scope` or `advise`) for `codex-advisor` only.
-`repository:` defaults to the current directory; optional `slug:` defaults to `order id:`.
+The task file's git worktree determines the repository; optional `repository:` must name an absolute
+existing directory whose git root is that same worktree (a subdirectory is allowed). A task file
+outside git or a task piped on stdin by a direct runner call requires `repository:`; a non-git
+directory named by the label is accepted as is. Optional `slug:` defaults to `order id:`.
 Optional `effort:` overrides the role profile, with `medium` as the fallback, and is validated before
 being passed to Codex. Optional `changeset:` is accepted only by `codex-review` and defaults to `uncommitted`.
 `--no-wait` checks an existing run immediately: it returns its ready reply normally, or exit code `4`
