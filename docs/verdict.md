@@ -295,7 +295,7 @@ older records with no situation assessment.
 ```text
 CAPACITY — selected model is at capacity; work not completed
 Signal: <transport reason>
-Action: <wait or change this role's model with /codex-bridge:model, then repeat the order once with retry:; a second CAPACITY goes to the next executor>
+Action: <wait or change this role's model (/codex-bridge:model), then repeat the same order once with a retry: grant; never resume: this run; a second CAPACITY for the same order goes to the next executor>
 Worktree: <unfinished changes or unknown; builds only>
 Model: <recorded model profile>
 Log: <run log link>

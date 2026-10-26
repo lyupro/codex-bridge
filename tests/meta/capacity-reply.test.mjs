@@ -12,7 +12,7 @@ const fixture = fs.readFileSync(
   'utf8',
 );
 const firstRow = 'CAPACITY — selected model is at capacity; work not completed';
-const actionRow = "Action: wait or change this role's model (/codex-bridge:model), then repeat the order once with a retry: grant; a second CAPACITY goes to the next executor";
+const actionRow = "Action: wait or change this role's model (/codex-bridge:model), then repeat the same order once with a retry: grant; never resume: this run; a second CAPACITY for the same order goes to the next executor";
 
 function assertNoContinuation(rows) {
   assert.equal(rows.some((row) => /^(?:resume:|retry:|continue:|Continuation:|Situation:)/.test(row)), false);
@@ -27,6 +27,7 @@ test('a build capacity reply names the signal and action, then the worktree and 
   assert.equal(rows[0], firstRow);
   assert.match(rows[1], /^Signal: .*Selected model is at capacity/);
   assert.equal(rows[2], actionRow);
+  assert.ok(rows[2].includes('never resume: this run'));
   assert.equal(rows[3], 'Worktree: no new changes');
   assert.equal(rows.at(-1), `Log: codex-bridge read ${dir}`);
   assert.equal(rows.length, 5);

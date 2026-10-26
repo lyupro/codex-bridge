@@ -244,7 +244,7 @@ export function capacityReply(ctx, meta) {
   const rows = [
     'CAPACITY — selected model is at capacity; work not completed',
     `Signal: ${line(meta.reason, 170)}`,
-    "Action: wait or change this role's model (/codex-bridge:model), then repeat the order once with a retry: grant; a second CAPACITY goes to the next executor",
+    "Action: wait or change this role's model (/codex-bridge:model), then repeat the same order once with a retry: grant; never resume: this run; a second CAPACITY for the same order goes to the next executor",
   ];
   if (ctx.agent === 'codex-build') {
     const { work: touched } = runChanges(ctx.runDir);
