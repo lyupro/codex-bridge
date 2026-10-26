@@ -28,7 +28,7 @@ const repeat = {
 const messages = [
   ['advisor-scope-continuation', labels,
     'codex-advisor `phase:` scope refuses `continue:`: a scope pass is never continued, and continuing one ' +
-      "spends the order's single continuation that its advise phase needs. Action: repeat the scope under a new order id " +
+      "spends the order's single continuation that its advise phase needs. Fix: repeat the scope under a new order id " +
       "without `continue:` and without a continue: grant, then run advise as that order's continuation; a " +
       'scope run that failed is repeated with a `retry:` grant instead.'],
   ['retry-pass-identity', { agent: 'codex-advisor', phase: 'scope' },
@@ -60,9 +60,9 @@ const messages = [
   ['advise-scope-run-required', { violation: 'phase' }, "phase must be 'scope'"],
   ['advise-scope-run-required', { violation: 'status' }, "status must be 'OK'"],
   ['run-phase-required', { violation: 'missing', phaseLabel: '`phase:`', agent: 'codex-advisor', names: ['scope', 'advise'] },
-    '`phase:` is required for codex-advisor. Action: pass `phase:` <name>; allowed phases: scope, advise.'],
+    '`phase:` is required for codex-advisor. Fix: pass `phase:` <name>; allowed phases: scope, advise.'],
   ['run-phase-required', { violation: 'undeclared', phaseLabel: '`phase:`', phase: 'bad "phase"\n', agent: 'codex-build', names: ['default'] },
-    'undeclared `phase:` "bad \\"phase\\"\\n" for codex-build. Action: pass `phase:` <name>; allowed phases: default.'],
+    'undeclared `phase:` "bad \\"phase\\"\\n" for codex-build. Fix: pass `phase:` <name>; allowed phases: default.'],
   ['writing-run-exclusive', { run: 'B', activePath: 'C:/runs/B', identity: 'matched' },
     'run B is already active for this repository; two writing runs in one tree are prohibited\nActive run: C:/runs/B'],
   ['writing-run-exclusive', { run: 'B', activePath: 'C:/runs/B', identity: 'unverified' },

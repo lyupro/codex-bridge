@@ -202,7 +202,7 @@ export const RULES = Object.freeze({
       if (violation === 'missing') reason = `${phaseLabel} is required`;
       else if (violation === 'undeclared') reason = `undeclared ${phaseLabel} ${JSON.stringify(phase)}`;
       else throw new Error(`unknown run-phase-required violation: ${violation}`);
-      return `${reason} for ${agent}. Action: pass ${phaseLabel} <name>; allowed phases: ${names.join(', ')}.`;
+      return `${reason} for ${agent}. Fix: pass ${phaseLabel} <name>; allowed phases: ${names.join(', ')}.`;
     },
   }),
   'order-id-owner': Object.freeze({
@@ -229,6 +229,6 @@ export const RULES = Object.freeze({
     topic: 'order',
     rule: 'Correct the refused scope pattern using its scope-check reason and action before starting a run.',
     message: ({ pattern, reason, action }) =>
-      `pattern ${JSON.stringify(pattern)} refused: ${reason}. Action: ${action}.`,
+      `pattern ${JSON.stringify(pattern)} refused: ${reason}. Fix: ${action}.`,
   }),
 });

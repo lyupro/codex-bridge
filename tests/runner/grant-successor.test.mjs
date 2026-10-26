@@ -68,7 +68,7 @@ const repairs = 'Last run: B. Outcome: FAIL — capacity. ' +
   'Ready grant line: continue: B — finish advice. ' +
   'Ready retry line: retry: B — capacity (repeats that pass under order o). ' +
   `Example: \`continue: ${CONTINUATION_ORDER_INPUT.example}\`. ` +
-  'Action: ask the orchestrator for an explicit grant naming the run and reason; ' +
+  'Fix: ask the orchestrator for an explicit grant naming the run and reason; ' +
   'do not invent or reuse a continuation.';
 
 function assertOrdinaryRefusals(root) {

@@ -28,7 +28,7 @@ export const RULES = Object.freeze({
     message: ({ violation, labelName, run, runsRoot, lastRun, orderId, spent, previous, example, hints, successor }) => {
       if (violation === 'missing-folder' || violation === 'not-last') {
         const repair = `Example: \`continue: ${example}\`. ` +
-          'Action: ask the orchestrator for an explicit grant naming the run and reason; ' +
+          'Fix: ask the orchestrator for an explicit grant naming the run and reason; ' +
           'do not invent or reuse a continuation.';
         if (violation === 'missing-folder') {
           return `${labelName} is refused: the orchestrator named run “${run}”, but it does not ` +
@@ -128,7 +128,7 @@ export const RULES = Object.freeze({
     rule: 'Never continue an advisor scope pass; repeat failed scope with retry, or use a new order id without continue.',
     message: ({ phaseLabel, continueLabel }) =>
       `codex-advisor ${phaseLabel} scope refuses ${continueLabel}: a scope pass is never continued, and continuing one ` +
-      "spends the order's single continuation that its advise phase needs. Action: repeat the scope under a new order id " +
+      "spends the order's single continuation that its advise phase needs. Fix: repeat the scope under a new order id " +
       `without ${continueLabel} and without a continue: grant, then run advise as that order's continuation; a ` +
       'scope run that failed is repeated with a `retry:` grant instead.',
   }),

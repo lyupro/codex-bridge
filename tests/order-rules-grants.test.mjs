@@ -42,7 +42,7 @@ const continuationMessages = [
       'Ready grant line: continue: B — finish tests. ' +
       'Ready retry line: retry: B — capacity (repeats that pass under order o). ' +
       'Example: `continue: 2026-08-05_092913_plan14-build — LIMIT at step 3, tests unwritten`. ' +
-      'Action: ask the orchestrator for an explicit grant naming the run and reason; ' +
+      'Fix: ask the orchestrator for an explicit grant naming the run and reason; ' +
       'do not invent or reuse a continuation. The submitted grant was not rewritten.'],
   ['not-last', { run: 'A' },
     "`continue:` is refused: grant A is not the LAST run of this task's chain; the current last run is B. " +
@@ -51,7 +51,7 @@ const continuationMessages = [
       'Ready grant line: continue: B — finish tests. ' +
       'Ready retry line: retry: B — capacity (repeats that pass under order o). ' +
       'Example: `continue: 2026-08-05_092913_plan14-build — LIMIT at step 3, tests unwritten`. ' +
-      'Action: ask the orchestrator for an explicit grant naming the run and reason; ' +
+      'Fix: ask the orchestrator for an explicit grant naming the run and reason; ' +
       'do not invent or reuse a continuation.'],
   ['spent', {},
     '`continue:` is refused: order “o” already spent its allowed continuation on C:/runs/A, C:/runs/B. ' +

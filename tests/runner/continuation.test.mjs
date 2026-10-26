@@ -67,7 +67,7 @@ test('a grant naming a missing run is refused in the project runs directory', (t
   assert.match(message, new RegExp(missing));
   assert.match(message, new RegExp(runsRoot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   assert.match(message, /Example: `continue:/);
-  assert.match(message, /Action:/);
+  assert.match(message, /Fix:/);
   assert.deepEqual(fs.readdirSync(runsRoot), []);
 });
 
@@ -108,7 +108,7 @@ test('a grant for an earlier chain run is refused as single-use', (t) => {
   assert.match(message, /single-use/);
   assert.match(message, /old grant stops matching by itself/);
   assert.match(message, /Example: `continue:/);
-  assert.match(message, /Action:/);
+  assert.match(message, /Fix:/);
   assert.deepEqual(fs.readdirSync(runsRoot).sort(), [first, second]);
 });
 

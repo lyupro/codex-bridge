@@ -104,7 +104,7 @@ test('single-phase defaults persist through headers and explicit defaults still 
 test('advisor scope continuation resolves its phase but refuses before probes and run creation', () => {
   // OW-040, 2026-09-30: a scope retry must not spend the continuation reserved for advise.
   const message = 'codex-advisor `phase:` scope refuses `continue:`: a scope pass is never continued, and continuing one ' +
-    "spends the order's single continuation that its advise phase needs. Action: repeat the scope under a new order id " +
+    "spends the order's single continuation that its advise phase needs. Fix: repeat the scope under a new order id " +
     "without `continue:` and without a continue: grant, then run advise as that order's continuation; a " +
     'scope run that failed is repeated with a `retry:` grant instead. The run folder was not created; quota was not spent.';
   assert.equal(resolveRunPhase({ agent: 'codex-advisor', phase: 'scope', continue: true },

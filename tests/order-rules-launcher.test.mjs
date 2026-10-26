@@ -21,19 +21,19 @@ import { makeTempTree } from './temp-tree.mjs';
 const scopeCases = [
   ['scope', '/src/a.mjs',
     '`scope:` pattern "/src/a.mjs" refused: is an absolute or drive-qualified path. ' +
-      'Action: use a path relative to the repository root with forward slashes. ' +
+      'Fix: use a path relative to the repository root with forward slashes. ' +
       'The run folder was not created; quota was not spent.'],
   ['scope new', 'src/',
     '`scope new:` pattern "src/" refused: names a directory rather than a file. ' +
-      'Action: write src/** for everything inside it, or name the file itself. ' +
+      'Fix: write src/** for everything inside it, or name the file itself. ' +
       'The run folder was not created; quota was not spent.'],
   ['scope', 'src/a\nb.mjs',
     '`scope:` pattern "src/a\\nb.mjs" refused: contains a newline or carriage return. ' +
-      'Action: use a glob instead of a literal path containing a line break. ' +
+      'Fix: use a glob instead of a literal path containing a line break. ' +
       'The run folder was not created; quota was not spent.'],
   ['scope new', 'areas/Ω file/',
     '`scope new:` pattern "areas/Ω file/" refused: names a directory rather than a file. ' +
-      'Action: write areas/Ω file/** for everything inside it, or name the file itself. ' +
+      'Fix: write areas/Ω file/** for everything inside it, or name the file itself. ' +
       'The run folder was not created; quota was not spent.'],
 ];
 
@@ -60,7 +60,7 @@ test('launcher composition also accepts scope match rule outputs', () => {
     }),
   })), orderDiagnosticMessage('run-not-created')].join(' ');
   const expected = '`scope:` pattern "missing.mjs" refused: does not match any existing path in the repository. ' +
-    'Action: correct the pattern or declare an intentionally new path with `scope new:`. ' +
+    'Fix: correct the pattern or declare an intentionally new path with `scope new:`. ' +
     'The run folder was not created; quota was not spent.';
   assert.equal(text, expected);
   assert.equal(checkOutgoingRefusal(text, 'launcher-test'), expected);
@@ -187,7 +187,7 @@ test('D6 launcher probe journals handwritten reason text in a separate child mar
       pattern: '/a.mjs', reason: 'hand-written launcher refusal', action,
     });
     assert.equal(text, 'pattern "/a.mjs" refused: hand-written launcher refusal. ' +
-      'Action: use a path relative to the repository root with forward slashes.');
+      'Fix: use a path relative to the repository root with forward slashes.');
     checkOutgoingRefusal(text, 'launcher-probe');
   `], { env: { ...process.env, CODEX_BRIDGE_TEST_TMP: root }, encoding: 'utf8', windowsHide: true, timeout: 10_000 });
   assert.ifError(result.error);
