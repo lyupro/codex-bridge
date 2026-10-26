@@ -1,4 +1,4 @@
-/** OW-075 A3c: the completed migration must never regain an implicit next action. */
+/** OW-075 A3c / OW-077: the completed migration must never regain an implicit next action. */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -59,7 +59,7 @@ function dieCalls(source, name = 'die') {
 }
 
 function assertAction(args, name = 'die') {
-  const index = name === 'die' ? 1 : 3;
+  const index = name === 'die' || name === 'deny' ? 1 : 3;
   assert.equal(args.length, index + 1, `${name} needs an action object`);
   const options = args[index];
   assert.equal(options[0]?.value, '{', 'options argument must be an object');
@@ -119,6 +119,49 @@ test('scanner rejects missing, numeric, nested, unknown and computed actions', (
     assert.equal(calls.length, 1);
     assert.throws(() => assertAction(calls[0].args), { name: 'AssertionError' });
   }
+});
+
+test('every deny call in order-gate passes an explicit known literal action', (t) => {
+  const file = 'src/home/hooks/order-gate.mjs';
+  const source = fs.readFileSync(new URL('../../' + file, import.meta.url), 'utf8');
+  const calls = dieCalls(source, 'deny');
+  const definitionStart = source.indexOf('const deny =');
+  const definitionEnd = source.indexOf('let input;', definitionStart);
+  assert.ok(definitionStart >= 0 && definitionEnd > definitionStart, 'deny definition boundaries must exist');
+  for (const { args, offset } of calls) {
+    const location = file + ':' + source.slice(0, offset).split('\n').length;
+    assert.ok(offset < definitionStart || offset >= definitionEnd, location + ': definition counted as a call');
+    assert.doesNotThrow(() => assertAction(args, 'deny'), location);
+  }
+  assert.ok(calls.length >= 11, 'scanner found only ' + calls.length + ' deny calls');
+  t.diagnostic('validated ' + calls.length + ' deny calls in ' + file);
+});
+
+test('order-gate emits deny decisions and reasons only inside the deny definition', () => {
+  const source = fs.readFileSync(new URL('../../src/home/hooks/order-gate.mjs', import.meta.url), 'utf8');
+  const start = source.indexOf('const deny =');
+  const end = source.indexOf('let input;', start);
+  assert.ok(start >= 0 && end > start, 'deny definition boundaries must exist');
+  const decisions = [...source.matchAll(/permissionDecision\s*:\s*(['"])deny\1/g)];
+  assert.equal(decisions.length, 1, 'deny must have exactly one decision emitter');
+  assert.ok(decisions[0].index >= start && decisions[0].index < end, 'deny decision must be inside deny');
+  assert.doesNotMatch(source.slice(0, start) + source.slice(end), /permissionDecisionReason/,
+    'deny reasons must be emitted only inside deny');
+});
+
+test('deny scanner rejects missing, computed, unknown and actionless options', () => {
+  for (const source of [
+    'deny(x);', 'deny(x, { action: variable });',
+    "deny(x, { action: 'bogus' });", 'deny(x, {});',
+    'deny(x, { action: availability.action });',
+  ]) {
+    const calls = dieCalls(source, 'deny');
+    assert.equal(calls.length, 1);
+    assert.throws(() => assertAction(calls[0].args, 'deny'), { name: 'AssertionError' });
+  }
+  const calls = dieCalls("const deny = (reason, how) => {};\ndeny(x, { action: 'usage' });", 'deny');
+  assert.equal(calls.length, 1, 'the const deny definition must not be counted as a call');
+  assert.doesNotThrow(() => assertAction(calls[0].args, 'deny'));
 });
 
 test('die rejects missing, numeric and actionless options before printing', (t) => {
