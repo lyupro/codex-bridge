@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.6.23] - 2026-10-26
+
 ### Fixed
 
 - Order-gate refusals lacked the Action row required by the 0.6.22 rules core, so every free
