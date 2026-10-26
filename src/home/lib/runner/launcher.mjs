@@ -107,7 +107,7 @@ export async function launcher(argv = process.argv.slice(2)) {
   const resolution = runsRootResolution();
   // Plan_59 D5/D6: blind choices and design authority must be checked before the paid probe.
   const taskGate = taskPreflight({ agent: opts.agent, taskText, header, resolution });
-  if (taskGate.refusal) die(taskGate.refusal, EXIT.FAIL);
+  if (taskGate.refusal) die(taskGate.refusal, { action: 'usage', exit: EXIT.FAIL });
   const topLevel = git(opts.repo, ['rev-parse', '--show-toplevel']);
   const isGitRepo = topLevel.status === 0;
   const repoRoot = isGitRepo ? topLevel.stdout.trim() : opts.repo;
@@ -119,17 +119,17 @@ export async function launcher(argv = process.argv.slice(2)) {
   if (scopeRefusal) {
     die([orderLabelReason(orderInputName(scopeRefusal.label), orderRuleMessage('scope-pattern-refusal', {
       pattern: scopeRefusal.pattern, reason: scopeRefusal.reason, action: scopeRefusal.action,
-    })), orderDiagnosticMessage('run-not-created')].join(' '));
+    })), orderDiagnosticMessage('run-not-created')].join(' '), { action: 'usage' });
   }
   // Plan_77 D6: project-dir.mjs:84 recursively recreated a retired CODEX_RUNS_ROOT.
   // Refuse before that mkdir, using the same resolution that checked the advice header.
   const stale = staleOverrideRefusal(resolution);
-  if (stale) die([stale, orderDiagnosticMessage('run-not-created')].join('\n'), EXIT.FAIL);
+  if (stale) die([stale, orderDiagnosticMessage('run-not-created')].join('\n'), { action: 'runs-root-retired', exit: EXIT.FAIL });
   const projectRunsRoot = resolveProjectRunsDir(resolution.root, repoRoot).dir;
   // Plan_60 D4c, 2026-09-24: two launchers of one order both billed. The claim comes before markAbandoned, or a
   // contender could close a run whose worker is admitting itself and start a second paid one.
   const claim = await acquireOrderClaim({ projectRunsRoot, orderId: opts.orderId, role: 'launcher' });
-  if (claim.busy) die(orderClaimBusyText(opts.orderId, claim.holder), EXIT.FAIL);
+  if (claim.busy) die(orderClaimBusyText(opts.orderId, claim.holder), { action: 'run-in-progress', exit: EXIT.FAIL });
   try {
     // Folders left behind by a runner that was killed mid-run get an explicit state before
     // anything else happens. One order produced four of them, and without this pass an
@@ -143,7 +143,7 @@ export async function launcher(argv = process.argv.slice(2)) {
       if (drift) {
         die(orderDiagnosticMessage('repository-detached-after-abandoned-run', {
           run: drift.run, branch: drift.branch,
-        }));
+        }), { action: 'repository-detached' });
       }
     }
 
@@ -156,11 +156,11 @@ export async function launcher(argv = process.argv.slice(2)) {
     // a PATH miss, after one retry, is the free readiness-unconfirmed refusal (exit 1, Plan_78 D5).
     const availability = await codexAvailabilityRefusal();
     if (availability?.unavailable) { process.stdout.write(`${availability.text}\n`); return EXIT.UNAVAILABLE; }
-    if (availability) die(availability.text, EXIT.FAIL);
+    if (availability) die(availability.text, { action: availability.action, exit: EXIT.FAIL });
     // Review 2026-09-17: probe before the busy check so it sees writers that registered while the slow
     // probe waited; the dead refusal stays before retention to preserve old run artifacts.
     const sandboxProbe = await probeSandbox({ agent: opts.agent, repo: repoRoot });
-    if (sandboxProbe.outcome === 'dead') die(sandboxRefusal(sandboxProbe));
+    if (sandboxProbe.outcome === 'dead') die(sandboxRefusal(sandboxProbe), { action: 'sandbox-dead' });
 
     // Everything that can refuse without touching the tree is asked here, after the probe so the
     // busy check sees writers that registered while it waited, and before makeRunDir below: on
@@ -168,7 +168,7 @@ export async function launcher(argv = process.argv.slice(2)) {
     // every tool call demanding the orchestrator revert a directory the tool itself had created.
     // Exit 1, not the usage code 2: the order was correct, the host or the tree was not.
     const preflightError = preflightRefusal({ agent: opts.agent, projectRunsRoot, repoRoot });
-    if (preflightError) die(preflightError, EXIT.FAIL);
+    if (preflightError) die(preflightError, { action: 'run-in-progress', exit: EXIT.FAIL });
 
     let retention = null;
     try {
@@ -184,7 +184,7 @@ export async function launcher(argv = process.argv.slice(2)) {
         projectRunsRoot, repoRoot, slug: opts.slug, taskHash, orderId: opts.orderId,
         grantRun: header.grant?.run, chainBefore: chain,
       });
-      if (text) die(text, EXIT.FAIL);
+      if (text) die(text, { action: 'run-in-progress', exit: EXIT.FAIL });
     }
     const runDir = makeRunDir(runDirPath(projectRunsRoot, opts.slug));
     setRun(runDir, opts.agent);

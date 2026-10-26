@@ -1,4 +1,5 @@
 /** Plan_57: the 2026-09-16 broken sandbox must refuse before a run can spend quota. */
+import { orderDiagnosticMessage } from '../../src/home/lib/order-diagnostics.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
@@ -13,6 +14,14 @@ import { launcherProcessMocks } from './launcher-mocks.mjs';
 import { orderInvocation } from './order-invocation.mjs';
 
 const RUN_CODEX = fileURLToPath(new URL('../../src/home/lib/run-codex.mjs', import.meta.url));
+function assertAction(output, variant) {
+  const row = orderDiagnosticMessage('next-action', { variant });
+  const lines = output.stderr.trimEnd().split(/\r?\n/);
+  assert.deepEqual(lines.filter((line) => line.startsWith('Action: ')), [row]);
+  assert.equal(lines.at(-1), row);
+  assert.ok(lines.at(-2).endsWith('The run folder was not created; quota was not spent.'));
+}
+
 const LAUNCHER = new URL('../../src/home/lib/runner/launcher.mjs', import.meta.url).href;
 const SANDBOX_FAILURE = 'windows sandbox failed: helper_unknown_error: apply deny-read ACLs';
 const WINDOWS_ONLY = 'The fake codex.cmd reaches the probe through cmd.exe; the Linux form is covered in sandbox-probe.test.mjs.';
@@ -139,6 +148,7 @@ test('a dead sandbox refuses the real CLI before creating a run or checking Code
 
   assert.equal(output.status, 2, `${output.stdout}\n${output.stderr}`);
   assert.match(output.stderr, /The Codex sandbox on this host cannot start a process/);
+  assertAction(output, 'sandbox-dead');
   assert.match(output.stderr, /The run folder was not created; quota was not spent\./);
   assert.ok(output.stderr.includes(SANDBOX_FAILURE));
   assert.equal(output.stdout, '');
@@ -231,7 +241,8 @@ if (args[0] === 'sandbox') {
 
     assert.equal(output.status, 1, `${output.stdout}\n${output.stderr}`);
     assert.match(output.stderr, /already active for this repository/);
-    assert.match(output.stderr, /The run folder was not created; quota was not spent\.\s*$/);
+    assert.match(output.stderr, /The run folder was not created; quota was not spent\.(?:\r?\n|$)/);
+    assertAction(output, 'run-in-progress');
     assert.equal(output.stdout, '');
     assert.deepEqual(fs.readdirSync(project, { withFileTypes: true })
       .filter((entry) => entry.isDirectory()).map((entry) => entry.name), ['other-live-run']);
@@ -263,6 +274,7 @@ test('a dead sandbox refuses a busy writing tree before creating a run', async (
 
     assert.equal(output.status, 2, `${output.stdout}\n${output.stderr}`);
     assert.match(output.stderr, /The Codex sandbox on this host cannot start a process/);
+    assertAction(output, 'sandbox-dead');
     assert.match(output.stderr, /The run folder was not created; quota was not spent\./);
     assert.equal(output.stdout, '');
     assert.deepEqual(fs.readdirSync(project, { withFileTypes: true })

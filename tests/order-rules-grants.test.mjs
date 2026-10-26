@@ -265,7 +265,9 @@ test('advise carry keeps diagnostic forwarding, exit code and prompt bytes', () 
   const input = { taskText, phase: 'advise' };
   assert.throws(() => advisorTaskArtifact(input), { message: diagnosticMessages[0][3] });
   assert.throws(() => advisorTaskOrRefuse(input), (error) => {
-    assert.equal(error.message, diagnosticMessages[0][3] + suffix);
+    assert.equal(error.message, diagnosticMessages[0][3] + suffix + '\n' + orderDiagnosticMessage('next-action', { variant: 'advisor-scope-result' }));
+    assert.deepEqual(error.message.split('\n').filter((line) => line.startsWith('Action: ')),
+      [orderDiagnosticMessage('next-action', { variant: 'advisor-scope-result' })]);
     assert.equal(error.exitCode, 1);
     return true;
   });
@@ -275,7 +277,9 @@ test('advise carry keeps diagnostic forwarding, exit code and prompt bytes', () 
   const malformed = 'Malformed advise scope result at ' + path.join(root, 'S', 'result.json') +
     ': expected predicted_risks and missing_paths arrays.';
   assert.throws(() => advisorTaskOrRefuse({ ...input, runsRoot: root, grantRun: 'S' }), (error) => {
-    assert.equal(error.message, malformed + suffix);
+    assert.equal(error.message, malformed + suffix + '\n' + orderDiagnosticMessage('next-action', { variant: 'advisor-scope-result' }));
+    assert.deepEqual(error.message.split('\n').filter((line) => line.startsWith('Action: ')),
+      [orderDiagnosticMessage('next-action', { variant: 'advisor-scope-result' })]);
     assert.equal(error.exitCode, 1);
     return true;
   });

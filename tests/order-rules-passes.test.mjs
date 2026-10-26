@@ -74,11 +74,9 @@ const messages = [
 ];
 const hostMessages = [
   ['codex-readiness-unconfirmed', { detail: 'PATH miss\nDetails' },
-    'Codex CLI readiness unconfirmed: PATH miss\nDetails\n' +
-      'Do not skip this bridge: check codex --version for up to about 2 minutes; when it answers, repeat the same order exactly once; if it does not answer, hand the order to the next executor and name that in the summary.'],
+    'Codex CLI readiness unconfirmed: PATH miss\nDetails'],
   ['codex-unavailable', { detail: 'probe timed out\nDetails' },
-    'Codex CLI unavailable: probe timed out\nDetails\n' +
-      'Operator check: codex --version (and codex login if authorization is rejected)'],
+    'Codex CLI unavailable: probe timed out\nDetails'],
 ];
 for (const [index, [key, values, expected]] of messages.entries()) {
   test(`${key} literal message ${index}`, () => {
@@ -92,7 +90,7 @@ for (const [key, values, expected] of hostMessages) {
     assert.equal(ORDER_DIAGNOSTICS[key].message(values), expected);
     assert.deepEqual(await codexAvailabilityRefusal({ probe: async () => ({
       state: 'inconclusive', pathMiss: key === 'codex-readiness-unconfirmed', detail: values.detail,
-    }) }), { unavailable: false, text: expected + '\n' + suffix });
+    }) }), { unavailable: false, action: key === 'codex-readiness-unconfirmed' ? 'readiness-unconfirmed' : 'availability-unconfirmed', text: expected + '\n' + suffix });
   });
 }
 
@@ -154,10 +152,10 @@ const usage = (expected, exitCode = 2) => (error) => {
 test('phase callers preserve full refusal bytes, exit codes and default success', () => {
   const budgets = { advisor: { scope: 15, advise: 15 }, build: { default: 15 } };
   assert.throws(() => resolveRunPhase({ agent: 'codex-advisor', phase: 'advise', continue: false }, budgets),
-    usage(messages[5][2] + ' ' + suffix));
-  assert.throws(() => resolveRunPhase({ agent: 'codex-advisor' }, budgets), usage(messages[10][2] + ' ' + suffix));
+    usage(messages[5][2] + ' ' + suffix + '\n' + orderDiagnosticMessage('next-action', { variant: 'grant-decision' })));
+  assert.throws(() => resolveRunPhase({ agent: 'codex-advisor' }, budgets), usage(messages[10][2] + ' ' + suffix + '\n' + orderDiagnosticMessage('next-action', { variant: 'usage' })));
   assert.throws(() => resolveRunPhase({ agent: 'codex-build', phase: 'bad "phase"\n' }, budgets),
-    usage(messages[11][2] + ' ' + suffix));
+    usage(messages[11][2] + ' ' + suffix + '\n' + orderDiagnosticMessage('next-action', { variant: 'usage' })));
   assert.equal(resolveRunPhase({ agent: 'codex-build' }, budgets), 'default');
   assert.equal(resolveRunPhase({ agent: 'codex-advisor', phase: 'advise', continue: true }, budgets), 'advise');
 });
@@ -214,6 +212,7 @@ test('pending advisor, signed-out and retired-path producers are forwarded uncha
     probe: async () => ({ state: 'logged-out', pathMiss: true, detail: 'Not logged in' }),
   }), {
     unavailable: true,
+    action: 'unavailable',
     text: 'UNAVAILABLE — Codex is not available (signed out); hand the task to the next executor, do not retry\n' +
       'Signal: Not logged in\n' +
       'Action: Codex is signed out on this host; do not retry this bridge, hand the order to the next executor and ask the operator to run codex login\n' +

@@ -1,4 +1,5 @@
 /** Plan_59 D5/D6: design gates must refuse before a probe or run folder exists. */
+import { orderDiagnosticMessage } from '../../src/home/lib/order-diagnostics.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -8,6 +9,14 @@ import { makeTempTree } from '../temp-tree.mjs';
 import { launcherProcessMocks } from './launcher-mocks.mjs';
 import { orderInvocation, orderTaskText } from './order-invocation.mjs';
 import { taskPreflight } from '../../src/home/lib/runner/preflight.mjs';
+
+function assertAction(output, variant, quotaLast) {
+  const row = orderDiagnosticMessage('next-action', { variant });
+  const lines = output.stderr.trimEnd().split(/\r?\n/);
+  assert.deepEqual(lines.filter((line) => line.startsWith('Action: ')), [row]);
+  assert.equal(lines.at(-1), row);
+  if (quotaLast) assert.ok(lines.at(-2).endsWith('The run folder was not created; quota was not spent.'));
+}
 
 const LAUNCHER = new URL('../../src/home/lib/runner/launcher.mjs', import.meta.url).href;
 const CLEAN_TASK = '## Options\n- keep: Keep the boundary.\n- split: Split the boundary.\n## Paths\n- source.mjs\n';
@@ -77,6 +86,7 @@ function statusFrom(output) {
 const JUDGED_ADVICE = { agent: 'codex-advisor', phase: 'advise', status: 'OK' };
 
 function assertFree(tree, output, exitCode = 1) {
+  assertAction(output, 'usage', exitCode === 1);
   assert.equal(output.status, exitCode, output.stderr || output.error?.message);
   assert.equal(output.stdout, '');
   assert.match(output.stderr, FREE);

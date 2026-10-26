@@ -26,6 +26,7 @@ export async function codexAvailabilityRefusal({ probe = probeCodexAvailability 
   )];
   return {
     unavailable,
+    action: unavailable ? 'unavailable' : result.pathMiss === true ? 'readiness-unconfirmed' : 'availability-unconfirmed',
     text: [...rows, orderDiagnosticMessage('run-not-created')].join('\n'),
   };
 }
@@ -91,7 +92,7 @@ export function resolveRunPhase({ agent, phase, continue: isContinue }, budgets)
   if (agent === 'codex-advisor' && phase === 'advise' && !isContinue) {
     die([orderRuleMessage('advisor-advise-continuation', {
       phaseLabel: orderInputName('phase'), continueLabel: orderInputName('continue'),
-    }), orderDiagnosticMessage('run-not-created')].join(' '));
+    }), orderDiagnosticMessage('run-not-created')].join(' '), { action: 'grant-decision' });
   }
   const phases = budgets[agentRole(agent)];
   const names = Object.keys(phases);
@@ -99,7 +100,7 @@ export function resolveRunPhase({ agent, phase, continue: isContinue }, budgets)
   if (phase !== undefined && Object.hasOwn(phases, phase)) return phase;
   die([orderRuleMessage('run-phase-required', {
     violation: phase === undefined ? 'missing' : 'undeclared', phaseLabel: orderInputName('phase'), phase, agent, names,
-  }), orderDiagnosticMessage('run-not-created')].join(' '));
+  }), orderDiagnosticMessage('run-not-created')].join(' '), { action: 'usage' });
 }
 
 export function preflightRefusal({ agent, projectRunsRoot, repoRoot }) {

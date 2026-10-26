@@ -1,4 +1,5 @@
 /** Plan_59 C2/D5/D7: advisor phases must reach plain exec or refuse before spending quota. */
+import { orderDiagnosticMessage } from '../../src/home/lib/order-diagnostics.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -14,6 +15,16 @@ import { codexArgs } from '../../src/home/lib/runner/codex-args.mjs';
 import { loadRunEnv } from '../../src/home/lib/runner/run-env.mjs';
 import { validScope } from '../meta/advisor-fixtures.mjs';
 import { parseAdvisorTask } from '../../src/home/lib/meta/advisor-task.mjs';
+
+function assertAction(output, variant) {
+  const row = orderDiagnosticMessage('next-action', { variant });
+  const lines = output.stderr.trimEnd().split(/\r?\n/);
+  assert.deepEqual(lines.filter((line) => line.startsWith('Action: ')), [row]);
+  assert.equal(lines.at(-1), row);
+  if (!/missing required header label/.test(output.stderr)) {
+    assert.ok(lines.at(-2).endsWith('The run folder was not created; quota was not spent.'));
+  }
+}
 
 const LAUNCHER = new URL('../../src/home/lib/runner/launcher.mjs', import.meta.url).href;
 const TASK = '## Options\n- keep: Keep the boundary.\n- split: Split the boundary.\n## Paths\n- source.mjs\n';
@@ -74,6 +85,7 @@ function assertFree(tree, output, code, message, freeSentence = true) {
   assert.equal(output.status, code, output.stderr || output.error?.message);
   assert.equal(output.stdout, '');
   assert.match(output.stderr, message);
+  assertAction(output, /requires a `continue:` grant/.test(output.stderr) ? 'grant-decision' : 'usage');
   if (freeSentence) assert.match(output.stderr, /The run folder was not created; quota was not spent\.(?:\r?\n|$)/);
   assert.equal(fs.existsSync(tree.runs), false);
   assert.deepEqual(fs.readdirSync(tree.repo), ['source.mjs']);
@@ -187,7 +199,8 @@ test('advise refuses for free when the scope result cannot be carried', () => {
   assert.equal(output.status, 1, output.stdout || output.error?.message);
   assert.equal(output.stdout, '');
   assert.match(output.stderr, /Malformed advise scope result/);
-  assert.match(output.stderr, /The run folder was not created; quota was not spent\.\s*$/);
+  assertAction(output, 'advisor-scope-result');
+  assert.match(output.stderr, /The run folder was not created; quota was not spent\.(?:\r?\n|$)/);
   assert.deepEqual(fs.readdirSync(tree.runs), before);
 });
 

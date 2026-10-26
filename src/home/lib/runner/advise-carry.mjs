@@ -34,7 +34,7 @@ export function advisorTaskOrRefuse(input) {
   try {
     return advisorTaskArtifact(input);
   } catch (error) {
-    return die([error.message, orderDiagnosticMessage('run-not-created')].join(' '), EXIT.FAIL);
+    return die([error.message, orderDiagnosticMessage('run-not-created')].join(' '), { action: 'advisor-scope-result', exit: EXIT.FAIL });
   }
 }
 

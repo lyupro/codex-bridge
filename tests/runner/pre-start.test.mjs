@@ -7,6 +7,7 @@
  * after registration, otherwise their folders are counted as paid work by the next order. Which
  * refusal belongs on which side is the table in refusal-table.test.mjs.
  */
+import { orderDiagnosticMessage } from '../../src/home/lib/order-diagnostics.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -19,6 +20,14 @@ import { launcherProcessMocks } from './launcher-mocks.mjs';
 import { orderInvocation } from './order-invocation.mjs';
 
 const RUN_CODEX = fileURLToPath(new URL('../../src/home/lib/run-codex.mjs', import.meta.url));
+function assertAction(output, variant) {
+  const row = orderDiagnosticMessage('next-action', { variant });
+  const lines = output.stderr.trimEnd().split(/\r?\n/);
+  assert.deepEqual(lines.filter((line) => line.startsWith('Action: ')), [row]);
+  assert.equal(lines.at(-1), row);
+  assert.ok(lines.at(-2).endsWith('The run folder was not created; quota was not spent.'));
+}
+
 const LAUNCHER = new URL('../../src/home/lib/runner/launcher.mjs', import.meta.url).href;
 const shellQuote = (value) => `'${String(value).replaceAll("'", "'\\''")}'`;
 
@@ -144,7 +153,8 @@ else process.exitCode = 90;
   assert.equal(output.status, 1, output.stderr);
   assert.match(output.stderr, /run other-live-run is already active for this repository; two writing runs in one tree are prohibited/);
   assert.ok(output.stderr.includes(`Active run: ${path.join(project, 'other-live-run')}`));
-  assert.match(output.stderr, /The run folder was not created; quota was not spent\.\s*$/);
+  assert.match(output.stderr, /The run folder was not created; quota was not spent\.(?:\r?\n|$)/);
+  assertAction(output, 'run-in-progress');
   assert.equal(output.stdout, '');
   assert.deepEqual(fs.readdirSync(project, { withFileTypes: true })
     .filter((entry) => entry.isDirectory()).map((entry) => entry.name), ['other-live-run']);
@@ -330,8 +340,8 @@ childProcess.spawn = (command, args = [], options) => {
 
   assert.equal(output.status, 1, output.stderr);
   assert.match(output.stderr, /Codex CLI unavailable: Codex missing/);
-  assert.ok(output.stderr.includes('Operator check: codex --version (and codex login if authorization is rejected)'));
-  assert.match(output.stderr, /The run folder was not created; quota was not spent\.\s*$/);
+  assertAction(output, 'availability-unconfirmed');
+  assert.match(output.stderr, /The run folder was not created; quota was not spent\.(?:\r?\n|$)/);
   assert.equal(output.stdout, '');
   assert.deepEqual(fs.readdirSync(project, { withFileTypes: true })
     .filter((entry) => entry.isDirectory()), []);

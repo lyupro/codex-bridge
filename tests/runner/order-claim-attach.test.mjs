@@ -109,7 +109,7 @@ test('launcher holds the claim from before abandonment until worker registration
   const markers = [
     'const projectRunsRoot = resolveProjectRunsDir(',
     'const claim = await acquireOrderClaim(',
-    'if (claim.busy) die(orderClaimBusyText(opts.orderId, claim.holder), EXIT.FAIL)',
+    "if (claim.busy) die(orderClaimBusyText(opts.orderId, claim.holder), { action: 'run-in-progress', exit: EXIT.FAIL })",
     'try {',
     'markAbandoned(projectRunsRoot,',
     'const drift = abandonedBranchDrift(',
@@ -135,5 +135,5 @@ test('launcher holds the claim from before abandonment until worker registration
     position = next;
   }
   assert.match(source, /beforeWait: claim\.release/);
-  assert.match(source, /if \(text\) die\(text, EXIT\.FAIL\);\s*}\s*const runDir = makeRunDir\(/);
+  assert.match(source, /if \(text\) die\(text, \{ action: 'run-in-progress', exit: EXIT\.FAIL \}\);\s*}\s*const runDir = makeRunDir\(/);
 });

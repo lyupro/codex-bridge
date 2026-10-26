@@ -1,3 +1,4 @@
+import { orderDiagnosticMessage } from '../../src/home/lib/order-diagnostics.mjs';
 /** Plan_77 D6: old addresses must be diagnosed before reading evidence or recreating the store. */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -75,10 +76,12 @@ catch (error) {
   });
 }
 
-function assertFree(tree, output, expected) {
+function assertFree(tree, output, expected, variant) {
   assert.equal(output.status, 1, output.stderr || output.error?.message);
   assert.equal(output.stdout, '');
-  assert.equal(output.stderr.trim(), `run-codex: ${expected}\n${FREE}`);
+  const row = orderDiagnosticMessage('next-action', { variant });
+  assert.equal(output.stderr.trim(), `run-codex: ${expected}\n${FREE}\n${row}`);
+  assert.deepEqual(output.stderr.trim().split('\n').filter((line) => line.startsWith('Action: ')), [row]);
   assert.equal(fs.existsSync(tree.oldRoot), false);
   assert.equal(fs.existsSync(tree.runs), false);
   assert.deepEqual(fs.readdirSync(tree.repo), ['source.mjs']);
@@ -88,13 +91,13 @@ function assertFree(tree, output, expected) {
 for (const suffix of ['', 'Project/Run-ID']) {
   test(`launcher refuses retired advice before filesystem access (${suffix || 'root'})`, (t) => {
     const tree = fixture(t);
-    assertFree(tree, launch(tree, { advice: path.join(tree.oldRoot, suffix) }), movedText(tree, suffix));
+    assertFree(tree, launch(tree, { advice: path.join(tree.oldRoot, suffix) }), movedText(tree, suffix), 'usage');
   });
 
   test(`launcher refuses a stale runs override before mkdir (${suffix || 'root'})`, (t) => {
     const tree = fixture(t);
     const override = path.join(tree.oldRoot, suffix);
-    assertFree(tree, launch(tree, { advice: 'mechanical', override }), `${movedText(tree, suffix)}\n${OVERRIDE}`);
+    assertFree(tree, launch(tree, { advice: 'mechanical', override }), `${movedText(tree, suffix)}\n${OVERRIDE}`, 'runs-root-retired');
     assert.equal(fs.existsSync(override), false);
   });
 }
