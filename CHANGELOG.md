@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.6.21] - 2026-10-26
+
 ### Fixed
 
 - A model-at-capacity failure now has its own `CAPACITY` verdict with exit code 6, instead of
