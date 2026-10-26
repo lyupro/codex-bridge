@@ -1,7 +1,8 @@
 /**
  * OW-075 A6c: the standalone row is the only place the Action: token may appear.
- * External text (Codex errors, model summaries) is always printed behind a FAIL — or > prefix
- * and cannot form a row, so no runtime filter is added without a proven failure.
+ * External text (Codex errors, model summaries) never starts a row: each row opens with its own
+ * label (OK —, FAIL —, Signal:, > ...) and line() flattens the text inside it, so it cannot form
+ * a row and no runtime filter is added without a proven failure.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

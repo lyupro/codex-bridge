@@ -138,6 +138,9 @@ harmless; a changed task file or command turns a repeat into a second paid run.
 On 2026-08-03 one order became six runs exactly this way, and four of them were never accounted for
 at all. A second writing run in one worktree is refused anyway — the tree is shared and has no
 isolation.
+Every runner refusal and every non-OK status block carries exactly one Action row naming the
+orchestrator's next step; that row is addressed to the orchestrator, is returned verbatim with the
+rest, and is never an instruction to the dispatcher.
 
 **Your response = the exact stdout of the attaching call**: the \`ATTACH=<path>\` line and the status
 block below it. Do not add or remove anything: no preamble, explanations, or retelling of the diff.

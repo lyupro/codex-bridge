@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- Every non-OK reply and every pre-start refusal carries exactly one `Action:` row naming the
+  orchestrator's next step. The rules core replaces its per-status bullets with one generic rule,
+  so new outcomes no longer add core text. Readiness and availability refusals no longer have a
+  free second line; inline repairs are labelled `Fix:`, and an unknown run status now fails loudly
+  (OW-075).
+
 ## [0.6.21] - 2026-10-26
 
 ### Fixed

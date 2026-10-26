@@ -148,7 +148,9 @@ complete job before detaching from the launcher.
    block on stdout, exit 5, no folder, no quota. A second PATH miss produces the free
    `Codex CLI readiness unconfirmed:` refusal, exit 1: a miss proves only "not found right now", as during
    the npm update of the CLI on 2026-10-10 (Plan_78 D5). Any other unclear probe produces the ordinary
-   `Codex CLI unavailable:` refusal, exit 1. It runs before the sandbox probe because that probe can spend
+   `Codex CLI unavailable:` refusal, exit 1. The readiness and inconclusive-availability refusals end
+   with their Action rows (`readiness-unconfirmed`, `availability-unconfirmed`, respectively),
+   instead of a free second line. It runs before the sandbox probe because that probe can spend
    quota, and after attach and the repeat refusal so a live same-order run is still joined first
    (Plan_60 D2).
 

@@ -252,7 +252,8 @@ disagree with it.
 An unclear probe is never `UNAVAILABLE`; an unfamiliar sign-in error stays `FAIL` with its raw text until
 its sample is measured and added as a fixture (`tests/meta/fixtures/`); `2` is the launcher's argument error.
 A `codex` not found on PATH is unclear too (Plan_78 D5, the 2026-10-10 refusal during an npm update of the CLI)
-and gets the `Codex CLI readiness unconfirmed:` refusal with exit 1.
+and gets the `Codex CLI readiness unconfirmed:` refusal with exit 1; its next step is its Action row
+(variant `readiness-unconfirmed`).
 
 `CAPACITY` (runner exit 6) recognizes only the measured final `turn.failed` sample
 `^Selected model is at capacity` (codex-cli 0.160.1, measured 2026-10-26); an unfamiliar overload
@@ -264,6 +265,28 @@ stays `OK`. The raw Codex exit remains in `meta.exit`. The fixture-and-date guar
     the line `Not logged in`); after start only when the final `turn.failed` matches a measured signed-out
     sample (codex-cli 0.159.0:
     `unexpected status 401 Unauthorized: Missing bearer or basic authentication in header`).
+
+## The Action row
+
+Every public non-OK outcome carries exactly one standalone `Action:` row naming the orchestrator's
+next step. Its texts live only in the `next-action` diagnostic
+(`src/home/lib/order-diagnostics/next-action.mjs`): the producer chooses one variant per cause,
+not a variant derived from the exit code. The dispatcher returns the row verbatim with the rest;
+it is addressed to the orchestrator, never an instruction to the dispatcher.
+
+The row is third in post-run replies, second in a runner-recorded failure (`writeFailure()`, right
+after its `FAIL — ` headline), and last in pre-start refusals. If a refusal producer supplies
+a matching row, `withActionRow()` moves it to the last position rather than duplicating it.
+A rule-specific repair inside a refusal sentence is labelled `Fix:`. The Action row neither grants
+recovery nor overrides a ready grant line. An unknown run status fails loudly through
+`run-status-known` instead of rendering as `FAIL`.
+
+External text, including Codex errors and model summaries, never starts a row: every row begins
+with its own fixed label (`OK — `, `FAIL — `, `Signal: `, `Counter: `, `> ` and so on), and the
+external text inside it is flattened to one line by `line()` (`src/home/lib/meta/paths.mjs`), so it
+cannot form a standalone Action row. The guards are
+`tests/meta/action-coverage.test.mjs`, `tests/runner/die-action-guard.test.mjs`, and
+`tests/meta/action-literal-guard.test.mjs`.
 
 `LIMIT` does not mean partial success. For build, the short response separately reports in a `Worktree:`
 line whether unfinished changes remain in the tree — for both `LIMIT` and `FAIL`. “Work was not done”
