@@ -19,6 +19,7 @@ import {
 } from '../../src/home/lib/meta/run-state.mjs';
 import { HEARTBEAT_FILE, HEARTBEAT_STALE_MS } from '../../src/home/lib/heartbeat.mjs';
 import { makeChainRoot } from './test-fixtures.mjs';
+import { orderDiagnosticMessage } from '../../src/home/lib/order-diagnostics.mjs';
 
 // A dispatcher pid this OS will never hand out, so pidAlive() reads it as dead everywhere
 // these tests run (verified against the real implementation, not assumed).
@@ -50,10 +51,10 @@ test('writeFailure() leaves status.json in the failed state with unchanged bytes
   assert.deepEqual(built, expectedFailure(dir, shortened, built.finished_at));
   assert.equal(fs.existsSync(path.join(dir, 'meta.json')), false);
   assert.equal(fs.existsSync(path.join(dir, 'status.json')), false);
-  const { meta, reply } = writeFailure(dir, 'codex-build', reason);
+  const { meta, reply } = writeFailure(dir, 'codex-build', reason, { action: 'fail-no-result' });
   assert.equal(fs.readFileSync(path.join(dir, 'meta.json'), 'utf8'),
     recordBytes(expectedFailure(dir, shortened, meta.finished_at)));
-  assert.equal(reply, `FAIL — ${shortened}\nRun: ${dir}`);
+  assert.equal(reply, `FAIL — ${shortened}\n${orderDiagnosticMessage('next-action', { variant: 'fail-no-result' })}\nRun: ${dir}`);
   assert.equal(meta.status, 'FAIL');
   const status = JSON.parse(fs.readFileSync(path.join(dir, 'status.json'), 'utf8'));
   assert.equal(status.state, 'failed');
@@ -64,7 +65,7 @@ test('writeFailure() leaves status.json in the failed state with unchanged bytes
 
 test('writeFailure() can record a refusal that never started Codex', () => {
   const dir = makeTempTree('codex-run-');
-  const { meta } = writeFailure(dir, 'codex-build', 'Codex was not started', [], true);
+  const { meta } = writeFailure(dir, 'codex-build', 'Codex was not started', { action: 'runner-fault', preStart: true });
   const status = JSON.parse(fs.readFileSync(path.join(dir, 'status.json'), 'utf8'));
 
   assert.equal(status.state, 'aborted_pre_start');

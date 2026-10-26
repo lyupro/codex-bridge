@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { lex } from '../order-guard/lexer.mjs';
 import { die } from '../../src/home/lib/runner/args.mjs';
 import { orderDiagnosticMessage } from '../../src/home/lib/order-diagnostics.mjs';
+import { writeFailure } from '../../src/home/lib/meta/run-state.mjs';
+import { makeTempTree } from '../temp-tree.mjs';
 
 // Split only at the current level: message builders can contain their own calls and objects.
 function splitArguments(tokens) {
@@ -33,11 +35,11 @@ function splitArguments(tokens) {
   return parts;
 }
 
-function dieCalls(source) {
+function dieCalls(source, name = 'die') {
   const { tokens } = lex(source);
   const calls = [];
   for (let i = 0; i < tokens.length; i += 1) {
-    if (tokens[i].literal || tokens[i].value !== 'die' || tokens[i + 1]?.value !== '(' ||
+    if (tokens[i].literal || tokens[i].value !== name || tokens[i + 1]?.value !== '(' ||
         tokens[i - 1]?.value === 'function') continue;
     let depth = 1;
     let end = i + 2;
@@ -50,22 +52,23 @@ function dieCalls(source) {
       if (token.value === '(') depth += 1;
       if (token.value === ')' && --depth === 0) break;
     }
-    assert.equal(depth, 0, 'unterminated die call');
+    assert.equal(depth, 0, `unterminated ${name} call`);
     calls.push({ offset: tokens[i].start, args: splitArguments(tokens.slice(i + 2, end)) });
   }
   return calls;
 }
 
-function assertAction(args) {
-  assert.equal(args.length, 2, 'die needs a message and an action object');
-  const options = args[1];
-  assert.equal(options[0]?.value, '{', 'second argument must be an object');
+function assertAction(args, name = 'die') {
+  const index = name === 'die' ? 1 : 3;
+  assert.equal(args.length, index + 1, `${name} needs an action object`);
+  const options = args[index];
+  assert.equal(options[0]?.value, '{', 'options argument must be an object');
   assert.equal(options.at(-1)?.value, '}');
   const actions = splitArguments(options.slice(1, -1)).filter((property) =>
     property[0]?.value === 'action' && property[1]?.value === ':');
   assert.equal(actions.length, 1, 'object must have one action: key');
   const value = actions[0].slice(2);
-  if (value.map((token) => token.value).join('') === 'availability.action') {
+  if (name === 'die' && value.map((token) => token.value).join('') === 'availability.action') {
     assert.equal(value.length, 3);
     return;
   }
@@ -125,4 +128,40 @@ test('die rejects missing, numeric and actionless options before printing', (t) 
     assert.throws(call, { name: 'Error', message });
   }
   assert.equal(printed.mock.callCount(), 0);
+});
+
+test('every writeFailure call under src/home/lib passes an explicit known literal action', (t) => {
+  const root = fileURLToPath(new URL('../../src/home/lib/', import.meta.url));
+  const files = fs.readdirSync(root, { recursive: true }).filter((file) => file.endsWith('.mjs'));
+  let count = 0;
+  for (const file of files) {
+    const source = fs.readFileSync(path.join(root, file), 'utf8');
+    for (const { args, offset } of dieCalls(source, 'writeFailure')) {
+      count += 1;
+      assert.doesNotThrow(() => assertAction(args, 'writeFailure'),
+        file + ':' + source.slice(0, offset).split('\n').length);
+    }
+  }
+  assert.ok(count >= 6, 'scanner found only ' + count + ' writeFailure calls');
+  t.diagnostic('validated ' + count + ' writeFailure calls in ' + files.length + ' modules');
+});
+
+test('writeFailure scanner rejects positional, missing, nested, unknown and computed actions', () => {
+  for (const options of ['', ', []', ', [], true', ', {}', ", { nested: { action: 'usage' } }",
+    ", { action: 'unknown' }", ', { action: chosen }', ', { action: availability.action }',
+    ", { action: 'usage' + suffix }"]) {
+    const calls = dieCalls('writeFailure(dir, agent, reason' + options + ');', 'writeFailure');
+    assert.equal(calls.length, 1);
+    assert.throws(() => assertAction(calls[0].args, 'writeFailure'), { name: 'AssertionError' });
+  }
+});
+
+test('writeFailure rejects absent action options before writing artifacts', () => {
+  const dir = makeTempTree('failure-action-required-');
+  const message = orderDiagnosticMessage('next-action-variant-required');
+  for (const options of [undefined, null, 1, [], {}, { action: undefined }]) {
+    assert.throws(() => writeFailure(dir, 'codex-build', 'fixture failure', options), { name: 'Error', message });
+    assert.deepEqual(fs.readdirSync(dir), []);
+  }
+  assert.throws(() => writeFailure(dir, 'codex-build', 'fixture failure'), { name: 'Error', message });
 });

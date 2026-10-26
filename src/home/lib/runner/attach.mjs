@@ -223,10 +223,12 @@ export async function attach({
       );
       return exitCodeFor(meta.status);
     }
-    const { reply } = writeFailure(runDir, entry.status.agent, 'run worker process died without recording a verdict', [
-      `Log: codex-bridge read ${runDir}`,
-      'Any Codex changes remain in the tree — check them with git status',
-    ]);
+    const { reply } = writeFailure(runDir, entry.status.agent, 'run worker process died without recording a verdict', {
+      action: 'fail-no-result', extraLines: [
+        `Log: codex-bridge read ${runDir}`,
+        'Any Codex changes remain in the tree — check them with git status',
+      ],
+    });
     console.log(reply);
     return EXIT.FAIL;
   }

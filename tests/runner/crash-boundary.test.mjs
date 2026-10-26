@@ -10,6 +10,8 @@ import {
 import { makeTempTree } from '../temp-tree.mjs';
 import { buildResult, COMPLETED_COMMAND, makeRun } from '../meta/test-fixtures.mjs';
 
+import { orderDiagnosticMessage } from '../../src/home/lib/order-diagnostics.mjs';
+
 const runnerUrl = new URL('../../src/home/lib/run-codex.mjs', import.meta.url).href;
 const contextUrl = new URL('../../src/home/lib/runner/run-context.mjs', import.meta.url).href;
 const agent = 'codex-build';
@@ -112,6 +114,11 @@ for (const [label, contents] of [
     assert.match(meta.reason, /^Codex runner crashed:/);
     assert.equal(readJson(dir, 'status.json').state, 'failed');
     assert.match(read(dir, 'reply.txt'), /^FAIL — Codex runner crashed:/);
+    const rows = read(dir, 'reply.txt').trimEnd().split('\n');
+    const action = orderDiagnosticMessage('next-action', { variant: 'fail-no-result' });
+    assert.equal(rows[1], action);
+    assert.deepEqual(rows.filter((row) => row.startsWith('Action:')), [action]);
+
     assert.match(read(dir, 'stderr.log'), /run-codex crash: Error:/);
   });
 }

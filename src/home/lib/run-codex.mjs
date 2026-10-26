@@ -107,9 +107,9 @@ export function installRunnerCrashBoundary() {
         if (typeof meta?.status === 'string') {
           replyWithVerdict(meta);
         }
-        const { reply } = writeFailure(currentRun, currentAgent, `Codex runner crashed: ${err.message}`, [
-          `Log: codex-bridge read ${currentRun}`,
-        ]);
+        const { reply } = writeFailure(currentRun, currentAgent, `Codex runner crashed: ${err.message}`, {
+          action: 'fail-no-result', extraLines: [`Log: codex-bridge read ${currentRun}`],
+        });
         emitReply(reply);
         process.exit(EXIT.FAIL);
       } catch (recordError) {

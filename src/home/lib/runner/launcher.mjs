@@ -323,8 +323,7 @@ export async function launcher(argv = process.argv.slice(2)) {
         runDir,
         opts.agent,
         orderDiagnosticMessage('cmd-argument-transport', { argument: unsafe }),
-        [orderDiagnosticMessage('codex-not-started')],
-        true,
+        { action: 'runner-fault', extraLines: [orderDiagnosticMessage('codex-not-started')], preStart: true },
       );
       console.log(reply);
       return EXIT.FAIL;
@@ -365,7 +364,7 @@ export async function launcher(argv = process.argv.slice(2)) {
       worker.once('error', (err) => {
         const { reply } = writeFailure(runDir, opts.agent,
           orderDiagnosticMessage('run-worker-start-failure', { message: err.message }),
-          [orderDiagnosticMessage('codex-not-started')], true);
+          { action: 'runner-fault', extraLines: [orderDiagnosticMessage('codex-not-started')], preStart: true });
         console.log(reply);
         resolve(false);
       });

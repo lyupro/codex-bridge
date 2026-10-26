@@ -233,3 +233,54 @@ test('phase resolution distinguishes missing and undeclared usage from the advis
     });
   }
 });
+
+// OW-075 A3d1: registered pre-start failures need the runner-fault action too.
+for (const cause of ['command transport', 'worker spawn']) {
+  test(cause + ' failure puts exactly one runner-fault action after the headline', (t) => {
+    if (cause === 'command transport' && process.platform !== 'win32') {
+      return t.skip('cmd.exe argument transport is Windows-only');
+    }
+    const root = makeTempTree('failure-action-launcher-');
+    const repo = path.join(root, cause === 'command transport' ? 'repo%unsafe' : 'repo');
+    const runs = path.join(root, 'runs');
+    const home = path.join(root, 'home');
+    fs.mkdirSync(repo);
+    fs.mkdirSync(home);
+    const { argv } = orderInvocation({
+      agent: 'codex-review', order: { repository: repo, 'order id': 'failure-action' },
+      task: 'Inspect the pre-start failure fixture.', dir: root,
+    });
+    const launcher = new URL('../../src/home/lib/runner/launcher.mjs', import.meta.url).href;
+    const source = `
+import childProcess from 'node:child_process';
+import { syncBuiltinESMExports } from 'node:module';
+${launcherProcessMocks({ worker: cause === 'command transport' ? 'forbidden' : 'error', probe: 'marker' })}
+syncBuiltinESMExports();
+const { launcher } = await import(${JSON.stringify(launcher)});
+process.exitCode = await launcher(${JSON.stringify(argv)});
+`;
+    const output = spawnSync(process.execPath, ['--input-type=module', '-e', source], {
+      cwd: repo, input: '', encoding: 'utf8', timeout: 10_000, windowsHide: true,
+      env: { ...process.env, CODEX_BRIDGE_HOME: home, CODEX_RUNS_ROOT: runs },
+    });
+    assert.ifError(output.error);
+    assert.equal(output.status, EXIT.FAIL, output.stderr);
+    assert.equal(output.stderr, '');
+    const rows = output.stdout.trimEnd().split(/\r?\n/);
+    const headline = rows.findIndex((row) => row.startsWith('FAIL — '));
+    assert.ok(headline >= 0, output.stdout);
+    assert.match(rows[headline], cause === 'command transport' ? /cmd.exe/ : /fixture worker spawn failure/);
+    const action = orderDiagnosticMessage('next-action', { variant: 'runner-fault' });
+    assert.equal(rows[headline + 1], action);
+    assert.deepEqual(rows.filter((row) => row.startsWith('Action:')), [action]);
+    assert.equal(rows[headline + 2], orderDiagnosticMessage('codex-not-started'));
+    const runDir = rows.at(-1).slice('Run: '.length);
+    assert.ok(rows.at(-1).startsWith('Run: '));
+    assert.equal(JSON.parse(fs.readFileSync(path.join(runDir, 'status.json'), 'utf8')).state, 'aborted_pre_start');
+    const meta = JSON.parse(fs.readFileSync(path.join(runDir, 'meta.json'), 'utf8'));
+    assert.equal(meta.status, 'FAIL');
+    assert.equal(meta.session_id, null);
+    assert.equal(meta.events_bytes, 0);
+    assert.equal(meta.stderr_bytes, 0);
+  });
+}

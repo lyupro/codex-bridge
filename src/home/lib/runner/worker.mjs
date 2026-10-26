@@ -47,7 +47,9 @@ export async function worker(runDir, deps = WORKER_DEPS) {
     if (admission.reason === 'claim-timeout') {
       const { reply } = writeFailure(
         runDir, cfg.agent, 'run worker was not admitted: the order claim stayed busy',
-        [`Claim held by ${orderClaimHolderText(admission.holder)}`, 'Codex was not started; quota was not spent'],
+        { action: 'run-in-progress', extraLines: [
+          `Claim held by ${orderClaimHolderText(admission.holder)}`, 'Codex was not started; quota was not spent',
+        ] },
       );
       emitReply(reply);
       // Plan_77 B6: publish the verdict before Git can wait on a lock or repository hook.
@@ -70,7 +72,7 @@ export async function worker(runDir, deps = WORKER_DEPS) {
       if (!childAdmission.admitted) {
         const { reply: childReply } = writeFailure(
           childDir, cfg.agent, `automatic continuation was not admitted: ${childAdmission.reason}`,
-          ['Codex was not started; quota was not spent'], true,
+          { action: 'fail-no-result', extraLines: ['Codex was not started; quota was not spent'], preStart: true },
         );
         emitReply(childReply);
         deps.commitRunRecord({ runDir: childDir });

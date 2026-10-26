@@ -23,9 +23,9 @@ test('phase is retained before a worker order exists and absent facts stay null 
 
 test('runner failures retain the selected phase, including before the worker order exists', () => {
   const dir = makeRun({ status: { phase: 'scope' } });
-  assert.equal(writeFailure(dir, 'codex-build', 'fixture failure').meta.phase, 'scope');
+  assert.equal(writeFailure(dir, 'codex-build', 'fixture failure', { action: 'fail-no-result' }).meta.phase, 'scope');
   fs.writeFileSync(path.join(dir, 'worker.json'), JSON.stringify({ phase: 'advise' }));
-  assert.equal(writeFailure(dir, 'codex-build', 'fixture failure').meta.phase, 'advise');
+  assert.equal(writeFailure(dir, 'codex-build', 'fixture failure', { action: 'fail-no-result' }).meta.phase, 'advise');
   assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'meta.json'), 'utf8')).phase, 'advise');
-  assert.equal(writeFailure(makeRun(), 'codex-build', 'legacy failure').meta.phase, null);
+  assert.equal(writeFailure(makeRun(), 'codex-build', 'legacy failure', { action: 'fail-no-result' }).meta.phase, null);
 });

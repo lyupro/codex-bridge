@@ -14,6 +14,7 @@ import { changedPaths, line, normalizePath, readJson, readText, size } from './p
 import { withLaunchRows } from './launch-rows.mjs';
 import { runLiveness } from './run-liveness.mjs';
 import { removeFlagBaselineCopies } from '../runner/flag-baseline.mjs';
+import { orderDiagnosticMessage } from '../order-diagnostics.mjs';
 
 /**
  * Run state on disk, merged over whatever is already there. A killed runner leaves no
@@ -227,7 +228,12 @@ export function failureRecord(runDir, agent, reason) {
  */
 // The marker is reserved for refusals before Codex starts; Plan_23 showed that calling those
 // ordinary failures makes a no-quota folder consume the same continuation slot as paid work.
-export function writeFailure(runDir, agent, reason, extraLines = [], preStart = false) {
+export function writeFailure(runDir, agent, reason, options) {
+  if (typeof options !== 'object' || options === null || options.action === undefined) {
+    throw new Error(orderDiagnosticMessage('next-action-variant-required'));
+  }
+  const { action, extraLines = [], preStart = false } = options;
+  const actionRow = orderDiagnosticMessage('next-action', { variant: action });
   const meta = failureRecord(runDir, agent, reason);
   writeRunJsonAtomic(path.join(runDir, 'meta.json'), meta);
   writeStatus(runDir, {
@@ -236,7 +242,7 @@ export function writeFailure(runDir, agent, reason, extraLines = [], preStart = 
     finished_at: meta.finished_at,
   });
   const reply = withLaunchRows(
-    [`FAIL — ${meta.reason}`, ...extraLines, `Run: ${runDir}`],
+    [`FAIL — ${meta.reason}`, actionRow, ...extraLines, `Run: ${runDir}`],
     runDir,
   ).join('\n');
   return { meta, reply };

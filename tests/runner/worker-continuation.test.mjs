@@ -11,13 +11,15 @@ import { writeStatus } from '../../src/home/lib/meta/run-state.mjs';
 import { abortedPreStart } from '../../src/home/lib/meta/pre-start.mjs';
 import { stop } from '../../cli/stop.mjs';
 
+import { orderDiagnosticMessage } from '../../src/home/lib/order-diagnostics.mjs';
+
 const read = (dir, name) => fs.readFileSync(path.join(dir, name), 'utf8');
 const json = (dir, name) => JSON.parse(read(dir, name));
 const writeJson = (dir, name, value) =>
   fs.writeFileSync(path.join(dir, name), `${JSON.stringify(value, null, 2)}\n`);
 
 function fixture({ allowed = false, parentStatus = 'LIMIT', childStatus = 'OK',
-  refusal = null, childRefusal = null, beforeChildAdmission = () => {} } = {}) {
+  refusal = null, parentRefusal = null, childRefusal = null, beforeChildAdmission = () => {} } = {}) {
   const root = makeTempTree('worker-continuation-');
   const parentDir = path.join(root, 'parent');
   const childDir = path.join(root, 'child');
@@ -45,6 +47,7 @@ function fixture({ allowed = false, parentStatus = 'LIMIT', childStatus = 'OK',
       calls.push(`admit:${path.basename(runDir)}`);
       assert.equal(orderId, runDir === parentDir ? cfg.order_id : order.order_id);
       assert.deepEqual(getRun(), { dir: runDir, agent: cfg.agent });
+      if (runDir === parentDir && parentRefusal) return { admitted: false, reason: parentRefusal, holder: null };
       if (runDir === childDir) {
         // A12/A15 pre-mortem: the parent's pointer and reply must precede child admission.
         assert.equal(json(parentDir, 'status.json').recovery.child, 'child');
@@ -204,6 +207,11 @@ for (const reason of ['claim-timeout', 'run-closed']) {
     assert.equal(abortedPreStart(f.childDir), true);
     assert.equal(json(f.childDir, 'meta.json').reason, `automatic continuation was not admitted: ${reason}`);
     assert.match(read(f.childDir, 'reply.txt'), /Codex was not started; quota was not spent/);
+    const rows = read(f.childDir, 'reply.txt').trimEnd().split('\n');
+    const action = orderDiagnosticMessage('next-action', { variant: 'fail-no-result' });
+    assert.equal(rows[1], action);
+    assert.deepEqual(rows.filter((row) => row.startsWith('Action:')), [action]);
+
     assert.equal(read(f.parentDir, 'meta.json'), f.metaBytes.get(f.parentDir));
     assert.equal(read(f.parentDir, 'reply.txt'), `${renderReply(f.parentDir, f.cfg.agent, f.metas.get(f.parentDir))}\n`);
     assert.deepEqual(f.exits, [exitCodeFor('FAIL')]);
@@ -211,6 +219,24 @@ for (const reason of ['claim-timeout', 'run-closed']) {
     assert.equal(f.calls.filter((call) => call === 'reserve').length, 1);
   });
 }
+
+test('a worker refused by a busy order claim records the run-in-progress action', async () => {
+  const f = fixture({ parentRefusal: 'claim-timeout' });
+  await f.execute();
+  const rows = read(f.parentDir, 'reply.txt').trimEnd().split('\n');
+  const action = orderDiagnosticMessage('next-action', { variant: 'run-in-progress' });
+  assert.equal(rows[0], 'FAIL — run worker was not admitted: the order claim stayed busy');
+  assert.equal(rows[1], action);
+  assert.deepEqual(rows.filter((row) => row.startsWith('Action:')), [action]);
+  assert.match(rows[2], /^Claim held by /);
+  assert.equal(rows[3], 'Codex was not started; quota was not spent');
+  assert.equal(rows.at(-1), 'Run: ' + f.parentDir);
+  assert.equal(json(f.parentDir, 'status.json').state, 'failed');
+  assert.equal(json(f.parentDir, 'meta.json').status, 'FAIL');
+  assert.equal(f.runs.length, 0);
+  assert.deepEqual(f.exits, [exitCodeFor('FAIL')]);
+  assert.deepEqual(f.records, [f.parentDir]);
+});
 
 test('stop after the parent reply keeps its recorded verdict and all files (pre-mortem 4)', async () => {
   let checked = false;

@@ -7,6 +7,7 @@ import { AGENTS, collect, writeFailure } from '../../src/home/lib/write-meta.mjs
 import { launchRows, withLaunchRows } from '../../src/home/lib/meta/launch-rows.mjs';
 import { buildResult, COMPLETED_COMMAND, makeRun } from './test-fixtures.mjs';
 import { advisorRunFacts, validScope } from './advisor-fixtures.mjs';
+import { orderDiagnosticMessage } from '../../src/home/lib/order-diagnostics.mjs';
 
 const retention = { bytes_freed: 41.2 * 1024 * 1024, runs: 12, days: 30 };
 const retentionRow = 'Retention: freed 41.2 MB from 12 runs older than 30 days';
@@ -124,12 +125,15 @@ for (const preStart of [false, true]) {
   test(`writeFailure preserves launch facts directly before Run (preStart=${preStart})`, () => {
     const dir = makeRun({ status: { state: 'running', retention, sandbox_probe: probe } });
 
-    const { meta, reply } = writeFailure(dir, 'codex-build', 'runner stopped', ['Detail: kept'], preStart);
+    const { meta, reply } = writeFailure(dir, 'codex-build', 'runner stopped', {
+      action: 'runner-fault', extraLines: ['Detail: kept'], preStart,
+    });
     const status = JSON.parse(fs.readFileSync(path.join(dir, 'status.json'), 'utf8'));
 
     assert.equal(meta.status, 'FAIL');
     assert.deepEqual(reply.split('\n'), [
-      'FAIL — runner stopped', 'Detail: kept', retentionRow, probeRow, `Run: ${dir}`,
+      'FAIL — runner stopped', orderDiagnosticMessage('next-action', { variant: 'runner-fault' }),
+      'Detail: kept', retentionRow, probeRow, `Run: ${dir}`,
     ]);
     assert.equal(status.state, preStart ? 'aborted_pre_start' : 'failed');
     assert.deepEqual(status.retention, retention);
@@ -155,7 +159,7 @@ test('writeFailure closes status.json before reading launch facts for its reply'
     return renameSync.call(this, from, to);
   });
 
-  writeFailure(dir, 'codex-build', 'runner stopped');
+  writeFailure(dir, 'codex-build', 'runner stopped', { action: 'runner-fault' });
 
   const writeAt = operations.indexOf('write');
   assert.ok(writeAt >= 0);
@@ -172,7 +176,7 @@ for (const outcome of ['alive', 'skipped', undefined]) {
     });
 
     const collected = collect(dir, 'codex-build', 0);
-    const failure = writeFailure(dir, 'codex-build', 'runner stopped');
+    const failure = writeFailure(dir, 'codex-build', 'runner stopped', { action: 'runner-fault' });
 
     assert.equal(collected.meta.status, 'OK');
     for (const { reply } of [collected, failure]) {
@@ -221,7 +225,8 @@ test('a long multiline reason is bounded to 160 characters without splitting the
   });
 
   assert.deepEqual(launchRows(dir), [expected]);
-  for (const { reply } of [collect(dir, 'codex-build', 0), writeFailure(dir, 'codex-build', 'runner stopped')]) {
+  for (const { reply } of [collect(dir, 'codex-build', 0),
+    writeFailure(dir, 'codex-build', 'runner stopped', { action: 'runner-fault' })]) {
     const rows = reply.split('\n');
     assert.deepEqual(rows.filter((row) => row.startsWith('Sandbox probe: ')), [expected]);
     assert.doesNotMatch(reply, /extra diagnostic text|\r|\t/);

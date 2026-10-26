@@ -8,6 +8,8 @@ import { readJsonFile } from '../../src/home/lib/runner/attach.mjs';
 import { readyGrantLines } from '../../src/home/lib/runner/continuation.mjs';
 import { attaching, deadPid, fixture, order, run, running } from './attach-fixtures.mjs';
 
+import { orderDiagnosticMessage } from '../../src/home/lib/order-diagnostics.mjs';
+
 const PARENT = '2026-10-03_180000_advise';
 const CHILD = '2026-10-03_180200_automatic';
 const PARENT_REPLY = 'FAIL — parent stalled';
@@ -159,6 +161,10 @@ test('a dead child without a verdict gets its own failure, leaving the parent un
   assert.equal(code, EXIT.FAIL);
   assertTransition(f, lines);
   assert.match(lines[5], /run worker process died without recording a verdict/);
+  const rows = lines[5].split('\n');
+  const action = orderDiagnosticMessage('next-action', { variant: 'fail-no-result' });
+  assert.equal(rows[1], action);
+  assert.deepEqual(rows.filter((row) => row.startsWith('Action:')), [action]);
   assert.ok(lines[5].includes(f.childDir));
   assert.equal(readJsonFile(path.join(f.childDir, 'meta.json')).status, 'FAIL');
   assert.equal(fs.existsSync(path.join(f.childDir, 'reply.txt')), false);
