@@ -4,38 +4,13 @@
  *
  * Plan_63 D1/D8: transport arguments carry no order fields; file and stdin share this boundary.
  */
-import fs from 'node:fs';
-import path from 'node:path';
 import { die, readTaskDocument } from './args.mjs';
 import { questionKindRefusal } from './question-kind.mjs';
 import { orderFromHeader, orderInputName, renderOrderProblems } from '../order-schema.mjs';
 import { orderOptions } from './order-options.mjs';
-import { resolveOrderRepository } from './order-repository.mjs';
+import { repositoryRefusal, resolveOrderRepository } from './order-repository.mjs';
 import { orderRuleMessage, orderLabelReason } from '../order-rules.mjs';
 import { orderDiagnosticMessage } from '../order-diagnostics.mjs';
-
-/**
- * OW-061: outside git the launcher keeps `repository:` as given and the project folder takes its
- * last segment, so a dispatcher that folded its own instructions into the value left run folders
- * named `Obsidian. Run the scope phase. Return ≤5 lines and the run folder path.` and
- * `tradeforge.loc (do not cd into codex-runs).` — names with a trailing dot that Windows cannot
- * open through an ordinary path. Only an existing absolute directory whose segments Windows keeps
- * verbatim may name the repository.
- */
-export function repositoryRefusal(value) {
-  if (!path.isAbsolute(value)) {
-    return orderRuleMessage('repository-path', { violation: 'relative', value });
-  }
-  const altered = value.split(/[\\/]/).find((segment) => /[. ]$/.test(segment) && segment !== '.' && segment !== '..');
-  if (altered !== undefined) {
-    return orderRuleMessage('repository-path', { violation: 'altered-segment', value, segment: altered });
-  }
-  let isDirectory = false;
-  try {
-    isDirectory = fs.statSync(value).isDirectory();
-  } catch {}
-  return isDirectory ? null : orderRuleMessage('repository-path', { violation: 'not-directory', value });
-}
 
 export function settleTaskInput(opts) {
   const { task, header, questions: fileQuestions, verify: fileVerify } = readTaskDocument(opts);

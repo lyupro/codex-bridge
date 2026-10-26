@@ -3,6 +3,30 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { normalizeRepoPath } from './project-dir.mjs';
+import { orderRuleMessage } from '../order-rules.mjs';
+
+/**
+ * OW-061: outside git the launcher keeps `repository:` as given and the project folder takes its
+ * last segment, so a dispatcher that folded its own instructions into the value left run folders
+ * named `Obsidian. Run the scope phase. Return ≤5 lines and the run folder path.` and
+ * `tradeforge.loc (do not cd into codex-runs).` — names with a trailing dot that Windows cannot
+ * open through an ordinary path. Only an existing absolute directory whose segments Windows keeps
+ * verbatim may name the repository.
+ */
+export function repositoryRefusal(value) {
+  if (!path.isAbsolute(value)) {
+    return orderRuleMessage('repository-path', { violation: 'relative', value });
+  }
+  const altered = value.split(/[\\/]/).find((segment) => /[. ]$/.test(segment) && segment !== '.' && segment !== '..');
+  if (altered !== undefined) {
+    return orderRuleMessage('repository-path', { violation: 'altered-segment', value, segment: altered });
+  }
+  let isDirectory = false;
+  try {
+    isDirectory = fs.statSync(value).isDirectory();
+  } catch {}
+  return isDirectory ? null : orderRuleMessage('repository-path', { violation: 'not-directory', value });
+}
 
 const firstLine = (text) => String(text || '').trim().split(/\r?\n/, 1)[0];
 const discoveryFailure = (error) => ({

@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { makeHomeImage } from '../home-image.mjs';
 import { orderInvocation, orderTaskText } from './order-invocation.mjs';
-import { repositoryRefusal } from '../../src/home/lib/runner/task-input.mjs';
+import { repositoryRefusal } from '../../src/home/lib/runner/order-repository.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const RUNNER = path.join(ROOT, 'src', 'home', 'lib', 'run-codex.mjs');

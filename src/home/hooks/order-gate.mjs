@@ -25,6 +25,7 @@ import { orderFromHeader, renderOrderProblems } from '../lib/order-schema.mjs';
 import { SUBAGENT_TOOLS } from '../lib/hook-definitions.mjs';
 import { taskFingerprint } from '../lib/meta/chain.mjs';
 import { conflictingOrderOwner, orderOwnerConflictText } from '../lib/runner/order-owner.mjs';
+import { repositoryRefusal, resolveOrderRepository } from '../lib/runner/order-repository.mjs';
 import { resolveProjectRunsDir } from '../lib/runner/project-dir.mjs';
 import { runsRoot } from '../lib/runner/runs-root.mjs';
 import { parseTaskDocument } from '../lib/runner/task-file.mjs';
@@ -136,8 +137,9 @@ const taskFile = call.inputs.get('task file');
 let rawTask;
 try {
   rawTask = fs.readFileSync(taskFile, 'utf8');
-} catch {
-  pass();
+} catch (err) {
+  // OW-073, advisor r3: a recognized call must not slip past the repository check.
+  deny(orderDiagnosticMessage('task-file-readable', { message: err.message }));
 }
 // Plan_75 D5, 2026-10-03 20:42: malformed metadata must not disappear into the disk-state guard.
 const parsed = parseTaskHeader(rawTask);
@@ -148,6 +150,26 @@ if (problems.length) {
   deny([renderOrderProblems(toolInput.subagent_type, problems), orderDiagnosticMessage('run-not-created')].join('\n'));
 }
 const orderId = order.get('order id');
+const label = order.has('repository') ? order.get('repository') : undefined;
+if (order.has('repository')) {
+  const reason = repositoryRefusal(label);
+  if (reason) deny(reason);
+}
+// OW-073: a grant cannot authorize a task whose repository disagrees with its label.
+const repository = resolveOrderRepository({ taskFile, label });
+if (!repository.ok) {
+  if (repository.violation === 'repository-label-invalid') {
+    deny(repositoryRefusal(repository.values.label));
+  }
+  const violations = {
+    'repository-mismatch': 'mismatch',
+    'repository-label-required': 'label-required',
+    'repository-discovery-failed': 'discovery-failed',
+  };
+  deny([orderRuleMessage('repository-source', {
+    ...repository.values, violation: violations[repository.violation],
+  }), orderDiagnosticMessage('run-not-created')].join('\n'));
+}
 // Plan_63 D9 / OW-054: only a validated header grant reaches the runner's grant rules.
 if (parsed.grant) pass();
 let taskHash;
@@ -159,7 +181,8 @@ try {
 }
 
 try {
-  const projectRunsDir = resolveProjectRunsDir(runsRoot(), input.cwd, { create: false }).dir;
+  // OW-073: owner history belongs to the resolved task repository, regardless of the hook cwd.
+  const projectRunsDir = resolveProjectRunsDir(runsRoot(), repository.repo, { create: false }).dir;
   // Per folder, not per directory: a run folder created a moment before its status.json, or any
   // leftover beside the runs, would otherwise throw out of the whole check and silently disarm the
   // gate for every other order. A guard that one stray folder switches off is not a guard.

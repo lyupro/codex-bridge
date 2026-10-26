@@ -74,7 +74,7 @@ test('model policy recognizes registered dispatchers and subagent tools only', a
     input.tool_input.model = 'opus';
     assert.equal(output(root, input), null);
   }
-  const task = await writeTaskFile(root, 'order id: model-absent\nscope: src/', 'Requested task\n');
+  const task = await writeTaskFile(root, `order id: model-absent\nscope: src/\nrepository: ${root}`, 'Requested task\n');
   assert.equal(output(root, call(validPrompt(task))), null);
 });
 
@@ -87,7 +87,7 @@ test('a header grant and all later pass or deny exits retain the active latch me
     slug: 'prior-owner', started_at: VIOLATION_TIME,
   });
   const task = await writeTaskFile(root,
-    'order id: latch-grant\nscope: src/\ncontinue: prior-run — finish the remaining tests', 'Requested task\n');
+    `order id: latch-grant\nscope: src/\ncontinue: prior-run — finish the remaining tests\nrepository: ${repo}`, 'Requested task\n');
   const grantInput = call(validPrompt(task));
   grantInput.cwd = repo;
   const granted = output(root, grantInput);
@@ -98,6 +98,8 @@ test('a header grant and all later pass or deny exits retain the active latch me
   assert.equal(missingPrompt.hookSpecificOutput, undefined);
   const missingTask = output(root, call(validPrompt(path.join(root, 'missing.md'))));
   assertLatch(missingTask);
+  assert.equal(missingTask.hookSpecificOutput.permissionDecision, 'deny');
+  assert.match(missingTask.hookSpecificOutput.permissionDecisionReason, /task file from --task-file could not be read:/);
   const denied = output(root, call('bad prompt'));
   assertLatch(denied);
   assert.equal(denied.hookSpecificOutput.permissionDecision, 'deny');
@@ -106,12 +108,12 @@ test('a header grant and all later pass or deny exits retain the active latch me
   const teammate = output(root, teammateInput);
   assertLatch(teammate);
   assert.equal(teammate.hookSpecificOutput.permissionDecision, 'deny');
-  await writeTaskFile(root, 'order id: latch-grant\nscope: src/', 'Requested task\n');
+  await writeTaskFile(root, `order id: latch-grant\nscope: src/\nrepository: ${repo}`, 'Requested task\n');
   const collision = output(root, grantInput);
   assertLatch(collision);
   assert.equal(collision.hookSpecificOutput.permissionDecision, 'deny');
   assert.match(collision.hookSpecificOutput.permissionDecisionReason, /prior-owner/);
-  await writeTaskFile(root, 'order id: latch-no-grant\nscope: src/', 'Requested task\n');
+  await writeTaskFile(root, `order id: latch-no-grant\nscope: src/\nrepository: ${repo}`, 'Requested task\n');
   assertLatch(output(root, call(validPrompt(task))));
   await writeTaskFile(root, 'order id: latch-bad-header', 'Requested task\n');
   const badHeader = output(root, call(validPrompt(task)));
@@ -206,7 +208,7 @@ test('env refusal requires an overriding known host and a foreign parsed family'
   const root = await fixture(t);
   await installPin(root);
   const task = await writeTaskFile(root,
-    'order id: env-grant\nscope: src/\ncontinue: prior-run — finish the remaining tests', 'Requested task\n');
+    `order id: env-grant\nscope: src/\ncontinue: prior-run — finish the remaining tests\nrepository: ${root}`, 'Requested task\n');
   const transcript = path.join(root, 'host.jsonl');
   const env = { CLAUDE_CODE_SUBAGENT_MODEL: 'opus', CLAUDE_CODE_SUBAGENT_MODEL_FORCE: '1' };
   for (const [version, force, denied] of [

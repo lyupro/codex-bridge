@@ -12,7 +12,7 @@ test('an order id may repeat the same parsed task with an advice header', async 
   const root = await fixture(t);
   const repo = path.join(root, 'project');
   const body = '# Task\nRequested task\n\n## Verify\nnpm test\n';
-  const taskFile = await writeTaskFile(root, 'order id: same-order\nadvice: mechanical', body);
+  const taskFile = await writeTaskFile(root, `order id: same-order\nadvice: mechanical\nrepository: ${repo}`, body);
   await createStoredRun(root, repo, 'matching-run', {
     order_id: 'same-order',
     task_hash: taskFingerprint(parseTaskDocument(body).task),
@@ -33,7 +33,7 @@ test('a pre-scheme owner is denied honestly when the same body has a different o
   const taskText = 'order id: old-order\nadvice: mechanical\n\n# Task\nRequested task\n';
   const oldHash = taskFingerprint(parseTaskDocument(taskText).task);
   assert.notEqual(oldHash, taskFingerprint(parseTaskDocument('# Task\nRequested task\n').task));
-  const taskFile = await writeTaskFile(root, 'order id: old-order\nadvice: mechanical', '# Task\nRequested task\n');
+  const taskFile = await writeTaskFile(root, `order id: old-order\nadvice: mechanical\nrepository: ${repo}`, '# Task\nRequested task\n');
   const run = await createStoredRun(root, repo, 'pre-header-run', {
     order_id: 'old-order', task_hash: oldHash, slug: 'pre-header-run', started_at: '2026-08-15T09:01:00.000Z',
   });

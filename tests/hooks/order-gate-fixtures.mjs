@@ -31,6 +31,17 @@ export async function fixture(t) {
   return root;
 }
 
+export async function gitRepositories(root) {
+  const repos = ['A', 'B'].map((name) => path.join(root, name));
+  for (const repo of repos) {
+    await fs.mkdir(repo);
+    const init = spawnSync('git', ['init', repo], { encoding: 'utf8', windowsHide: true });
+    if (init.error) throw init.error;
+    if (init.status !== 0) throw new Error(init.stderr);
+  }
+  return Promise.all(repos.map((repo) => fs.realpath(repo)));
+}
+
 export function payload(subagentType, prompt, toolName = 'Agent', cwd = undefined) {
   return JSON.stringify({
     hook_event_name: 'PreToolUse',
@@ -52,7 +63,8 @@ export async function writeTaskFile(root, header, body) {
 }
 
 export async function createStoredRun(root, repo, name, status) {
-  const runs = path.join(root, 'runs', 'project');
+  await fs.mkdir(repo, { recursive: true });
+  const runs = path.join(root, 'runs', path.basename(repo));
   const run = path.join(runs, name);
   await fs.mkdir(run, { recursive: true });
   await fs.writeFile(path.join(runs, '.project.json'), `${JSON.stringify({ repo })}\n`);

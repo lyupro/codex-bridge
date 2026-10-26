@@ -8,7 +8,7 @@ import { ORDER_RULES, orderRuleMessage, orderRefusalAt } from '../src/home/lib/o
 import { ORDER_DIAGNOSTICS, orderDiagnosticMessage } from '../src/home/lib/order-diagnostics.mjs';
 import { parseTaskDocument } from '../src/home/lib/runner/task-file.mjs';
 import { questionKindRefusal, questionsFromTexts } from '../src/home/lib/runner/question-kind.mjs';
-import { repositoryRefusal } from '../src/home/lib/runner/task-input.mjs';
+import { repositoryRefusal } from '../src/home/lib/runner/order-repository.mjs';
 import { orderOptions } from '../src/home/lib/runner/order-options.mjs';
 import { ADMISSION_FILES } from './order-guard/admission-files.mjs';
 import { checkRefusalSites } from './order-guard/refusal-checker.mjs';

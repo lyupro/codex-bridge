@@ -38,7 +38,7 @@ test('advisor requires a phase at the order gate and accepts scope as a concrete
   assert.equal(decision.permissionDecision, 'deny');
   assert.match(decision.permissionDecisionReason, /missing required header label "phase:"/);
   assert.match(decision.permissionDecisionReason, /phase: scope/);
-  await writeTaskFile(root, 'order id: advisor-order\nphase: scope', body);
+  await writeTaskFile(root, `order id: advisor-order\nphase: scope\nrepository: ${root}`, body);
   const present = runGate(root, payload('codex-advisor', prompt));
   assert.equal(present.status, 0);
   assert.equal(present.stdout, '');
@@ -124,7 +124,7 @@ test('non-registry and former order call lines are denied', async (t) => {
 
 test('changeset is accepted for review and refused for scout', async (t) => {
   const root = await fixture(t);
-  const taskFile = await writeTaskFile(root, 'order id: changeset-order\nchangeset: base:main', 'Requested task\n');
+  const taskFile = await writeTaskFile(root, `order id: changeset-order\nchangeset: base:main\nrepository: ${root}`, 'Requested task\n');
   const prompt = validPrompt(taskFile);
   const review = runGate(root, payload('codex-review', prompt));
   assert.equal(review.status, 0);
@@ -142,7 +142,7 @@ test('every agent accepts shared optional labels and only build accepts scope ne
     let header = 'order id: optional-order';
     if (type === 'codex-build') header += '\nscope: src/';
     if (type === 'codex-advisor') header += '\nphase: scope';
-    header += '\nrepository: C:/x\nslug: optional-labels\neffort: medium';
+    header += `\nrepository: ${root}\nslug: optional-labels\neffort: medium`;
     const taskFile = await writeTaskFile(root, header, 'Requested task\n');
     const prompt = validPrompt(taskFile);
     const shared = runGate(root, payload(type, prompt));
@@ -163,7 +163,7 @@ test('every agent accepts shared optional labels and only build accepts scope ne
 
 test('a valid dispatcher call passes and keeps the last payload', async (t) => {
   const root = await fixture(t);
-  const taskFile = await writeTaskFile(root, 'order id: plan-13-build-20260804\nscope: src/home/hooks/order-gate.mjs', 'Requested task\n');
+  const taskFile = await writeTaskFile(root, `order id: plan-13-build-20260804\nscope: src/home/hooks/order-gate.mjs\nrepository: ${root}`, 'Requested task\n');
   const input = payload('codex-build', validPrompt(taskFile));
   const result = runGate(root, input);
   assert.equal(result.status, 0);
@@ -177,22 +177,65 @@ test('a valid dispatcher call passes and keeps the last payload', async (t) => {
   await assert.rejects(fs.access(path.join(root, '.claude', 'logs')), { code: 'ENOENT' });
 });
 
-test('order collision diagnostics fail open on unreadable or absent disk state', async (t) => {
+test('unreadable task files are denied while absent runs directories pass silently', async (t) => {
   const root = await fixture(t);
   const repo = path.join(root, 'project');
   const missingTask = path.join(root, 'missing-task.md');
   const unreadableTask = runGate(root, payload('codex-review', validPrompt(missingTask), 'Agent', repo));
-  assert.equal(unreadableTask.stdout, '');
+  assert.equal(unreadableTask.status, 0, unreadableTask.stderr);
+  const unreadableDecision = JSON.parse(unreadableTask.stdout).hookSpecificOutput;
+  assert.equal(unreadableDecision.permissionDecision, 'deny');
+  assert.match(unreadableDecision.permissionDecisionReason, /task file from --task-file could not be read:/);
+  assert.ok(unreadableDecision.permissionDecisionReason.includes(missingTask));
 
-  const taskFile = await writeTaskFile(root, 'order id: no-runs-directory', 'Readable task\n');
+  const taskFile = await writeTaskFile(root, `order id: no-runs-directory\nrepository: ${root}`, 'Readable task\n');
   const missingRuns = runGate(root, payload('codex-review', validPrompt(taskFile), 'Agent', repo));
   assert.equal(missingRuns.stdout, '');
+});
+
+// OW-073: the host cwd is never an implicit repository label for a task outside git.
+test('a task outside git requires an explicit repository label even with a continuation grant', async (t) => {
+  const root = await fixture(t);
+  for (const grant of ['', '\ncontinue: prior-run — finish the remaining tests']) {
+    const taskFile = await writeTaskFile(root, `order id: outside-git${grant}`, 'Requested task\n');
+    const result = runGate(root, payload('codex-review', validPrompt(taskFile), 'Agent', root));
+    assert.equal(result.status, 0, result.stderr);
+    const decision = JSON.parse(result.stdout).hookSpecificOutput;
+    assert.equal(decision.permissionDecision, 'deny');
+    assert.ok(decision.permissionDecisionReason.includes(JSON.stringify(taskFile)));
+    assert.match(decision.permissionDecisionReason, /requires a repository label; add repository: <absolute path>/);
+    assert.match(decision.permissionDecisionReason, /The run folder was not created; quota was not spent\./);
+  }
+  await assert.rejects(fs.access(path.join(root, 'runs')), { code: 'ENOENT' });
+});
+
+// OW-061 / OW-073: label validation must precede repository discovery and grant bypasses.
+test('invalid repository paths keep repository-path refusals before a continuation grant', async (t) => {
+  const root = await fixture(t);
+  const file = path.join(root, 'not-a-directory');
+  await fs.writeFile(file, 'file\n');
+  for (const [label, wording] of [
+    ['relative-repo', /must be an absolute path to the repository/],
+    [path.join(root, 'trailing.'), /has a path segment ending in a dot or a space/],
+    [path.join(root, 'missing'), /must name an existing directory/],
+    [file, /must name an existing directory/],
+  ]) {
+    const taskFile = await writeTaskFile(root,
+      `order id: invalid-repository\nrepository: ${label}\ncontinue: prior-run — finish the tests`, 'Requested task\n');
+    const result = runGate(root, payload('codex-review', validPrompt(taskFile)));
+    assert.equal(result.status, 0, result.stderr);
+    const decision = JSON.parse(result.stdout).hookSpecificOutput;
+    assert.equal(decision.permissionDecision, 'deny');
+    assert.match(decision.permissionDecisionReason, wording);
+    assert.doesNotMatch(decision.permissionDecisionReason, /repository discovery failed/);
+  }
+  await assert.rejects(fs.access(path.join(root, 'runs')), { code: 'ENOENT' });
 });
 
 test('a stored run without task_hash does not claim a different task', async (t) => {
   const root = await fixture(t);
   const repo = path.join(root, 'project');
-  const taskFile = await writeTaskFile(root, 'order id: legacy-order', 'Current task\n');
+  const taskFile = await writeTaskFile(root, `order id: legacy-order\nrepository: ${repo}`, 'Current task\n');
   await createStoredRun(root, repo, 'legacy-run', {
     order_id: 'legacy-order',
     slug: 'legacy-run',
@@ -206,7 +249,7 @@ test('a stored run without task_hash does not claim a different task', async (t)
 test('a folder without status.json does not disarm the collision check', async (t) => {
   const root = await fixture(t);
   const repo = path.join(root, 'project');
-  const taskFile = await writeTaskFile(root, 'order id: guarded-order', 'Current task\n');
+  const taskFile = await writeTaskFile(root, `order id: guarded-order\nrepository: ${repo}`, 'Current task\n');
   const run = await createStoredRun(root, repo, 'owner-run', {
     order_id: 'guarded-order',
     task_hash: taskFingerprint('Another task'),
@@ -247,7 +290,7 @@ test('non-subagent tools pass silently', async (t) => {
 // Plan_62 D7: a teammate's agent_type is its name, so the dispatcher gate would not recognise it.
 test('a dispatcher launched as a teammate is refused before it starts', async (t) => {
   const root = await fixture(t);
-  const taskFile = await writeTaskFile(root, 'order id: plan62-teammate-20260924', 'Requested task\n');
+  const taskFile = await writeTaskFile(root, `order id: plan62-teammate-20260924\nrepository: ${root}`, 'Requested task\n');
   const prompt = validPrompt(taskFile);
   for (const field of ['name', 'team_name']) {
     const input = JSON.stringify({
