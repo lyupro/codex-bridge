@@ -306,18 +306,24 @@ worktree where nothing had been done.
 Each grant is single-use: it names the latest run in the chain, and its execution appends a later
 one. Repeating an identical granted command attaches to the run it already started.
 
-`retry: <failed run> — <reason>` in the header repeats a `FAIL`, `LIMIT`, or `UNAVAILABLE` pass
+`retry: <failed run> — <reason>` in the header repeats a `FAIL`, `LIMIT`, `UNAVAILABLE`, or `CAPACITY` pass
 once under that grant. The named run must be the last of its chain, have a finished verdict and a
 worker proven dead, and match the order id, agent, and phase. The new run records `retry_of` and
 does not spend another continuation of the order; an `advise` retry carries the original `OK`
 scope. Its reply shows `Attempt: N of this pass — retry of <run>`. A saved non-OK reply returned by
 attach ends with ready grant lines; refusals that encounter a failed last run with an order id
-include a ready `retry:` line. Details and all refusals are in
+include a ready `retry:` line. For a CAPACITY last run, only capacity guidance is returned, with
+no ready `continue:` or `retry:` line. If the named CAPACITY run's own `retry_of` predecessor also
+ended CAPACITY, rule `retry-grant-usable` refuses for free as `capacity-repeated`; repeat later
+under a new order id. A capacity retry starts fresh with the role's current model: wait or change
+it with `/codex-bridge:model` first; a second CAPACITY of the same order goes to the next executor.
+Details and all refusals are in
 [run-lifecycle.md](run-lifecycle.md).
 
 `resume: <failed run> — <reason>` continues a failed read-only pass in its existing Codex thread,
 with its frozen task, schema and profile; it does not authorize the next pass. It is accepted by
 `codex-scout`, `codex-review` and `codex-advisor`, including advisor `advise`.
+A CAPACITY run is not eligible: the grant blocker is `capacity`, since resume reuses the old model.
 The recorded grant is decided only by `grantBlockers` (policy version 1): an eligible failed run
 records `grant: { allowed: true, policy_version: 1, blocking_reasons: [] }`. Its FAIL reply renders
 `grant allowed` without empty parentheses and, when the order id is recorded, prints a ready
@@ -330,7 +336,7 @@ otherwise `recovery-not-enabled` when `enabled !== true`, `recovery-brake-off` w
 integer. Next comes `recovery-attempt-spent` for a non-empty string `resumed_from`, even
 without a policy: E15 allows one automatic attempt per stalled pass.
 
-The existing factual blockers follow in order: `result-present`, `limit` or `unavailable`,
+The existing factual blockers follow in order: `result-present`, `limit`, `unavailable` or `capacity`,
 `writer-role-not-approved`, `thread-unavailable`, `session-evidence-<state>`, then
 `command-in-flight` or `command-evidence-unknown`. Finally come `threshold-unconfigured`,
 `not-silent-stall`, and `process-tree-stop-unverified`, when applicable. `not-silent-stall`

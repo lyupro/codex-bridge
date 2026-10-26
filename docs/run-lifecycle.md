@@ -270,7 +270,8 @@ directory creation, immediately after finding the chain and before the missing-g
   continuation was unable to return its verdict to chat.
 
 When attach returns a saved non-OK reply, it appends ready grant lines, including a `retry:` line
-when the failed last run has an order id.
+when the failed last run has an order id. A CAPACITY last run gets only capacity guidance,
+with no ready `continue:` or `retry:` line.
 
 ## Continuation authorization
 
@@ -318,7 +319,8 @@ All refusals are free:
 
 If a grant cannot authorize a new pass, the refusal names the exact directory of this task's
 last run, its status and reason, and prints a ready-to-use authorization line. A failed last run with
-an order id also gets a ready `retry:` line. If the directory is absent, all three hints are still
+an order id also gets a ready `retry:` line, except that a CAPACITY last run gets only capacity
+guidance and no ready `continue:` or `retry:` line. If the directory is absent, all three hints are still
 provided; the entered name is not substituted.
 
 The last rule makes authorization single-use: continuation appends a later run to the chain, so the same
@@ -364,18 +366,24 @@ unstartable task is worse than the retry storm the limit was introduced to preve
 
 ## Retry authorization
 
-`retry: <failed run> — <reason>` in the header repeats a `FAIL`, `LIMIT`,
-or `UNAVAILABLE` pass once under that grant. The named folder must exist and be the last run of the
+`retry: <failed run> — <reason>` in the header repeats a `FAIL`, `LIMIT`, `UNAVAILABLE`,
+or `CAPACITY` pass once under that grant. The named folder must exist and be the last run of the
 chain, have a finished verdict and a worker proven dead, and match this call's order id, agent, and
 phase. A missing verdict, a worker that may still be alive, or an `OK` outcome is a free refusal.
 An advisor `advise` retry carries the original `OK` scope, rather than treating the failed advise
 run as a scope result.
+
+If the named CAPACITY run's own `retry_of` predecessor also ended CAPACITY,
+rule `retry-grant-usable` refuses for free as `capacity-repeated`; repeating later requires
+a new order id. A capacity retry starts fresh with the role's current model: wait or change it
+with `/codex-bridge:model` first; a second CAPACITY of the same order goes to the next executor.
 
 The new run records the named folder in `status.json#retry_of` and does not count as another
 continuation of the order. Appending it spends the grant; repeating the identical retry command
 attaches to that run instead of starting another one. Its reply includes
 `Attempt: N of this pass — retry of <run>`. Refusals that encounter a failed last run with an order id
 print a ready `retry:` line, and attach appends ready grant lines to a saved non-OK reply.
+For a CAPACITY last run, both return only capacity guidance, with no ready `continue:` or `retry:` line.
 
 ## Resume authorization
 
@@ -387,6 +395,7 @@ thread that has not advanced after the recorded stop. `resume-grant-usable` refu
 `resume-pass-identity` refuses an agent or phase change. Missing, malformed or unreadable frozen
 inputs refuse as `resume-grant-usable` / `inputs-unusable`, before a new folder or paid work.
 Build writers cannot resume.
+A CAPACITY run is not eligible: grant blocker `capacity` refuses it, since resume reuses the old model.
 
 Under `resume:`, the task body is a plain note for the record, saved as written (surrounding blank lines trimmed) as `resume-note.md` in the new run folder and never read by the resumed run, which reuses the frozen questions, options, paths and verification of the named run.
 Questions, Options, Paths and Verify headings in that body are refused before start; a changed task needs `retry:` or a new order id.

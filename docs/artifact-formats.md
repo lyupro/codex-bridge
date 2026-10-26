@@ -50,7 +50,7 @@ never deleted or written in place, and failure cleanup removes only the writer's
 | `elapsed_ms` | How long the run lived before Codex returned. This is actual elapsed time, not the allocated budget: the budget is in `worker.json#budget_minutes`. |
 | `stdio_drained` | Whether the worker managed to wait for stdout/stderr to close normally. `true` means a normal `close`; `false` means closure after a limited grace period because a stream held the process open. The field is written before the verdict and does not replace `stopped_on_deadline`. |
 | `stop` | Runner-owned versioned observation of the first stop trigger, stdout receipts and result-file availability; see “Stop record” below. Written after `runCodex`, before the verdict. Absent on older runs. |
-| `status` | Final `OK`, `FAIL`, or `LIMIT`; appears when closing with a verdict. |
+| `status` | Final `OK`, `FAIL`, `LIMIT`, `UNAVAILABLE`, or `CAPACITY`; appears when closing with a verdict. |
 | `finished_at` | Time of the final verdict in ISO 8601. |
 | `tree_after` | For `abandoned`, written as `false`: the post-run tree snapshot is unknown. |
 | `abandoned_reason` | Reason why a dead, unclosed process was declared abandoned. |
@@ -58,7 +58,7 @@ never deleted or written in place, and failure cleanup removes only the writer's
 
 Records written by 0.6.17–0.6.18 may carry `stopped_by_silence: false`, which nothing reads.
 
-A normal `collect()` completes a run as `state=finished` even when the verdict is `FAIL` or `LIMIT`:
+A normal `collect()` completes a run as `state=finished` even when the verdict is `FAIL`, `LIMIT`, `UNAVAILABLE`, or `CAPACITY`:
 the worker reached result computation normally. `state=failed` is used for an infrastructure-level
 `writeFailure()`, such as a runner crash. `state=abandoned` means that no verdict exists.
 
@@ -120,8 +120,8 @@ this record or reads additional evidence for it, so collecting again preserves t
 | `resumed_from` | Non-empty string from `status.json#resumed_from`, preserved verbatim; otherwise `null`. Always present in a normal collect. |
 | `finished_at` | Time when meta was computed, in ISO 8601. |
 | `exit` | Numeric Codex code; `null` if none exists. |
-| `status` | `OK`, `FAIL`, or `LIMIT`. |
-| `reason` | Reason for `FAIL`/`LIMIT`; `null` for a normal `OK`. |
+| `status` | `OK`, `FAIL`, `LIMIT`, `UNAVAILABLE`, or `CAPACITY`. |
+| `reason` | Reason for `FAIL`/`LIMIT`/`UNAVAILABLE`/`CAPACITY`; `null` for a normal `OK`. |
 | `carried_from_earlier_run` | `true` if the claimed work is found in the chain's accumulated diff but not in the current run's delta. Always present in a normal collect. |
 | `environment_changes` | Paths changed between snapshots that matched `env.json.environmentPaths`. They are visible in the audit but excluded from work evaluation. |
 | `result_ok` | The result was read as JSON and contains the agent's primary required content field. |
@@ -185,7 +185,7 @@ configuration. Stdout receipts are not the calibrated signal and cannot affect a
 Kind precedence is fixed:
 
 1. A usable result (`resultOk: true`) gives `result-present`, regardless of status or stop.
-2. Status `LIMIT` gives `limit`; status `UNAVAILABLE` gives `unavailable`.
+2. Status `LIMIT` gives `limit`; status `UNAVAILABLE` gives `unavailable`; status `CAPACITY` gives `capacity`.
 3. An older run with no stop record gives `evidence-unknown`.
 4. Trigger `spawn-error` or `stream-error` gives `runner-error`.
 5. Trigger `exit` gives `process-exit-no-result`, including exit code zero.
@@ -213,7 +213,7 @@ same versioned predicate. An empty list records
 The grant predicate returns every applicable safety/identity blocker in this fixed order:
 
 1. `result-present` when a usable result exists.
-2. `limit` or `unavailable` for the resolved status.
+2. `limit`, `unavailable`, or `capacity` for the resolved status.
 3. `runner-error` when `stop.trigger` is `spawn-error` or `stream-error`.
 4. `writer-role-not-approved` when registry `writes` is true.
 5. `stop-record-missing` when there is no stop record (legacy runs).
@@ -244,7 +244,7 @@ The automatic list starts with applicable frozen-policy blockers in this fixed o
 Then append every applicable factual blocker in the unchanged fixed order:
 
 1. `result-present` when a usable result exists.
-2. `limit` or `unavailable` for the resolved status, even if the kind is `result-present`.
+2. `limit`, `unavailable`, or `capacity` for the resolved status, even if the kind is `result-present`.
 3. `writer-role-not-approved` when registry `writes` is true.
 4. `thread-unavailable` when there is no thread id.
 5. `session-evidence-<state>` for any session state other than `observed`;
@@ -264,7 +264,7 @@ Then append every applicable factual blocker in the unchanged fixed order:
 
 | Kind | Action |
 | --- | --- |
-| `result-present`, `limit`, `unavailable`, `silent-stall-candidate`, `recent-activity` | `retain-stop-facts` |
+| `result-present`, `limit`, `unavailable`, `capacity`, `silent-stall-candidate`, `recent-activity` | `retain-stop-facts` |
 | `process-exit-no-result` | `inspect-exit-and-drain` |
 | `command-in-flight` | `inspect-command-effects` |
 | `evidence-unknown` | `inspect-evidence` |
@@ -302,6 +302,7 @@ A blocked grant or missing order id adds no line. Grant eligibility is decided o
 starts no continuation.
 
 Every `OK`, `LIMIT`, `UNAVAILABLE`, and `FAIL` with a usable result keeps its reply unchanged.
+`CAPACITY` replies have their own shape with no ready grant or diagnostic rows; see [verdict.md](verdict.md).
 These rows are explanatory only: they change no status and execute no treatment.
 
 ### Silence policy

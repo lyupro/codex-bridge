@@ -34,8 +34,11 @@ the first matching branch determines the status. The order is therefore part of 
    whose arguments do not contain `--json` is archival and is judged by the rules of its own day.
 6. **A transport error in events.** An event with `type: "error"` or `turn.failed` produces `LIMIT` if it
    carries `status: 429` or an error type naming a limit, `UNAVAILABLE` for a final `turn.failed` matching
-   a measured signed-out sample (never the `Reconnecting...` `error` events), otherwise `FAIL` with the
-   event's reason; quota wins when both appear.
+   a measured signed-out sample, or `CAPACITY` for a final `turn.failed` matching
+   `CAPACITY_SAMPLES` (`^Selected model is at capacity`, codex-cli 0.160.1, measured 2026-10-26).
+   Neither uses the `Reconnecting...` `error` events. Transport error selection is quota,
+   unavailable, capacity, then the first error; a capacity failure is not hidden by earlier
+   `Reconnecting... 503` errors. Otherwise the verdict is `FAIL` with the event's reason.
    The check considers only a run with nothing to show (an empty result or nonzero exit): the CLI also
    prints an error event for an interrupted stream that it then survives, and coloring a run that
    completed its work would mirror the false `LIMIT`. `item.completed` is never a source — see
@@ -251,6 +254,12 @@ its sample is measured and added as a fixture (`tests/meta/fixtures/`); `2` is t
 A `codex` not found on PATH is unclear too (Plan_78 D5, the 2026-10-10 refusal during an npm update of the CLI)
 and gets the `Codex CLI readiness unconfirmed:` refusal with exit 1.
 
+`CAPACITY` (runner exit 6) recognizes only the measured final `turn.failed` sample
+`^Selected model is at capacity` (codex-cli 0.160.1, measured 2026-10-26); an unfamiliar overload
+text stays `FAIL`. A deadline stop still wins as `FAIL`; a recovered run with a filled result
+stays `OK`. The raw Codex exit remains in `meta.exit`. The fixture-and-date guard is in
+`tests/meta/capacity-transport.test.mjs`.
+
 [^codex-unavailable]: Before start by `codex login status` (exit 1 with
     the line `Not logged in`); after start only when the final `turn.failed` matches a measured signed-out
     sample (codex-cli 0.159.0:
@@ -280,3 +289,18 @@ The rows render `meta.situation`, `meta.continuation_eligibility`, and `meta.tre
 as stored, without re-deriving assessments. They change neither status nor recovery behavior.
 All `OK`, `LIMIT`, `UNAVAILABLE`, and usable-result `FAIL` replies remain unchanged, as do
 older records with no situation assessment.
+
+`CAPACITY` has its own reply shape, with no ready grant line or `Situation:`/`Continuation:` rows:
+
+```text
+CAPACITY — selected model is at capacity; work not completed
+Signal: <transport reason>
+Action: <wait or change this role's model with /codex-bridge:model, then repeat the order once with retry:; a second CAPACITY goes to the next executor>
+Worktree: <unfinished changes or unknown; builds only>
+Model: <recorded model profile>
+Log: <run log link>
+```
+
+`retry:` starts a fresh run using the role's current model; `resume:` reuses the old model and is
+refused for a CAPACITY run. A second consecutive capacity retry is refused as `capacity-repeated`;
+repeating later requires a new order id. Preserve the verdict and artifacts.

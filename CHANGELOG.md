@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- A model-at-capacity failure now has its own `CAPACITY` verdict with exit code 6, instead of
+  a generic `FAIL` with a ready `resume:` on the same overloaded model. It is recognized only
+  from the measured final `turn.failed` sample (`^Selected model is at capacity`, codex-cli
+  0.160.1, measured 2026-10-26). Its reply names the action and offers no ready grant;
+  `resume:` is refused, and a second consecutive capacity retry is refused as
+  `capacity-repeated` (OW-074).
 - An order's repository comes from the task file's git worktree, not the dispatcher shell's directory;
   an optional `repository:` label must name an absolute existing directory with the same git root
   (a subdirectory is allowed). Symlinked task files are resolved, ignored and untracked files count,
