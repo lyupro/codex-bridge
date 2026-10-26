@@ -240,6 +240,7 @@ was done.” Service paths are checked before chain lookup so an earlier run can
 | `LIMIT` | There is no result, and the event stream contains a transport refusal caused by exhausted quota. | `3` |
 | `PENDING` | `--no-wait` only: the run is still in progress, or no run exists. A call outcome, not a run status. | `4` |
 | `UNAVAILABLE` | Codex is signed out.[^codex-unavailable] | `5` |
+| `CAPACITY` | There is no result, and the final turn failed with a measured model-at-capacity sample: wait or change the role's model, then retry once. | `6` |
 
 The numbers are defined only in `src/home/lib/runner/exit-codes.mjs`, and
 `tests/runner/exit-codes.test.mjs` fails when this table, the dispatcher prompts or a runner module

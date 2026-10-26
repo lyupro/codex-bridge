@@ -10,4 +10,5 @@ export const EXIT = Object.freeze({
   LIMIT: 3,       // ChatGPT quota exhausted; not a task failure
   PENDING: 4,     // --no-wait only: the run is still in progress, or no run exists (a call outcome, not a status)
   UNAVAILABLE: 5, // Codex signed out (a PATH miss is a free refusal, Plan_78 D5); hand the task to the next executor
+  CAPACITY: 6,    // the selected model is at capacity, not a task failure; wait or change the role's model, then retry once; a second time, hand the task to the next executor
 });

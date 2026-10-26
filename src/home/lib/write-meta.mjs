@@ -224,7 +224,7 @@ export function renderReply(runDir, agent, meta) {
  */
 export const exitCodeFor = (status) =>
   (status === 'OK' ? EXIT.OK : status === 'LIMIT' ? EXIT.LIMIT :
-    status === 'UNAVAILABLE' ? EXIT.UNAVAILABLE : EXIT.FAIL);
+    status === 'UNAVAILABLE' ? EXIT.UNAVAILABLE : status === 'CAPACITY' ? EXIT.CAPACITY : EXIT.FAIL);
 
 const invokedDirectly =
   process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));

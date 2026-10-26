@@ -279,8 +279,10 @@ export function resolveStatus({ resultOk, exit, agent, result, runDir, events, e
     // complaint about the task — a LIMIT that never mentions quota is the same "verdict says the
     // wrong thing" defect this module exists to remove. Plan_60 D2: UNAVAILABLE only on a measured
     // signed-out sample (events.mjs); an unfamiliar failure stays FAIL with its raw CLI text.
+    // OW-074: capacity only on a measured sample in events.mjs.
     return {
-      status: transportError.quota ? 'LIMIT' : transportError.unavailable ? 'UNAVAILABLE' : 'FAIL',
+      status: transportError.quota ? 'LIMIT' : transportError.unavailable ? 'UNAVAILABLE' :
+        transportError.capacity ? 'CAPACITY' : 'FAIL',
       reason: transportError.reason,
     };
   }
