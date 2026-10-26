@@ -105,6 +105,11 @@ some files could not be judged.
 - `UNAVAILABLE` — Codex is signed out (checked before start, or recognised from the CLI's own
   sign-in refusal after start). The task was not attempted or could not run; this is not a task failure and
   not a reason to restart — return the block as is, the orchestrator hands the task to the next executor.
+- `CAPACITY` — the result is empty and the CLI's final turn failed with the measured "Selected model
+  is at capacity" answer. This is not a task failure and not a reason to restart or to do the work
+  yourself; the block carries no ready `resume:` or `retry:` line. Return it as is: the orchestrator
+  waits or changes the role's model and grants one `retry:`, and a second `CAPACITY` goes to the next
+  executor.
 
 A failed verification and a mismatch between the report and worktree cancel `OK` status — the
 orchestrator branches on
@@ -112,8 +117,9 @@ the first word, so failure must not be buried on the third line. Found placehold
 it, but they
 are visible in the `Flags` line — the orchestrator decides what to do with them. The script return
 code mirrors
-the status: `0` / `1` / `3` / `5`. A nonzero code is not a reason to retry or finish the code yourself.
+the status: `0` / `1` / `3` / `5` / `6`. A nonzero code is not a reason to retry or finish the code yourself.
 Code `5` means `UNAVAILABLE`.
+Code `6` means `CAPACITY`.
 
 The run folder contains `status.json` (`running` / `finished` / `failed` / `abandoned`) and the
 runner pid.

@@ -70,10 +70,16 @@ An empty `answer` is FAIL with a path to the log, not a reason to choose differe
 - `UNAVAILABLE` — Codex is signed out (checked before start, or recognised from the CLI's own
   sign-in refusal after start). The task was not attempted or could not run; this is not a task failure and
   not a reason to restart — return the block as is, the orchestrator hands the task to the next executor.
+- `CAPACITY` — the result is empty and the CLI's final turn failed with the measured "Selected model
+  is at capacity" answer. This is not a task failure and not a reason to restart or to do the work
+  yourself; the block carries no ready `resume:` or `retry:` line. Return it as is: the orchestrator
+  waits or changes the role's model and grants one `retry:`, and a second `CAPACITY` goes to the next
+  executor.
 
-The script return code mirrors the status: `0` / `1` / `3` / `5`. A nonzero code is not a reason to retry,
+The script return code mirrors the status: `0` / `1` / `3` / `5` / `6`. A nonzero code is not a reason to retry,
 not a reason to change the command, and not a reason to investigate on your own.
 Code `5` means `UNAVAILABLE`.
+Code `6` means `CAPACITY`.
 
 The run folder contains `status.json` (`running` / `finished` / `failed` / `abandoned`) and the
 runner pid.

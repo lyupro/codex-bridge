@@ -69,16 +69,18 @@ test('the verdict status table lists every EXIT entry in order', () => {
   assert.deepEqual(pairs, expected, `${fix} ${file} to list every EXIT name and code in numeric order.`);
 });
 
-test('dispatcher prompts agree with the EXIT status codes and UNAVAILABLE meaning', () => {
-  const expected = [EXIT.OK, EXIT.FAIL, EXIT.LIMIT, EXIT.UNAVAILABLE];
+test('dispatcher prompts agree with the EXIT status codes and UNAVAILABLE and CAPACITY meanings', () => {
+  const expected = [EXIT.OK, EXIT.FAIL, EXIT.LIMIT, EXIT.UNAVAILABLE, EXIT.CAPACITY];
   for (const agent of ['scout', 'build', 'review', 'advisor']) {
     const file = `src/claude/agents/codex-${agent}.md`;
     const source = read(file);
     const sequences = [...source.matchAll(/`\d+`(?: \/ `\d+`)+/g)];
     assert.equal(sequences.length, 1, `${fix} ${file} to contain exactly one slash-separated code sequence.`);
     const codes = [...sequences[0][0].matchAll(/`(\d+)`/g)].map((match) => Number(match[1]));
-    assert.deepEqual(codes, expected, `${fix} ${file} to list OK / FAIL / LIMIT / UNAVAILABLE codes.`);
+    assert.deepEqual(codes, expected, `${fix} ${file} to list OK / FAIL / LIMIT / UNAVAILABLE / CAPACITY codes.`);
     const meaning = `Code \`${EXIT.UNAVAILABLE}\` means \`UNAVAILABLE\``;
     assert.ok(source.includes(meaning), `${fix} ${file} to state: ${meaning}.`);
+    const capacityMeaning = `Code \`${EXIT.CAPACITY}\` means \`CAPACITY\``;
+    assert.ok(source.includes(capacityMeaning), `${fix} ${file} to state: ${capacityMeaning}.`);
   }
 });

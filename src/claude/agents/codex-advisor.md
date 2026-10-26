@@ -55,10 +55,16 @@ path.
 - `UNAVAILABLE` — Codex is signed out (checked before start, or recognised from the CLI's own
   sign-in refusal after start). The task was not attempted or could not run; this is not a task failure and
   not a reason to restart — return the block as is, the orchestrator hands the task to the next executor.
+- `CAPACITY` — the result is empty and the CLI's final turn failed with the measured "Selected model
+  is at capacity" answer. This is not a task failure and not a reason to restart or to do the work
+  yourself; the block carries no ready `resume:` or `retry:` line. Return it as is: the orchestrator
+  waits or changes the role's model and grants one `retry:`, and a second `CAPACITY` goes to the next
+  executor.
 
-The script return code mirrors the status: `0` / `1` / `3` / `5`. A nonzero code is not a reason to
+The script return code mirrors the status: `0` / `1` / `3` / `5` / `6`. A nonzero code is not a reason to
 retry, change the command, or investigate on your own.
 Code `5` means `UNAVAILABLE`.
+Code `6` means `CAPACITY`.
 
 For `scope`, `OK — scope: sufficient; …` means the listed paths cover the question; continue with
 the `advise` phase only when the orchestrator's task-file header grants that continuation. `OK — scope: insufficient;
