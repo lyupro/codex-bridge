@@ -31,10 +31,12 @@ A resumed pass gets its own new run folder. Its `status.json` records `resumed_f
 
 ## Availability verdicts
 
+Every non-OK reply and every refusal carries one `Action:` row with the next step; it neither grants recovery nor overrides a grant line.
+
 `LIMIT` means the ChatGPT quota window is exhausted, not a task defect. For a writing run, also check the runner's indication of whether the tree was touched.
 
 `UNAVAILABLE` means Codex is signed out on this host; the task could not run. A pre-start availability refusal may leave no run folder. Neither verdict is a reason to retry the same bridge. Preserve the verdict and any existing artifacts.
 
 `CAPACITY` (exit 6) means the role's model is overloaded right now, not a task error: wait or change the role's model (`/codex-bridge:model`), then repeat the order once with `retry:`; never `resume:` it. A second `CAPACITY` of the same order goes to the next executor. The reply has no ready grant line on purpose; the runner refuses `resume:` of a CAPACITY run and refuses a second consecutive capacity retry as `capacity-repeated`. Preserve the verdict and artifacts.
 
-A refusal starting `Codex CLI readiness unconfirmed:` is not `UNAVAILABLE`: it leaves no run folder and costs no quota. Do not skip the bridge; follow its second line — check `codex --version` for up to ~2 minutes. When it answers, repeat the same order exactly once; if it does not, hand the order to the next executor and name that in the summary. If the repeat gets the same refusal, hand the order to the next executor as well; no second repeat.
+A refusal starting `Codex CLI readiness unconfirmed:` is not `UNAVAILABLE`: it leaves no run folder and costs no quota. Do not skip the bridge; follow its `Action:` row — check `codex --version` for up to ~2 minutes. When it answers, repeat the same order exactly once; if it does not, hand the order to the next executor and name that in the summary. If the repeat gets the same refusal, hand the order to the next executor as well; no second repeat.

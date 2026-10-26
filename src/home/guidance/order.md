@@ -66,4 +66,5 @@ These are the rules a pre-start refusal names.
 
 A pre-start refusal creates no run folder and spends no quota; the same order id remains reusable for the corrected order.
 A refusal is the dispatcher's whole answer, not a reason to change the call or task file and retry itself.
+Each refusal ends with one `Action:` row naming the next step; the orchestrator, not the dispatcher, follows it.
 Repeating the same call for a run already in flight joins that run and costs no quota; a different piece of work needs a new label.

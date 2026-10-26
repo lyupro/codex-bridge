@@ -24,6 +24,13 @@ test('the rules core requires guidance order before every task file', () => {
   assert.match(core, /Before every task file, run `codex-bridge guidance order`/);
 });
 
+// OW-075 A6a: readiness refusals now carry their next step in the runner's Action row.
+test('the rules core follows the single Action row for every non-OK outcome', () => {
+  assert.match(core,
+    /For every non-OK call outcome, including pre-start refusals, follow the runner's single `Action:` row/);
+  assert.doesNotMatch(core, /second line/i);
+});
+
 // Plan_80 E4: without this line every session reaches for retry: and rereads the whole task from zero.
 test('the rules core tells retry: from resume:', () => {
   assert.match(core, /`retry:`[^.]*fresh thread[^.]*`resume:`[^.]*own Codex thread/);
