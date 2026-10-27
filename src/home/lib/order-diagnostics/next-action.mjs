@@ -7,6 +7,7 @@ const NEXT_ACTION_TEXT = Object.freeze({
   'fail-result': 'Action: the run returned a result that did not pass; read the report and git status before deciding; a repeat of this pass needs your retry: grant, the next pass your continue: grant',
   'fail-no-result': 'Action: the run left no usable result; read the log and git status before deciding; repeat only through a grant this reply offers or the operator approves, never take over the task yourself',
   'usage': 'Action: nothing was started and no quota was spent; fix the task file or the call as the refusal says, then call again',
+  'restart-window': 'Action: nothing was started and no quota was spent; this Claude Code window has not loaded the dispatcher; ask the operator to restart the window, then repeat the same order unchanged; do not hand it to the next executor and do not do the task yourself',
   'pending': 'Action: the run is still working and nothing new was started; repeat the same call without --no-wait to wait for its verdict; never start the order again under another id',
   'pending-no-run': 'Action: no run exists for this order and --no-wait never starts one; call again without --no-wait to start it',
   'grant-decision': "Action: nothing was started and no quota was spent; the grant does not fit the run it names: read that run's outcome, then call again with the grant or new order id the refusal names; never change the task to get past it",

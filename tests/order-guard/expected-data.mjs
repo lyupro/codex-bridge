@@ -102,6 +102,7 @@ export const expectedData = {
   'dispatcher-pin-owner-agreement': ['disagreement'],
   'dispatcher-model-observation': ['verdict', 'agentType', 'models', 'pinFamily', 'incompleteMatch'],
   'dispatcher-model-stop-warning': ['agentType', 'models', 'pinFamily'],
+  'dispatcher-not-loaded': ['agentType', 'observedAt', 'records'],
   'dispatcher-state-identity-required': [],
   'dispatcher-state-mutator-required': [],
   'dispatcher-state-record-required': [],

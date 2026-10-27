@@ -76,7 +76,7 @@ test('registry maps and entries are frozen and have exactly their contracted fie
     'dispatcher-runner-output',
     'dispatcher-pin-file-readable', 'dispatcher-pin-frontmatter-readable', 'dispatcher-pin-agent-name',
     'dispatcher-pin-model-family', 'dispatcher-pin-owner-agreement',
-    'dispatcher-model-observation', 'dispatcher-model-stop-warning',
+    'dispatcher-model-observation', 'dispatcher-model-stop-warning', 'dispatcher-not-loaded',
     'dispatcher-state-identity-required', 'dispatcher-state-mutator-required', 'dispatcher-state-record-required',
     'install-record-owners-readable',
     'install-record-owners-problem-known',

@@ -13,6 +13,7 @@ const variants = [
   ['fail-result', 'the run returned a result that did not pass; read the report and git status before deciding; a repeat of this pass needs your retry: grant, the next pass your continue: grant'],
   ['fail-no-result', 'the run left no usable result; read the log and git status before deciding; repeat only through a grant this reply offers or the operator approves, never take over the task yourself'],
   ['usage', 'nothing was started and no quota was spent; fix the task file or the call as the refusal says, then call again'],
+  ['restart-window', 'nothing was started and no quota was spent; this Claude Code window has not loaded the dispatcher; ask the operator to restart the window, then repeat the same order unchanged; do not hand it to the next executor and do not do the task yourself'],
   ['grant-decision', "nothing was started and no quota was spent; the grant does not fit the run it names: read that run's outcome, then call again with the grant or new order id the refusal names; never change the task to get past it"],
   ['run-in-progress', 'nothing was started and no quota was spent; another run holds this order or writes in this tree: wait for it (repeating the same order attaches to a run of that order), then call again; never stop it without the operator'],
   ['runs-root-retired', 'nothing was started and no quota was spent; the runs root setting points at a retired location: show this to the operator to fix CODEX_RUNS_ROOT, then repeat the same order'],

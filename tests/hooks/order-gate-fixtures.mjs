@@ -10,10 +10,10 @@ import { orderDiagnosticMessage } from '../../src/home/lib/order-diagnostics.mjs
 const ROOT = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const GATE = path.join(ROOT, 'src', 'home', 'hooks', 'order-gate.mjs');
 
-export function decodeDenial(stdout) {
+export function decodeDenial(stdout, variant = 'usage') {
   const decision = JSON.parse(stdout).hookSpecificOutput;
   assert.equal(decision.permissionDecision, 'deny');
-  const row = orderDiagnosticMessage('next-action', { variant: 'usage' });
+  const row = orderDiagnosticMessage('next-action', { variant });
   const lines = decision.permissionDecisionReason.split('\n');
   assert.equal(lines.at(-1), row);
   const label = row.slice(0, row.indexOf(':') + 1);

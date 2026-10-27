@@ -15,7 +15,7 @@ const actionsByExit = {
   FAIL: ['fail-result', 'fail-no-result', 'runner-fault', 'run-in-progress',
     'runs-root-retired', 'availability-unconfirmed', 'readiness-unconfirmed',
     'advisor-scope-result', 'grant-decision', 'usage'],
-  USAGE: ['usage', 'grant-decision', 'repository-detached', 'sandbox-dead'],
+  USAGE: ['usage', 'restart-window', 'grant-decision', 'repository-detached', 'sandbox-dead'],
   LIMIT: ['limit'],
   PENDING: ['pending', 'pending-no-run'],
   UNAVAILABLE: ['unavailable'],
@@ -36,12 +36,12 @@ test('every non-OK EXIT has known next actions and no next-action variant is orp
 });
 
 test('every next-action variant has a producer string literal outside its registry', () => {
-  const root = fileURLToPath(new URL('../../src/home/lib/', import.meta.url));
-  const registry = path.join(root, 'order-diagnostics', 'next-action.mjs');
+  const roots = ['lib', 'hooks'].map((dir) => fileURLToPath(new URL(`../../src/home/${dir}/`, import.meta.url)));
+  const registry = path.join(roots[0], 'order-diagnostics', 'next-action.mjs');
   const used = new Set();
-  for (const file of fs.readdirSync(root, { recursive: true })) {
-    const fullPath = path.join(root, file);
-    if (!file.endsWith('.mjs') || fullPath === registry) continue;
+  const files = roots.flatMap((root) => fs.readdirSync(root, { recursive: true }).map((file) => path.join(root, file)));
+  for (const fullPath of files) {
+    if (!fullPath.endsWith('.mjs') || fullPath === registry) continue;
     const { tokens } = lex(fs.readFileSync(fullPath, 'utf8'));
     for (const token of tokens) {
       // preflight.mjs records availability.action before the launcher passes it to die().

@@ -2,6 +2,13 @@
 import { DIAGNOSTICS as INTERNAL_DIAGNOSTICS } from './internal.mjs';
 
 export const DIAGNOSTICS = Object.freeze({
+  'dispatcher-not-loaded': Object.freeze({
+    data: Object.freeze(['agentType', 'observedAt', 'records']),
+    category: 'host-state',
+    message: ({ agentType, observedAt, records }) =>
+      `The session's agent listing (replayed from its transcript, ${records} listing records, last at ${observedAt}) `
+      + `does not contain dispatcher ${agentType}. The host would fail the call with "Agent type not found".`,
+  }),
   'codex-readiness-unconfirmed': Object.freeze({
     data: Object.freeze(['detail']),
     category: 'host-state',

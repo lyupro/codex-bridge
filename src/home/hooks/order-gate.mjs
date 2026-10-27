@@ -14,6 +14,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { AGENTS } from '../lib/agents.mjs';
+import { dispatcherPresence, sessionAgentTypes } from '../lib/agent-listing.mjs';
 import { BRAND_HOME, BRAND_STATE_DIR } from '../lib/brand-home.mjs';
 import { modelLatch, readDispatcherModel } from '../lib/dispatcher-model.mjs';
 import { readDispatcherPin } from '../lib/dispatcher-pin.mjs';
@@ -86,8 +87,26 @@ const toolInput = input.tool_input;
 if (!toolInput || typeof toolInput !== 'object' || Array.isArray(toolInput)) pass();
 if (!GUARDED.has(toolInput.subagent_type)) pass();
 
-// Plan_67 D6: one installed model contract; refuse even matching aliases before prompt exits.
 const agentType = toolInput.subagent_type;
+// OW-071, 2026-10-21: refuse before other checks or grants can send an unloaded dispatcher to fallback.
+if (typeof input.session_id === 'string' && input.session_id.trim()
+  && typeof input.transcript_path === 'string' && input.transcript_path.trim()) {
+  let listing;
+  let presence;
+  try {
+    listing = sessionAgentTypes({ transcriptPath: input.transcript_path, sessionId: input.session_id });
+    presence = dispatcherPresence(listing, agentType);
+  } catch {
+    presence = 'unknown';
+  }
+  if (presence === 'absent') {
+    deny(orderDiagnosticMessage('dispatcher-not-loaded', {
+      agentType, observedAt: listing.observedAt, records: listing.records,
+    }), { action: 'restart-window' });
+  }
+}
+
+// Plan_67 D6: one installed model contract; refuse even matching aliases before prompt exits.
 if (Object.hasOwn(toolInput, 'model')) {
   deny([orderRuleMessage('agent-call-model', { agentType }),
     orderDiagnosticMessage('run-not-created')].join(' '), { action: 'usage' });
