@@ -62,7 +62,7 @@ export async function agentsCheck(host, record) {
   }
   return mismatches.length
     ? check('agents', 'fail', `Installed agent definitions differ from this package: ${mismatches.join(', ')}; run codex-bridge update --force`)
-    : check('agents', 'ok', `${agents.length} installed agent definition(s) match this package`);
+    : check('agents', 'ok', `${agents.length} agent definition file(s) on disk match this package; whether a Claude Code session loaded them is shown by the sessionAgents row`);
 }
 
 export async function claudeRulesCheck(host, record) {

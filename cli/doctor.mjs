@@ -20,6 +20,7 @@ import {
 } from './doctor-installation.mjs';
 import { hookChecks } from './doctor-hooks.mjs';
 import { loadWitnessChecks } from './doctor-load-witness.mjs';
+import { sessionAgentsCheck } from './doctor-session-agents.mjs';
 import { contractStatus, readHostContract } from './host-contract.mjs';
 import { handbackWitnessStatus } from './handback-witness-check.mjs';
 import { dispatcherModelChecks } from './dispatcher-model-check.mjs';
@@ -156,6 +157,8 @@ export async function diagnose({
   ));
   const agents = await agentsCheck(host, record);
   checks.push(agents);
+  const stateDir = brandStateDir(host.brandRoot);
+  checks.push(await sessionAgentsCheck({ stateDir }));
   const rules = await rulesCheck(host, record);
   checks.push(rules);
   const claudeRules = await claudeRulesCheck(host, record);
@@ -164,7 +167,6 @@ export async function diagnose({
   const bridge = bridgeProbe();
   checks.push(bridgeCommandCheck(bridge));
   checks.push(...await hookChecks(host, record, launcherProbe));
-  const stateDir = brandStateDir(host.brandRoot);
   const hostObservations = observations === undefined ? readHostObservations({ stateDir }) : observations;
   const observedVersions = sessionHostVersions(hostObservations);
   const detectedHostVersion = hostVersion === undefined ? observedVersions[0] ?? null : hostVersion;
