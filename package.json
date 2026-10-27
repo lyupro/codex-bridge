@@ -1,7 +1,7 @@
 {
   "name": "@lyupro/codex-bridge",
   "version": "0.6.23",
-  "description": "Claude Code-to-Codex delegation with 8 guards, 5722 tests, zero runtime dependencies, and zero build steps.",
+  "description": "Claude Code-to-Codex delegation with 8 guards, 5753 tests, zero runtime dependencies, and zero build steps.",
   "keywords": [
     "claude-code",
     "codex",
