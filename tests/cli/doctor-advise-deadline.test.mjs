@@ -7,7 +7,7 @@ import { adviseDeadlineCheck } from '../../cli/doctor-advise-deadline.mjs';
 import { diagnose } from '../../cli/doctor.mjs';
 import { check } from '../../cli/doctor-format.mjs';
 import { withTempTree } from '../temp-tree.mjs';
-import { codexProbe, installedFixture, ownPackage, runsRootFixture } from './doctor-fixtures.mjs';
+import { codexProbe, ownPackage, runsRootFixture, honestInstalledFixture } from './doctor-fixtures.mjs';
 
 const currentBudgetMinutes = 37;
 const now = new Date(2026, 9, 21, 12).getTime();
@@ -159,7 +159,7 @@ test('without supplied records the shared scanner honors the requested lookback 
 });
 
 test('doctor shares the same scan after recoveryEnablingGates and an advise warning leaves exit code unchanged', async (t) => {
-  const { host } = await installedFixture(t);
+  const { host } = await honestInstalledFixture(t);
   const root = await runsRootFixture(t);
   for (let index = 0; index < 3; index += 1) {
     const entry = record(root);

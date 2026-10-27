@@ -11,7 +11,7 @@ import { diagnose, probeCodex } from '../../cli/doctor.mjs';
 import { repositoryRoot } from '../../cli/hosts.mjs';
 import { sandboxModeFor } from '../../src/home/lib/runner/codex-args.mjs';
 import { formatSandboxDiagnosis } from '../../src/home/lib/runner/sandbox-diagnosis.mjs';
-import { installedFixture, codexProbe, ownPackage } from './doctor-fixtures.mjs';
+import { codexProbe, ownPackage, honestInstalledFixture } from './doctor-fixtures.mjs';
 import { withTempTree } from '../temp-tree.mjs';
 
 const diagnosis = {
@@ -205,7 +205,7 @@ test('cwd and platform defaults reach the probe', async () => {
 });
 
 test('diagnose injects sandbox rows immediately after Codex; fail exits 1 and warn preserves the baseline', async (t) => {
-  const { host } = await installedFixture(t);
+  const { host } = await honestInstalledFixture(t);
   await withTempTree('doctor-sandbox-runs-', async (runsRoot) => {
     const previous = process.env.CODEX_RUNS_ROOT;
     process.env.CODEX_RUNS_ROOT = runsRoot;

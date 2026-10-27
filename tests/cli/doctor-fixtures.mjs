@@ -6,13 +6,16 @@
  * but both need the same installed host. Copying the fixture into the second file would let the
  * two drift, which is the failure the fixture itself guards against.
  */
+import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 import { resolveHost } from '../../cli/hosts.mjs';
+import { install } from '../../cli/install.mjs';
 import {
   buildInstallPlan,
   HOOK_DEFINITIONS,
+  readInstallRecord,
   recordTarget,
   writeInstallRecord,
 } from '../../cli/manifest.mjs';
@@ -29,6 +32,13 @@ export async function hostFixture(t) {
     codexHome: path.join(root, 'codex-home'),
     brandRoot: path.join(root, 'brand'),
   });
+}
+
+// OW-072: a healthy doctor baseline needs the real package image, not placeholder hooks.
+export async function honestInstalledFixture(t) {
+  const host = await hostFixture(t);
+  assert.equal((await install({ host })).exitCode, 0);
+  return { host, record: await readInstallRecord(host) };
 }
 
 export async function installedFixture(t) {

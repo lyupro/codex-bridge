@@ -7,7 +7,7 @@ import { diagnose, renderDoctor } from '../../cli/doctor.mjs';
 import { HEARTBEAT_FILE, HEARTBEAT_STALE_MS } from '../../src/home/lib/heartbeat.mjs';
 import { STOP_COMMAND_TEMPLATE } from '../../src/home/lib/stop-contract.mjs';
 import { removeTempTree } from '../temp-tree.mjs';
-import { codexProbe, installedFixture, ownPackage, runsRootFixture } from './doctor-fixtures.mjs';
+import { codexProbe, installedFixture, ownPackage, runsRootFixture, honestInstalledFixture } from './doctor-fixtures.mjs';
 
 async function createWorkingRun(root, name, { heartbeat = true } = {}) {
   const dir = path.join(root, 'project', name);
@@ -55,7 +55,7 @@ test('doctor reports disabled cleanup without warning color', async (t) => {
 });
 
 test('doctor counts only confirmed fresh working runs and keeps the host healthy', async (t) => {
-  const { host } = await installedFixture(t);
+  const { host } = await honestInstalledFixture(t);
   const runs = await runsRootFixture(t);
 
   const empty = await diagnose({ host, codexProbe, currentPackage: ownPackage });

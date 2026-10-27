@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { diagnose, renderDoctor } from '../../cli/doctor.mjs';
 import { contractStatus } from '../../cli/host-contract.mjs';
 import { install } from '../../cli/install.mjs';
-import { codexProbe, installedFixture, ownPackage } from './doctor-fixtures.mjs';
+import { codexProbe, installedFixture, ownPackage, honestInstalledFixture } from './doctor-fixtures.mjs';
 import { fixture } from './host-fixture.mjs';
 
 const VERSION = '2.1.240';
@@ -35,7 +35,7 @@ const cases = [
 
 for (const item of cases) {
   test(`doctor maps ${item.state} host contract to ${item.status}`, async (t) => {
-    const { host } = await installedFixture(t);
+    const { host } = await honestInstalledFixture(t);
     const expected = contractStatus({ record: item.contractRecord, version: item.hostVersion });
     const result = await diagnose({
       host,

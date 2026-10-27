@@ -9,7 +9,7 @@ import { diagnose } from '../../cli/doctor.mjs';
 import { AGENTS } from '../../src/home/lib/agents.mjs';
 import { brandStateDir } from '../../src/home/lib/brand-home.mjs';
 import { LOAD_WITNESS_FILE } from '../../src/home/lib/load-witness.mjs';
-import { codexProbe, installedFixture, ownPackage, runsRootFixture } from './doctor-fixtures.mjs';
+import { codexProbe, ownPackage, runsRootFixture, honestInstalledFixture } from './doctor-fixtures.mjs';
 
 const NOW = Date.parse('2026-10-27T12:00:00Z');
 const CUTOFF = NOW - 9 * 24 * 60 * 60 * 1000;
@@ -277,7 +277,7 @@ test('stat failure skips the unavailable transcript without replay', async () =>
 });
 
 test('a sessionAgents warning follows agents and leaves diagnose exit code at zero', async (t) => {
-  const { host } = await installedFixture(t);
+  const { host } = await honestInstalledFixture(t);
   await runsRootFixture(t);
   const stateDir = brandStateDir(host.brandRoot);
   await fs.mkdir(stateDir, { recursive: true });

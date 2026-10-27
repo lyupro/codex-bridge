@@ -6,12 +6,12 @@ import path from 'node:path';
 import { diagnose } from '../../cli/doctor.mjs';
 import { claudeRulesCheck } from '../../cli/doctor-installation.mjs';
 import { buildInstallPlan, writeInstallRecord } from '../../cli/manifest.mjs';
-import { codexProbe, hostFixture, installedFixture, ownPackage } from './doctor-fixtures.mjs';
+import { codexProbe, hostFixture, installedFixture, ownPackage, honestInstalledFixture } from './doctor-fixtures.mjs';
 
 const bridgeProbe = () => ({ available: true, value: 'codex-bridge 0.1.0' });
 
 test('doctor confirms planned host rules match this package immediately after the Codex rules check', async (t) => {
-  const { host, record } = await installedFixture(t);
+  const { host, record } = await honestInstalledFixture(t);
   const rules = (await buildInstallPlan(host)).filter((item) => path.dirname(item.target) === host.rulesDir);
   assert.ok(rules.length > 0);
   for (const item of rules) {

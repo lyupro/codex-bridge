@@ -10,7 +10,7 @@ import { brandStateDir } from '../../src/home/lib/brand-home.mjs';
 import { DISPATCHER_MODEL_FILE, readDispatcherModel } from '../../src/home/lib/dispatcher-model.mjs';
 import { readHandbackWitness, WITNESS_FILE } from '../../src/home/lib/handback-witness.mjs';
 import { emptyLedger, reduceObservation } from '../../src/home/lib/observation-ledger.mjs';
-import { codexProbe, installedFixture, ownPackage } from './doctor-fixtures.mjs';
+import { codexProbe, ownPackage, honestInstalledFixture } from './doctor-fixtures.mjs';
 
 const hostVersion = '2.1.281';
 const at = '2026-10-07T10:00:00.000Z';
@@ -178,7 +178,7 @@ for (const [file, key, read] of [
   [WITNESS_FILE, 'handbackWitness', readHandbackWitness],
 ]) {
   test(`doctor warns once without throwing when ${file} has an observation without data`, async (t) => {
-    const { host } = await installedFixture(t);
+    const { host } = await honestInstalledFixture(t);
     const directory = brandStateDir(host.brandRoot);
     const data = { hostVersion, agentType: 'codex-build', cause: 'missing-ids' };
     const ledger = reduceObservation(emptyLedger(), {

@@ -7,7 +7,7 @@ import { diagnose, renderDoctor } from '../../cli/doctor.mjs';
 import { fileFingerprint, writeInstallRecord } from '../../cli/manifest.mjs';
 import { RULES_REGISTRY_NAME } from '../../cli/rules-owners.mjs';
 import { normalizeRepoPath } from '../../src/home/lib/runner/project-dir.mjs';
-import { codexProbe, hostFixture, installedFixture, ownPackage } from './doctor-fixtures.mjs';
+import { codexProbe, hostFixture, installedFixture, ownPackage, honestInstalledFixture } from './doctor-fixtures.mjs';
 
 async function addRules(host, record, content = 'prefix_rule(pattern=["safe"], decision="allow")\n') {
   const rulePath = path.join(host.codexRulesDir, 'codex-bridge.rules');
@@ -38,7 +38,7 @@ test('an old installation record warns that update will add rules', async (t) =>
 });
 
 test('rules matching their recorded fingerprint are healthy', async (t) => {
-  const { host, record } = await installedFixture(t);
+  const { host, record } = await honestInstalledFixture(t);
   const rulePath = await addRules(host, record);
   const result = await diagnose({ host, codexProbe, currentPackage: ownPackage });
   assert.deepEqual(result.checks.find((item) => item.key === 'rules'), {
@@ -99,7 +99,7 @@ test('missing recorded rules fail diagnosis and name their full path', async (t)
 });
 
 test('manually modified rules warn without failing diagnosis', async (t) => {
-  const { host, record } = await installedFixture(t);
+  const { host, record } = await honestInstalledFixture(t);
   const rulePath = await addRules(host, record);
   await fs.writeFile(rulePath, 'manual operator rules\n');
   const result = await diagnose({ host, codexProbe, currentPackage: ownPackage });

@@ -7,6 +7,7 @@ import { readInstallRecord, packageInfo } from './manifest.mjs';
 import { readInstallRecordFile, recordTarget } from './install-record.mjs';
 import { runsRootResolution } from '../src/home/lib/runner/runs-root.mjs';
 import { check, renderDoctor } from './doctor-format.mjs';
+import { homeImageCheck } from './doctor-home-image.mjs';
 import { homeOwnersCheck, hostSideCheck, ownerEntry, ownersInSyncCheck } from './doctor-host-side.mjs';
 import { inspectHost } from './host-inspection.mjs';
 import {
@@ -155,6 +156,8 @@ export async function diagnose({
     !record ? 'warn' : missingFiles.length ? 'fail' : 'ok',
     !record ? 'not checked' : missingFiles.length ? `missing: ${missingFiles.join(', ')}` : `${record.files.length} installed file(s) present`,
   ));
+  const homeImage = await homeImageCheck(host, record);
+  checks.push(homeImage);
   const agents = await agentsCheck(host, record);
   checks.push(agents);
   const stateDir = brandStateDir(host.brandRoot);
@@ -246,7 +249,7 @@ export async function diagnose({
 
   return {
     exitCode: !record || recordBroken || missingFiles.length || agents.status === 'fail' || rules.status === 'fail'
-      || claudeRules.status === 'fail'
+      || homeImage.status === 'fail' || claudeRules.status === 'fail'
       || hostContractStatus === 'fail' || retention.status === 'fail' || conventions.status === 'fail'
       || runsRoot.status === 'fail' || projectRuns.status === 'fail'
       || checks.some((item) => /^(hook|dispatcherContract|dispatcherModel|sandbox):/.test(item.key) && item.status === 'fail')

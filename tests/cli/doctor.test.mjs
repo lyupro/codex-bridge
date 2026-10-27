@@ -10,7 +10,7 @@ import { HOOK_DEFINITIONS, recordTarget } from '../../cli/manifest.mjs';
 import { addPermissionRules } from '../../cli/permissions.mjs';
 import { PROJECT_MARKER } from '../../src/home/lib/runner/project-dir.mjs';
 import { projectFolder } from '../../src/home/lib/write-meta.mjs';
-import { codexProbe, hostFixture, installedFixture, ownPackage, runsRootFixture } from './doctor-fixtures.mjs';
+import { codexProbe, hostFixture, installedFixture, ownPackage, runsRootFixture, honestInstalledFixture } from './doctor-fixtures.mjs';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 
 function currentRepoFolder() {
@@ -55,7 +55,7 @@ test('install file count agrees with doctor files check', async (t) => {
 });
 
 test('complete installation with all files exits zero', async (t) => {
-  const { host } = await installedFixture(t);
+  const { host } = await honestInstalledFixture(t);
   const result = await diagnose({ host, codexProbe, currentPackage: ownPackage });
   assert.equal(result.exitCode, 0);
   assert.equal(result.checks.find((item) => item.key === 'files').status, 'ok');
@@ -157,7 +157,10 @@ test('doctor warns when an installed hook cannot resolve an import', async (t) =
 });
 
 test('doctor warns for optional permissions without changing the exit code', async (t) => {
-  const { host } = await installedFixture(t);
+  const { host } = await honestInstalledFixture(t);
+  const initialSettings = JSON.parse(await fs.readFile(host.settingsPath, 'utf8'));
+  delete initialSettings.permissions;
+  await fs.writeFile(host.settingsPath, `${JSON.stringify(initialSettings)}\n`);
   const absent = await diagnose({ host, codexProbe, currentPackage: ownPackage });
   assert.equal(absent.exitCode, 0);
   assert.equal(absent.checks.find((item) => item.key === 'permissions').status, 'warn');
@@ -204,7 +207,7 @@ test('doctor reports an optional host conventions file when it is present', asyn
 });
 
 test('doctor warns when the host conventions file is empty', async (t) => {
-  const { host } = await installedFixture(t);
+  const { host } = await honestInstalledFixture(t);
   const file = host.brandConventionsPath;
   await fs.writeFile(file, ' \n\t');
 
@@ -301,7 +304,7 @@ test('doctor names the folder the runner would use, not the current subdirectory
 });
 
 test('version mismatch is visible without treating intact files as broken', async (t) => {
-  const { host } = await installedFixture(t);
+  const { host } = await honestInstalledFixture(t);
   const result = await diagnose({
     host,
     codexProbe,

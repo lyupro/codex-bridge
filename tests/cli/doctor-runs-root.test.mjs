@@ -7,7 +7,7 @@ import { runsRootCheck, projectRunsCheck, liveRunsCheck } from '../../cli/doctor
 import { resolveBrandHome } from '../../src/home/lib/brand-home.mjs';
 import { runsRootResolution, staleOverrideRefusal } from '../../src/home/lib/runner/runs-root.mjs';
 import { diagnose } from '../../cli/doctor.mjs';
-import { codexProbe, installedFixture, ownPackage } from './doctor-fixtures.mjs';
+import { codexProbe, installedFixture, ownPackage, honestInstalledFixture } from './doctor-fixtures.mjs';
 import { makeTempTree, removeTempTree } from '../temp-tree.mjs';
 
 function fixture(t, source = 'default') {
@@ -201,7 +201,7 @@ test('project and live checks use the supplied root rather than a fresh env over
 
 test('doctor foreign-repository warnings preserve the existing healthy exit code', async (t) => {
   setEnv(t, 'CODEX_RUNS_ROOT', path.join(process.cwd(), 'cli'));
-  const { host } = await installedFixture(t);
+  const { host } = await honestInstalledFixture(t);
   const result = await diagnose({ host, codexProbe, currentPackage: ownPackage });
   const root = result.checks.find((item) => item.key === 'runsRoot');
   assert.equal(root.status, 'warn');

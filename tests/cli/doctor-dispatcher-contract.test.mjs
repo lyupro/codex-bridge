@@ -7,7 +7,7 @@ import { diagnose } from '../../cli/doctor.mjs';
 import { DISPATCHER_CONTRACTS } from '../../cli/dispatcher-contract.mjs';
 import { DISPATCHER_CONTRACT_FILE, writeDispatcherContract } from '../../cli/dispatcher-contract-record.mjs';
 import { brandStateDir } from '../../src/home/lib/brand-home.mjs';
-import { codexProbe, installedFixture, ownPackage } from './doctor-fixtures.mjs';
+import { codexProbe, ownPackage, honestInstalledFixture } from './doctor-fixtures.mjs';
 
 const verdicts = (result) => Object.fromEntries(DISPATCHER_CONTRACTS.map((name) => [name, { result, detail: name }]));
 const contractLines = (result) => result.checks.filter((item) => item.key.startsWith('dispatcherContract'));
@@ -17,7 +17,7 @@ function record(results) {
 }
 
 async function run(t, options) {
-  const { host } = await installedFixture(t);
+  const { host } = await honestInstalledFixture(t);
   return diagnose({ host, codexProbe, currentPackage: ownPackage, hostVersion: '2.1.281', ...options });
 }
 
@@ -30,7 +30,7 @@ test('a never probed host warns once per contract and keeps the exit code', asyn
 });
 
 test('doctor reads the record the probe wrote into the fixture brand state', async (t) => {
-  const { host } = await installedFixture(t);
+  const { host } = await honestInstalledFixture(t);
   writeDispatcherContract({ stateDir: brandStateDir(host.brandRoot), version: '2.1.281', verdicts: verdicts('honored') });
   const result = await diagnose({ host, codexProbe, currentPackage: ownPackage, hostVersion: '2.1.281' });
   assert.ok(contractLines(result).every((item) => item.status === 'ok' && /verified on host 2\.1\.281/.test(item.value)));
@@ -58,7 +58,7 @@ test('a record from another host version and an unknown host version only warn',
 });
 
 test('a corrupt record is one warning that names the file to delete', async (t) => {
-  const { host } = await installedFixture(t);
+  const { host } = await honestInstalledFixture(t);
   const stateDir = brandStateDir(host.brandRoot);
   fs.mkdirSync(stateDir, { recursive: true });
   fs.writeFileSync(path.join(stateDir, DISPATCHER_CONTRACT_FILE), '{broken', 'utf8');

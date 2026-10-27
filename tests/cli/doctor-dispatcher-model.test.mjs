@@ -5,7 +5,7 @@ import { diagnose, renderDoctor } from '../../cli/doctor.mjs';
 import { brandStateDir } from '../../src/home/lib/brand-home.mjs';
 import { recordDispatcherModel } from '../../src/home/lib/dispatcher-model.mjs';
 import { emptyLedger, reduceObservation } from '../../src/home/lib/observation-ledger.mjs';
-import { codexProbe, installedFixture, ownPackage } from './doctor-fixtures.mjs';
+import { codexProbe, installedFixture, ownPackage, honestInstalledFixture } from './doctor-fixtures.mjs';
 
 const hostVersion = '2.1.281';
 const at = '2026-10-07T10:00:00.000Z';
@@ -20,7 +20,7 @@ const runDoctor = (host, dispatcherModelRecord) => diagnose({
 const modelRow = (result) => result.checks.find((item) => item.key.startsWith('dispatcherModel'));
 
 test('an injected violation fails doctor and recovery restores exit code zero', async (t) => {
-  const { host } = await installedFixture(t);
+  const { host } = await honestInstalledFixture(t);
   const violation = reduceObservation(emptyLedger(), observation('violation'));
   const failed = await runDoctor(host, violation);
   assert.equal(modelRow(failed).status, 'fail');
@@ -37,7 +37,7 @@ test('an injected violation fails doctor and recovery restores exit code zero', 
 });
 
 test('doctor reads the ledger from the fixture brand home when no record is injected', async (t) => {
-  const { host } = await installedFixture(t);
+  const { host } = await honestInstalledFixture(t);
   await recordDispatcherModel({ stateDir: brandStateDir(host.brandRoot),
     observation: observation('violation'), now: at });
   const result = await runDoctor(host);
@@ -50,7 +50,7 @@ test('doctor reads the ledger from the fixture brand home when no record is inje
 });
 
 test('an unresolved violation warns without changing the exit code', async (t) => {
-  const { host } = await installedFixture(t);
+  const { host } = await honestInstalledFixture(t);
   const ledger = reduceObservation(reduceObservation(emptyLedger(), observation('violation')),
     observation('undetermined'));
   const result = await runDoctor(host, ledger);
@@ -60,7 +60,7 @@ test('an unresolved violation warns without changing the exit code', async (t) =
 });
 
 test('a violation on another host remains historical and does not fail doctor', async (t) => {
-  const { host } = await installedFixture(t);
+  const { host } = await honestInstalledFixture(t);
   const ledger = reduceObservation(emptyLedger(), observation('violation', '2.1.280'));
   const result = await runDoctor(host, ledger);
   assert.equal(modelRow(result).status, 'ok');
@@ -70,7 +70,7 @@ test('a violation on another host remains historical and does not fail doctor', 
 });
 
 test('a corrupt injected ledger warns without failing doctor', async (t) => {
-  const { host } = await installedFixture(t);
+  const { host } = await honestInstalledFixture(t);
   const result = await runDoctor(host, { corrupt: true });
   assert.equal(modelRow(result).status, 'warn');
   assert.equal(result.exitCode, 0);
@@ -99,7 +99,7 @@ test('2026-10-07 D12: a model violation on the non-newest active host fails doct
 });
 
 test('D12: the same model violation becomes history after 25 hours without later host activity', async (t) => {
-  const { host } = await installedFixture(t);
+  const { host } = await honestInstalledFixture(t);
   const oldAt = '2026-10-06T11:00:00.000Z';
   const dispatcherModelRecord = reduceObservation(emptyLedger(), {
     ...observation('violation', '2.1.292'), key: '2.1.292|codex-scout', at: oldAt,
@@ -118,7 +118,7 @@ test('D12: the same model violation becomes history after 25 hours without later
 });
 
 test('injected active hosts override hostVersion, including an explicitly empty list', async (t) => {
-  const { host } = await installedFixture(t);
+  const { host } = await honestInstalledFixture(t);
   const dispatcherModelRecord = reduceObservation(emptyLedger(), observation('violation', '2.1.292'));
   const options = { host, codexProbe, currentPackage: ownPackage, hostVersion, dispatcherModelRecord };
   const failed = await diagnose({ ...options, activeHosts: ['2.1.292'] });
