@@ -20,6 +20,17 @@ Repair lines after a cached non-OK reply name the last started run in the chain.
 
 ## First failure point: the orchestrator gate
 
+As soon as the gate recognises a dispatcher, before the model, env-model and grant checks,
+it checks whether this session loaded that dispatcher. On 2026-10-21 the host's
+`Agent type 'codex-build' not found` error carried no Action row, and the order went to the
+fallback Claude on the operator's quota; that transcript proves `PreToolUse` runs before the
+host error. The gate now refuses proven absence as `dispatcher-not-loaded` with `restart-window`:
+restart the window and repeat the same order unchanged, never hand it to the next executor or
+do it yourself. It replays the whole transcript's `agent_listing_delta` records for this session,
+from the initial snapshot through later deltas, because the dispatchers arrived about 30 minutes
+late in that incident. Absence must be proven, never inferred: a missing transcript, unknown
+schema or another session's records leave the listing unknown and the call falls through unchanged.
+
 Before the launcher starts, Claude Code invokes the `PreToolUse` hook `order-gate.mjs` on every attempt
 to call a dispatcher. The gate reads the job text from `tool_input.prompt` and checks it against the
 order schema in `src/home/lib/order-schema.mjs`: the call is exactly one `task file: <absolute path>` line,

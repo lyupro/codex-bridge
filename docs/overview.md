@@ -649,6 +649,8 @@ for the core and saves their paths and hashes in `<home>/state/load-witness.json
 refuses a host action. On 2026-10-10 the event arrived before the transcript existed, so the
 hook saves evidence immediately and `doctor` resolves the host version later from that exact
 session's transcript, not from `PATH`, `memory_type` or an entrypoint label.
+The witness's session list also feeds `doctor`'s `sessionAgents` row, so dispatcher-loading
+evidence is checked against the same recorded sessions.
 
 `doctor` prints `claudeRulesLoad:<host version>` as `ok` only when the latest load at this
 owner's exact core path matches the current package hash in a session of that version. A newer
@@ -945,6 +947,24 @@ definition and checks its `name`, and the suite parses everything the installer 
 than warning: the drift that matters is a call form no permission rule matches, and a host in that
 state stops every delegation while looking healthy to a script. The remedy printed with it is
 `codex-bridge update --force`.
+
+Files on disk and what a session loaded are different questions. On 2026-10-21 (host 2.1.304)
+and twice on 2026-10-26 (host 2.1.310, sessions starting at 12:15 and 14:50 UTC), the initial
+agent listing lacked every `codex-*` dispatcher despite the installed files. The first
+`codex-build` call failed with `Agent type 'codex-build' not found`, without an Action row,
+and the order went to the fallback Claude on the operator's quota. The `agents` row now says
+it checks only files on disk; `sessionAgents` replays the listing of every load-witness session
+whose transcript changed within the last nine days, names each session whose listing proves
+a dispatcher absent and advises restarting its window if still open. It reports verified,
+not-verifiable and skipped counts rather than treating missing evidence as a healthy session.
+The nine-day window was the operator's 2026-10-27 decision: `doctor` runs only by hand, and
+replaying all 30 days (1.9 GB of transcripts) cost 13.6 seconds. The row never affects the exit
+code, because a closed window must not fail `doctor`. Before a call can reach the host error,
+the order gate refuses proven absence with `dispatcher-not-loaded` and `restart-window`:
+restart the window and repeat the same order unchanged, never hand it to the next executor or
+do it yourself. Unknown evidence leaves the call unchanged; on 2026-10-21 the dispatchers
+appeared in a later listing delta about 30 minutes after start, so an initial snapshot alone
+cannot establish the session's current listing.
 
 `install` also places the rules core and `update` keeps it equal to the package. A foreign file
 already at the planned rules path but absent from the installation record is `unowned`: update

@@ -657,6 +657,9 @@ id maps to an entry with the following fields:
 | `transcriptPath` | Host-supplied transcript path, when supplied; used later to identify this session's host version. |
 | `cwd` | Host-supplied working directory, when supplied. |
 
+`doctor`'s `sessionAgents` row also reads each session's `transcriptPath` to check its agent
+listing, because the 2026-10-21 incident showed that installed files do not prove a session loaded them.
+
 Each load contains:
 
 | Load field | Value |

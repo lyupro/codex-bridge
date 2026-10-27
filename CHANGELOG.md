@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- The order gate refuses a dispatcher proven absent from the session's agent listing with
+  `dispatcher-not-loaded` and `restart-window`: restart the window and repeat the same order
+  unchanged, never hand it to the next executor or do it yourself. On 2026-10-21 the host's
+  "Agent type not found" error had no Action row and sent the order to the fallback Claude
+  on the operator's quota; the check runs before model and grant checks, leaving unproven
+  listings unchanged (OW-071).
+- `doctor`'s `sessionAgents` row names witnessed sessions whose listing proves a dispatcher
+  absent, advises restarting any such window still open, and reports verified, not-verifiable
+  and skipped counts. It replays transcripts modified within nine days: the operator chose
+  that window on 2026-10-27 after all 30 days (1.9 GB) cost 13.6 seconds. It never affects
+  the exit code, because a closed window must not fail `doctor` (OW-071).
+
+### Changed
+
+- `doctor`'s `agents` row now says it checks only definition files on disk and points to
+  `sessionAgents` for session loading; on 2026-10-21 matching installed files concealed
+  a window that had not loaded the dispatchers (OW-071).
+
 ## [0.6.23] - 2026-10-26
 
 ### Fixed
