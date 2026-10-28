@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `doctor`'s `homeImage` row compares the home's image files with the package of the running
+  command, because on 2026-10-21 a newer clone's home broke guidance beside the older global
+  CLI while the recorded installation version still matched. Differences are `fail`, count
+  in the exit code and name `codex-bridge update --force` run with this same command as the
+  repair; seeded files and state are excluded so operator edits do not trip it (OW-072).
+
 ## [0.6.24] - 2026-10-27
 
 ### Added

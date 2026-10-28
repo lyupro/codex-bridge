@@ -966,6 +966,26 @@ do it yourself. Unknown evidence leaves the call unchanged; on 2026-10-21 the di
 appeared in a later listing delta about 30 minutes after start, so an initial snapshot alone
 cannot establish the session's current listing.
 
+The installation record's version and the home's actual files are different questions too.
+On 2026-10-21 `npm run dev:install` copied a newer clone's home image, including a new guidance
+topic using `{{agent-budgets}}`, into `~/.lyupro/.codex-bridge/` while `codex-bridge` on `PATH`
+was the older global npm copy 0.6.19. `codex-bridge guidance budget` failed with "unknown
+placeholder", yet the same command's `doctor` printed
+`[ok] installation: @lyupro/codex-bridge@0.6.19 (matches package)`: that row compares only the
+name and version in the installation record with the running package, never the home's files.
+The `homeImage` row now compares every image file under the brand root in the install plan,
+including the copied `package.json`, with the bytes the package of the running command would
+install. Seeded files (`config.json` and conventions) and state are excluded, so operator edits
+do not trip it. Matching files are `ok`, with their count; differences are grouped as missing,
+changed, unreadable and extra (files in the record's image but not this package's plan), and
+any difference is `fail`, counts in the exit code and names `codex-bridge update --force` run
+with this same command as the repair. Without an installation record the row is `warn`.
+Recording whether an install came from a clone or package would miss a clone of the same
+version or later local edits; comparing the live image catches both. Normal package users
+do not see this failure because `update` copies the home from the same package as the CLI;
+the mismatch comes from installing out of a clone or another version beside a different
+command on `PATH`.
+
 `install` also places the rules core and `update` keeps it equal to the package. A foreign file
 already at the planned rules path but absent from the installation record is `unowned`: update
 stops rather than treating it as new and overwriting operator text (Plan_64 B2c). `--force`
