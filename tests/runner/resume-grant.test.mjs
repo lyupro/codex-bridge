@@ -140,6 +140,62 @@ test('not-eligible recomputes every missing-stop blocker and ignores recorded al
   assert.deepEqual(f.calls.readSession, []);
 });
 
+test('OW-078: not-eligible refuses the output-limit turn failure and names retry:', () => {
+  const f = fixture();
+  fs.copyFileSync(new URL('../meta/fixtures/codex-0.164-output-limit.events.jsonl', import.meta.url),
+    path.join(f.runDir, 'events.jsonl'));
+  assert.equal(f.decide(), ineligible('codex-turn-failed') + suffix);
+  assert.deepEqual(f.calls.readSession, []);
+});
+
+test('OW-078: not-eligible refuses an unknown turn.failed reason and names retry:', () => {
+  const f = fixture();
+  fs.writeFileSync(path.join(f.runDir, 'events.jsonl'),
+    JSON.stringify({ type: 'turn.failed', error: { message: 'Unknown future failure reason' } }) + '\n');
+  assert.equal(f.decide(), ineligible('codex-turn-failed') + suffix);
+  assert.deepEqual(f.calls.readSession, []);
+});
+
+test('OW-078: frozen turn failure overrides a legacy policy version 1 allowed grant', () => {
+  const f = fixture();
+  f.meta.continuation_eligibility = {
+    policy_version: 1, allowed: true, grant: { allowed: true, blocking_reasons: [] },
+  };
+  assert.equal(Object.hasOwn(f.meta, 'situation'), false);
+  assert.equal(Object.hasOwn(f.meta, 'turn_failed'), false);
+  fs.copyFileSync(new URL('../meta/fixtures/codex-0.164-output-limit.events.jsonl', import.meta.url),
+    path.join(f.runDir, 'events.jsonl'));
+  assert.equal(f.decide(), ineligible('codex-turn-failed') + suffix);
+  assert.deepEqual(f.calls.readSession, []);
+});
+
+test('OW-078: completed turns and streams without turn failure retain resume eligibility', () => {
+  for (const events of [[], [{ type: 'turn.started' }], [{ type: 'turn.completed' }],
+    [{ type: 'turn.failed', error: { message: 'Earlier failure' } }, { type: 'turn.completed' }]]) {
+    const f = fixture();
+    fs.writeFileSync(path.join(f.runDir, 'events.jsonl'),
+      events.map((event) => JSON.stringify(event)).join('\n') + '\n');
+    assert.equal(f.decide(), null);
+    assert.equal(f.calls.readSession.length, 1);
+  }
+});
+
+test('OW-078: turn failure preserves earlier resume refusals and precedes thread freshness', () => {
+  for (const [arrange, expected] of [
+    [(f) => { f.options.agent = 'codex-build'; }, identity],
+    [(f) => { f.options.liveness = () => true; }, unfinished],
+    [(f) => { f.meta.status = 'OK'; }, endedOk],
+    [() => {}, ineligible('codex-turn-failed')],
+  ]) {
+    const f = fixture();
+    fs.copyFileSync(new URL('../meta/fixtures/codex-0.164-output-limit.events.jsonl', import.meta.url),
+      path.join(f.runDir, 'events.jsonl'));
+    f.options.readSession = () => assert.fail('must refuse before reading the current thread');
+    arrange(f);
+    assert.equal(f.decide(), expected + suffix);
+  }
+});
+
 test('not-eligible lists all applicable blockers in policy order', () => {
   const f = fixture();
   f.status.agent = f.options.agent = 'codex-build';

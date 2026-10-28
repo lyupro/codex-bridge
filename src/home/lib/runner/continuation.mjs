@@ -13,6 +13,7 @@ import { readJson } from '../write-meta.mjs';
 import { workerMayBeAlive } from '../meta/run-liveness.mjs';
 import { readSessionActivity } from '../codex-session-log.mjs';
 import { grantBlockers } from '../meta/stop-assessment.mjs';
+import { readEvents } from '../meta/events.mjs';
 import { AGENTS } from '../agents.mjs';
 import { threadFreshnessGap } from './thread-freshness.mjs';
 import { automaticSuccessorOf, lastRunHints, sameRun } from './continuation-outcome.mjs';
@@ -160,6 +161,8 @@ export function resumeRefusal(runsRootPath, chain, orderId, grant, {
   const blockers = grantBlockers({
     status: meta.status, resultOk: meta.result_ok === true, agentWrites: AGENTS[agent].writes,
     threadId: meta.session_id, stop: meta.stop,
+    // OW-078: frozen events cover older records whose meta.json has no turn failure fact.
+    turnFailed: readEvents(runDir).turn_failed === true,
   });
   if (blockers.length) return refuse('not-eligible', { blockers });
   const gap = threadFreshnessGap({ meta, status, readSession });
