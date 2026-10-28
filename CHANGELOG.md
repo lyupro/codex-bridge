@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.6.25] - 2026-10-28
+
 ### Added
 
 - `doctor`'s `homeImage` row compares the home's image files with the package of the running
