@@ -13,7 +13,43 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { collect, writeStatus } from '../src/home/lib/write-meta.mjs';
+import { stopRows } from '../src/home/lib/meta/stop-rows.mjs';
 import { buildResult as build, makeRun } from './meta/test-fixtures.mjs';
+
+test('OW-078 B2: the measured output-limit failure blocks resume without changing FAIL or exit', () => {
+  const events = fs.readFileSync(new URL('./meta/fixtures/codex-0.164-output-limit.events.jsonl', import.meta.url), 'utf8');
+  const stop = {
+    version: 2, trigger: 'exit', stopped_at: '2026-10-28T12:00:00.000Z', exit_code: 1,
+    tree_stop: { state: 'exited' }, result_file: { state: 'missing' },
+    session: { state: 'observed', at_reference: {
+      last_record_at: '2026-10-28T11:40:00.000Z',
+      commands: { state: 'none', reason: null, pending: [] },
+    } },
+  };
+  const dir = makeRun({ events, status: { stop, order_id: 'ow078-b2', phase: 'advise' } });
+  fs.writeFileSync(path.join(dir, 'worker.json'), JSON.stringify({
+    phase: 'advise', silence_policy: { threshold_ms: 996000 },
+    recovery_policy: { enabled: true, brake: { value: 'on' }, budget_ms: 1102000 },
+  }));
+  const { meta, reply } = collect(dir, 'codex-advisor', 1);
+  assert.equal(meta.status, 'FAIL');
+  assert.equal(meta.exit, 1);
+  assert.equal(meta.result_ok, false);
+  assert.deepEqual(meta.stop, stop);
+  assert.equal(meta.situation.kind, 'output-limit');
+  assert.deepEqual(meta.treatment, { version: 1, effect: 'diagnostic-only', action: 'narrow-order-or-lower-effort' });
+  assert.deepEqual(meta.continuation_eligibility.grant, {
+    allowed: false, policy_version: 2, blocking_reasons: ['codex-turn-failed'],
+  });
+  assert.deepEqual(meta.continuation_eligibility.automatic, {
+    allowed: false, blocking_reasons: ['codex-turn-failed', 'not-silent-stall'],
+  });
+  assert.equal(stopRows(meta, dir).some((row) => row.startsWith('Ready resume line:')), false);
+  assert.equal(reply.includes('Ready resume line:'), false);
+  const second = collect(dir, 'codex-advisor', 1);
+  assert.deepEqual(second.meta.continuation_eligibility, meta.continuation_eligibility);
+  assert.equal(second.reply, reply);
+});
 
 test('Plan_80 A4: collect preserves stop verbatim across collections without changing the reply', () => {
   const dir = makeRun({ result: build([]), before: '', after: '' });
@@ -81,7 +117,7 @@ for (const agent of ['codex-advisor', 'codex-build']) {
       automatic: { allowed: false, blocking_reasons: [
         'recovery-policy-missing', ...writer, 'process-tree-stop-unverified',
       ] },
-      grant: { allowed: false, policy_version: 1, blocking_reasons: [
+      grant: { allowed: false, policy_version: 2, blocking_reasons: [
         ...writer, 'process-tree-stop-unverified',
       ] },
     });
@@ -120,7 +156,7 @@ test('collect assesses the frozen policy and denies a second automatic recovery 
     assert.deepEqual(first.meta.continuation_eligibility, {
       version: 3,
       automatic: { allowed: resumedFrom === null, blocking_reasons: resumedFrom ? ['recovery-attempt-spent'] : [] },
-      grant: { allowed: true, policy_version: 1, blocking_reasons: [] },
+      grant: { allowed: true, policy_version: 2, blocking_reasons: [] },
     });
     assert.deepEqual(second.meta.continuation_eligibility, first.meta.continuation_eligibility);
     assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir, 'meta.json'), 'utf8')).continuation_eligibility,

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { assessStop, grantBlockers, GRANT_POLICY_VERSION } from '../../src/home/lib/meta/stop-assessment.mjs';
 
 const input = () => ({
-  status: 'FAIL', resultOk: false, agentWrites: false, threadId: 'thread',
+  status: 'FAIL', resultOk: false, turnFailed: false, outputLimit: false, agentWrites: false, threadId: 'thread',
   silencePolicy: { threshold_ms: 1200000 },
   stop: {
     version: 2, trigger: 'deadline', stopped_at: '2026-10-15T08:20:00.000Z',
@@ -18,10 +18,10 @@ const input = () => ({
   },
 });
 
-test('policy version 1 allows an otherwise eligible silent stall without mutating facts', () => {
+test('policy version 2 allows an otherwise eligible silent stall without mutating facts', () => {
   const args = input();
   const before = structuredClone(args);
-  assert.equal(GRANT_POLICY_VERSION, 1);
+  assert.equal(GRANT_POLICY_VERSION, 2);
   assert.equal(assessStop(args).situation.kind, 'silent-stall-candidate');
   assert.deepEqual(grantBlockers(args), []);
   assert.deepEqual(grantBlockers(args), []);
@@ -29,7 +29,7 @@ test('policy version 1 allows an otherwise eligible silent stall without mutatin
   assert.deepEqual(assessStop(args).continuation_eligibility, {
     version: 3,
     automatic: { allowed: false, blocking_reasons: ['recovery-policy-missing'] },
-    grant: { allowed: true, policy_version: 1, blocking_reasons: [] },
+    grant: { allowed: true, policy_version: 2, blocking_reasons: [] },
   });
 });
 
@@ -37,6 +37,13 @@ const cases = [
   ['usable result', (args) => { args.resultOk = true; }, ['result-present']],
   ['LIMIT status', (args) => { args.status = 'LIMIT'; }, ['limit']],
   ['UNAVAILABLE status', (args) => { args.status = 'UNAVAILABLE'; }, ['unavailable']],
+  ['measured output-limit turn failure', (args) => {
+    args.turnFailed = true; args.outputLimit = true; args.stop.trigger = 'exit';
+  }, ['codex-turn-failed']],
+  ['unknown turn failure', (args) => { args.turnFailed = true; }, ['codex-turn-failed']],
+  ['failed turn with usable result', (args) => {
+    args.turnFailed = true; args.resultOk = true;
+  }, ['result-present']],
   ...['spawn-error', 'stream-error'].map((trigger) => [
     trigger, (args) => { args.stop.trigger = trigger; }, ['runner-error'],
   ]),
@@ -56,6 +63,13 @@ const cases = [
   }, ['process-tree-stop-unverified']],
 ];
 
+test('output-limit diagnosis without a Codex-failed turn does not block the grant', () => {
+  const args = { ...input(), outputLimit: true, turnFailed: false };
+  assert.equal(assessStop(args).situation.kind, 'output-limit');
+  assert.deepEqual(grantBlockers(args), []);
+  assert.equal(assessStop(args).continuation_eligibility.grant.allowed, true);
+});
+
 for (const [name, change, expected] of cases) {
   test(`grant blocker: ${name}`, () => {
     const args = input();
@@ -63,7 +77,7 @@ for (const [name, change, expected] of cases) {
     const before = structuredClone(args);
     assert.deepEqual(grantBlockers(args), expected);
     assert.deepEqual(assessStop(args).continuation_eligibility.grant, {
-      allowed: false, policy_version: 1,
+      allowed: false, policy_version: 2,
       blocking_reasons: expected,
     });
     assert.deepEqual(args, before);

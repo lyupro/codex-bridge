@@ -24,7 +24,8 @@ const stopFacts = () => ({
 });
 
 const input = (agent) => ({
-  status: 'FAIL', resultOk: false, agentWrites: AGENTS[agent].writes, threadId: 'resume-thread',
+  status: 'FAIL', resultOk: false, turnFailed: false, outputLimit: false,
+  agentWrites: AGENTS[agent].writes, threadId: 'resume-thread',
   stop: stopFacts(), silencePolicy: { threshold_ms: 1200000 },
 });
 
@@ -33,18 +34,19 @@ test('every resume-enabled registry role rejects the retired implementation bloc
   assert.deepEqual(agents, ['codex-scout', 'codex-review', 'codex-advisor']);
   for (const agent of agents) {
     assert.equal(AGENTS[agent].writes, false);
-    for (const status of ['OK', 'FAIL', 'LIMIT', 'UNAVAILABLE']) {
+    for (const turnFailed of [false, true]) for (const status of ['OK', 'FAIL', 'LIMIT', 'UNAVAILABLE']) {
       for (const resultOk of [false, true]) {
         for (const threadId of [null, 'resume-thread']) {
           for (const trigger of ['deadline', 'exit', 'spawn-error', 'stream-error', null]) {
             for (const state of ['observed', 'missing', 'unreadable', 'empty', 'unrecognized', 'incomplete', undefined]) {
               for (const tree of ['stopped', 'exited', 'unverified', undefined]) {
-                const args = { ...input(agent), status, resultOk, threadId };
+                const args = { ...input(agent), status, resultOk, turnFailed, threadId };
                 Object.assign(args.stop, { trigger, tree_stop: { state: tree } });
                 args.stop.session.state = state;
                 const grant = assessStop(args).continuation_eligibility.grant;
                 assert.equal(grant.blocking_reasons.includes('resume-grant-not-implemented'), false, agent);
                 assert.equal(grant.allowed, grant.blocking_reasons.length === 0);
+                assert.equal(grant.blocking_reasons.includes('codex-turn-failed'), turnFailed && !resultOk, agent);
               }
             }
           }
@@ -52,8 +54,9 @@ test('every resume-enabled registry role rejects the retired implementation bloc
       }
     }
     for (const stop of [null, undefined, {}]) {
-      const grant = assessStop({ ...input(agent), stop }).continuation_eligibility.grant;
+      const grant = assessStop({ ...input(agent), stop, turnFailed: true }).continuation_eligibility.grant;
       assert.equal(grant.blocking_reasons.includes('resume-grant-not-implemented'), false, agent);
+      assert.ok(grant.blocking_reasons.includes('codex-turn-failed'), agent);
     }
   }
 });
@@ -94,7 +97,7 @@ test('an eligible failed advisor advise run records an allowed grant and prints 
   assert.deepEqual(meta.continuation_eligibility, {
     version: 3,
     automatic: { allowed: false, blocking_reasons: ['recovery-policy-missing'] },
-    grant: { allowed: true, policy_version: 1, blocking_reasons: [] },
+    grant: { allowed: true, policy_version: 2, blocking_reasons: [] },
   });
   const persisted = JSON.parse(fs.readFileSync(path.join(dir, 'meta.json'), 'utf8'));
   assert.deepEqual(persisted.continuation_eligibility, meta.continuation_eligibility);
@@ -116,7 +119,7 @@ test('the same failed run for codex-build retains the writer-role blocker', () =
   assert.equal(meta.status, 'FAIL');
   assert.equal(meta.result_ok, false);
   assert.deepEqual(meta.continuation_eligibility.grant, {
-    allowed: false, policy_version: 1, blocking_reasons: ['writer-role-not-approved'],
+    allowed: false, policy_version: 2, blocking_reasons: ['writer-role-not-approved'],
   });
   assert.deepEqual(meta.continuation_eligibility.automatic, {
     allowed: false,

@@ -169,6 +169,7 @@ export function collect(runDir, agent, exitCode) {
   // Plan_80 A5: diagnostics follow the verdict and use the frozen stop observation.
   Object.assign(meta, assessStop({
     status, resultOk, agentWrites: cfg.writes, threadId: events.session_id,
+    turnFailed: events.turn_failed === true, outputLimit: events.transport_error?.output_limit === true,
     stop: meta.stop, silencePolicy: meta.silence_policy,
     recoveryPolicy: meta.recovery_policy, resumedFrom: meta.resumed_from,
   }));

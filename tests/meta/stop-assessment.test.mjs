@@ -17,7 +17,7 @@ const stopFacts = () => ({
 });
 
 const input = (overrides = {}) => ({
-  status: 'FAIL', resultOk: false, agentWrites: false, threadId: 'thread',
+  status: 'FAIL', resultOk: false, turnFailed: false, outputLimit: false, agentWrites: false, threadId: 'thread',
   stop: stopFacts(), silencePolicy: { threshold_ms: 1200000 }, ...overrides,
 });
 
@@ -33,11 +33,26 @@ const cases = [
   ['result wins over UNAVAILABLE', { resultOk: true, status: 'UNAVAILABLE' }, 'result-present', 'retain-stop-facts'],
   ['LIMIT wins over absent stop', { status: 'LIMIT', stop: null }, 'limit', 'retain-stop-facts'],
   ['UNAVAILABLE wins over absent stop', { status: 'UNAVAILABLE', stop: null }, 'unavailable', 'retain-stop-facts'],
+  ...['LIMIT', 'UNAVAILABLE', 'CAPACITY'].map((status) => [
+    `${status} wins over output limit`, { status, outputLimit: true }, status.toLowerCase(), 'retain-stop-facts',
+  ]),
+  ['result wins over output limit', { resultOk: true, outputLimit: true, turnFailed: true }, 'result-present', 'retain-stop-facts'],
   ['older run without stop', { stop: undefined }, 'evidence-unknown', 'inspect-evidence'],
   ['spawn error wins over in-flight commands', { stop: changedStop((s) => {
     s.trigger = 'spawn-error'; s.session.at_reference.commands.state = 'in-flight';
   }) }, 'runner-error', 'inspect-runner-error'],
   ['stream error', { stop: changedStop((s) => { s.trigger = 'stream-error'; }) }, 'runner-error', 'inspect-runner-error'],
+  ...['spawn-error', 'stream-error'].map((trigger) => [
+    `${trigger} wins over output limit`, { outputLimit: true, stop: changedStop((s) => { s.trigger = trigger; }) },
+    'runner-error', 'inspect-runner-error',
+  ]),
+  ['output limit wins over exit and in-flight commands', { outputLimit: true, turnFailed: true, stop: changedStop((s) => {
+    s.trigger = 'exit'; s.session.at_reference.commands.state = 'in-flight';
+  }) }, 'output-limit', 'narrow-order-or-lower-effort'],
+  ['output limit wins over deadline stall', { outputLimit: true }, 'output-limit', 'narrow-order-or-lower-effort'],
+  ['non-FAIL cannot be output limit', { status: 'OK', outputLimit: true, stop: changedStop((s) => {
+    s.trigger = 'exit';
+  }) }, 'process-exit-no-result', 'inspect-exit-and-drain'],
   ['exit zero without result wins over in-flight commands', { stop: changedStop((s) => {
     s.trigger = 'exit'; s.exit_code = 0; s.session.at_reference.commands.state = 'in-flight';
   }) }, 'process-exit-no-result', 'inspect-exit-and-drain'],
@@ -105,7 +120,7 @@ test('silence trigger is unknown evidence with automatic and grant eligibility d
     allowed: false, blocking_reasons: ['recovery-policy-missing', 'process-tree-stop-unverified'],
   });
   assert.deepEqual(result.continuation_eligibility.grant, {
-    allowed: false, policy_version: 1, blocking_reasons: ['process-tree-stop-unverified'],
+    allowed: false, policy_version: 2, blocking_reasons: ['process-tree-stop-unverified'],
   });
 });
 
@@ -128,7 +143,7 @@ test('only silent-stall-candidate can be automatically eligible with a clean ena
     assert.ok(result.continuation_eligibility.automatic.blocking_reasons.length > 0, kind);
     kinds.add(kind);
   }
-  assert.deepEqual([...kinds].sort(), ['result-present', 'limit', 'unavailable', 'runner-error',
+  assert.deepEqual([...kinds].sort(), ['result-present', 'limit', 'unavailable', 'capacity', 'runner-error', 'output-limit',
     'process-exit-no-result', 'command-in-flight', 'evidence-unknown', 'silence-unclassified',
     'recent-activity'].sort());
   const result = assessStop(cleanInput());
@@ -216,7 +231,7 @@ test('stalled advise has the exact ordered diagnostic-only blockers', () => {
     automatic: { allowed: false, blocking_reasons: [
       'recovery-policy-missing', 'process-tree-stop-unverified',
     ] },
-    grant: { allowed: false, policy_version: 1, blocking_reasons: [
+    grant: { allowed: false, policy_version: 2, blocking_reasons: [
       'process-tree-stop-unverified',
     ] },
   });
@@ -230,7 +245,7 @@ test('build records writer-role and unconfigured-threshold blockers in order', (
       'recovery-policy-missing', 'writer-role-not-approved',
       'threshold-unconfigured', 'process-tree-stop-unverified',
     ] },
-    grant: { allowed: false, policy_version: 1, blocking_reasons: [
+    grant: { allowed: false, policy_version: 2, blocking_reasons: [
       'writer-role-not-approved', 'process-tree-stop-unverified',
     ] },
   });
@@ -253,7 +268,7 @@ test('missing session log is unknown evidence with exact blockers, never a silen
       'recovery-policy-missing', 'session-evidence-missing',
       'command-evidence-unknown', 'process-tree-stop-unverified',
     ] },
-    grant: { allowed: false, policy_version: 1, blocking_reasons: [
+    grant: { allowed: false, policy_version: 2, blocking_reasons: [
       'session-evidence-missing', 'process-tree-stop-unverified',
     ] },
   });
@@ -266,7 +281,7 @@ test('LIMIT without a result has the exact ordered blockers', () => {
       'recovery-policy-missing', 'limit',
       'not-silent-stall', 'process-tree-stop-unverified',
     ] },
-    grant: { allowed: false, policy_version: 1, blocking_reasons: [
+    grant: { allowed: false, policy_version: 2, blocking_reasons: [
       'limit', 'process-tree-stop-unverified',
     ] },
   });
@@ -286,7 +301,7 @@ test('all applicable factual blockers survive result and LIMIT precedence', () =
       'writer-role-not-approved', 'thread-unavailable', 'command-in-flight',
       'threshold-unconfigured', 'not-silent-stall', 'process-tree-stop-unverified',
     ] },
-    grant: { allowed: false, policy_version: 1, blocking_reasons: [
+    grant: { allowed: false, policy_version: 2, blocking_reasons: [
       'result-present', 'limit', 'writer-role-not-approved', 'thread-unavailable',
       'process-tree-stop-unverified',
     ] },
@@ -303,7 +318,7 @@ test('UNAVAILABLE with no session or commands reports absence, not silence', () 
       'session-evidence-not-observed', 'command-evidence-unknown', 'threshold-unconfigured',
       'not-silent-stall', 'process-tree-stop-unverified',
     ] },
-    grant: { allowed: false, policy_version: 1, blocking_reasons: [
+    grant: { allowed: false, policy_version: 2, blocking_reasons: [
       'unavailable', 'stop-record-missing', 'thread-unavailable', 'session-evidence-not-observed', 'process-tree-stop-unverified',
     ] },
   });

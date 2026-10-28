@@ -5,13 +5,13 @@
  */
 import { silenceAgeMs } from '../codex-session-log.mjs';
 
-export const GRANT_POLICY_VERSION = 1;
+export const GRANT_POLICY_VERSION = 2;
 
 // One reading of O1's evidence for both paths: two copies of this rule could drift apart.
 const codexProvenGone = (stop) => ['stopped', 'exited'].includes(stop?.tree_stop?.state);
 
-// Plan_80 E13/O2: grants depend on safety and identity, not the diagnosed stall kind.
-export function grantBlockers({ status, resultOk, agentWrites, threadId, stop }) {
+// Plan_80 E13/O2: grants depend on safety, identity and failure evidence, not the diagnosed stall kind.
+export function grantBlockers({ status, resultOk, turnFailed, agentWrites, threadId, stop }) {
   const blockers = [];
   if (resultOk) blockers.push('result-present');
   if (status === 'LIMIT') blockers.push('limit');
@@ -19,6 +19,9 @@ export function grantBlockers({ status, resultOk, agentWrites, threadId, stop })
   // OW-074: a resume would continue the overloaded model's thread.
   else if (status === 'CAPACITY') blockers.push('capacity');
   if (stop?.trigger === 'spawn-error' || stop?.trigger === 'stream-error') blockers.push('runner-error');
+  // OW-078: resume succeeded 1/4 after Codex-failed turns versus 4/4 after our deadline stops.
+  // Codex failing the turn is evidence against resuming, regardless of the diagnosed reason.
+  if (turnFailed && !resultOk) blockers.push('codex-turn-failed');
   if (agentWrites) blockers.push('writer-role-not-approved');
   if (!stop) blockers.push('stop-record-missing');
   if (!threadId) blockers.push('thread-unavailable');
@@ -29,7 +32,7 @@ export function grantBlockers({ status, resultOk, agentWrites, threadId, stop })
   return blockers;
 }
 
-export function assessStop({ status, resultOk, agentWrites, threadId, stop, silencePolicy, recoveryPolicy, resumedFrom }) {
+export function assessStop({ status, resultOk, turnFailed, outputLimit, agentWrites, threadId, stop, silencePolicy, recoveryPolicy, resumedFrom }) {
   const cause = stop?.trigger ?? null;
   const sessionState = stop?.session?.state ?? null;
   const commandFacts = stop?.session?.at_reference?.commands;
@@ -47,6 +50,7 @@ export function assessStop({ status, resultOk, agentWrites, threadId, stop, sile
   else if (status === 'CAPACITY') kind = 'capacity';
   else if (!stop) kind = 'evidence-unknown';
   else if (cause === 'spawn-error' || cause === 'stream-error') kind = 'runner-error';
+  else if (status === 'FAIL' && outputLimit) kind = 'output-limit';
   else if (cause === 'exit') kind = 'process-exit-no-result';
   else if (commands.state === 'in-flight') kind = 'command-in-flight';
   // Plan_80 E28: silence never armed a real stop; only deadlines establish this cause.
@@ -78,12 +82,13 @@ export function assessStop({ status, resultOk, agentWrites, threadId, stop, sile
     }
   }
   if (typeof resumedFrom === 'string' && resumedFrom.length > 0) automatic.push('recovery-attempt-spent');
-  const grant = grantBlockers({ status, resultOk, agentWrites, threadId, stop });
+  const grant = grantBlockers({ status, resultOk, turnFailed, agentWrites, threadId, stop });
   const factual = [];
   if (resultOk) factual.push('result-present');
   if (status === 'LIMIT') factual.push('limit');
   else if (status === 'UNAVAILABLE') factual.push('unavailable');
   else if (status === 'CAPACITY') factual.push('capacity');
+  if (turnFailed && !resultOk) factual.push('codex-turn-failed');
   if (agentWrites) factual.push('writer-role-not-approved');
   if (!threadId) factual.push('thread-unavailable');
   if (sessionState !== 'observed') factual.push(`session-evidence-${sessionState ?? 'not-observed'}`);
@@ -105,6 +110,7 @@ export function assessStop({ status, resultOk, agentWrites, threadId, stop, sile
     limit: 'retain-stop-facts',
     unavailable: 'retain-stop-facts',
     capacity: 'retain-stop-facts',
+    'output-limit': 'narrow-order-or-lower-effort',
     'silent-stall-candidate': 'retain-stop-facts',
     'recent-activity': 'retain-stop-facts',
     'process-exit-no-result': 'inspect-exit-and-drain',

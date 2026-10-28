@@ -16,7 +16,7 @@ function storedMeta() {
     continuation_eligibility: {
       version: 3,
       automatic: { allowed: false, blocking_reasons: ['recovery-policy-missing'] },
-      grant: { allowed: false, policy_version: 1, blocking_reasons: [] },
+      grant: { allowed: false, policy_version: 2, blocking_reasons: [] },
     },
     treatment: { version: 1, effect: 'diagnostic-only', action: 'retain-stop-facts' },
   };
@@ -141,6 +141,19 @@ test('an allowed grant without a recorded order id adds no ready resume line', (
     assert.equal(stopRows(meta, dir).length, 3);
   }
   assert.equal(stopRows(meta, makeRun()).length, 3);
+});
+
+test('a stored Codex-failed-turn blocker renders without a ready resume line', () => {
+  const meta = storedMeta();
+  meta.situation.kind = 'output-limit';
+  meta.continuation_eligibility.grant.blocking_reasons = ['codex-turn-failed'];
+  meta.continuation_eligibility.automatic.blocking_reasons = ['codex-turn-failed', 'not-silent-stall'];
+  meta.treatment.action = 'narrow-order-or-lower-effort';
+  const rows = stopRows(meta, makeRun({ status: { order_id: 'ow078-b2' } }));
+  assert.equal(rows.length, 3);
+  assert.match(rows[1], /grant blocked \(codex-turn-failed\)/);
+  assert.equal(rows.some((row) => row.startsWith('Ready resume line:')), false);
+  assert.match(rows[2], /^Treatment: narrow-order-or-lower-effort/);
 });
 
 test('a present situation requires its stored assessments instead of supplying silent defaults', () => {
