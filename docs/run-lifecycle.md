@@ -410,6 +410,10 @@ thread that has not advanced after the recorded stop. `resume-grant-usable` refu
 inputs refuse as `resume-grant-usable` / `inputs-unusable`, before a new folder or paid work.
 Build writers cannot resume.
 A CAPACITY run is not eligible: grant blocker `capacity` refuses it, since resume reuses the old model.
+For a run without a usable result, the gate derives `turn_failed` from the frozen `events.jsonl`
+and applies `codex-turn-failed` with a refusal naming `retry:`, covering records written by
+0.6.24 and earlier without migration so OW-078's failed turn cannot be replayed through an
+older allowed grant.
 
 Under `resume:`, the task body is a plain note for the record, saved as written (surrounding blank lines trimmed) as `resume-note.md` in the new run folder and never read by the resumed run, which reuses the frozen questions, options, paths and verification of the named run.
 Questions, Options, Paths and Verify headings in that body are refused before start; a changed task needs `retry:` or a new order id.

@@ -14,6 +14,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   in the exit code and name `codex-bridge update --force` run with this same command as the
   repair; seeded files and state are excluded so operator edits do not trip it (OW-072).
 
+### Fixed
+
+- A measured `turn.failed` output-limit sample now stays `FAIL` with an Action to narrow
+  the order or lower the role's effort, then repeat once with `retry:` carrying the revised
+  task, or a new order id; never resume. On 2026-10-28 reasoning spent two advise passes'
+  whole output budget, and the generic FAIL reply sent a resume into the same ceiling (OW-078).
+- Runs without a usable result whose last terminal turn Codex failed no longer offer or
+  accept `resume:`, and cannot recover automatically, regardless of the reason text.
+  Resume succeeded 1/4 after Codex-failed turns versus 4/4 after runner deadline stops;
+  the gate reads frozen `events.jsonl`, covering 0.6.24 and earlier records without migration,
+  and its refusal names `retry:` instead (OW-078).
+
 ## [0.6.24] - 2026-10-27
 
 ### Added

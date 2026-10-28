@@ -36,9 +36,13 @@ the first matching branch determines the status. The order is therefore part of 
    carries `status: 429` or an error type naming a limit, `UNAVAILABLE` for a final `turn.failed` matching
    a measured signed-out sample, or `CAPACITY` for a final `turn.failed` matching
    `CAPACITY_SAMPLES` (`^Selected model is at capacity`, codex-cli 0.160.1, measured 2026-10-26).
-   Neither uses the `Reconnecting...` `error` events. Transport error selection is quota,
-   unavailable, capacity, then the first error; a capacity failure is not hidden by earlier
-   `Reconnecting... 503` errors. Otherwise the verdict is `FAIL` with the event's reason.
+   `OUTPUT_LIMIT_SAMPLES` matches only `turn.failed`, with the measured sample
+   `^Incomplete response returned, reason: max_output_tokens` (codex-cli 0.164.0,
+   measured 2026-10-28), setting `output_limit`. None of these measured classes uses the
+   `Reconnecting...` `error` events. Transport error selection is quota, unavailable, capacity,
+   output limit, then the first error: earlier errors must not hide the final cause, as OW-074's
+   reconnects and OW-078's generic first-error selection showed. Otherwise the verdict is
+   `FAIL` with the event's reason; recognizing an output limit does not introduce a new status.
    The check considers only a run with nothing to show (an empty result or nonzero exit): the CLI also
    prints an error event for an interrupted stream that it then survives, and coloring a run that
    completed its work would mirror the false `LIMIT`. `item.completed` is never a source — see
@@ -260,6 +264,22 @@ and gets the `Codex CLI readiness unconfirmed:` refusal with exit 1; its next st
 text stays `FAIL`. A deadline stop still wins as `FAIL`; a recovered run with a filled result
 stays `OK`. The raw Codex exit remains in `meta.exit`. The fixture-and-date guard is in
 `tests/meta/capacity-transport.test.mjs`.
+
+An output limit stays `FAIL` (runner exit 1): like a context-length error, the ceiling is a
+property of the order for the orchestrator to fix and re-send, rather than exhausted quota.
+On 2026-10-28 two `codex-advisor` advise passes (`gpt-6.1-sol`, `xhigh`) spent the whole
+output budget on reasoning before answering. The generic `process-exit-no-result` assessment,
+FAIL Action and ready `resume:` line sent the resumed pass into the same ceiling; it failed
+after a single agent message and spent another 14 minutes of quota (OW-078). A FAIL of kind
+`output-limit` therefore gets Action variant `fail-output-limit`: narrow the order (fewer files,
+fewer questions or a shorter answer), or lower the role's effort with `/codex-bridge:model`,
+then repeat once with `retry:` carrying the revised task, or use a new order id; never resume.
+One selector supplies both the reply and the post-run Action variant so their advice cannot
+drift. An unknown `turn.failed` reason keeps the generic FAIL Action but gets no ready resume
+line: the failed turn itself blocks the grant, independently of its wording.
+
+The known gap is that `retry:` with an unchanged task is not refused; a gate waits for proven
+damage rather than guessing whether the orchestrator's revision is sufficient.
 
 [^codex-unavailable]: Before start by `codex login status` (exit 1 with
     the line `Not logged in`); after start only when the final `turn.failed` matches a measured signed-out

@@ -109,7 +109,7 @@ this record or reads additional evidence for it, so collecting again preserves t
 | `silence_policy` | Policy frozen in `worker.json#silence_policy`, copied verbatim without consulting today's registry. A `null` object means an older run without this record; a `null` threshold inside an object means not calibrated. Diagnostic only in this release; replies use the stored assessments below, never this policy directly. See below. |
 | `recovery_policy` | Policy frozen in `worker.json#recovery_policy`, copied verbatim without consulting today's registry or environment; `null` for an older run without this record. Diagnostic only in this release. See “Recovery policy” below. |
 | `situation` | Version-1 classification of the frozen stop evidence; see “Stop assessments” below. |
-| `continuation_eligibility` | Version-3 automatic/grant assessments with ordered blockers and grant `policy_version: 1`. Automatic eligibility requires a `silent-stall-candidate` and no blockers; this assessment starts no continuation. |
+| `continuation_eligibility` | Version-3 automatic/grant assessments with ordered blockers and grant `policy_version: 2`. Automatic eligibility requires a `silent-stall-candidate` and no blockers; this assessment starts no continuation. |
 | `treatment` | Version-1 diagnostic action: `{ version: 1, effect: 'diagnostic-only', action }`. It never executes recovery. |
 | `sufficient` | Advisor only: the boolean from the advisor result, or `null` when the result did not say. An insufficient scope can still be a valid `OK` result. |
 | `missing_paths` | Advisor only: paths the result identified as needed, or `null` when the result did not say. |
@@ -159,15 +159,21 @@ treatment. After `resolveStatus`, `collect()` records `situation`,
 `continuation_eligibility` and `treatment`. These fields do not change the verdict or status.
 Only a `FAIL` reply with `result_ok: false` renders the three diagnostic rows below.
 Automatic eligibility uses the frozen recovery policy and prior-attempt fact. The `resume:` grant is decided by `grantBlockers`
-(policy version 1); an allowed grant prints a ready `resume:` line when an order id is recorded.
+(policy version 2); an allowed grant prints a ready `resume:` line when an order id is recorded.
 Collecting the same unchanged folder twice produces identical assessments.
 
-`assessStop({ status, resultOk, agentWrites, threadId, stop, silencePolicy, recoveryPolicy, resumedFrom })` is pure.
-It receives the resolved status, result usability, registry `writes`, the recorded thread
+`assessStop({ status, resultOk, turnFailed, outputLimit, agentWrites, threadId, stop, silencePolicy, recoveryPolicy, resumedFrom })` is pure.
+It receives the resolved status, result usability, event facts, registry `writes`, the recorded thread
 id, and frozen `meta.stop`, `meta.silence_policy`, `meta.recovery_policy` and
 `meta.resumed_from`; it reads no files. Recollection
 must use the same frozen session reference and policy rather than today's activity or
 configuration. Stdout receipts are not the calibrated signal and cannot affect assessments.
+
+The event reader's `turn_failed` fact means the stream's last turn-terminal event is
+`turn.failed`, whatever its reason; a later `turn.completed` clears that fact, while a plain
+`error` does not establish it. The separate `output_limit` flag identifies only the measured
+output-ceiling sample. OW-078 needs both: recognizing one reason explains how to revise the
+order, but unfamiliar wording must not restore a resume grant for a turn Codex itself failed.
 
 `situation` has the following fields; missing facts are `null`, never inferred inactivity:
 
@@ -188,40 +194,50 @@ Kind precedence is fixed:
 2. Status `LIMIT` gives `limit`; status `UNAVAILABLE` gives `unavailable`; status `CAPACITY` gives `capacity`.
 3. An older run with no stop record gives `evidence-unknown`.
 4. Trigger `spawn-error` or `stream-error` gives `runner-error`.
-5. Trigger `exit` gives `process-exit-no-result`, including exit code zero.
-6. Command state `in-flight` gives `command-in-flight`.
-7. For trigger `deadline`, unknown or absent command evidence, or a null silence age,
+5. Status `FAIL` with the measured `outputLimit` fact gives `output-limit`.
+6. Trigger `exit` gives `process-exit-no-result`, including exit code zero.
+7. Command state `in-flight` gives `command-in-flight`.
+8. For trigger `deadline`, unknown or absent command evidence, or a null silence age,
    gives `evidence-unknown`. Otherwise a null threshold gives `silence-unclassified`;
    silence greater than or equal to the threshold gives `silent-stall-candidate`, and
    silence below it gives `recent-activity`.
-8. Anything else, including a null trigger, gives `evidence-unknown`.
+9. Anything else, including a null trigger, gives `evidence-unknown`.
 
 Unknown evidence never becomes silence. A null threshold never becomes stalled or recent.
 
 Plan_80 E15/O4 records `continuation_eligibility` as `{ version: 3,
-automatic: { allowed, blocking_reasons }, grant: { allowed, policy_version: 1,
+automatic: { allowed, blocking_reasons }, grant: { allowed, policy_version: 2,
 blocking_reasons } }`. Automatic `allowed` requires kind `silent-stall-candidate` and no
 blocking reasons; grant `allowed` requires no grant blockers. The grant list
 is exactly the result of the pure exported
-`grantBlockers({ status, resultOk, agentWrites, threadId, stop })` from
-`meta/stop-assessment.mjs`. Its exported `GRANT_POLICY_VERSION = 1` is stored as
+`grantBlockers({ status, resultOk, turnFailed, agentWrites, threadId, stop })` from
+`meta/stop-assessment.mjs`. Its exported `GRANT_POLICY_VERSION = 2` is stored as
 `grant.policy_version`, so the recorded assessment and the later grant gate share the
 same versioned predicate. An empty list records
-`grant: { allowed: true, policy_version: 1, blocking_reasons: [] }`.
+`grant: { allowed: true, policy_version: 2, blocking_reasons: [] }`.
 `situation` and `treatment` remain version 1.
 
-The grant predicate returns every applicable safety/identity blocker in this fixed order:
+The grant predicate returns every applicable safety, identity and failure blocker in this fixed order:
 
 1. `result-present` when a usable result exists.
 2. `limit`, `unavailable`, or `capacity` for the resolved status.
 3. `runner-error` when `stop.trigger` is `spawn-error` or `stream-error`.
-4. `writer-role-not-approved` when registry `writes` is true.
-5. `stop-record-missing` when there is no stop record (legacy runs).
-6. `thread-unavailable` when there is no thread id.
-7. `session-evidence-<state>` for any session state other than `observed`;
+4. `codex-turn-failed` when Codex failed the last terminal turn and there is no usable result,
+   regardless of the reason text.
+5. `writer-role-not-approved` when registry `writes` is true.
+6. `stop-record-missing` when there is no stop record (legacy runs).
+7. `thread-unavailable` when there is no thread id.
+8. `session-evidence-<state>` for any session state other than `observed`;
    `session-evidence-not-observed` when absent.
-8. `process-tree-stop-unverified` unless `stop.tree_stop.state` is `stopped` or `exited`.
+9. `process-tree-stop-unverified` unless `stop.tree_stop.state` is `stopped` or `exited`.
    A version-1 stop without `tree_stop` remains unverified.
+
+Policy version 2 follows the OW-078 evidence across 5229 recorded runs: resumes after the
+runner's own deadline stops succeeded 4/4, while resumes after Codex-failed turns succeeded
+1/4, and that one success cost 33 minutes. The blocker therefore covers the whole failed-turn
+class and also blocks automatic recovery, rather than matching only today's output-limit
+wording. The cost is re-reading: even a transient network failure of the last turn now needs
+`retry:` instead of `resume:`, but it leaves a fresh-run path rather than trapping the order.
 
 Command evidence, silence thresholds and stall kind do not block a read-only grant:
 Plan_80 S3 verified that writes are denied outside `%TEMP%`, so interrupted commands
@@ -241,23 +257,24 @@ The automatic list starts with applicable frozen-policy blockers in this fixed o
    a policy exists. E15 permits one automatic attempt per stalled pass; a continuation
    is never continued automatically again.
 
-Then append every applicable factual blocker in the unchanged fixed order:
+Then append every applicable factual blocker in this fixed order:
 
 1. `result-present` when a usable result exists.
 2. `limit`, `unavailable`, or `capacity` for the resolved status, even if the kind is `result-present`.
-3. `writer-role-not-approved` when registry `writes` is true.
-4. `thread-unavailable` when there is no thread id.
-5. `session-evidence-<state>` for any session state other than `observed`;
+3. `codex-turn-failed` when Codex failed the last terminal turn and there is no usable result.
+4. `writer-role-not-approved` when registry `writes` is true.
+5. `thread-unavailable` when there is no thread id.
+6. `session-evidence-<state>` for any session state other than `observed`;
    `session-evidence-not-observed` when absent.
-6. `command-in-flight` for open commands, or `command-evidence-unknown` for unknown
+7. `command-in-flight` for open commands, or `command-evidence-unknown` for unknown
    or absent command evidence.
-7. `threshold-unconfigured` when `threshold_ms` is null.
-8. `not-silent-stall` when the kind is known not to be a stall: never for
+8. `threshold-unconfigured` when `threshold_ms` is null.
+9. `not-silent-stall` when the kind is known not to be a stall: never for
    `evidence-unknown` or `silence-unclassified` (whether the run stalled is unknown), nor
    for `silent-stall-candidate`.
-9. `process-tree-stop-unverified` unless `stop.tree_stop.state` is `stopped` or `exited`,
-   using the same evidence rule as the grant predicate.
-10. `stall-not-established` when the kind is not `silent-stall-candidate` and no reason
+10. `process-tree-stop-unverified` unless `stop.tree_stop.state` is `stopped` or `exited`,
+    using the same evidence rule as the grant predicate.
+11. `stall-not-established` when the kind is not `silent-stall-candidate` and no reason
     above applies, so a refusal always names why.
 
 `treatment.effect` is always `diagnostic-only`: the action is advice and nothing executes it. Its action mapping is:
@@ -265,6 +282,7 @@ Then append every applicable factual blocker in the unchanged fixed order:
 | Kind | Action |
 | --- | --- |
 | `result-present`, `limit`, `unavailable`, `capacity`, `silent-stall-candidate`, `recent-activity` | `retain-stop-facts` |
+| `output-limit` | `narrow-order-or-lower-effort` |
 | `process-exit-no-result` | `inspect-exit-and-drain` |
 | `command-in-flight` | `inspect-command-effects` |
 | `evidence-unknown` | `inspect-evidence` |
@@ -298,7 +316,7 @@ Ready resume line: resume: <run folder> — continue after <situation.kind> (con
 ```
 
 A blocked grant or missing order id adds no line. Grant eligibility is decided only by
-`grantBlockers` (policy version 1); automatic eligibility is assessed separately and
+`grantBlockers` (policy version 2); automatic eligibility is assessed separately and
 starts no continuation.
 
 Every `OK`, `LIMIT`, `UNAVAILABLE`, and `FAIL` with a usable result keeps its reply unchanged.

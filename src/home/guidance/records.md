@@ -39,4 +39,6 @@ Every non-OK reply and every refusal carries one `Action:` row with the next ste
 
 `CAPACITY` (exit 6) means the role's model is overloaded right now, not a task error: wait or change the role's model (`/codex-bridge:model`), then repeat the order once with `retry:`; never `resume:` it. A second `CAPACITY` of the same order goes to the next executor. The reply has no ready grant line on purpose; the runner refuses `resume:` of a CAPACITY run and refuses a second consecutive capacity retry as `capacity-repeated`. Preserve the verdict and artifacts.
 
+A `FAIL` whose Action names the output limit means the order was too large for one answer: narrow it and use `retry:` with the revised task; never `resume:` it, which sent OW-078's resumed pass into the same ceiling.
+
 A refusal starting `Codex CLI readiness unconfirmed:` is not `UNAVAILABLE`: it leaves no run folder and costs no quota. Do not skip the bridge; follow its `Action:` row — check `codex --version` for up to ~2 minutes. When it answers, repeat the same order exactly once; if it does not, hand the order to the next executor and name that in the summary. If the repeat gets the same refusal, hand the order to the next executor as well; no second repeat.
