@@ -5,6 +5,7 @@ const NEXT_ACTION_TEXT = Object.freeze({
   'limit': 'Action: the ChatGPT quota window is spent; do not retry or resume through this bridge, hand the order to the next executor; for a build, check the Worktree row first',
   'unavailable': 'Action: Codex is signed out on this host; do not retry this bridge, hand the order to the next executor and ask the operator to run codex login',
   'fail-result': 'Action: the run returned a result that did not pass; read the report and git status before deciding; a repeat of this pass needs your retry: grant, the next pass your continue: grant',
+  'fail-output-limit': "Action: the model's output limit ended the turn before an answer; do not resume this run, the same thread hits the same limit; narrow the order (fewer files, fewer questions, a shorter answer) or lower the role's effort (/codex-bridge:model), then repeat it once with a retry: grant carrying the revised task, or under a new order id",
   'fail-no-result': 'Action: the run left no usable result; read the log and git status before deciding; repeat only through a grant this reply offers or the operator approves, never take over the task yourself',
   'usage': 'Action: nothing was started and no quota was spent; fix the task file or the call as the refusal says, then call again',
   'restart-window': 'Action: nothing was started and no quota was spent; this Claude Code window has not loaded the dispatcher; ask the operator to restart the window, then repeat the same order unchanged; do not hand it to the next executor and do not do the task yourself',

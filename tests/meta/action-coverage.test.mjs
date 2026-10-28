@@ -12,7 +12,7 @@ import { lex } from '../order-guard/lexer.mjs';
 import { buildResult, makeRun } from './test-fixtures.mjs';
 
 const actionsByExit = {
-  FAIL: ['fail-result', 'fail-no-result', 'runner-fault', 'run-in-progress',
+  FAIL: ['fail-result', 'fail-no-result', 'fail-output-limit', 'runner-fault', 'run-in-progress',
     'runs-root-retired', 'availability-unconfirmed', 'readiness-unconfirmed',
     'advisor-scope-result', 'grant-decision', 'usage'],
   USAGE: ['usage', 'restart-window', 'grant-decision', 'repository-detached', 'sandbox-dead'],

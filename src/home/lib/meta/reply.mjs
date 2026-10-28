@@ -193,12 +193,18 @@ export function withProfileRow(rows, meta) {
   return at === -1 ? [...rows, row] : [...rows.slice(0, at), row, ...rows.slice(at)];
 }
 
+// OW-078: both FAIL producers share the selector so output-limit guidance cannot drift.
+export function failActionVariant(meta) {
+  if (meta.result_ok) return 'fail-result';
+  return meta.situation?.kind === 'output-limit' ? 'fail-output-limit' : 'fail-no-result';
+}
+
 export function postRunActionVariant(meta) {
   switch (meta.status) {
     case 'CAPACITY': return 'capacity';
     case 'LIMIT': return 'limit';
     case 'UNAVAILABLE': return 'unavailable';
-    case 'FAIL': return meta.result_ok ? 'fail-result' : 'fail-no-result';
+    case 'FAIL': return failActionVariant(meta);
     default: return null;
   }
 }
@@ -207,7 +213,7 @@ export function failReply(ctx, meta) {
   return [
     `FAIL — ${line(meta.reason, 170)}`,
     `Artifacts: events.jsonl ${meta.events_bytes} B · stderr.log ${meta.stderr_bytes} B · ${path.basename(ctx.resultPath)} ${meta.result_ok ? 'filled' : 'empty or missing'} · exit=${meta.exit}`,
-    orderDiagnosticMessage('next-action', { variant: meta.result_ok ? 'fail-result' : 'fail-no-result' }),
+    orderDiagnosticMessage('next-action', { variant: failActionVariant(meta) }),
     // A failed build says what it left behind, exactly as a LIMIT does. "The work was not
     // done" is not "the tree is clean": a run can write half a change and then declare fail,
     // and the orchestrator has to know whether there is something to revert before it decides

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { orderDiagnosticMessage } from '../../src/home/lib/order-diagnostics.mjs';
 import { collect } from '../../src/home/lib/write-meta.mjs';
-import { failReply, limitReply, unavailableReply, postRunActionVariant } from '../../src/home/lib/meta/reply.mjs';
+import { failActionVariant, failReply, limitReply, unavailableReply, postRunActionVariant } from '../../src/home/lib/meta/reply.mjs';
 import { unavailableRows } from '../../src/home/lib/meta/unavailable-rows.mjs';
 import { buildResult, COMPLETED_COMMAND, makeRun } from './test-fixtures.mjs';
 
@@ -14,30 +14,46 @@ function assertAction(rows, variant) {
   assert.equal(rows[2], expected);
 }
 
-for (const [status, result_ok, variant] of [
+for (const [status, result_ok, variant, situation] of [
   ['CAPACITY', false, 'capacity'], ['LIMIT', false, 'limit'],
   ['UNAVAILABLE', false, 'unavailable'], ['OK', true, null],
   ...[undefined, null, 0, '', false, true, 1, 'filled'].map((value) =>
     ['FAIL', value, value ? 'fail-result' : 'fail-no-result']),
+  ...[undefined, null, 0, '', false, true, 1, 'filled'].map((value) =>
+    ['FAIL', value, value ? 'fail-result' : 'fail-output-limit', { kind: 'output-limit' }]),
 ]) {
-  test(`post-run Action variant for ${status} with result_ok=${JSON.stringify(result_ok)}`, () => {
-    assert.equal(postRunActionVariant({ status, result_ok }), variant);
+  test(`post-run Action variant for ${status} with result_ok=${JSON.stringify(result_ok)}, situation=${situation?.kind}`, () => {
+    const meta = { status, result_ok, situation };
+    assert.equal(postRunActionVariant(meta), variant);
+    if (status === 'FAIL') assert.equal(failActionVariant(meta), variant);
   });
 }
 
 for (const agent of ['codex-build', 'codex-scout', 'codex-review', 'codex-advisor']) {
-  for (const [variant, render, result_ok] of [
+  for (const [variant, render, result_ok, situation] of [
     ['limit', limitReply, false],
     ['unavailable', unavailableReply, false],
     ['fail-result', failReply, true],
     ['fail-no-result', failReply, false],
+    ['fail-output-limit', failReply, false, { kind: 'output-limit' }],
+    ['fail-result', failReply, true, { kind: 'output-limit' }],
+    ['fail-no-result', failReply, false, { kind: 'unknown' }],
   ]) {
-    test(`${agent} ${variant} has exactly one registry Action as its third row`, () => {
+    test(`${agent} ${variant} (${situation?.kind}) has exactly one registry Action as its third row`, () => {
       const dir = makeRun();
-      const rows = render({ agent, runDir: dir, resultPath: path.join(dir, 'result.json') }, {
+      const observed = collect(dir, agent, 1).meta;
+      const meta = {
+        ...observed,
         reason: 'post-run non-OK', events_bytes: 0, stderr_bytes: 0, exit: 1, result_ok,
-      });
+        status: variant.startsWith('fail-') ? 'FAIL' : undefined,
+        situation: situation ? { ...observed.situation, ...situation } : undefined,
+      };
+      const rows = render({ agent, runDir: dir, resultPath: path.join(dir, 'result.json') }, meta);
       assertAction(rows, variant);
+      if (render === failReply) {
+        assert.equal(failActionVariant(meta), variant);
+        assert.equal(postRunActionVariant(meta), variant);
+      }
       assert.match(rows[1], variant.startsWith('fail-') ? /^Artifacts: / : /^Signal: /);
       assert.equal(rows.some((row) => row.startsWith('Worktree: ')), agent === 'codex-build');
       assert.equal(rows.at(-1), `Log: codex-bridge read ${dir}`);
