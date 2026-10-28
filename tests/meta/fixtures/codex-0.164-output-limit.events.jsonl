@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"01a17fdc-c9c6-7b43-9d48-60b3f050f1f9"}
+{"type":"turn.started"}
+{"type":"error","message":"Incomplete response returned, reason: max_output_tokens"}
+{"type":"turn.failed","error":{"message":"Incomplete response returned, reason: max_output_tokens"}}

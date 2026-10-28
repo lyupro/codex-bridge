@@ -32,6 +32,15 @@ const CAPACITY_SAMPLES = [
   },
 ];
 
+// Plan_60 D2: add a new measured sample only together with its verbatim fixture.
+const OUTPUT_LIMIT_SAMPLES = [
+  {
+    cli: 'codex-cli 0.164.0',
+    measured: '2026-10-28',
+    pattern: /^Incomplete response returned, reason: max_output_tokens\b/,
+  },
+];
+
 const record = (value) => value && typeof value === 'object' && !Array.isArray(value);
 
 const compact = (value, max = 300) =>
@@ -151,6 +160,8 @@ function transportErrorOf(event) {
     UNAVAILABLE_SAMPLES.some((sample) => sample.pattern.test(message));
   const capacity = !quota && event.type === 'turn.failed' &&
     CAPACITY_SAMPLES.some((sample) => sample.pattern.test(message));
+  const output_limit = !quota && event.type === 'turn.failed' &&
+    OUTPUT_LIMIT_SAMPLES.some((sample) => sample.pattern.test(message));
   const reason = compact(
     [errorType, message, status === null || status === undefined ? '' : `status ${status}`]
       .filter(Boolean)
@@ -159,7 +170,7 @@ function transportErrorOf(event) {
       (typeof event.error?.message === 'string' ? event.error.message : '') ||
       event.type,
   );
-  return { event, payload, status, error_type: errorType, message, quota, unavailable, capacity, reason };
+  return { event, payload, status, error_type: errorType, message, quota, unavailable, capacity, output_limit, reason };
 }
 
 /**
@@ -172,11 +183,17 @@ export function readEvents(runDir) {
   const accounting = usageOf(events);
   const started = events.find((event) => event.type === 'thread.started' && event.thread_id);
   const errors = events.map(transportErrorOf).filter(Boolean);
-  // Keep quota and authentication priority, then surface capacity before generic errors:
+  // Keep quota and authentication priority, then surface capacity and output limits before generic errors:
   // TradeForge 2026-10-08_224022_s19-h2c6c1-pair-runs hid it behind four Reconnecting... 503 errors.
+  // OW-078 (2026-10-28): a generic error hid the final max_output_tokens turn failure.
   const transport_error = errors.find((error) => error.quota) ||
     errors.find((error) => error.unavailable) ||
-    errors.find((error) => error.capacity) || errors[0] || null;
+    errors.find((error) => error.capacity) ||
+    errors.find((error) => error.output_limit) || errors[0] || null;
+  // A turn Codex itself failed leaves that thread unable to finish; resuming replays the failure.
+  // OW-078: one resumed pass failed after a single message, regardless of the failure reason.
+  const turn_failed = events.findLast((event) =>
+    event.type === 'turn.completed' || event.type === 'turn.failed')?.type === 'turn.failed';
   return {
     events,
     // The file was written, whatever it holds. Pass 2 judges a run by this: a stream the
@@ -193,5 +210,6 @@ export function readEvents(runDir) {
     session_id: started ? String(started.thread_id) : null,
     content_error: contentErrorOf(events),
     transport_error,
+    turn_failed,
   };
 }
